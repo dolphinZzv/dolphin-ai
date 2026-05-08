@@ -25,12 +25,12 @@ func (m *mockChannel) Write(data []byte) (int, error) {
 	return m.Buffer.Write(data)
 }
 
-func (m *mockChannel) Close() error              { return nil }
-func (m *mockChannel) CloseWrite() error         { return nil }
+func (m *mockChannel) Close() error      { return nil }
+func (m *mockChannel) CloseWrite() error { return nil }
 func (m *mockChannel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	return true, nil
 }
-func (m *mockChannel) Stderr() io.ReadWriter      { return nil }
+func (m *mockChannel) Stderr() io.ReadWriter { return nil }
 
 func TestSSHSessionReadLine(t *testing.T) {
 	buf := bytes.NewBufferString("hello\n")
@@ -246,8 +246,6 @@ func TestSSHAuthInvalidUser(t *testing.T) {
 		t.Fatal("SSH dial with wrong username should fail")
 	}
 }
-
-
 
 func TestSSHChannelRequestHandling(t *testing.T) {
 	cfg := config.DefaultConfig()

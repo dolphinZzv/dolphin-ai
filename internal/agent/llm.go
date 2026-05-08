@@ -51,9 +51,9 @@ type ToolCall struct {
 
 // ProviderResponse is the unified response from an LLM.
 type ProviderResponse struct {
-	Content   json.RawMessage // text content
-	ToolCalls []ToolCall
-	Usage     *Usage
+	Content    json.RawMessage // text content
+	ToolCalls  []ToolCall
+	Usage      *Usage
 	StopReason string
 }
 
@@ -65,14 +65,14 @@ type Usage struct {
 
 // StreamChunk represents one streaming chunk.
 type StreamChunk struct {
-	Content       json.RawMessage
-	ToolCallBegin *ToolCallBegin
-	ToolCallDelta string
-	BlockDelta    string // generic content block delta (text, thinking, partial_json)
-	DeltaType     string // "text", "thinking", "input_json"
+	Content        json.RawMessage
+	ToolCallBegin  *ToolCallBegin
+	ToolCallDelta  string
+	BlockDelta     string // generic content block delta (text, thinking, partial_json)
+	DeltaType      string // "text", "thinking", "input_json"
 	BlockSignature string // thinking signature (message-level delta)
-	Usage         *Usage
-	Done          bool
+	Usage          *Usage
+	Done           bool
 }
 
 type ToolCallBegin struct {

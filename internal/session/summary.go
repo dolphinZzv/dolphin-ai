@@ -11,15 +11,15 @@ import (
 
 // Summary holds a session's summary data.
 type Summary struct {
-	SessionID    SessionID `json:"session_id"`
-	Transport    string    `json:"transport,omitempty"`
-	StartedAt    time.Time `json:"started_at"`
-	EndedAt      time.Time `json:"ended_at"`
-	Turns        int       `json:"turns"`
-	MaxLoop      int       `json:"max_loop"`
-	ToolCallCount int      `json:"tool_call_count"`
-	ErrorCount   int       `json:"error_count"`
-	State        string    `json:"state"`
+	SessionID     SessionID `json:"session_id"`
+	Transport     string    `json:"transport,omitempty"`
+	StartedAt     time.Time `json:"started_at"`
+	EndedAt       time.Time `json:"ended_at"`
+	Turns         int       `json:"turns"`
+	MaxLoop       int       `json:"max_loop"`
+	ToolCallCount int       `json:"tool_call_count"`
+	ErrorCount    int       `json:"error_count"`
+	State         string    `json:"state"`
 }
 
 // GenerateSummary creates a summary from session events and writes it to a JSON file.

@@ -16,21 +16,21 @@ import (
 
 // Agent is the core agent that runs the agent loop.
 type Agent struct {
-	cfg       *config.Config
-	sessMgr   *session.Manager
-	toolReg   *mcp.Registry
-	provider  Provider
+	cfg        *config.Config
+	sessMgr    *session.Manager
+	toolReg    *mcp.Registry
+	provider   Provider
 	ctxBuilder *ContextBuilder
 }
 
 // LoopState holds state for a single agent run.
 type LoopState struct {
-	Sess            *session.Session
-	Messages        []Message
-	Turn            int
-	StopReason      string
-	ToolCallCount   int
-	ErrorCount      int
+	Sess             *session.Session
+	Messages         []Message
+	Turn             int
+	StopReason       string
+	ToolCallCount    int
+	ErrorCount       int
 	SummaryGenerated bool
 }
 
@@ -384,9 +384,9 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			})
 			resultBlock, _ := json.Marshal([]map[string]any{
 				{
-					"type":       "tool_result",
+					"type":        "tool_result",
 					"tool_use_id": tc.ID,
-					"content":    json.RawMessage(innerContent),
+					"content":     json.RawMessage(innerContent),
 				},
 			})
 			state.Messages = append(state.Messages, Message{
@@ -545,5 +545,3 @@ func (a *Agent) compressHistory(state *LoopState) {
 		state.Sess.LogSystem(fmt.Sprintf("context compressed: dropped %d old messages, %d remaining", dropped, len(state.Messages)))
 	}
 }
-
-

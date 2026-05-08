@@ -20,12 +20,12 @@ type CDPTool struct {
 	cfg    *config.CDPConfig
 	schema json.RawMessage
 
-	mu      sync.Mutex
-	allocCtx context.Context
-	allocCancel context.CancelFunc
-	browserCtx  context.Context
+	mu            sync.Mutex
+	allocCtx      context.Context
+	allocCancel   context.CancelFunc
+	browserCtx    context.Context
 	browserCancel context.CancelFunc
-	initialized bool
+	initialized   bool
 }
 
 func NewCDPTool(cfg *config.Config) *CDPTool {

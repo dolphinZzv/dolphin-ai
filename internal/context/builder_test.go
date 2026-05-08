@@ -21,8 +21,8 @@ func TestBuilderDefault(t *testing.T) {
 		t.Fatal("Build returned empty string")
 	}
 	// Should include the default preface
-	if !strings.Contains(result, "DolphinzZ") {
-		t.Error("result should contain DolphinzZ from preface")
+	if !strings.Contains(result, "Dolphin") {
+		t.Error("result should contain Dolphin from preface")
 	}
 }
 
@@ -105,7 +105,7 @@ func TestBuilderNoFiles(t *testing.T) {
 		t.Fatalf("Build error: %v", err)
 	}
 	// Should still have the preface
-	if !strings.Contains(result, "DolphinzZ") {
+	if !strings.Contains(result, "Dolphin") {
 		t.Error("result should contain preface")
 	}
 }

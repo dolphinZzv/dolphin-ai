@@ -37,10 +37,10 @@ type LLMConfig struct {
 }
 
 type SessionConfig struct {
-	Dir      string `mapstructure:"dir"`
-	MaxLoop  int    `mapstructure:"max_loop"`
-	Summary  bool   `mapstructure:"summary"`
-	MaxAge   string `mapstructure:"max_age"` // session file max age (e.g. "24h") for reaper
+	Dir     string `mapstructure:"dir"`
+	MaxLoop int    `mapstructure:"max_loop"`
+	Summary bool   `mapstructure:"summary"`
+	MaxAge  string `mapstructure:"max_age"` // session file max age (e.g. "24h") for reaper
 }
 
 type TransportConfig struct {
@@ -62,16 +62,16 @@ type SSHConfig struct {
 }
 
 type MQTTConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Broker         string `mapstructure:"broker"`
-	Topic          string `mapstructure:"topic"`
-	ResponseTopic  string `mapstructure:"response_topic"`
-	ClientID       string `mapstructure:"client_id"`
+	Enabled       bool   `mapstructure:"enabled"`
+	Broker        string `mapstructure:"broker"`
+	Topic         string `mapstructure:"topic"`
+	ResponseTopic string `mapstructure:"response_topic"`
+	ClientID      string `mapstructure:"client_id"`
 }
 
 type MCPConfig struct {
-	Shell   ShellConfig            `mapstructure:"shell"`
-	CDP     CDPConfig              `mapstructure:"cdp"`
+	Shell   ShellConfig                `mapstructure:"shell"`
+	CDP     CDPConfig                  `mapstructure:"cdp"`
 	Servers map[string]MCPServerConfig `mapstructure:"servers"`
 }
 
@@ -89,9 +89,9 @@ type ShellConfig struct {
 }
 
 type CDPConfig struct {
-	Enabled   bool   `mapstructure:"enabled"`
-	Headless  bool   `mapstructure:"headless"`
-	WsURL     string `mapstructure:"ws_url"`
+	Enabled  bool   `mapstructure:"enabled"`
+	Headless bool   `mapstructure:"headless"`
+	WsURL    string `mapstructure:"ws_url"`
 }
 
 func Load(cfgFile string) (*Config, error) {
@@ -182,8 +182,8 @@ func Load(cfgFile string) (*Config, error) {
 			os.WriteFile(pwFile, []byte(cfg.Transport.SSH.Password), 0600)
 			fmt.Fprintf(os.Stderr, "\n=== SSH auto-generated password: %s ===\n", cfg.Transport.SSH.Password)
 			fmt.Fprintf(os.Stderr, "Username: %s\n", cfg.Transport.SSH.Username)
-				fmt.Fprintf(os.Stderr, "WARNING: Password stored in plaintext at: %s\n", pwFile)
-				fmt.Fprintf(os.Stderr, "For better security, configure SSH key authentication.\n")
+			fmt.Fprintf(os.Stderr, "WARNING: Password stored in plaintext at: %s\n", pwFile)
+			fmt.Fprintf(os.Stderr, "For better security, configure SSH key authentication.\n")
 		}
 	}
 

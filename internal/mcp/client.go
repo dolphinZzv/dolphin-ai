@@ -225,8 +225,8 @@ func (c *ServerClient) sendRequest(req map[string]any) (json.RawMessage, error) 
 		}
 
 		var msg struct {
-			ID     int64            `json:"id"`
-			Result json.RawMessage  `json:"result"`
+			ID     int64           `json:"id"`
+			Result json.RawMessage `json:"result"`
 			Error  *struct {
 				Code    int    `json:"code"`
 				Message string `json:"message"`

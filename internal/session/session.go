@@ -19,11 +19,11 @@ type SessionID string
 type EventType string
 
 const (
-	EventMessage   EventType = "message"
-	EventToolCall  EventType = "tool_call"
+	EventMessage    EventType = "message"
+	EventToolCall   EventType = "tool_call"
 	EventToolResult EventType = "tool_result"
-	EventSystem    EventType = "system"
-	EventSummary   EventType = "summary"
+	EventSystem     EventType = "system"
+	EventSummary    EventType = "summary"
 )
 
 type SessionEvent struct {

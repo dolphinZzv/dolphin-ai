@@ -74,10 +74,10 @@ func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-c
 
 // mockIO implements UserIO for testing.
 type mockIO struct {
-	lines    []string
-	readIdx  int
-	writes   strings.Builder
-	readErr  error
+	lines   []string
+	readIdx int
+	writes  strings.Builder
+	readErr error
 }
 
 func (m *mockIO) ReadLine() (string, error) {

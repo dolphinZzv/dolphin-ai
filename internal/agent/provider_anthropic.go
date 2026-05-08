@@ -58,7 +58,7 @@ type anthroMsg struct {
 type contentBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text,omitempty"`
-	Thinking  string          `json:"thinking,omitempty"` // DeepSeek reasoning blocks
+	Thinking  string          `json:"thinking,omitempty"`  // DeepSeek reasoning blocks
 	Signature string          `json:"signature,omitempty"` // DeepSeek thinking signature
 	ID        string          `json:"id,omitempty"`
 	Name      string          `json:"name,omitempty"`
@@ -75,12 +75,12 @@ type anthroTool struct {
 }
 
 type anthroReq struct {
-	Model     string        `json:"model"`
-	MaxTokens int           `json:"max_tokens"`
-	System    string        `json:"system,omitempty"`
-	Messages  []anthroMsg   `json:"messages"`
-	Tools     []anthroTool  `json:"tools,omitempty"`
-	Stream    bool          `json:"stream,omitempty"`
+	Model     string       `json:"model"`
+	MaxTokens int          `json:"max_tokens"`
+	System    string       `json:"system,omitempty"`
+	Messages  []anthroMsg  `json:"messages"`
+	Tools     []anthroTool `json:"tools,omitempty"`
+	Stream    bool         `json:"stream,omitempty"`
 }
 
 type anthroResp struct {

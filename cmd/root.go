@@ -33,7 +33,7 @@ Transports: stdio (default), SSH (:2222), MQTT
 Tools: shell, cdp (browser automation)
 Config: .dolphinzZ/config.yaml > ~/.dolphinzZ/ > /etc/dolphinzZ/
 Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
-		RunE:  runAgent,
+		RunE:    runAgent,
 		Version: Version,
 	}
 
