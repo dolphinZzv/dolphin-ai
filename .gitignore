@@ -10,6 +10,9 @@ dolphinzZ
 # Claude Code
 .claude/
 
+# Coverage output
+coverage.out
+
 # IDE
 .idea/
 .vscode/

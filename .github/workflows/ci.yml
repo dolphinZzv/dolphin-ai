@@ -32,5 +32,14 @@ jobs:
       - name: Build
         run: go build ./...
 
-      - name: Test
-        run: go test -race -count=1 ./...
+      - name: Test with coverage
+        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Display coverage
+        run: go tool cover -func=coverage.out
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
