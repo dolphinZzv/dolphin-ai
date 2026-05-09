@@ -38,7 +38,7 @@ type MQTTTransport struct {
 func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 	t := &MQTTTransport{
 		cfg:   &cfg.Transport.MQTT,
-		msgCh: make(chan string, 64),
+		msgCh: make(chan string, 1024),
 	}
 	t.respTopic.Store(cfg.Transport.MQTT.ResponseTopic)
 	return t

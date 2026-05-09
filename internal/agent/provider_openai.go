@@ -16,6 +16,7 @@ type OpenAIProvider struct {
 	client *openai.Client
 	model  string
 	maxTok int
+	temp   float64
 }
 
 func NewOpenAIProvider(cfg *config.LLMConfig) *OpenAIProvider {
@@ -44,7 +45,7 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 		MaxTokens:   p.maxTok,
 		Messages:    p.buildMessages(req),
 		Tools:       p.buildTools(req.Tools),
-		Temperature: 0.7,
+		Temperature: float32(p.temp),
 	}
 
 	resp, err := p.client.CreateChatCompletion(ctx, openAIReq)
@@ -93,7 +94,7 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 		MaxTokens:   p.maxTok,
 		Messages:    p.buildMessages(req),
 		Tools:       p.buildTools(req.Tools),
-		Temperature: 0.7,
+		Temperature: float32(p.temp),
 		Stream:      true,
 	}
 

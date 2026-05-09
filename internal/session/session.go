@@ -47,6 +47,7 @@ type Session struct {
 	file      *os.File
 	encoder   *json.Encoder
 	mu        sync.Mutex
+	closed    bool
 	StartedAt time.Time
 	Turn      int
 	MaxLoop   int
@@ -153,6 +154,10 @@ func (s *Session) LogSystem(msg string) error {
 func (s *Session) Close() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
 	return s.file.Close()
 }
 

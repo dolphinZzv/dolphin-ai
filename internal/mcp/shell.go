@@ -70,9 +70,18 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		return &ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
 	}
 
-	// Check command whitelist (if configured)
-	if err := s.checkAllowed(params.Command); err != nil {
-		return &ToolResult{Content: err.Error(), IsError: true}, nil
+	allowed := s.cfg.AllowedCommands
+	if len(allowed) > 0 {
+		// Restricted mode: parse command name, strict allowlist, no shell
+		fields := strings.Fields(params.Command)
+		if len(fields) == 0 {
+			return &ToolResult{Content: "empty command", IsError: true}, nil
+		}
+		cmdName := fields[0]
+		if !s.isAllowed(cmdName) {
+			return &ToolResult{Content: fmt.Sprintf("command not allowed: %s (allowed: %v)", cmdName, allowed), IsError: true}, nil
+		}
+		params.Command = cmdName
 	}
 
 	timeout := s.cfg.TimeoutSeconds
@@ -85,7 +94,19 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 
 	slog.Debug("executing shell command", "command", params.Command)
 
-	cmd := exec.CommandContext(ctx, "sh", "-c", params.Command)
+	var cmd *exec.Cmd
+	if len(allowed) > 0 {
+		// Restricted: exec.Command with args, no shell
+		fields := strings.Fields(params.Command)
+		if len(fields) > 1 {
+			cmd = exec.CommandContext(ctx, fields[0], fields[1:]...)
+		} else {
+			cmd = exec.CommandContext(ctx, fields[0])
+		}
+	} else {
+		// Unrestricted: sh -c
+		cmd = exec.CommandContext(ctx, "sh", "-c", params.Command)
+	}
 	// Use workspace directory from context if set (for sub-agent workspace isolation)
 	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
 		cmd.Dir = wd
@@ -112,22 +133,11 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 	}, nil
 }
 
-func (s *ShellTool) checkAllowed(fullCommand string) error {
-	allowed := s.cfg.AllowedCommands
-	if len(allowed) == 0 {
-		return nil // empty = allow all
-	}
-	cmdName := strings.Fields(fullCommand)[0]
-	for _, a := range allowed {
-		if strings.HasPrefix(fullCommand, a) {
-			return nil
-		}
-	}
-	// Also check just the command name
-	for _, a := range allowed {
+func (s *ShellTool) isAllowed(cmdName string) bool {
+	for _, a := range s.cfg.AllowedCommands {
 		if cmdName == a {
-			return nil
+			return true
 		}
 	}
-	return fmt.Errorf("command not allowed: %s (allowed: %v)", cmdName, allowed)
+	return false
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"os/exec"
 	"sync"
@@ -55,7 +56,7 @@ func NewServerClient(name string, cfg config.MCPServerConfig) (*ServerClient, er
 		name:   name,
 		cmd:    cmd,
 		stdin:  bufio.NewWriter(stdin),
-		stdout: bufio.NewScanner(bufio.NewReader(stdout)),
+		stdout: newLargeScanner(stdout),
 	}
 
 	// Initialize
@@ -253,6 +254,14 @@ func (c *ServerClient) sendRequest(req map[string]any) (json.RawMessage, error) 
 		return nil, fmt.Errorf("read error: %w", err)
 	}
 	return nil, fmt.Errorf("server closed connection")
+}
+
+// newLargeScanner creates a bufio.Scanner with a 1MB buffer for large MCP responses.
+func newLargeScanner(r io.Reader) *bufio.Scanner {
+	sc := bufio.NewScanner(bufio.NewReader(r))
+	buf := make([]byte, 1024*1024)
+	sc.Buffer(buf, 1024*1024)
+	return sc
 }
 
 func (c *ServerClient) writeJSON(v any) error {

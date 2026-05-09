@@ -222,7 +222,7 @@ func TestRunTurnNoToolCalls(t *testing.T) {
 	}
 	io := &mockIO{}
 
-	err := agt.runTurn(context.Background(), state, "system prompt", io)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
 	if err != nil {
 		t.Fatalf("runTurn error: %v", err)
 	}
@@ -270,7 +270,7 @@ func TestRunTurnWithToolCall(t *testing.T) {
 	}
 	io := &mockIO{}
 
-	err := agt.runTurn(context.Background(), state, "system prompt", io)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
 	if err != nil {
 		t.Fatalf("runTurn error: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestRunTurnTruncatesLargeResult(t *testing.T) {
 	}
 	io := &mockIO{}
 
-	err := agt.runTurn(context.Background(), state, "system prompt", io)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
 	if err != nil {
 		t.Fatalf("runTurn error: %v", err)
 	}

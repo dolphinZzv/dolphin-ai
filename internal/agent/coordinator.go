@@ -149,7 +149,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		sess.LogMessage("user", userContent)
 
 		// Run agent sub-loop
-		if err := c.runTurn(ctx, state, dynamicPrompt, io); err != nil {
+		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg); err != nil {
 			slog.Error("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
 		}

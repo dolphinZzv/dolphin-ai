@@ -157,7 +157,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		sess.LogMessage("user", userContent)
 
 		// Run agent sub-loop (handles tool call feedback cycles)
-		if err := a.runTurn(ctx, state, systemPrompt, io); err != nil {
+		if err := a.runTurn(ctx, state, systemPrompt, io, a.toolReg); err != nil {
 			slog.Error("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
 		}
@@ -165,8 +165,11 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 }
 
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
-func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO) error {
-	maxSubTurns := 10
+func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO, toolReg *mcp.Registry) error {
+	maxSubTurns := a.cfg.LLM.MaxSubTurns
+	if maxSubTurns <= 0 {
+		maxSubTurns = 10
+	}
 
 	// Compress history if approaching context limit
 	a.compressHistory(state)
@@ -179,9 +182,9 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		}
 
 		// Get tool definitions — progressive disclosure: top 10 most-used + search tool
-		mcpDefs := a.toolReg.MostUsedTools(10)
+		mcpDefs := toolReg.MostUsedTools(10)
 		// Ensure search_mcp_tools is always available
-		if searchTool, ok := a.toolReg.Get("search_mcp_tools"); ok {
+		if searchTool, ok := toolReg.Get("search_mcp_tools"); ok {
 			hasSearch := false
 			for _, d := range mcpDefs {
 				if d.Name == "search_mcp_tools" {
@@ -365,7 +368,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			}
 
 			toolStart := time.Now()
-			result, err := a.toolReg.Execute(ctx, tc.Name, tc.Arguments)
+			result, err := toolReg.Execute(ctx, tc.Name, tc.Arguments)
 			toolDuration := time.Since(toolStart)
 
 			resultContent := ""
@@ -523,13 +526,8 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	state := &LoopState{Sess: sess}
 	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent(task)})
 
-	// Swap to filtered tool registry for this task
-	origReg := a.toolReg
-	a.toolReg = tools
-	defer func() { a.toolReg = origReg }()
-
 	start := time.Now()
-	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task))
+	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task), tools)
 
 	result := TaskResult{
 		TaskID:     string(sess.ID),
@@ -602,18 +600,45 @@ func (a *Agent) compressHistory(state *LoopState) {
 	}
 
 	dropped := 0
-	// Find a good cut point: keep at least last 6 messages
-	for i := 0; i < len(state.Messages)-6; {
-		m := state.Messages[i]
-		// Drop whole turns: user + assistant pairs
-		if m.Role == "user" && i+1 < len(state.Messages) && state.Messages[i+1].Role == "assistant" {
-			est -= (len(m.Content) + len(state.Messages[i+1].Content)) / 4
-			dropped += 2
-			// Remove this pair
-			state.Messages = append(state.Messages[:i], state.Messages[i+2:]...)
+	// Drop complete turns (user + all following assistant/tool messages up to next user).
+	// Keep at least the last user message and everything after it (current turn).
+	// If no user found, keep at least 2 messages.
+	findKeepIdx := func() int {
+		for j := len(state.Messages) - 1; j >= 0; j-- {
+			if state.Messages[j].Role == "user" {
+				return j
+			}
+		}
+		if len(state.Messages) > 2 {
+			return len(state.Messages) - 2
+		}
+		return 0
+	}
+
+	for i := 0; ; {
+		keepIdx := findKeepIdx()
+		if i >= keepIdx {
+			break
+		}
+		if state.Messages[i].Role != "user" {
+			i++
 			continue
 		}
-		i++
+		// Find end of this turn: next user message or end
+		end := i + 1
+		for end < len(state.Messages) && state.Messages[end].Role != "user" {
+			end++
+		}
+		// Don't drop if it overlaps with the keep zone
+		if end > keepIdx {
+			break
+		}
+		// Drop [i, end) as a complete turn
+		for j := i; j < end; j++ {
+			est -= len(state.Messages[j].Content) / 4
+		}
+		dropped += end - i
+		state.Messages = append(state.Messages[:i], state.Messages[end:]...)
 	}
 
 	if dropped > 0 {

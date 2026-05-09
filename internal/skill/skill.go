@@ -2,6 +2,7 @@ package skill
 
 import (
 	"fmt"
+	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"sort"
@@ -177,22 +178,16 @@ func parseSkillFile(data []byte, filename string) *Skill {
 			frontmatter := rest[:endIdx]
 			body := strings.TrimSpace(rest[endIdx+4:])
 
-			// Parse simple YAML key: value lines
-			for _, line := range strings.Split(frontmatter, "\n") {
-				line = strings.TrimSpace(line)
-				if idx := strings.Index(line, ":"); idx > 0 {
-					key := strings.TrimSpace(line[:idx])
-					val := strings.TrimSpace(line[idx+1:])
-					val = strings.Trim(val, `"'`)
-					switch key {
-					case "name":
-						if val != "" {
-							skill.Name = val
-						}
-					case "description":
-						skill.Description = val
-					}
+			// Parse YAML frontmatter
+			var fm struct {
+				Name        string `yaml:"name"`
+				Description string `yaml:"description"`
+			}
+			if err := yaml.Unmarshal([]byte(frontmatter), &fm); err == nil {
+				if fm.Name != "" {
+					skill.Name = fm.Name
 				}
+				skill.Description = fm.Description
 			}
 
 			if body != "" {

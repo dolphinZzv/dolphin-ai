@@ -216,19 +216,50 @@ func (r *Registry) SearchTools(query string) []ToolDefinition {
 // FilteredView returns a Registry view restricted to the named tools.
 // If names is empty, all tools are visible (no filter).
 func (r *Registry) FilteredView(names []string) *Registry {
-	fv := &Registry{
-		tools:   r.tools,
-		servers: r.servers,
-		cfg:     r.cfg,
-		stats:   r.stats,
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tools := make(map[string]Tool, len(r.tools))
+	for name, tool := range r.tools {
+		if len(names) > 0 {
+			allowed := false
+			for _, n := range names {
+				if name == n {
+					allowed = true
+					break
+				}
+			}
+			if !allowed {
+				continue
+			}
+		}
+		tools[name] = tool
 	}
+
+	servers := make([]*ServerClient, len(r.servers))
+	copy(servers, r.servers)
+
+	stats := make(map[string]*ToolStats, len(r.stats))
+	for k, v := range r.stats {
+		s := *v
+		stats[k] = &s
+	}
+
+	var filter map[string]bool
 	if len(names) > 0 {
-		fv.filter = make(map[string]bool, len(names))
+		filter = make(map[string]bool, len(names))
 		for _, n := range names {
-			fv.filter[n] = true
+			filter[n] = true
 		}
 	}
-	return fv
+
+	return &Registry{
+		tools:   tools,
+		servers: servers,
+		cfg:     r.cfg,
+		filter:  filter,
+		stats:   stats,
+	}
 }
 
 // Clone returns an independent copy of the registry with the same tools and servers.

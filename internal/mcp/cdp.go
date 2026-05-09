@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"time"
 
 	"dolphinzZ/internal/config"
 
@@ -110,25 +111,33 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	defer c.mu.Unlock()
 
 	if c.initialized {
-		return c.browserCtx, nil
+		// Health check: try a lightweight operation to see if browser is still alive
+		healthCtx, cancel := context.WithTimeout(c.browserCtx, 5*time.Second)
+		defer cancel()
+		err := chromedp.Run(healthCtx, chromedp.Navigate("about:blank"))
+		if err == nil {
+			return c.browserCtx, nil
+		}
+		slog.Warn("cdp browser appears dead, reinitializing", "error", err)
+		c.shutdownBrowser()
 	}
 
 	if c.cfg.WsURL != "" {
-		// Connect to remote browser
-		allocCtx, allocCancel := chromedp.NewRemoteAllocator(ctx, c.cfg.WsURL)
+		// Connect to remote browser — use background context so request timeouts don't kill it
+		allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), c.cfg.WsURL)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
 		c.allocCtx = allocCtx
 		c.allocCancel = allocCancel
 		c.browserCtx = browserCtx
 		c.browserCancel = browserCancel
 	} else {
-		// Start local browser
+		// Start local browser — use background context so request timeouts don't kill it
 		allocOpts := []chromedp.ExecAllocatorOption{
 			chromedp.Flag("headless", c.cfg.Headless),
 			chromedp.Flag("disable-gpu", true),
 			chromedp.Flag("no-sandbox", true),
 		}
-		allocCtx, allocCancel := chromedp.NewExecAllocator(ctx, allocOpts...)
+		allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
 		c.allocCtx = allocCtx
 		c.allocCancel = allocCancel
@@ -139,10 +148,29 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	c.initialized = true
 	slog.Debug("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
 
-	// Run a simple navigation to ensure the browser is working
-	chromedp.Run(c.browserCtx, chromedp.Navigate("about:blank"))
+	// Verify browser is working
+	initCtx, cancel := context.WithTimeout(c.browserCtx, 10*time.Second)
+	defer cancel()
+	if err := chromedp.Run(initCtx, chromedp.Navigate("about:blank")); err != nil {
+		c.shutdownBrowser()
+		return nil, fmt.Errorf("browser init verify failed: %w", err)
+	}
 
 	return c.browserCtx, nil
+}
+
+// shutdownBrowser cleans up browser resources without holding the lock
+// (caller must hold c.mu).
+func (c *CDPTool) shutdownBrowser() {
+	if c.browserCancel != nil {
+		c.browserCancel()
+		c.browserCancel = nil
+	}
+	if c.allocCancel != nil {
+		c.allocCancel()
+		c.allocCancel = nil
+	}
+	c.initialized = false
 }
 
 func (c *CDPTool) navigate(ctx context.Context, url string) (*ToolResult, error) {

@@ -21,6 +21,7 @@ type AgentInstance struct {
 	pool  *AgentPool
 
 	mu            sync.RWMutex
+	createdAt     time.Time
 	status        string // idle / busy / error
 	tasksDone     int
 	lastTaskAt    time.Time
@@ -123,13 +124,14 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 
 	taskCh := make(chan Task, 8)
 	inst := &AgentInstance{
-		Def:    def,
-		Kind:   kind,
-		agent:  subAgent,
-		pool:   p,
-		status: "idle",
-		taskCh: taskCh,
-		doneCh: make(chan struct{}),
+		Def:       def,
+		Kind:      kind,
+		agent:     subAgent,
+		pool:      p,
+		createdAt: time.Now(),
+		status:    "idle",
+		taskCh:    taskCh,
+		doneCh:    make(chan struct{}),
 	}
 
 	p.mu.Lock()
@@ -433,7 +435,9 @@ func (p *AgentPool) reapIdleAgents() {
 		case <-p.coordinatorCtx.Done():
 			return
 		case <-ticker.C:
+			// Collect idle agents to reap
 			p.mu.Lock()
+			var reap []*AgentInstance
 			for name, inst := range p.agents {
 				if inst.Kind != AgentCoord {
 					continue
@@ -448,12 +452,22 @@ func (p *AgentPool) reapIdleAgents() {
 				}
 				if !lastRun.IsZero() && time.Since(lastRun) > p.cfg.IdleTimeout {
 					slog.Info("reaping idle coordinator-created agent", "name", name)
-					p.cleanWorkspace(inst)
 					delete(p.agents, name)
 					close(inst.taskCh)
+					reap = append(reap, inst)
 				}
 			}
 			p.mu.Unlock()
+
+			// Wait for workers to exit and clean up (outside the lock)
+			for _, inst := range reap {
+				select {
+				case <-inst.doneCh:
+				case <-time.After(5 * time.Second):
+					slog.Warn("timeout waiting for reaped agent worker", "name", inst.Def.Name)
+				}
+				p.cleanWorkspace(inst)
+			}
 		}
 	}
 }

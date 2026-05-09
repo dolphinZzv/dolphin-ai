@@ -30,12 +30,14 @@ type Config struct {
 }
 
 type LLMConfig struct {
-	Type             string `mapstructure:"type"` // "openai" or "anthropic"
-	BaseURL          string `mapstructure:"base_url"`
-	APIKey           string `mapstructure:"api_key"`
-	Model            string `mapstructure:"model"`
-	MaxTokens        int    `mapstructure:"max_tokens"`
-	MaxContextTokens int    `mapstructure:"max_context_tokens"` // context window limit before compression
+	Type             string  `mapstructure:"type"` // "openai" or "anthropic"
+	BaseURL          string  `mapstructure:"base_url"`
+	APIKey           string  `mapstructure:"api_key"`
+	Model            string  `mapstructure:"model"`
+	MaxTokens        int     `mapstructure:"max_tokens"`
+	MaxContextTokens int     `mapstructure:"max_context_tokens"` // context window limit before compression
+	Temperature      float64 `mapstructure:"temperature"`
+	MaxSubTurns      int     `mapstructure:"max_sub_turns"`
 }
 
 type SessionConfig struct {
@@ -221,6 +223,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.base_url", "https://api.openai.com/v1")
 	v.SetDefault("llm.model", "gpt-4o")
 	v.SetDefault("llm.max_tokens", 4096)
+	v.SetDefault("llm.temperature", 0.7)
+	v.SetDefault("llm.max_sub_turns", 10)
 	v.SetDefault("llm.max_context_tokens", 1048576)
 
 	v.SetDefault("session.dir", "/tmp/dolphinzZ")

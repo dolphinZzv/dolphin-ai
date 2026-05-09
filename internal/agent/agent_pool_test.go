@@ -15,6 +15,35 @@ import (
 	"dolphinzZ/internal/session"
 )
 
+// waitForResults polls pool.Collect with a timeout until n results are available.
+func waitForResults(t *testing.T, pool *AgentPool, n int, timeout time.Duration) []TaskResult {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		results := pool.Collect()
+		if len(results) >= n {
+			return results
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return pool.Collect()
+}
+
+// waitForStatus polls until an agent reaches the expected status.
+func waitForStatus(t *testing.T, pool *AgentPool, name, expected string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		for _, a := range pool.List() {
+			if a.Name == name && a.Status == expected {
+				return
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Errorf("timed out waiting for agent %s to reach status %q", name, expected)
+}
+
 // ---------------------------------------------------------------------------
 // AgentDef tests
 // ---------------------------------------------------------------------------
@@ -338,9 +367,7 @@ func TestPool_DispatchAndCollect(t *testing.T) {
 	}
 
 	// Wait for task processing
-	time.Sleep(500 * time.Millisecond)
-
-	results := pool.Collect()
+	results := waitForResults(t, pool, 1, 5*time.Second)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -420,9 +447,7 @@ func TestPool_ConcurrentDispatch(t *testing.T) {
 		t.Fatalf("dispatch w2: %v", err)
 	}
 
-	time.Sleep(500 * time.Millisecond)
-
-	results := pool.Collect()
+	results := waitForResults(t, pool, 2, 5*time.Second)
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
@@ -497,8 +522,7 @@ func TestPool_SetParentSessionID(t *testing.T) {
 		t.Fatalf("Dispatch error: %v", err)
 	}
 
-	time.Sleep(300 * time.Millisecond)
-	results := pool.Collect()
+	results := waitForResults(t, pool, 1, 5*time.Second)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}
@@ -559,8 +583,8 @@ func TestPool_Cancel(t *testing.T) {
 		t.Fatalf("Dispatch error: %v", err)
 	}
 
-	// Let the task start processing
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the task to start processing
+	waitForStatus(t, pool, "worker", "busy", 5*time.Second)
 
 	agents := pool.List()
 	if agents[0].Status != "busy" {
@@ -571,9 +595,8 @@ func TestPool_Cancel(t *testing.T) {
 		t.Error("Cancel returned false")
 	}
 
-	time.Sleep(200 * time.Millisecond)
-
-	// Agent should be idle again
+	// Agent should become idle again after cancel
+	waitForStatus(t, pool, "worker", "idle", 5*time.Second)
 	agents = pool.List()
 	if agents[0].Status != "idle" {
 		t.Errorf("expected status 'idle' after cancel, got '%s'", agents[0].Status)
@@ -625,13 +648,13 @@ func TestPool_CancelAll(t *testing.T) {
 	pool.Dispatch("w1", Task{ID: "t1", Input: "task 1"})
 	pool.Dispatch("w2", Task{ID: "t2", Input: "task 2"})
 
-	time.Sleep(100 * time.Millisecond)
+	// Wait for both tasks to be busy
+	waitForStatus(t, pool, "w1", "busy", 5*time.Second)
+	waitForStatus(t, pool, "w2", "busy", 5*time.Second)
 
 	pool.CancelAll()
 
-	time.Sleep(300 * time.Millisecond)
-
-	results := pool.Collect()
+	results := waitForResults(t, pool, 2, 5*time.Second)
 	if len(results) != 2 {
 		t.Fatalf("expected 2 results, got %d", len(results))
 	}
