@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
+	"time"
 
 	"dolphinzZ/internal/config"
 )
@@ -35,12 +38,30 @@ type Tool interface {
 	Execute(ctx context.Context, input json.RawMessage) (*ToolResult, error)
 }
 
+// ToolStats tracks usage statistics for a tool.
+type ToolStats struct {
+	CallCount     int64         `json:"call_count"`
+	ErrorCount    int64         `json:"error_count"`
+	LastCalledAt  time.Time     `json:"last_called_at"`
+	TotalDuration time.Duration `json:"total_duration"`
+}
+
+// AverageDurationMs returns the average execution duration in milliseconds.
+func (s *ToolStats) AverageDurationMs() float64 {
+	if s.CallCount == 0 {
+		return 0
+	}
+	return float64(s.TotalDuration.Milliseconds()) / float64(s.CallCount)
+}
+
 // Registry manages all registered MCP tools, including external server tools.
 type Registry struct {
 	mu      sync.RWMutex
 	tools   map[string]Tool
 	servers []*ServerClient
 	cfg     *config.MCPConfig
+	filter  map[string]bool   // nil = no filter; non-nil = only allow listed tools
+	stats   map[string]*ToolStats
 }
 
 func NewRegistry(cfg *config.Config) *Registry {
@@ -48,6 +69,7 @@ func NewRegistry(cfg *config.Config) *Registry {
 		tools:   make(map[string]Tool),
 		servers: make([]*ServerClient, 0),
 		cfg:     &cfg.MCP,
+		stats:   make(map[string]*ToolStats),
 	}
 }
 
@@ -55,6 +77,9 @@ func (r *Registry) Register(t Tool) {
 	def := t.Definition()
 	r.mu.Lock()
 	r.tools[def.Name] = t
+	if _, ok := r.stats[def.Name]; !ok {
+		r.stats[def.Name] = &ToolStats{}
+	}
 	r.mu.Unlock()
 }
 
@@ -82,10 +107,12 @@ func (r *Registry) LoadServers() error {
 			}
 			// Always register with server:name prefix for disambiguation
 			r.tools[name+":"+def.Name] = wrapper
+			r.stats[name+":"+def.Name] = &ToolStats{}
 			slog.Debug("mcp tool registered", "tool", name+":"+def.Name, "server", name)
 			// Also register with bare name if no collision
 			if _, exists := r.tools[def.Name]; !exists {
 				r.tools[def.Name] = wrapper
+				r.stats[def.Name] = &ToolStats{}
 				slog.Debug("mcp tool registered (bare)", "tool", def.Name, "server", name)
 			}
 		}
@@ -109,8 +136,137 @@ func (r *Registry) CloseServers() {
 func (r *Registry) Get(name string) (Tool, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	if r.filter != nil && !r.filter[name] {
+		return nil, false
+	}
 	t, ok := r.tools[name]
 	return t, ok
+}
+
+// ToolStats returns the usage statistics for all tools (snapshot).
+func (r *Registry) ToolStats() map[string]ToolStats {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m := make(map[string]ToolStats, len(r.stats))
+	for name, s := range r.stats {
+		m[name] = *s
+	}
+	return m
+}
+
+// MostUsedTools returns the top n most-used tools by call count.
+func (r *Registry) MostUsedTools(n int) []ToolDefinition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	type entry struct {
+		def ToolDefinition
+		cnt int64
+	}
+	var list []entry
+	for name, t := range r.tools {
+		def := t.Definition()
+		if r.filter != nil && !r.filter[name] {
+			continue
+		}
+		cnt := int64(0)
+		if s, ok := r.stats[name]; ok {
+			cnt = s.CallCount
+		}
+		list = append(list, entry{def, cnt})
+	}
+
+	sort.Slice(list, func(i, j int) bool {
+		if list[i].cnt != list[j].cnt {
+			return list[i].cnt > list[j].cnt
+		}
+		return list[i].def.Name < list[j].def.Name
+	})
+
+	if n > len(list) {
+		n = len(list)
+	}
+	defs := make([]ToolDefinition, n)
+	for i := 0; i < n; i++ {
+		defs[i] = list[i].def
+	}
+	return defs
+}
+
+// SearchTools returns tool definitions whose name or description matches the query.
+func (r *Registry) SearchTools(query string) []ToolDefinition {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	q := strings.ToLower(query)
+	var defs []ToolDefinition
+	for name, t := range r.tools {
+		def := t.Definition()
+		if r.filter != nil && !r.filter[name] {
+			continue
+		}
+		if strings.Contains(strings.ToLower(def.Name), q) ||
+			strings.Contains(strings.ToLower(def.Description), q) {
+			defs = append(defs, def)
+		}
+	}
+	return defs
+}
+
+// FilteredView returns a Registry view restricted to the named tools.
+// If names is empty, all tools are visible (no filter).
+func (r *Registry) FilteredView(names []string) *Registry {
+	fv := &Registry{
+		tools:   r.tools,
+		servers: r.servers,
+		cfg:     r.cfg,
+		stats:   r.stats,
+	}
+	if len(names) > 0 {
+		fv.filter = make(map[string]bool, len(names))
+		for _, n := range names {
+			fv.filter[n] = true
+		}
+	}
+	return fv
+}
+
+// Clone returns an independent copy of the registry with the same tools and servers.
+// Useful for per-connection registries that need to add local tools without
+// affecting the shared registry.
+func (r *Registry) Clone() *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	tools := make(map[string]Tool, len(r.tools))
+	for k, v := range r.tools {
+		tools[k] = v
+	}
+
+	servers := make([]*ServerClient, len(r.servers))
+	copy(servers, r.servers)
+
+	var filter map[string]bool
+	if r.filter != nil {
+		filter = make(map[string]bool, len(r.filter))
+		for k, v := range r.filter {
+			filter[k] = v
+		}
+	}
+
+	stats := make(map[string]*ToolStats, len(r.stats))
+	for k, v := range r.stats {
+		s := *v
+		stats[k] = &s
+	}
+
+	return &Registry{
+		tools:   tools,
+		servers: servers,
+		cfg:     r.cfg,
+		filter:  filter,
+		stats:   stats,
+	}
 }
 
 func (r *Registry) List() []ToolDefinition {
@@ -118,7 +274,11 @@ func (r *Registry) List() []ToolDefinition {
 	defer r.mu.RUnlock()
 	defs := make([]ToolDefinition, 0, len(r.tools))
 	for _, t := range r.tools {
-		defs = append(defs, t.Definition())
+		def := t.Definition()
+		if r.filter != nil && !r.filter[def.Name] {
+			continue
+		}
+		defs = append(defs, def)
 	}
 	return defs
 }
@@ -128,7 +288,26 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 	if !ok {
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
-	return tool.Execute(ctx, input)
+
+	start := time.Now()
+	result, err := tool.Execute(ctx, input)
+	duration := time.Since(start)
+
+	r.mu.Lock()
+	s := r.stats[name]
+	if s == nil {
+		s = &ToolStats{}
+		r.stats[name] = s
+	}
+	s.CallCount++
+	s.LastCalledAt = time.Now()
+	s.TotalDuration += duration
+	if err != nil || (result != nil && result.IsError) {
+		s.ErrorCount++
+	}
+	r.mu.Unlock()
+
+	return result, err
 }
 
 // serverTool wraps an external MCP server tool for the Tool interface.

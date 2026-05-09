@@ -24,6 +24,8 @@ type Config struct {
 	Session   SessionConfig   `mapstructure:"session"`
 	Transport TransportConfig `mapstructure:"transport"`
 	MCP       MCPConfig       `mapstructure:"mcp"`
+	Pool      PoolConfig      `mapstructure:"agent_pool"`
+	Skills    SkillsConfig    `mapstructure:"skills"`
 	LogLevel  string          `mapstructure:"log_level"`
 }
 
@@ -92,6 +94,19 @@ type CDPConfig struct {
 	Enabled  bool   `mapstructure:"enabled"`
 	Headless bool   `mapstructure:"headless"`
 	WsURL    string `mapstructure:"ws_url"`
+}
+
+type PoolConfig struct {
+	MaxConcurrency  int    `mapstructure:"max_concurrency"`
+	DefaultTimeout  int    `mapstructure:"default_timeout"`
+	WorkspaceDir    string `mapstructure:"workspace_dir"`
+	IdleTimeout     int    `mapstructure:"idle_timeout"`
+	MaxPendingResults int  `mapstructure:"max_pending_results"`
+}
+
+type SkillsConfig struct {
+	Dir    string `mapstructure:"dir"`     // skills directory (default: .dolphinzZ/skills)
+	MaxTop int    `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
 }
 
 func Load(cfgFile string) (*Config, error) {
@@ -230,6 +245,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.shell.timeout_seconds", 30)
 	v.SetDefault("mcp.cdp.enabled", true)
 	v.SetDefault("mcp.cdp.headless", true)
+
+	v.SetDefault("agent_pool.max_concurrency", 5)
+	v.SetDefault("agent_pool.default_timeout", 300)
+	v.SetDefault("agent_pool.workspace_dir", ".dolphinzZ/workspaces")
+	v.SetDefault("agent_pool.idle_timeout", 600)
+	v.SetDefault("agent_pool.max_pending_results", 10)
+
+	v.SetDefault("skills.dir", ".dolphinzZ/skills")
+	v.SetDefault("skills.max_top", 10)
 
 	v.SetDefault("log_level", "info")
 }

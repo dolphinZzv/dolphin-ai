@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/session"
+	"dolphinzZ/internal/skill"
 	"dolphinzZ/internal/transport"
 
 	"github.com/spf13/cobra"
@@ -86,9 +88,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	tools := toolRegistry.List()
 	slog.Info("total mcp tools available", "count", len(tools))
 
-	// Build agent
-	agt := agent.New(cfg, sessMgr, toolRegistry)
-
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -108,12 +107,55 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
+	// Check for agents directory to decide coordinator vs single-agent mode
+	agentsDir := filepath.Join(".dolphinzZ", "agents")
+	_, coordErr := os.Stat(agentsDir)
+	hasAgents := coordErr == nil
+
+	poolCfg := agent.NewPoolConfigFromConfig(cfg.Pool)
+
+	// Pre-load user-created agent definitions (shared across connections)
+	var agentDefs map[string]*agent.AgentDef
+	if hasAgents {
+		var err error
+		agentDefs, err = agent.LoadAgentDefs(agentsDir)
+		if err != nil {
+			return fmt.Errorf("load agent defs: %w", err)
+		}
+		slog.Info("coordinator mode enabled", "agents_dir", agentsDir, "count", len(agentDefs))
+	} else {
+		slog.Info("no agents directory, using single-agent mode", "dir", agentsDir)
+	}
+
+	// Initialize skill manager
+	skillMgr := skill.NewManager(cfg.Skills.Dir)
+	if err := skillMgr.Load(); err != nil {
+		slog.Debug("skills directory not found, skills disabled", "dir", cfg.Skills.Dir, "error", err)
+	} else {
+		skills := skillMgr.List()
+		slog.Info("skills loaded", "dir", cfg.Skills.Dir, "count", len(skills))
+	}
+
+	// Factory: creates a new coordinator per transport connection
+	newCoordinator := func() *agent.Coordinator {
+		agt := agent.New(cfg, sessMgr, toolRegistry)
+		pool := agent.NewAgentPool(ctx, poolCfg)
+		if hasAgents {
+			for name, def := range agentDefs {
+				pool.Add(name, def, agent.AgentUser, agt, toolRegistry)
+			}
+		}
+		coord := agent.NewCoordinator(agt, pool)
+			coord.SetSkillManager(skillMgr)
+			return coord
+	}
+
 	// Start transports
 	started := false
 
 	if cfg.Transport.SSH.Enabled {
 		t, err := transport.NewSSHTransport(cfg, func(ctx context.Context, io transport.UserIO) {
-			agt.Run(ctx, io)
+			newCoordinator().Run(ctx, io)
 		})
 		if err != nil {
 			return fmt.Errorf("ssh transport: %w", err)
@@ -137,7 +179,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if cfg.Transport.Stdio.Enabled {
 		slog.Info("starting stdio transport")
 		io := transport.NewStdioTransport()
-		agt.Run(ctx, io)
+		newCoordinator().Run(ctx, io)
 		started = true
 	}
 
@@ -150,7 +192,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			}
 		}()
 		time.Sleep(500 * time.Millisecond)
-		go agt.Run(ctx, t)
+		go func() {
+			newCoordinator().Run(ctx, t)
+		}()
 		started = true
 	}
 

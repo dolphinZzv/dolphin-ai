@@ -15,3 +15,7 @@ func NewContextBuilder() *ContextBuilder {
 func (b *ContextBuilder) Build() (string, error) {
 	return b.b.Build()
 }
+
+func (b *ContextBuilder) BuildForAgent(agentName string) (string, error) {
+	return b.b.BuildForAgent(agentName)
+}

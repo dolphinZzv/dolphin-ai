@@ -13,6 +13,14 @@ import (
 	"dolphinzZ/internal/config"
 )
 
+// workdirKey is used to pass a working directory through context for workspace isolation.
+type workdirKey struct{}
+
+// WithWorkdir returns a context that sets the working directory for shell tool execution.
+func WithWorkdir(ctx context.Context, dir string) context.Context {
+	return context.WithValue(ctx, workdirKey{}, dir)
+}
+
 // ShellTool implements shell command execution via MCP.
 type ShellTool struct {
 	cfg    *config.ShellConfig
@@ -78,6 +86,10 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 	slog.Debug("executing shell command", "command", params.Command)
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", params.Command)
+	// Use workspace directory from context if set (for sub-agent workspace isolation)
+	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
+		cmd.Dir = wd
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

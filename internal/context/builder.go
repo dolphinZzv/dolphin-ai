@@ -23,32 +23,59 @@ func NewBuilder() *Builder {
 	}
 }
 
+// Build builds the system prompt for the default (coordinator) agent.
 func (b *Builder) Build() (string, error) {
+	return b.BuildForAgent("")
+}
+
+// BuildForAgent builds a system prompt for a specific agent.
+// For each context file, agent-specific directory is checked first, then
+// the default locations: project > user > system.
+//
+//	agentDir = .dolphinzZ/agents/<name>/
+//	order for AGENTS.md: agentDir > projectDir > userDir > systemDir
+//	order for RULES.md:  agentDir > projectDir > userDir > systemDir
+//	order for USER.md:   agentDir > projectDir > userDir > systemDir
+func (b *Builder) BuildForAgent(agentName string) (string, error) {
+	var agentDir string
+	if agentName != "" {
+		agentDir = filepath.Join(b.projectDir, "agents", agentName)
+	}
+
 	var parts []string
 
-	// 1. PREFACE (embedded)
+	// 1. PREFACE (embedded, always)
 	parts = append(parts, DefaultPreface)
 
-	// 2. AGENTS.md (project > user > system)
-	if agents := b.loadFile("AGENTS.md"); agents != "" {
+	// 2. AGENTS.md (agent > project > user > system)
+	if agents := b.loadFileFallback(agentDir, "AGENTS.md"); agents != "" {
 		parts = append(parts, "## Agent Definitions\n"+agents)
 	}
 
 	// 3. RULES.md
-	if rules := b.loadFile("RULES.md"); rules != "" {
+	if rules := b.loadFileFallback(agentDir, "RULES.md"); rules != "" {
 		parts = append(parts, "## Rules\n"+rules)
 	}
 
 	// 4. USER.md
-	if user := b.loadFile("USER.md"); user != "" {
+	if user := b.loadFileFallback(agentDir, "USER.md"); user != "" {
 		parts = append(parts, "## User Context\n"+user)
 	}
 
 	return strings.Join(parts, "\n\n"), nil
 }
 
-func (b *Builder) loadFile(name string) string {
-	for _, dir := range []string{b.projectDir, b.userDir, b.systemDir} {
+// loadFileFallback loads a context file with cascading fallback.
+// If agentDir is non-empty, checks agentDir first, then falls back to the
+// default project > user > system chain.
+func (b *Builder) loadFileFallback(agentDir, name string) string {
+	dirs := make([]string, 0, 4)
+	if agentDir != "" {
+		dirs = append(dirs, agentDir)
+	}
+	dirs = append(dirs, b.projectDir, b.userDir, b.systemDir)
+
+	for _, dir := range dirs {
 		path := filepath.Join(dir, name)
 		data, err := os.ReadFile(path)
 		if err == nil {

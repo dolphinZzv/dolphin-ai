@@ -13,8 +13,17 @@ dolphinzZ
 # Coverage output
 coverage.out
 
+# SPM build output
+.build/
+
+# macOS app bundle
+*.app
+
 # IDE
 .idea/
 .vscode/
 *.swp
 *.swo
+
+app
+.DS_Store

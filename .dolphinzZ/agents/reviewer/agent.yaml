@@ -1,0 +1,7 @@
+name: reviewer
+role: code review specialist
+tools:
+  - shell
+model: ""
+workspace: .dolphinzZ/workspaces/reviewer
+timeout: 300

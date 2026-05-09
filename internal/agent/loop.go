@@ -178,8 +178,21 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		default:
 		}
 
-		// Get tool definitions
-		mcpDefs := a.toolReg.List()
+		// Get tool definitions — progressive disclosure: top 10 most-used + search tool
+		mcpDefs := a.toolReg.MostUsedTools(10)
+		// Ensure search_mcp_tools is always available
+		if searchTool, ok := a.toolReg.Get("search_mcp_tools"); ok {
+			hasSearch := false
+			for _, d := range mcpDefs {
+				if d.Name == "search_mcp_tools" {
+					hasSearch = true
+					break
+				}
+			}
+			if !hasSearch {
+				mcpDefs = append(mcpDefs, searchTool.Definition())
+			}
+		}
 		toolDefs := make([]ToolDef, len(mcpDefs))
 		for j, d := range mcpDefs {
 			toolDefs[j] = ToolDef{
@@ -489,6 +502,74 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 		"errors", state.ErrorCount,
 		"state", stateStr,
 	)
+}
+
+// RunTask executes a single task as a sub-agent with the given system prompt
+// and tool registry. It creates a new session, runs one turn, and returns the
+// final assistant response text. parentSessionID links this task to the parent
+// conversation for audit tracing (empty string means no link).
+func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, tools *mcp.Registry, parentSessionID session.SessionID) (TaskResult, error) {
+	var sess *session.Session
+	var err error
+	if parentSessionID != "" {
+		sess, err = a.sessMgr.NewSessionWithParent(a.cfg.Session.MaxLoop, parentSessionID)
+	} else {
+		sess, err = a.sessMgr.NewSession(a.cfg.Session.MaxLoop)
+	}
+	if err != nil {
+		return TaskResult{Status: "error", Error: fmt.Sprintf("create session: %v", err)}, err
+	}
+
+	state := &LoopState{Sess: sess}
+	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent(task)})
+
+	// Swap to filtered tool registry for this task
+	origReg := a.toolReg
+	a.toolReg = tools
+	defer func() { a.toolReg = origReg }()
+
+	start := time.Now()
+	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task))
+
+	result := TaskResult{
+		TaskID:     string(sess.ID),
+		AgentName:  "", // set by caller
+		DurationMs: time.Since(start).Milliseconds(),
+	}
+
+	if taskErr != nil {
+		result.Success = false
+		result.Error = taskErr.Error()
+		switch {
+		case strings.Contains(result.Error, "cancel"):
+			result.Status = "cancelled"
+		case strings.Contains(result.Error, "deadline") || strings.Contains(result.Error, "timeout"):
+			result.Status = "timeout"
+		default:
+			result.Status = "error"
+		}
+	} else {
+		result.Output = extractFinalResponse(state.Messages)
+		result.Success = true
+		result.Status = "completed"
+	}
+
+	// Cleanup session
+	a.generateSummary(sess, state)
+	sess.Close()
+	a.sessMgr.Remove(sess.ID)
+
+	return result, nil
+}
+
+// extractFinalResponse returns the text content of the last assistant message.
+func extractFinalResponse(messages []Message) string {
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == "assistant" {
+			return extractText(messages[i].Content)
+		}
+	}
+	return ""
 }
 
 // compressHistory checks if messages exceed the context window limit and drops

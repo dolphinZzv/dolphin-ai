@@ -29,6 +29,7 @@ const (
 type SessionEvent struct {
 	Timestamp  time.Time       `json:"ts"`
 	SessionID  SessionID       `json:"session_id"`
+	ParentID   SessionID       `json:"parent_id,omitempty"`
 	Type       EventType       `json:"type"`
 	Turn       int             `json:"turn"`
 	Role       string          `json:"role,omitempty"`
@@ -42,6 +43,7 @@ type SessionEvent struct {
 
 type Session struct {
 	ID        SessionID
+	ParentID  SessionID
 	file      *os.File
 	encoder   *json.Encoder
 	mu        sync.Mutex
@@ -68,6 +70,10 @@ func (m *Manager) EnsureDir() error {
 }
 
 func (m *Manager) NewSession(maxLoop int) (*Session, error) {
+	return m.NewSessionWithParent(maxLoop, "")
+}
+
+func (m *Manager) NewSessionWithParent(maxLoop int, parentID SessionID) (*Session, error) {
 	id := SessionID(xid.New().String())
 	path := filepath.Join(m.dir, string(id)+".jsonl")
 
@@ -78,6 +84,7 @@ func (m *Manager) NewSession(maxLoop int) (*Session, error) {
 
 	sess := &Session{
 		ID:        id,
+		ParentID:  parentID,
 		file:      f,
 		encoder:   json.NewEncoder(f),
 		StartedAt: time.Now(),
@@ -88,7 +95,15 @@ func (m *Manager) NewSession(maxLoop int) (*Session, error) {
 	m.sessions[id] = sess
 	m.mu.Unlock()
 
-	slog.Debug("session created", "id", id, "path", path)
+	attrs := []any{"id", id, "path", path}
+	if parentID != "" {
+		attrs = append(attrs, "parent_id", parentID)
+	}
+	slog.Debug("session created", attrs...)
+
+	if parentID != "" {
+		sess.LogSystem(fmt.Sprintf("child session of %s", parentID))
+	}
 	return sess, nil
 }
 
