@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: dolphinzZ
+
+before:
+  hooks:
+    - go mod tidy
+    - go vet ./...
+
+builds:
+  - binary: dolphinzZ
+    main: .
+    ldflags:
+      - -s -w -X 'dolphinzZ/cmd.Version={{.Version}}'
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    goarm:
+      - 8
+    ignore:
+      - goos: darwin
+        goarch: amd64
+        goarm: 8
+
+archives:
+  - formats: tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_
+      {{- if eq .Os "darwin" }}macOS
+      {{- else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else }}{{ .Arch }}{{ end }}
+    format_overrides:
+      - goos: windows
+        formats: zip
+    files:
+      - README.md
+      - LICENSE*
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  name_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore"
+      - gofmt
+
+release:
+  github:
+    owner: dolphinZzv
+    name: dolphin
+  draft: true
+  make_latest: false
