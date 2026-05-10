@@ -137,6 +137,7 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 	p.mu.Lock()
 	p.agents[name] = inst
 	p.mu.Unlock()
+	agentPoolSize.Add(1)
 
 	// Start worker goroutine
 	p.wg.Add(1)
@@ -201,6 +202,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	inst.tasksDone++
 	inst.currentTaskID = task.ID
 	inst.mu.Unlock()
+	activeAgents.Add(1)
 
 	// Create task context with timeout
 	timeout := task.Timeout
@@ -222,6 +224,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	// Ensure cleanup
 	defer func() {
 		cancel()
+		activeAgents.Add(-1)
 		inst.mu.Lock()
 		inst.cancel = nil
 		inst.status = "idle"
@@ -254,6 +257,13 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	result.AgentName = inst.Def.Name
 	result.TaskID = task.ID
 
+	// Track task result
+	if result.Success {
+		taskCompleted.Inc()
+	} else {
+		taskFailed.Inc()
+	}
+
 	// If context was cancelled externally, override status
 	if taskCtx.Err() != nil && result.Status == "completed" {
 		result.Status = "cancelled"
@@ -279,6 +289,7 @@ func (p *AgentPool) Dispatch(agentName string, task Task) error {
 
 	select {
 	case inst.taskCh <- task:
+		taskDispatched.Inc()
 		return nil
 	default:
 		return fmt.Errorf("agent %s task queue full", agentName)
@@ -370,6 +381,7 @@ func (p *AgentPool) Remove(name string) bool {
 	inst, ok := p.agents[name]
 	if ok {
 		delete(p.agents, name)
+		agentPoolSize.Add(-1)
 	}
 	p.mu.Unlock()
 	if ok {

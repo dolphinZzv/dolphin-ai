@@ -7,6 +7,7 @@ import (
 	"log/slog"
 
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/metrics"
 
 	"github.com/sashabaranov/go-openai"
 )
@@ -40,6 +41,10 @@ func NewOpenAIProvider(cfg *config.LLMConfig) *OpenAIProvider {
 func (p *OpenAIProvider) Type() ProviderType { return ProviderOpenAI }
 
 func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*ProviderResponse, error) {
+	llmRequests.Inc()
+	timer := metrics.StartTimer(llmDuration)
+	defer timer.Stop()
+
 	openAIReq := openai.ChatCompletionRequest{
 		Model:       p.model,
 		MaxTokens:   p.maxTok,
@@ -50,12 +55,17 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 
 	resp, err := p.client.CreateChatCompletion(ctx, openAIReq)
 	if err != nil {
+		llmErrors.Inc()
 		return nil, fmt.Errorf("openai completion: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {
+		llmErrors.Inc()
 		return nil, fmt.Errorf("no choices in response")
 	}
+
+	llmInputTokens.Add(int64(resp.Usage.PromptTokens))
+	llmOutputTokens.Add(int64(resp.Usage.CompletionTokens))
 
 	choice := resp.Choices[0]
 	msg := choice.Message
@@ -89,6 +99,9 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req ProviderRequest) (*Pr
 }
 
 func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error) {
+	llmRequests.Inc()
+	timer := metrics.StartTimer(llmDuration)
+
 	openAIReq := openai.ChatCompletionRequest{
 		Model:       p.model,
 		MaxTokens:   p.maxTok,
@@ -100,6 +113,8 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 
 	stream, err := p.client.CreateChatCompletionStream(ctx, openAIReq)
 	if err != nil {
+		timer.Stop()
+		llmErrors.Inc()
 		return nil, fmt.Errorf("openai stream: %w", err)
 	}
 
@@ -107,6 +122,7 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 	go func() {
 		defer close(ch)
 		defer stream.Close()
+		defer timer.Stop()
 
 		for {
 			chunk, err := stream.Recv()

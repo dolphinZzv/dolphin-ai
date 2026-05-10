@@ -27,3 +27,11 @@ coverage.out
 
 app
 .DS_Store
+
+.sisyphus
+
+# Roadmap
+ROADMAP.md
+
+# Proposal working documents
+/proposal/

@@ -176,6 +176,91 @@ func (m *Manager) Remove(id SessionID) {
 	}
 }
 
+// LatestSession returns the ID, path, and last turn of the most recent session file.
+// Returns ("", "", 0, nil) if no sessions exist.
+func (m *Manager) LatestSession() (SessionID, string, int, error) {
+	entries, err := os.ReadDir(m.dir)
+	if err != nil {
+		return "", "", 0, nil
+	}
+
+	var latestPath string
+	var latestID SessionID
+	var latestMod time.Time
+	for _, entry := range entries {
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, "-summary.json") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		mod := info.ModTime()
+		if mod.After(latestMod) {
+			latestMod = mod
+			latestPath = filepath.Join(m.dir, name)
+			latestID = SessionID(strings.TrimSuffix(name, ".jsonl"))
+		}
+	}
+
+	if latestPath == "" {
+		return "", "", 0, nil
+	}
+
+	// Count turns from the session file
+	turns, err := countTurns(latestPath)
+	if err != nil {
+		return latestID, latestPath, 0, nil
+	}
+	return latestID, latestPath, turns, nil
+}
+
+// countTurns counts the number of turns in a session file by counting unique turn values.
+func countTurns(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	maxTurn := 0
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var evt SessionEvent
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			continue
+		}
+		if evt.Turn > maxTurn {
+			maxTurn = evt.Turn
+		}
+	}
+	return maxTurn, nil
+}
+
+// ReadEvents reads all session events from a session file.
+func ReadEvents(path string) ([]SessionEvent, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var events []SessionEvent
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var evt SessionEvent
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			slog.Warn("session: skipping malformed event", "error", err)
+			continue
+		}
+		events = append(events, evt)
+	}
+	return events, nil
+}
+
 func (m *Manager) Cleanup() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -205,6 +290,14 @@ func (m *Manager) StartReaper(ctx context.Context, maxAge time.Duration, interva
 }
 
 func (m *Manager) reapOldSessions(maxAge time.Duration) {
+	// Build set of active session files under lock (P0#3)
+	m.mu.Lock()
+	activeFiles := make(map[string]bool, len(m.sessions))
+	for _, s := range m.sessions {
+		activeFiles[s.file.Name()] = true
+	}
+	m.mu.Unlock()
+
 	entries, err := os.ReadDir(m.dir)
 	if err != nil {
 		return
@@ -224,6 +317,9 @@ func (m *Manager) reapOldSessions(maxAge time.Duration) {
 		}
 		if now.Sub(info.ModTime()) > maxAge {
 			path := filepath.Join(m.dir, name)
+			if activeFiles[path] {
+				continue
+			}
 			if err := os.Remove(path); err != nil {
 				slog.Warn("reaper: failed to remove session file", "path", path, "error", err)
 			} else {

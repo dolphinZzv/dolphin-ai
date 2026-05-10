@@ -26,6 +26,9 @@ type Config struct {
 	MCP       MCPConfig       `mapstructure:"mcp"`
 	Pool      PoolConfig      `mapstructure:"agent_pool"`
 	Skills    SkillsConfig    `mapstructure:"skills"`
+	Crontab   CrontabConfig   `mapstructure:"crontab"`
+	Pprof     PprofConfig     `mapstructure:"pprof"`
+	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	LogLevel  string          `mapstructure:"log_level"`
 }
 
@@ -45,12 +48,14 @@ type SessionConfig struct {
 	MaxLoop int    `mapstructure:"max_loop"`
 	Summary bool   `mapstructure:"summary"`
 	MaxAge  string `mapstructure:"max_age"` // session file max age (e.g. "24h") for reaper
+	Resume  bool   `mapstructure:"resume"`  // resume latest session on startup
 }
 
 type TransportConfig struct {
 	Stdio StdioConfig `mapstructure:"stdio"`
 	SSH   SSHConfig   `mapstructure:"ssh"`
 	MQTT  MQTTConfig  `mapstructure:"mqtt"`
+	Email EmailConfig `mapstructure:"email"`
 }
 
 type StdioConfig struct {
@@ -73,6 +78,19 @@ type MQTTConfig struct {
 	ClientID      string `mapstructure:"client_id"`
 }
 
+type EmailConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	SMTPHost     string `mapstructure:"smtp_host"`
+	SMTPPort     int    `mapstructure:"smtp_port"`
+	IMAPHost     string `mapstructure:"imap_host"`
+	IMAPPort     int    `mapstructure:"imap_port"`
+	Username     string `mapstructure:"username"`
+	Password     string `mapstructure:"password"`
+	From         string `mapstructure:"from"`
+	UseTLS       bool   `mapstructure:"use_tls"`
+	PollInterval string `mapstructure:"poll_interval"` // IMAP poll interval, e.g. "10s"
+}
+
 type MCPConfig struct {
 	Shell   ShellConfig                `mapstructure:"shell"`
 	CDP     CDPConfig                  `mapstructure:"cdp"`
@@ -90,12 +108,15 @@ type ShellConfig struct {
 	Enabled         bool     `mapstructure:"enabled"`
 	AllowedCommands []string `mapstructure:"allowed_commands"` // empty = allow all
 	TimeoutSeconds  int      `mapstructure:"timeout_seconds"`
+	Priority        int      `mapstructure:"priority"` // tool listing priority (lower = preferred)
 }
 
 type CDPConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Headless bool   `mapstructure:"headless"`
-	WsURL    string `mapstructure:"ws_url"`
+	Enabled     bool   `mapstructure:"enabled"`
+	Headless    bool   `mapstructure:"headless"`
+	WsURL       string `mapstructure:"ws_url"`
+	Priority    int    `mapstructure:"priority"`     // tool listing priority (lower = preferred)
+	IdleTimeout int    `mapstructure:"idle_timeout"` // seconds, 0 = disabled
 }
 
 type PoolConfig struct {
@@ -109,6 +130,21 @@ type PoolConfig struct {
 type SkillsConfig struct {
 	Dir    string `mapstructure:"dir"`     // skills directory (default: .dolphinzZ/skills)
 	MaxTop int    `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
+}
+
+type PprofConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Addr    string `mapstructure:"addr"` // listen address, e.g. ":6060"
+}
+
+type CrontabConfig struct {
+	File          string `mapstructure:"file"`
+	CheckInterval string `mapstructure:"check_interval"` // e.g. "30s"
+}
+
+type MetricsConfig struct {
+	Enabled bool   `mapstructure:"enabled"`
+	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9090"
 }
 
 func Load(cfgFile string) (*Config, error) {
@@ -182,6 +218,12 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_MQTT_RESPONSE_TOPIC"); v != "" {
 		cfg.Transport.MQTT.ResponseTopic = v
 	}
+	if v := os.Getenv("DZ_EMAIL_USERNAME"); v != "" {
+		cfg.Transport.Email.Username = v
+	}
+	if v := os.Getenv("DZ_EMAIL_PASSWORD"); v != "" {
+		cfg.Transport.Email.Password = v
+	}
 	if v := os.Getenv("DZ_SESSION_MAX_AGE"); v != "" {
 		cfg.Session.MaxAge = v
 	}
@@ -205,6 +247,10 @@ func Load(cfgFile string) (*Config, error) {
 		}
 	}
 
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("config validation: %w", err)
+	}
+
 	return &cfg, nil
 }
 
@@ -216,6 +262,41 @@ func DefaultConfig() *Config {
 	v.Unmarshal(&cfg)
 	cfg.Session.Dir = "/tmp/dolphinzZ"
 	return &cfg
+}
+
+// Validate checks the configuration and returns an error for invalid settings.
+func (c *Config) Validate() error {
+	if c.LLM.Type != "" && c.LLM.Type != "openai" && c.LLM.Type != "anthropic" {
+		return fmt.Errorf(`llm.type must be "openai" or "anthropic", got %q`, c.LLM.Type)
+	}
+	if c.LLM.MaxTokens <= 0 {
+		return fmt.Errorf("llm.max_tokens must be > 0")
+	}
+	if c.LLM.MaxContextTokens <= 0 {
+		return fmt.Errorf("llm.max_context_tokens must be > 0")
+	}
+	if c.LLM.MaxSubTurns <= 0 {
+		return fmt.Errorf("llm.max_sub_turns must be > 0")
+	}
+	if c.LLM.Temperature < 0 || c.LLM.Temperature > 2 {
+		return fmt.Errorf("llm.temperature must be between 0 and 2")
+	}
+	if c.Session.MaxLoop <= 0 {
+		return fmt.Errorf("session.max_loop must be > 0")
+	}
+	if c.Pool.MaxConcurrency <= 0 {
+		return fmt.Errorf("agent_pool.max_concurrency must be > 0")
+	}
+	if c.Pool.DefaultTimeout <= 0 {
+		return fmt.Errorf("agent_pool.default_timeout must be > 0")
+	}
+	if c.Pool.MaxPendingResults <= 0 {
+		return fmt.Errorf("agent_pool.max_pending_results must be > 0")
+	}
+	if c.MCP.Shell.TimeoutSeconds <= 0 {
+		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0")
+	}
+	return nil
 }
 
 func setDefaults(v *viper.Viper) {
@@ -243,12 +324,22 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.mqtt.response_topic", "dolphinzZ/agent/response")
 	v.SetDefault("transport.mqtt.client_id", "dolphinzZ-agent")
 
+	v.SetDefault("transport.email.enabled", false)
+	v.SetDefault("transport.email.smtp_port", 587)
+	v.SetDefault("transport.email.imap_port", 993)
+	v.SetDefault("transport.email.use_tls", true)
+	v.SetDefault("transport.email.poll_interval", "10s")
+
 	v.SetDefault("session.max_age", "24h")
+	v.SetDefault("session.resume", false)
 
 	v.SetDefault("mcp.shell.enabled", true)
 	v.SetDefault("mcp.shell.timeout_seconds", 30)
+	v.SetDefault("mcp.shell.priority", 10)
 	v.SetDefault("mcp.cdp.enabled", true)
 	v.SetDefault("mcp.cdp.headless", true)
+	v.SetDefault("mcp.cdp.priority", 1000)
+	v.SetDefault("mcp.cdp.idle_timeout", 300)
 
 	v.SetDefault("agent_pool.max_concurrency", 5)
 	v.SetDefault("agent_pool.default_timeout", 300)
@@ -258,6 +349,15 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("skills.dir", ".dolphinzZ/skills")
 	v.SetDefault("skills.max_top", 10)
+
+	v.SetDefault("crontab.file", ".dolphinzZ/CRONTAB.md")
+	v.SetDefault("crontab.check_interval", "30s")
+
+	v.SetDefault("pprof.enabled", false)
+	v.SetDefault("pprof.addr", ":6060")
+
+	v.SetDefault("metrics.enabled", false)
+	v.SetDefault("metrics.addr", ":9090")
 
 	v.SetDefault("log_level", "info")
 }

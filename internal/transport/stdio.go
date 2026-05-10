@@ -52,15 +52,21 @@ func (t *StdioTransport) Start(ctx context.Context) error {
 }
 
 func (t *StdioTransport) ReadLine() (string, error) {
-	return t.rl.Readline()
+	line, err := t.rl.Readline()
+	if err == nil {
+		msgsReceived.Inc()
+	}
+	return line, err
 }
 
 func (t *StdioTransport) WriteString(s string) error {
+	msgsSent.Inc()
 	_, err := fmt.Print(s)
 	return err
 }
 
 func (t *StdioTransport) WriteLine(s string) error {
+	msgsSent.Inc()
 	_, err := fmt.Println(s)
 	return err
 }

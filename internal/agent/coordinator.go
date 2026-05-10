@@ -5,9 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
+	"time"
 
 	"dolphinzZ/internal/mcp"
+	"dolphinzZ/internal/scheduler"
+	"dolphinzZ/internal/session"
 	"dolphinzZ/internal/skill"
 	"dolphinzZ/internal/transport"
 
@@ -19,6 +23,7 @@ type Coordinator struct {
 	*Agent
 	pool       *AgentPool
 	skills     *skill.Manager
+	cronMgr    *scheduler.Manager
 	basePrompt string
 	pending    []TaskResult // results collected but not yet in LLM context
 }
@@ -49,18 +54,26 @@ func (c *Coordinator) SetSkillManager(mgr *skill.Manager) {
 	c.skills = mgr
 }
 
+// SetCronManager sets the cron task manager for scheduled tasks.
+func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
+	c.cronMgr = mgr
+}
+
 // Run starts the coordinator event loop.
 func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	slog.Info("coordinator starting")
 
-	// Create session
-	sess, err := c.sessMgr.NewSession(c.cfg.Session.MaxLoop)
-	if err != nil {
-		slog.Error("create session failed", "error", err)
-		return
+	// Create or resume session
+	var err error
+	sess, state := c.tryResumeSession(ctx, io)
+	if sess == nil {
+		sess, err = c.sessMgr.NewSession(c.cfg.Session.MaxLoop)
+		if err != nil {
+			slog.Error("create session failed", "error", err)
+			return
+		}
+		state = &LoopState{Sess: sess}
 	}
-
-	state := &LoopState{Sess: sess}
 
 	defer func() {
 		c.generateSummary(sess, state)
@@ -88,7 +101,13 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		"model", c.cfg.LLM.Model,
 	)
 
-	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents.")
+	// Start cron task processor
+	if c.cronMgr != nil {
+		dueCh := c.cronMgr.Start(ctx)
+		go c.processDueTasks(ctx, dueCh, sess.ID)
+	}
+
+	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /crontab for scheduled tasks.")
 	io.WriteLine("")
 
 	for {
@@ -139,6 +158,15 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 		// Collect pending agent results
 		c.pending = append(c.pending, c.pool.Collect()...)
+
+		// Bound pending slice to prevent unbounded growth (P0#1)
+		maxResults := c.cfg.Pool.MaxPendingResults
+		if maxResults <= 0 {
+			maxResults = 10
+		}
+		if len(c.pending) > maxResults*2 {
+			c.pending = c.pending[len(c.pending)-maxResults:]
+		}
 
 		// Build dynamic system prompt with current context
 		dynamicPrompt := c.buildDynamicPrompt()
@@ -355,6 +383,55 @@ func (c *Coordinator) registerCoordinatorTools() {
 				"required": []string{"name"},
 			},
 			handler: c.handleLoadSkill,
+		},
+		{
+			name:        "add_cron_task",
+			description: "Add a scheduled task that runs on a cron schedule.",
+			schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":        map[string]any{"type": "string", "description": "Unique task name"},
+					"schedule":    map[string]any{"type": "string", "description": "5-field cron expression (e.g. \"0 18 * * 1-5\")"},
+					"description": map[string]any{"type": "string", "description": "Human-readable description"},
+					"task":        map[string]any{"type": "string", "description": "Instructions for the agent when task runs"},
+				},
+				"required": []string{"name", "schedule", "description", "task"},
+			},
+			handler: c.handleAddCronTask,
+		},
+		{
+			name:        "remove_cron_task",
+			description: "Remove a scheduled task by name.",
+			schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Task name to remove"},
+				},
+				"required": []string{"name"},
+			},
+			handler: c.handleRemoveCronTask,
+		},
+		{
+			name:        "list_cron_tasks",
+			description: "List all scheduled tasks with their status and schedule.",
+			schema: map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+			handler: c.handleListCronTasks,
+		},
+		{
+			name:        "toggle_cron_task",
+			description: "Enable or disable a scheduled task.",
+			schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":    map[string]any{"type": "string", "description": "Task name"},
+					"enabled": map[string]any{"type": "boolean", "description": "true to enable, false to disable"},
+				},
+				"required": []string{"name", "enabled"},
+			},
+			handler: c.handleToggleCronTask,
 		},
 	}
 
@@ -590,6 +667,111 @@ func (c *Coordinator) handleLoadSkill(_ context.Context, input json.RawMessage) 
 	return &mcp.ToolResult{Content: result}, nil
 }
 
+// ---- Cron task handlers ----
+
+func (c *Coordinator) handleAddCronTask(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.cronMgr == nil {
+		return &mcp.ToolResult{Content: "Cron scheduler not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name        string `json:"name"`
+		Schedule    string `json:"schedule"`
+		Description string `json:"description"`
+		Task        string `json:"task"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+	task := &scheduler.CronTask{
+		Name:        params.Name,
+		Schedule:    params.Schedule,
+		Description: params.Description,
+		Enabled:     true,
+		Task:        params.Task,
+	}
+	if err := c.cronMgr.AddTask(task); err != nil {
+		return &mcp.ToolResult{Content: "add cron task: " + err.Error(), IsError: true}, nil
+	}
+	return &mcp.ToolResult{
+		Content: fmt.Sprintf("Scheduled task %q created (schedule: %s). It will run automatically at the specified times.", params.Name, params.Schedule),
+	}, nil
+}
+
+func (c *Coordinator) handleRemoveCronTask(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.cronMgr == nil {
+		return &mcp.ToolResult{Content: "Cron scheduler not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+	if c.cronMgr.RemoveTask(params.Name) {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q removed.", params.Name)}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q not found.", params.Name), IsError: true}, nil
+}
+
+func (c *Coordinator) handleListCronTasks(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.cronMgr == nil {
+		return &mcp.ToolResult{Content: "Cron scheduler not available.", IsError: true}, nil
+	}
+	tasks := c.cronMgr.List()
+	if len(tasks) == 0 {
+		return &mcp.ToolResult{Content: "No scheduled tasks. Use add_cron_task to create one."}, nil
+	}
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%d scheduled task(s):\n", len(tasks)))
+	for _, t := range tasks {
+		status := "enabled"
+		if !t.Enabled {
+			status = "disabled"
+		}
+		sb.WriteString(fmt.Sprintf("- %s [%s] %s (%s)\n", t.Name, status, t.Schedule, t.Description))
+	}
+	results := c.cronMgr.PendingResults()
+	if len(results) > 0 {
+		sb.WriteString("\nRecent results:\n")
+		for _, r := range results {
+			mark := "✓"
+			if !r.Success {
+				mark = "✗"
+			}
+			msg := r.Output
+			if r.Error != "" {
+				msg = r.Error
+			}
+			if len(msg) > 200 {
+				msg = msg[:200] + "..."
+			}
+			sb.WriteString(fmt.Sprintf("  %s %s: %s\n", mark, r.TaskName, msg))
+		}
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) handleToggleCronTask(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.cronMgr == nil {
+		return &mcp.ToolResult{Content: "Cron scheduler not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name    string `json:"name"`
+		Enabled bool   `json:"enabled"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+	if c.cronMgr.ToggleTask(params.Name, params.Enabled) {
+		state := "disabled"
+		if params.Enabled {
+			state = "enabled"
+		}
+		return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q %s.", params.Name, state)}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q not found.", params.Name), IsError: true}, nil
+}
+
 // ---- Commands ----
 
 func (c *Coordinator) printHelp(io transport.UserIO) {
@@ -665,6 +847,48 @@ func (c *Coordinator) printSkills(io transport.UserIO) {
 	io.WriteLine("")
 }
 
+func (c *Coordinator) printCronTasks(io transport.UserIO) {
+	if c.cronMgr == nil {
+		io.WriteLine("Cron scheduler not available.")
+		return
+	}
+	tasks := c.cronMgr.List()
+	if len(tasks) == 0 {
+		io.WriteLine("No scheduled tasks. Use the add_cron_task tool to create one.")
+		return
+	}
+	io.WriteLine(fmt.Sprintf("%-20s %-12s %s", "NAME", "SCHEDULE", "STATUS"))
+	io.WriteLine("-----------------------------------------------------")
+	for _, t := range tasks {
+		status := "enabled"
+		if !t.Enabled {
+			status = "disabled"
+		}
+		io.WriteLine(fmt.Sprintf("%-20s %-12s %s", t.Name, t.Schedule, status))
+	}
+	// Show recent results
+	results := c.cronMgr.PendingResults()
+	if len(results) > 0 {
+		io.WriteLine("")
+		io.WriteLine("Recent results:")
+		for _, r := range results {
+			mark := "✓"
+			if !r.Success {
+				mark = "✗"
+			}
+			msg := r.Output
+			if r.Error != "" {
+				msg = r.Error
+			}
+			if len(msg) > 100 {
+				msg = msg[:100] + "..."
+			}
+			io.WriteLine(fmt.Sprintf("  %s %s (%s): %s", mark, r.TaskName, r.CompletedAt.Format("15:04"), msg))
+		}
+	}
+	io.WriteLine("")
+}
+
 func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
 	parts := strings.Fields(line)
 	if len(parts) > 1 {
@@ -677,6 +901,123 @@ func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
 	} else {
 		c.pool.CancelAll()
 		io.WriteLine("All running tasks cancelled.")
+	}
+}
+
+// tryResumeSession checks for a previous session and prompts the user to resume.
+// Returns a populated session + LoopState, or (nil, nil) to start fresh.
+func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO) (*session.Session, *LoopState) {
+	if !c.cfg.Session.Resume {
+		return nil, nil
+	}
+
+	id, path, turns, err := c.sessMgr.LatestSession()
+	if err != nil || id == "" {
+		return nil, nil
+	}
+
+	age := "unknown"
+	if info, serr := os.Stat(path); serr == nil {
+		age = formatDuration(time.Since(info.ModTime()))
+	}
+
+	io.WriteLine(fmt.Sprintf("\nFound previous session %s (%d turns, %s ago). Resume? [Y/n]: ", id, turns, age))
+	line, rerr := io.ReadLine()
+	if rerr != nil || (line != "" && line != "y" && line != "Y" && line != "yes") {
+		io.WriteLine("")
+		return nil, nil
+	}
+	io.WriteLine("")
+
+	// Read and replay session events
+	events, rerr := session.ReadEvents(path)
+	if rerr != nil {
+		slog.Warn("failed to read session for resume", "path", path, "error", rerr)
+		return nil, nil
+	}
+
+	messages := replayMessages(events)
+
+	// Create a child session linked to the old one
+	sess, rerr := c.sessMgr.NewSessionWithParent(c.cfg.Session.MaxLoop, id)
+	if rerr != nil {
+		slog.Error("create resumed session failed", "error", rerr)
+		return nil, nil
+	}
+
+	slog.Info("session resumed",
+		"parent", id,
+		"session_id", sess.ID,
+		"messages", len(messages),
+		"turns", turns,
+	)
+
+	return sess, &LoopState{
+		Sess:     sess,
+		Messages: messages,
+		Turn:     turns,
+	}
+}
+
+// replayMessages reconstructs the conversation Message list from session events.
+func replayMessages(events []session.SessionEvent) []Message {
+	var msgs []Message
+	for _, evt := range events {
+		switch evt.Type {
+		case session.EventMessage:
+			if evt.Role == "" || len(evt.Content) == 0 {
+				continue
+			}
+			msgs = append(msgs, Message{
+				Role:    evt.Role,
+				Content: evt.Content,
+			})
+		case session.EventToolResult:
+			if len(evt.ToolResult) == 0 {
+				continue
+			}
+			msgs = append(msgs, Message{
+				Role:    "tool",
+				Content: evt.ToolResult,
+			})
+		}
+	}
+	return msgs
+}
+
+// formatDuration returns a human-readable relative duration.
+func formatDuration(d time.Duration) string {
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
+	default:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	}
+}
+
+// processDueTasks runs due cron tasks asynchronously.
+func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan scheduler.CronTask, parentSessionID session.SessionID) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case task, ok := <-dueCh:
+			if !ok {
+				return
+			}
+			result, err := c.RunTask(ctx, task.Task, c.basePrompt, c.toolReg, parentSessionID)
+			if err != nil {
+				c.cronMgr.AddResult(task.Name, false, "", err.Error())
+				slog.Error("scheduled task failed", "name", task.Name, "error", err)
+			} else {
+				c.cronMgr.AddResult(task.Name, result.Success, result.Output, result.Error)
+				slog.Info("scheduled task completed", "name", task.Name, "task_id", result.TaskID)
+			}
+		}
 	}
 }
 

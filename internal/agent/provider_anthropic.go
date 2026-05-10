@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/metrics"
 )
 
 // AnthropicProvider implements Provider for Anthropic Messages API.
@@ -95,25 +96,33 @@ type anthroResp struct {
 // ---- Provider interface ----
 
 func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (*ProviderResponse, error) {
+	llmRequests.Inc()
+	timer := metrics.StartTimer(llmDuration)
+	defer timer.Stop()
+
 	body, err := json.Marshal(p.buildReq(req, false))
 	if err != nil {
+		llmErrors.Inc()
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
+		llmErrors.Inc()
 		return nil, fmt.Errorf("http req: %w", err)
 	}
 	p.setHeaders(httpReq)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		llmErrors.Inc()
 		return nil, fmt.Errorf("http: %w", err)
 	}
 	defer resp.Body.Close()
 
 	rawBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode != 200 {
+		llmErrors.Inc()
 		return nil, fmt.Errorf("anthropic error status=%d body=%s", resp.StatusCode, string(rawBody))
 	}
 
@@ -130,6 +139,8 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (
 			InputTokens:  anthResp.Usage.InputTokens,
 			OutputTokens: anthResp.Usage.OutputTokens,
 		}
+		llmInputTokens.Add(int64(anthResp.Usage.InputTokens))
+		llmOutputTokens.Add(int64(anthResp.Usage.OutputTokens))
 	}
 
 	// Preserve all content blocks (text, tool_use, thinking, etc.)
@@ -176,24 +187,35 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (
 }
 
 func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequest) (<-chan StreamChunk, error) {
+	llmRequests.Inc()
+	timer := metrics.StartTimer(llmDuration)
+
 	body, err := json.Marshal(p.buildReq(req, true))
 	if err != nil {
+		llmErrors.Inc()
+		timer.Stop()
 		return nil, fmt.Errorf("marshal: %w", err)
 	}
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/messages", bytes.NewReader(body))
 	if err != nil {
+		llmErrors.Inc()
+		timer.Stop()
 		return nil, fmt.Errorf("http req: %w", err)
 	}
 	p.setHeaders(httpReq)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
+		llmErrors.Inc()
+		timer.Stop()
 		return nil, fmt.Errorf("http: %w", err)
 	}
 
 	// Check HTTP status before starting the streaming goroutine so errors propagate to caller
 	if resp.StatusCode != 200 {
+		llmErrors.Inc()
+		timer.Stop()
 		rawBody, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		return nil, fmt.Errorf("anthropic error status=%d body=%s", resp.StatusCode, string(rawBody))
@@ -203,6 +225,7 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 	go func() {
 		defer close(ch)
 		defer resp.Body.Close()
+		defer timer.Stop()
 
 		// Track the current content block type per index for thinking/text disambiguation
 		blockTypes := make(map[int]string)

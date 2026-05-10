@@ -3,7 +3,7 @@
 [![CI](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml)
 
 AI coding agent with MCP tool support, multi-agent coordination, and skills system.
-Runs via stdio, SSH, or MQTT.
+Runs via stdio, SSH, MQTT, or Email.
 
 ## Quick Start
 
@@ -34,6 +34,8 @@ Key environment variables:
 | `DZ_LLM_BASE_URL` | `https://api.openai.com/v1` | API base URL |
 | `DZ_LLM_MAX_TOKENS` | `4096` | Max output tokens |
 | `DZ_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
+| `DZ_EMAIL_USERNAME` | — | Email SMTP/IMAP username |
+| `DZ_EMAIL_PASSWORD` | — | Email SMTP/IMAP password |
 
 ### Example config (`.dolphinzZ/config.yaml`)
 
@@ -57,6 +59,17 @@ transport:
     enabled: false
   mqtt:
     enabled: false
+  email:
+    enabled: false
+    smtp_host: "smtp.qq.com"
+    smtp_port: 587
+    imap_host: "imap.qq.com"
+    imap_port: 993
+    username: "your_email@qq.com"
+    password: "your_smtp_authorization_code"
+    from: "your_email@qq.com"
+    use_tls: true
+    poll_interval: "10s"
 
 mcp:
   shell:
@@ -72,6 +85,10 @@ agent_pool:
   default_timeout: 300
   workspace_dir: ".dolphinzZ/workspaces"
   idle_timeout: 600
+
+crontab:
+  file: ".dolphinzZ/CRONTAB.md"
+  check_interval: "30s"
 ```
 
 ## Usage
@@ -90,6 +107,7 @@ Built-in commands:
 - `/skills` — list available skills
 - `/cancel` — cancel running tasks
 - `/cancel <id>` — cancel specific task
+- `/crontab` — list scheduled tasks
 
 ### SSH
 
@@ -107,6 +125,47 @@ Enable in config. Subscribe to `dolphinzZ/agent/response` and publish to `dolphi
 mosquitto_sub -t "dolphinzZ/agent/response" &
 mosquitto_pub -t "dolphinzZ/agent/command" -m "your prompt"
 ```
+
+### Email
+
+Enable in config. Send an email to the configured `from` address; the subject line is used as the command. The agent replies via SMTP.
+
+```bash
+# The agent polls IMAP every poll_interval (default 10s)
+# Send a command email — subject becomes the prompt
+```
+
+**Note**: The email transport sends responses back to the `from` address (reply-to-self).
+
+## Cron Scheduling (v0.3)
+
+Periodic tasks are defined in `.dolphinzZ/CRONTAB.md` using YAML frontmatter + Markdown body:
+
+```markdown
+---
+name: auto-commit
+schedule: "0 18 * * 1-5"
+description: Daily auto-commit at 6pm weekdays
+enabled: true
+---
+
+Run git add -A, git commit -m "auto commit", and git push in the current repository.
+```
+
+The scheduler checks every 30s and dispatches due tasks to a background goroutine. Results are stored independently and don't interfere with active conversations.
+
+### Built-in commands
+
+- `/crontab` — list all scheduled tasks and recent results
+
+### Coordinator tools for cron
+
+| Tool | Description |
+|------|-------------|
+| `add_cron_task` | Add a new scheduled task |
+| `remove_cron_task` | Remove a scheduled task |
+| `list_cron_tasks` | List all tasks and their status |
+| `toggle_cron_task` | Enable/disable a task |
 
 ## MCP Tools
 

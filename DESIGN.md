@@ -2,7 +2,7 @@
 
 ## Context
 
-设计一个 Go 语言实现的 AI 编码代理系统，支持通过 stdio、SSH、MQTT 三种传输层与用户交互，具备完整的 Agent Loop、多层级配置管理（Viper）、MCP 协议支持（Shell + CDP 工具）、会话管理能力，以及 v0.2 引入的多 Agent 协同系统。
+设计一个 Go 语言实现的 AI 编码代理系统，支持通过 stdio、SSH、MQTT、Email 四种传输层与用户交互，具备完整的 Agent Loop、多层级配置管理（Viper）、MCP 协议支持（Shell + CDP 工具）、会话管理能力，以及 v0.2 引入的多 Agent 协同系统。
 
 ---
 
@@ -33,6 +33,7 @@ flowchart TB
         stdio["stdio"]
         ssh["SSH (:2222)"]
         mqtt["MQTT"]
+        email["Email (SMTP+IMAP)"]
     end
 
     subgraph Session["会话管理"]
@@ -148,7 +149,9 @@ flowchart TB
 - **三级路径**: `/etc/dolphinzZ/` (系统) → `~/.dolphinzZ/` (用户) → `./.dolphinzZ/` (项目)
 - Viper 按优先级顺序 AddConfigPath，后加载的覆盖先加载的
 - 环境变量前缀 `DZ`，如 `DZ_LLM_MODEL` 覆盖 `llm.model`
-- Config struct 含 LLM、Session、Transport、MCP 四个子配置
+- Config struct 含 LLM、Session、Transport、MCP、Crontab 五个子配置
+- EmailConfig: SMTP/IMAP 主机、端口、认证、TLS、轮询间隔
+- CrontabConfig: CRONTAB.md 文件路径、检查间隔
 
 ### 2. 传输层 (`internal/transport/`)
 
@@ -163,6 +166,7 @@ Transport interface {
 - **stdio**: 直接包装 stdin/stdout，最简单，本地 CLI 模式
 - **SSH**: 用 `charmbracelet/ssh` (gliderlabs/ssh 的活跃 fork)，每个 SSH session 启动一个 Agent goroutine
 - **MQTT**: 用 `eclipse/paho.mqtt.golang`，订阅命令 topic，发布响应 topic
+- **Email**: SMTP 发送（`net/smtp`），IMAP 轮询（`emersion/go-imap` v1），邮件 subject 解析为命令，回复作为响应发送
 
 每个 Transport 绑定一个独立的 Agent 会话，goroutine 隔离。
 
@@ -416,7 +420,68 @@ sequenceDiagram
 
 每个工具调用自动记录统计（调用次数、错误次数、最后调用时间、总耗时），`MostUsedTools()` 按调用次数降序排列。
 
-### 9. Skills 系统 (`internal/skill/` — v0.3)
+### 9. 定时任务系统 (`internal/scheduler/` — v0.3)
+
+CRONTAB.md 提供周期性任务支持。用户通过对话告知 Agent 定时需求（如"每天下午6点自动提交"），Agent 通过 MCP tool 写入 CRONTAB.md，后台 Scheduler 定时检查，到期任务通过 channel 发给 Coordinator 异步执行。
+
+```
+Scheduler tick (每30s)
+  → checkDueTasks(): cron.ParseStandard(schedule).Next(lastRun) ≤ now
+  → 更新 lastRun = now
+  → push task 到 dueCh (chan CronTask, buffer 100)
+
+Coordinator 后台 goroutine (Run() 启动时创建):
+  → for task := range dueCh
+  → Agent.RunTask(ctx, task.Task)  独立 session 执行
+  → 结果存到 cronMgr.AddResult()
+```
+
+**CRONTAB.md 格式** — YAML frontmatter + Markdown body，与 Skill 文件一致：
+
+```markdown
+---
+name: auto-commit
+schedule: "0 18 * * 1-5"
+description: 每天下午6点自动提交代码
+enabled: true
+---
+
+Run git add -A, git commit -m "auto commit", and git push.
+```
+
+MCP 工具：`add_cron_task`、`remove_cron_task`、`list_cron_tasks`、`toggle_cron_task`。
+用户也可通过 `/crontab` 命令在对话中查看任务状态。
+
+**启动校验与自动恢复**:
+1. 文件不存在 → 创建空 CRONTAB.md（带说明 header）
+2. YAML frontmatter 解析失败 → 跳过该条目（日志警告）
+3. cron 表达式无效 → 标记 Enabled: false
+4. 文件整体损坏 → 备份为 CRONTAB.md.bak，创建新的空文件
+5. **不阻塞启动**：解析失败不影响 coordinator 正常启动
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant C as Coordinator
+    participant S as Scheduler
+    participant A as Agent
+
+    U->>C: "每天下午6点自动提交"
+    C->>S: AddTask("auto-commit", "0 18 * * 1-5", ...)
+    S-->>C: ok
+    C->>U: "已创建定时任务"
+
+    Note over S: 每天 18:00
+    S->>S: checkDueTasks()
+    S->>C: dueCh <- CronTask
+
+    C->>A: RunTask(task)
+    A->>A: git add/commit/push
+    A-->>C: TaskResult
+    C->>S: AddResult(name, success, output)
+```
+
+### 10. Skills 系统 (`internal/skill/` — v0.3)
 
 Skills 是命名的专项能力定义，以 Markdown 文件形式存储在 `.dolphinzZ/skills/` 目录下。与 MCP 工具不同，Skills 不是可执行代码，而是可注入上下文的指令/知识。
 
@@ -472,6 +537,10 @@ sequenceDiagram
 | [v0.3] MCP 统计 | ToolStats (CallCount, ErrorCount, Duration) | 支撑渐进披露的排序依据 |
 | [v0.3] Skills 系统 | .dolphinzZ/skills/ Markdown + 渐进披露 | 可扩展的专项指令注入，不增加 LLM 默认上下文 |
 | [v0.3] Stats 隔离 | Clone() 复制 stats map | 避免跨连接统计干扰 |
+| [v0.3] 定时任务 | CRONTAB.md YAML frontmatter + robfig/cron/v3 | 与 Skills 相同文件模式，支持标准 cron 表达式 |
+| [v0.3] Cron 结果存储 | cronMgr.AddResult() + 独立 session | 结果与用户对话隔离，不干扰当前会话 |
+| [v0.3] Email 传输 | SMTP (net/smtp) + IMAP (emersion/go-imap) | 标准邮件协议，无需额外中间件 |
+| [v0.3] IMAP 轮询 | time.Ticker + poll() per interval | 简单可靠，无需长连接保持 |
 
 ---
 
@@ -487,7 +556,8 @@ sequenceDiagram
 │   │   ├── transport.go           # Transport 接口
 │   │   ├── stdio.go
 │   │   ├── ssh.go
-│   │   └── mqtt.go
+│   │   ├── mqtt.go
+│   │   └── email.go               # SMTP 发送 + IMAP 轮询
 │   ├── agent/
 │   │   ├── loop.go                # 核心 Agent Loop + RunTask()
 │   │   ├── context.go             # 上下文构建器
@@ -508,6 +578,8 @@ sequenceDiagram
 │   │   └── cdp.go                 # CDP MCP Tool
 │   ├── skill/
 │   │   └── skill.go               # [v0.3] Skills Manager, parsing, stats, search
+│   ├── scheduler/
+│   │   └── crontab.go             # [v0.3] CRONTAB.md 加载、调度、结果管理
 │   └── context/
 │       ├── preface.go             # go:embed PREFACE.md
 │       ├── agents.go              # AGENTS.md 加载
@@ -559,6 +631,7 @@ sequenceDiagram
 | 8 | mcp/cdp | 第二个工具 |
 | 9 | transport/ssh | 网络传输 |
 | 10 | transport/mqtt | IoT 传输 |
+| 11 | transport/email | 邮件传输 (SMTP+IMAP) |
 | 11 | session/summary + reaper | 生产加固 |
 | 12 | provider_openai | 多后端支持 |
 | 13 | [v0.2] agent_pool + coordinator | 多 Agent 协同系统 |
@@ -568,6 +641,8 @@ sequenceDiagram
 | 17 | [v0.3] MCP stats + progressive disclosure | 工具调用统计 + Top 10 渐进披露 |
 | 18 | [v0.3] skill package + manager | Skills 系统 (加载/搜索/统计/渐进披露) |
 | 19 | [v0.3] coordinator skills integration | search_skills / load_skill 工具 |
+| 20 | [v0.3] scheduler + CRONTAB.md | 定时任务系统 (加载/调度/结果管理) |
+| 21 | [v0.3] transport/email | Email 传输 (SMTP 发送 + IMAP 轮询) |
 
 ---
 
@@ -595,4 +670,7 @@ github.com/openai/openai-go                  # OpenAI 兼容 LLM
 github.com/google/uuid                       # UUID
 golang.org/x/crypto                          # SSH 底层
 golang.org/x/time                            # Rate Limiter
+github.com/robfig/cron/v3                    # [v0.3] Cron 表达式解析
+github.com/emersion/go-imap                  # [v0.3] IMAP 客户端 (邮件接收)
+github.com/emersion/go-sasl                  # [v0.3] IMAP SASL 认证
 ```

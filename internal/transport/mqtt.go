@@ -30,6 +30,8 @@ type MQTTTransport struct {
 	cfg       *config.MQTTConfig
 	client    mqtt.Client
 	msgCh     chan string
+	closeCh   chan struct{}
+	closeOnce sync.Once
 	respTopic atomic.Value // stores last derived response topic (string)
 	connected atomic.Bool
 	closeMu   sync.Mutex
@@ -37,8 +39,9 @@ type MQTTTransport struct {
 
 func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 	t := &MQTTTransport{
-		cfg:   &cfg.Transport.MQTT,
-		msgCh: make(chan string, 1024),
+		cfg:     &cfg.Transport.MQTT,
+		msgCh:   make(chan string, 1024),
+		closeCh: make(chan struct{}),
 	}
 	t.respTopic.Store(cfg.Transport.MQTT.ResponseTopic)
 	return t
@@ -96,13 +99,18 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	return t.Close()
 }
 
-// ReadLine blocks until an MQTT command message arrives.
+// ReadLine blocks until an MQTT command message arrives or the transport is closed.
 func (t *MQTTTransport) ReadLine() (string, error) {
-	msg, ok := <-t.msgCh
-	if !ok {
+	select {
+	case msg, ok := <-t.msgCh:
+		if !ok {
+			return "", fmt.Errorf("mqtt transport closed")
+		}
+		msgsReceived.Inc()
+		return msg, nil
+	case <-t.closeCh:
 		return "", fmt.Errorf("mqtt transport closed")
 	}
-	return msg, nil
 }
 
 // WriteLine publishes a line to the derived response topic.
@@ -119,6 +127,7 @@ func (t *MQTTTransport) publish(payload string) error {
 	if !t.connected.Load() {
 		return fmt.Errorf("mqtt not connected")
 	}
+	msgsSent.Inc()
 	topic, _ := t.respTopic.Load().(string)
 	if topic == "" {
 		topic = t.cfg.ResponseTopic
@@ -130,13 +139,16 @@ func (t *MQTTTransport) publish(payload string) error {
 }
 
 func (t *MQTTTransport) Close() error {
-	t.closeMu.Lock()
-	defer t.closeMu.Unlock()
-	if t.client != nil && t.connected.Load() {
-		t.connected.Store(false)
-		t.client.Unsubscribe(t.cfg.Topic)
-		t.client.Disconnect(250)
-	}
+	t.closeOnce.Do(func() {
+		t.closeMu.Lock()
+		if t.client != nil && t.connected.Load() {
+			t.connected.Store(false)
+			t.client.Unsubscribe(t.cfg.Topic)
+			t.client.Disconnect(250)
+		}
+		t.closeMu.Unlock()
+		close(t.closeCh)
+	})
 	return nil
 }
 

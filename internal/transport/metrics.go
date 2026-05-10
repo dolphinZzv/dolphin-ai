@@ -1,0 +1,9 @@
+package transport
+
+import "dolphinzZ/internal/metrics"
+
+// Transport-level metrics (shared across all transport implementations).
+var (
+	msgsReceived = metrics.NewCounter("transport_messages_received_total", "Total messages received across all transports", map[string]string{})
+	msgsSent     = metrics.NewCounter("transport_messages_sent_total", "Total messages sent across all transports", map[string]string{})
+)

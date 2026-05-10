@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -13,11 +14,16 @@ import (
 	"dolphinzZ/internal/agent"
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
+	"dolphinzZ/internal/metrics"
+	"dolphinzZ/internal/scheduler"
 	"dolphinzZ/internal/session"
 	"dolphinzZ/internal/skill"
 	"dolphinzZ/internal/transport"
 
+	"github.com/oklog/run"
 	"github.com/spf13/cobra"
+
+	_ "net/http/pprof"
 )
 
 var (
@@ -28,10 +34,10 @@ var (
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dolphinzZ",
-		Short: "AI coding agent — stdio / SSH / MQTT transport, MCP tools (shell + cdp)",
+		Short: "AI coding agent — stdio / SSH / MQTT / Email transport, MCP tools (shell + cdp)",
 		Long: `DolphinzZ is an AI coding agent with MCP tool support.
 
-Transports: stdio (default), SSH (:2222), MQTT
+Transports: stdio (default), SSH (:2222), MQTT, Email
 Tools: shell, cdp (browser automation)
 Config: .dolphinzZ/config.yaml > ~/.dolphinzZ/ > /etc/dolphinzZ/
 Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
@@ -71,8 +77,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		toolRegistry.Register(mcp.NewShellTool(cfg))
 		slog.Info("shell tool registered")
 	}
+	var cdpTool *mcp.CDPTool
 	if cfg.MCP.CDP.Enabled {
-		toolRegistry.Register(mcp.NewCDPTool(cfg))
+		cdpTool = mcp.NewCDPTool(cfg)
+		toolRegistry.Register(cdpTool)
 		slog.Info("cdp tool registered")
 	}
 
@@ -87,25 +95,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	tools := toolRegistry.List()
 	slog.Info("total mcp tools available", "count", len(tools))
-
-	// Setup signal handling
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Start session reaper if max_age is configured
-	if maxAge, err := time.ParseDuration(cfg.Session.MaxAge); err == nil && maxAge > 0 {
-		sessMgr.StartReaper(ctx, maxAge, maxAge/4)
-	} else if err != nil {
-		slog.Warn("invalid session.max_age, reaper disabled", "value", cfg.Session.MaxAge, "error", err)
-	}
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		<-sigCh
-		slog.Info("shutting down...")
-		cancel()
-	}()
 
 	// Check for agents directory to decide coordinator vs single-agent mode
 	agentsDir := filepath.Join(".dolphinzZ", "agents")
@@ -136,10 +125,18 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		slog.Info("skills loaded", "dir", cfg.Skills.Dir, "count", len(skills))
 	}
 
+	// Initialize cron task manager
+	cronMgr := scheduler.NewManager(cfg.Crontab)
+	if err := cronMgr.Load(); err != nil {
+		slog.Warn("crontab load error, continuing without scheduled tasks", "error", err)
+	} else {
+		slog.Info("crontab loaded", "file", cfg.Crontab.File)
+	}
+
 	// Factory: creates a new coordinator per transport connection
 	newCoordinator := func() *agent.Coordinator {
 		agt := agent.New(cfg, sessMgr, toolRegistry)
-		pool := agent.NewAgentPool(ctx, poolCfg)
+		pool := agent.NewAgentPool(context.Background(), poolCfg)
 		if hasAgents {
 			for name, def := range agentDefs {
 				pool.Add(name, def, agent.AgentUser, agt, toolRegistry)
@@ -147,12 +144,46 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 		coord := agent.NewCoordinator(agt, pool)
 		coord.SetSkillManager(skillMgr)
+		coord.SetCronManager(cronMgr)
 		return coord
 	}
 
-	// Start transports
-	started := false
+	// ---- Actor group ----
 
+	var g run.Group
+	actorCount := 0
+
+	// Signal handling actor — exits the group on SIGINT/SIGTERM
+	{
+		sigCh := make(chan os.Signal, 1)
+		g.Add(func() error {
+			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			sig := <-sigCh
+			slog.Info("shutting down", "signal", sig)
+			return fmt.Errorf("received signal %v", sig)
+		}, func(err error) {
+			signal.Stop(sigCh)
+			close(sigCh)
+		})
+		actorCount++
+	}
+
+	// Session reaper actor — periodically cleans old session files
+	if maxAge, err := time.ParseDuration(cfg.Session.MaxAge); err == nil && maxAge > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			sessMgr.StartReaper(ctx, maxAge, maxAge/4)
+			<-ctx.Done()
+			return nil
+		}, func(err error) {
+			cancel()
+		})
+		actorCount++
+	} else if err != nil {
+		slog.Warn("invalid session.max_age, reaper disabled", "value", cfg.Session.MaxAge, "error", err)
+	}
+
+	// SSH transport
 	if cfg.Transport.SSH.Enabled {
 		t, err := transport.NewSSHTransport(cfg, func(ctx context.Context, io transport.UserIO) {
 			newCoordinator().Run(ctx, io)
@@ -168,41 +199,141 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Connect: ssh %s@<host> -p %s\n", cfg.Transport.SSH.Username, addr[1:])
 		fmt.Fprintf(os.Stderr, "Password: %s\n\n", cfg.Transport.SSH.Password)
 		slog.Info("ssh transport listening", "addr", addr)
-		go func() {
-			if err := t.Start(ctx); err != nil {
-				slog.Error("ssh server error", "error", err)
-			}
-		}()
-		started = true
+
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			return t.Start(ctx)
+		}, func(err error) {
+			cancel()
+			t.Close()
+		})
+		actorCount++
 	}
 
-	if cfg.Transport.Stdio.Enabled {
-		slog.Info("starting stdio transport")
-		io := transport.NewStdioTransport()
-		newCoordinator().Run(ctx, io)
-		started = true
-	}
-
+	// MQTT transport + coordinator
 	if cfg.Transport.MQTT.Enabled {
 		slog.Info("starting mqtt transport", "broker", cfg.Transport.MQTT.Broker)
+		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewMQTTTransport(cfg)
-		go func() {
-			if err := t.Start(ctx); err != nil {
-				slog.Error("mqtt transport error", "error", err)
-			}
-		}()
-		time.Sleep(500 * time.Millisecond)
-		go func() {
+
+		g.Add(func() error {
+			return t.Start(ctx)
+		}, func(err error) {
+			cancel()
+			t.Close()
+		})
+		g.Add(func() error {
 			newCoordinator().Run(ctx, t)
-		}()
-		started = true
+			return nil
+		}, func(err error) {
+			cancel()
+		})
+		actorCount += 2
 	}
 
-	if !started {
-		return fmt.Errorf("no transport enabled (enable stdio, ssh, or mqtt in config)")
+	// Email transport + coordinator
+	if cfg.Transport.Email.Enabled {
+		ctx, cancel := context.WithCancel(context.Background())
+		t := transport.NewEmailTransport(&cfg.Transport.Email)
+
+		fmt.Fprintf(os.Stderr, "\n=== Email transport active ===\n")
+		fmt.Fprintf(os.Stderr, "IMAP: %s:%d (poll every %s)\n",
+			cfg.Transport.Email.IMAPHost, cfg.Transport.Email.IMAPPort,
+			cfg.Transport.Email.PollInterval)
+		fmt.Fprintf(os.Stderr, "SMTP: %s:%d\n", cfg.Transport.Email.SMTPHost, cfg.Transport.Email.SMTPPort)
+		fmt.Fprintf(os.Stderr, "Send an email to %s — subject = command\n\n", cfg.Transport.Email.From)
+
+		g.Add(func() error {
+			return t.Start(ctx)
+		}, func(err error) {
+			cancel()
+			t.Close()
+		})
+		g.Add(func() error {
+			newCoordinator().Run(ctx, t)
+			return nil
+		}, func(err error) {
+			cancel()
+		})
+		actorCount += 2
 	}
 
-	return nil
+	// Stdio transport + coordinator
+	if cfg.Transport.Stdio.Enabled {
+		ctx, cancel := context.WithCancel(context.Background())
+		io := transport.NewStdioTransport()
+
+		g.Add(func() error {
+			newCoordinator().Run(ctx, io)
+			return nil
+		}, func(err error) {
+			cancel()
+			io.Close()
+		})
+		actorCount++
+	}
+
+	// Pprof HTTP server
+	if cfg.Pprof.Enabled {
+		srv := &http.Server{
+			Addr:    cfg.Pprof.Addr,
+			Handler: http.DefaultServeMux,
+		}
+		g.Add(func() error {
+			slog.Info("pprof HTTP server starting", "addr", cfg.Pprof.Addr)
+			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+				return fmt.Errorf("pprof server: %w", err)
+			}
+			return nil
+		}, func(err error) {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer shutdownCancel()
+			srv.Shutdown(shutdownCtx)
+		})
+		actorCount++
+	}
+
+	// CDP shutdown actor — ensures Chrome is killed on process exit
+	if cdpTool != nil {
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			<-ctx.Done()
+			return nil
+		}, func(err error) {
+			slog.Debug("cdp: shutting down browser on exit")
+			cdpTool.Shutdown()
+			cancel()
+		})
+		actorCount++
+	}
+
+	// Metrics HTTP server
+	if cfg.Metrics.Enabled {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", metrics.Handler())
+		srv := &http.Server{
+			Addr:    cfg.Metrics.Addr,
+			Handler: mux,
+		}
+		g.Add(func() error {
+			slog.Info("metrics HTTP server starting", "addr", cfg.Metrics.Addr)
+			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+				return fmt.Errorf("metrics server: %w", err)
+			}
+			return nil
+		}, func(err error) {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer shutdownCancel()
+			srv.Shutdown(shutdownCtx)
+		})
+		actorCount++
+	}
+
+	if actorCount == 0 {
+		return fmt.Errorf("no transport enabled (enable stdio, ssh, mqtt, or email in config)")
+	}
+
+	return g.Run()
 }
 
 func setupLogging(level string) {

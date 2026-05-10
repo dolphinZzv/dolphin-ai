@@ -348,3 +348,181 @@ func (t *mockToolLargeResult) Definition() mcp.ToolDefinition {
 func (t *mockToolLargeResult) Execute(_ context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
 	return &mcp.ToolResult{Content: strings.Repeat("x", 5000)}, nil
 }
+
+func TestIsRetryable(t *testing.T) {
+	tests := []struct {
+		err  error
+		want bool
+	}{
+		{fmt.Errorf("429 too many requests"), true},
+		{fmt.Errorf("500 internal"), true},
+		{fmt.Errorf("502 bad gateway"), true},
+		{fmt.Errorf("503 unavailable"), true},
+		{fmt.Errorf("connection refused"), true},
+		{fmt.Errorf("timeout exceeded"), true},
+		{fmt.Errorf("EOF"), true},
+		{fmt.Errorf("400 bad request"), false},
+		{fmt.Errorf("invalid input"), false},
+		{fmt.Errorf("permission denied"), false},
+	}
+	for _, tt := range tests {
+		got := isRetryable(tt.err)
+		if got != tt.want {
+			t.Errorf("isRetryable(%q) = %v, want %v", tt.err.Error(), got, tt.want)
+		}
+	}
+}
+
+func TestIsRetryableSubstringInWord(t *testing.T) {
+	// "timeout" as part of another word should still match
+	err := fmt.Errorf("notimeoutmate")
+	if !isRetryable(err) {
+		t.Errorf("expected true for 'notimeoutmate' (contains timeout)")
+	}
+}
+
+func TestNewWithAnthropicProvider(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.Type = "anthropic"
+	cfg.LLM.APIKey = "test-key"
+	cfg.LLM.Model = "claude-3-opus"
+	cfg.Session.Dir = t.TempDir()
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	toolReg := mcp.NewRegistry(cfg)
+	agt := New(cfg, sessMgr, toolReg)
+	if agt == nil {
+		t.Fatal("New returned nil")
+	}
+	if agt.provider.Type() != "anthropic" {
+		t.Errorf("expected anthropic provider, got %v", agt.provider.Type())
+	}
+}
+
+func TestNewWithOpenAIProvider(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.Type = "openai"
+	cfg.LLM.APIKey = "test-key"
+	cfg.Session.Dir = t.TempDir()
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	toolReg := mcp.NewRegistry(cfg)
+	agt := New(cfg, sessMgr, toolReg)
+	if agt == nil {
+		t.Fatal("New returned nil")
+	}
+	if agt.provider.Type() != ProviderOpenAI {
+		t.Errorf("expected openai provider, got %v", agt.provider.Type())
+	}
+}
+
+func TestNewWithDefaultProvider(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.Type = "unsupported"
+	cfg.LLM.APIKey = "test-key"
+	cfg.Session.Dir = t.TempDir()
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	toolReg := mcp.NewRegistry(cfg)
+	agt := New(cfg, sessMgr, toolReg)
+	if agt == nil {
+		t.Fatal("New returned nil")
+	}
+	// Default should be openai
+	if agt.provider.Type() != ProviderOpenAI {
+		t.Errorf("expected openai provider, got %v", agt.provider.Type())
+	}
+}
+
+func TestExtractFinalResponse(t *testing.T) {
+	msgs := []Message{
+		{Role: "user", Content: TextContent("hello")},
+		{Role: "assistant", Content: json.RawMessage(`[{"type":"text","text":"hi there"}]`)},
+	}
+	result := extractFinalResponse(msgs)
+	if result != "hi there" {
+		t.Errorf("got %q, want %q", result, "hi there")
+	}
+}
+
+func TestExtractFinalResponseNoAssistant(t *testing.T) {
+	msgs := []Message{
+		{Role: "user", Content: json.RawMessage(`"hello"`)},
+	}
+	result := extractFinalResponse(msgs)
+	if result != "" {
+		t.Errorf("got %q, want empty", result)
+	}
+}
+
+func TestExtractFinalResponseEmpty(t *testing.T) {
+	result := extractFinalResponse(nil)
+	if result != "" {
+		t.Errorf("got %q, want empty", result)
+	}
+}
+
+func TestRunTaskBasic(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{
+				Content:    TextContent("task result"),
+				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				StopReason: "end_turn",
+			},
+		},
+	}
+	agt := newTestAgent(cfg, prov)
+
+	result, err := agt.RunTask(
+		context.Background(),
+		"do something",
+		"system prompt",
+		agt.toolReg,
+		"",
+	)
+	if err != nil {
+		t.Fatalf("RunTask error: %v", err)
+	}
+	if result.Output != "task result" {
+		t.Errorf("Output = %q, want %q", result.Output, "task result")
+	}
+	if result.Status != "completed" {
+		t.Errorf("Status = %q", result.Status)
+	}
+	if !result.Success {
+		t.Error("expected Success = true")
+	}
+}
+
+func TestRunTaskWithParentSession(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{
+				Content:    TextContent("parent linked result"),
+				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				StopReason: "end_turn",
+			},
+		},
+	}
+	agt := newTestAgent(cfg, prov)
+
+	result, err := agt.RunTask(
+		context.Background(),
+		"task",
+		"prompt",
+		agt.toolReg,
+		"parent-session-id",
+	)
+	if err != nil {
+		t.Fatalf("RunTask error: %v", err)
+	}
+	if result.Output != "parent linked result" {
+		t.Errorf("Output = %q", result.Output)
+	}
+}

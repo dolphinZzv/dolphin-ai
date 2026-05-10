@@ -330,14 +330,10 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		state.Messages = append(state.Messages, Message{Role: "assistant", Content: content})
 
 		// Log to session
-		if len(providerToolCalls) > 0 {
-			for _, tc := range providerToolCalls {
-				state.Sess.LogToolCall(tc.Name, tc.Arguments)
-			}
-		} else {
-			state.Sess.LogMessage("assistant", content)
+		state.Sess.LogMessage("assistant", content)
+		for _, tc := range providerToolCalls {
+			state.Sess.LogToolCall(tc.Name, tc.Arguments)
 		}
-
 		// Log usage and timing
 		if finalUsage != nil {
 			slog.Debug("llm response",

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/metrics"
 )
 
 // ToolDefinition is the public description of a tool.
@@ -18,6 +19,7 @@ type ToolDefinition struct {
 	Name        string          `json:"name"`
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"input_schema"`
+	Priority    int             `json:"priority"` // lower = preferred in tool listing; 0 = default (100)
 }
 
 // ToolCall is a request to execute a tool.
@@ -54,14 +56,23 @@ func (s *ToolStats) AverageDurationMs() float64 {
 	return float64(s.TotalDuration.Milliseconds()) / float64(s.CallCount)
 }
 
+// DefaultPriority is the priority assigned to tools that don't set one.
+const DefaultPriority = 100
+
 // Registry manages all registered MCP tools, including external server tools.
 type Registry struct {
 	mu      sync.RWMutex
 	tools   map[string]Tool
+	order   []string // registration order, used as tiebreaker in MostUsedTools
 	servers []*ServerClient
 	cfg     *config.MCPConfig
 	filter  map[string]bool // nil = no filter; non-nil = only allow listed tools
 	stats   map[string]*ToolStats
+
+	// metrics collectors (lazily initialized)
+	toolCalls    *metrics.Counter
+	toolErrors   *metrics.Counter
+	toolDuration *metrics.Histogram
 }
 
 func NewRegistry(cfg *config.Config) *Registry {
@@ -76,6 +87,9 @@ func NewRegistry(cfg *config.Config) *Registry {
 func (r *Registry) Register(t Tool) {
 	def := t.Definition()
 	r.mu.Lock()
+	if _, exists := r.tools[def.Name]; !exists {
+		r.order = append(r.order, def.Name)
+	}
 	r.tools[def.Name] = t
 	if _, ok := r.stats[def.Name]; !ok {
 		r.stats[def.Name] = &ToolStats{}
@@ -177,10 +191,16 @@ func (r *Registry) MostUsedTools(n int) []ToolDefinition {
 	}
 
 	sort.Slice(list, func(i, j int) bool {
+		pi := toolPriority(list[i].def)
+		pj := toolPriority(list[j].def)
+		if pi != pj {
+			return pi < pj
+		}
 		if list[i].cnt != list[j].cnt {
 			return list[i].cnt > list[j].cnt
 		}
-		return list[i].def.Name < list[j].def.Name
+		// Tiebreaker: registration order
+		return r.orderIndex(list[i].def.Name) < r.orderIndex(list[j].def.Name)
 	})
 
 	if n > len(list) {
@@ -255,6 +275,7 @@ func (r *Registry) FilteredView(names []string) *Registry {
 
 	return &Registry{
 		tools:   tools,
+		order:   r.order,
 		servers: servers,
 		cfg:     r.cfg,
 		filter:  filter,
@@ -262,7 +283,27 @@ func (r *Registry) FilteredView(names []string) *Registry {
 	}
 }
 
-// Clone returns an independent copy of the registry with the same tools and servers.
+// toolPriority returns the effective priority of a tool definition.
+// A value of 0 means the tool didn't set one, so use DefaultPriority.
+func toolPriority(def ToolDefinition) int {
+	if def.Priority <= 0 {
+		return DefaultPriority
+	}
+	return def.Priority
+}
+
+// orderIndex returns the position of a tool in the registration order.
+// Unknown tools get a large index so they sort last.
+func (r *Registry) orderIndex(name string) int {
+	for i, n := range r.order {
+		if n == name {
+			return i
+		}
+	}
+	return len(r.order)
+}
+
+// Clone returns an independent copy of the registry with the same tools, order, and servers.
 // Useful for per-connection registries that need to add local tools without
 // affecting the shared registry.
 func (r *Registry) Clone() *Registry {
@@ -291,8 +332,12 @@ func (r *Registry) Clone() *Registry {
 		stats[k] = &s
 	}
 
+	order := make([]string, len(r.order))
+	copy(order, r.order)
+
 	return &Registry{
 		tools:   tools,
+		order:   order,
 		servers: servers,
 		cfg:     r.cfg,
 		filter:  filter,
@@ -320,9 +365,20 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
 
+	// Lazy init metrics on first execution
+	r.mu.Lock()
+	if r.toolCalls == nil {
+		r.toolCalls = metrics.NewCounter("mcp_tool_calls_total", "Total MCP tool calls", map[string]string{})
+		r.toolErrors = metrics.NewCounter("mcp_tool_errors_total", "Total MCP tool errors", map[string]string{})
+		r.toolDuration = metrics.NewHistogram("mcp_tool_duration_seconds", "MCP tool execution duration", map[string]string{}, nil)
+	}
+	r.mu.Unlock()
+
+	r.toolCalls.Inc()
 	start := time.Now()
 	result, err := tool.Execute(ctx, input)
 	duration := time.Since(start)
+	r.toolDuration.Observe(duration.Seconds())
 
 	r.mu.Lock()
 	s := r.stats[name]
@@ -334,6 +390,7 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 	s.LastCalledAt = time.Now()
 	s.TotalDuration += duration
 	if err != nil || (result != nil && result.IsError) {
+		r.toolErrors.Inc()
 		s.ErrorCount++
 	}
 	r.mu.Unlock()

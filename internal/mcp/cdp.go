@@ -27,6 +27,7 @@ type CDPTool struct {
 	browserCtx    context.Context
 	browserCancel context.CancelFunc
 	initialized   bool
+	lastUsedAt    time.Time
 }
 
 func NewCDPTool(cfg *config.Config) *CDPTool {
@@ -53,10 +54,14 @@ func NewCDPTool(cfg *config.Config) *CDPTool {
 		"required": []string{"action"},
 	})
 
-	return &CDPTool{
+	t := &CDPTool{
 		cfg:    &cfg.MCP.CDP,
 		schema: schema,
 	}
+	if t.cfg.IdleTimeout > 0 {
+		t.startIdleWatcher(time.Duration(t.cfg.IdleTimeout) * time.Second)
+	}
+	return t
 }
 
 func (c *CDPTool) Definition() ToolDefinition {
@@ -64,6 +69,7 @@ func (c *CDPTool) Definition() ToolDefinition {
 		Name:        "cdp",
 		Description: "Control a browser using Chrome DevTools Protocol. Actions: navigate (goto a URL and wait for page load), click (click an element by CSS selector), screenshot (capture page or element as base64 PNG), evaluate (run JavaScript, supports async/await), get_text (extract visible text from element). Browser state persists across calls within the same session.",
 		InputSchema: c.schema,
+		Priority:    c.cfg.Priority,
 	}
 }
 
@@ -83,6 +89,10 @@ func (c *CDPTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResu
 	if err != nil {
 		return &ToolResult{Content: fmt.Sprintf("browser init failed: %v", err), IsError: true}, nil
 	}
+
+	c.mu.Lock()
+	c.lastUsedAt = time.Now()
+	c.mu.Unlock()
 
 	slog.Debug("cdp executing", "action", params.Action, "headless", c.cfg.Headless)
 
@@ -171,6 +181,29 @@ func (c *CDPTool) shutdownBrowser() {
 		c.allocCancel = nil
 	}
 	c.initialized = false
+}
+
+// Shutdown cleans up browser resources. Safe to call from multiple goroutines.
+func (c *CDPTool) Shutdown() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.shutdownBrowser()
+}
+
+// startIdleWatcher runs a background goroutine that shuts down the browser
+// if no Execute call has been made within the given timeout.
+func (c *CDPTool) startIdleWatcher(timeout time.Duration) {
+	go func() {
+		for {
+			time.Sleep(timeout / 2)
+			c.mu.Lock()
+			if c.initialized && time.Since(c.lastUsedAt) > timeout {
+				slog.Warn("cdp: idle timeout, shutting down browser", "idle", time.Since(c.lastUsedAt).Round(time.Second))
+				c.shutdownBrowser()
+			}
+			c.mu.Unlock()
+		}
+	}()
 }
 
 func (c *CDPTool) navigate(ctx context.Context, url string) (*ToolResult, error) {

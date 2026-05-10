@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/pem"
 	"fmt"
 	"log/slog"
@@ -36,7 +37,7 @@ func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) 
 			if conn.User() != sshCfg.Username {
 				return nil, fmt.Errorf("unauthorized user: %s", conn.User())
 			}
-			if string(password) != sshCfg.Password {
+			if subtle.ConstantTimeCompare(password, []byte(sshCfg.Password)) != 1 {
 				return nil, fmt.Errorf("invalid password")
 			}
 			return &gossh.Permissions{}, nil
@@ -130,6 +131,12 @@ func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
 
 	go gossh.DiscardRequests(reqs)
 
+	// Close sshConn when context is cancelled to unblock chans (P1#8)
+	go func() {
+		<-ctx.Done()
+		sshConn.Close()
+	}()
+
 	for newCh := range chans {
 		if newCh.ChannelType() != "session" {
 			newCh.Reject(gossh.UnknownChannelType, "unsupported")
@@ -215,6 +222,7 @@ func (s *SSHSession) ReadLine() (string, error) {
 			if lineStr != "" && lineStr != "/exit" && lineStr != "/quit" {
 				s.history = append(s.history, lineStr)
 			}
+			msgsReceived.Inc()
 			return lineStr, nil
 
 		case '\b', 0x7f: // backspace
@@ -356,11 +364,13 @@ func (s *SSHSession) ReadLine() (string, error) {
 }
 
 func (s *SSHSession) WriteLine(text string) error {
+	msgsSent.Inc()
 	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"), "\r\n")
 	return err
 }
 
 func (s *SSHSession) WriteString(text string) error {
+	msgsSent.Inc()
 	// Don't add trailing \r\n, but ensure embedded newlines are CRLF
 	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"))
 	return err

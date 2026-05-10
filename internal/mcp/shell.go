@@ -58,6 +58,7 @@ func (s *ShellTool) Definition() ToolDefinition {
 		Name:        "shell",
 		Description: "Execute a shell command and return its output. Use this for file operations, running scripts, and interacting with the system.",
 		InputSchema: s.schema,
+		Priority:    s.cfg.Priority,
 	}
 }
 
@@ -81,7 +82,6 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		if !s.isAllowed(cmdName) {
 			return &ToolResult{Content: fmt.Sprintf("command not allowed: %s (allowed: %v)", cmdName, allowed), IsError: true}, nil
 		}
-		params.Command = cmdName
 	}
 
 	timeout := s.cfg.TimeoutSeconds
