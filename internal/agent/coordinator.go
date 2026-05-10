@@ -155,6 +155,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/commands":
 			c.printCommands(io)
 			continue
+		case line == "/crontab":
+			c.printCronTasks(io)
+			continue
 		case strings.HasPrefix(line, "/cancel"):
 			c.handleCancelCmd(line, io)
 			continue

@@ -466,12 +466,13 @@ func extractText(content json.RawMessage) string {
 	if err := json.Unmarshal(content, &blocks); err != nil {
 		return ""
 	}
+	var buf strings.Builder
 	for _, b := range blocks {
 		if t, ok := b["text"].(string); ok {
-			return t
+			buf.WriteString(t)
 		}
 	}
-	return ""
+	return buf.String()
 }
 
 // callLLMWithRetry calls CompleteStream with exponential backoff retry.
@@ -608,74 +609,63 @@ func (a *Agent) compressHistory(state *LoopState) {
 		return
 	}
 
-	// Rough token estimate: count bytes of marshaled messages / 4
+	// Rough token estimate: count bytes / 4 + overhead per assistant message
 	est := 0
 	for _, m := range state.Messages {
 		est += len(m.Content) / 4
 		if m.Role == "assistant" {
-			est += 20 // overhead per message
+			est += 20
 		}
 	}
 
-	// Add system prompt overhead
 	threshold := int(float64(limit) * 0.7)
 	if est <= threshold {
 		return
 	}
 
-	// Count messages to drop: keep at least last 6 messages (last ~3 turns)
-	// We drop from start, skipping the first user message
 	if len(state.Messages) <= 6 {
 		return
 	}
 
-	dropped := 0
-	// Drop complete turns (user + all following assistant/tool messages up to next user).
-	// Keep at least the last user message and everything after it (current turn).
-	// If no user found, keep at least 2 messages.
-	findKeepIdx := func() int {
-		for j := len(state.Messages) - 1; j >= 0; j-- {
-			if state.Messages[j].Role == "user" {
-				return j
-			}
-		}
-		if len(state.Messages) > 2 {
-			return len(state.Messages) - 2
-		}
-		return 0
-	}
-
-	for i := 0; ; {
-		keepIdx := findKeepIdx()
-		if i >= keepIdx {
+	// Find the oldest message we must keep: the last user message and everything after it.
+	keepStart := len(state.Messages)
+	for j := len(state.Messages) - 1; j >= 0; j-- {
+		if state.Messages[j].Role == "user" {
+			keepStart = j
 			break
 		}
+	}
+	if keepStart == len(state.Messages) && len(state.Messages) > 2 {
+		keepStart = len(state.Messages) - 2
+	}
+
+	// Walk from the front, dropping complete user+response turn groups.
+	// After each drop, i stays at the same position because the next message slides in.
+	dropped := 0
+	for i := 0; i < keepStart; {
 		if state.Messages[i].Role != "user" {
 			i++
 			continue
 		}
-		// Find end of this turn: next user message or end
 		end := i + 1
-		for end < len(state.Messages) && state.Messages[end].Role != "user" {
+		for end < keepStart && state.Messages[end].Role != "user" {
 			end++
 		}
-		// Don't drop if it overlaps with the keep zone
-		if end > keepIdx {
+		if end > keepStart {
 			break
 		}
-		// Drop [i, end) as a complete turn
 		for j := i; j < end; j++ {
 			est -= len(state.Messages[j].Content) / 4
 		}
 		dropped += end - i
 		state.Messages = append(state.Messages[:i], state.Messages[end:]...)
+		keepStart -= (end - i)
 	}
 
 	if dropped > 0 {
 		zap.S().Infow("context compressed",
 			"dropped_messages", dropped,
 			"remaining", len(state.Messages),
-			"estimated_tokens_before", est,
 			"turn", state.Turn,
 		)
 		state.Sess.LogSystem(fmt.Sprintf("context compressed: dropped %d old messages, %d remaining", dropped, len(state.Messages)))

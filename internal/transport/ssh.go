@@ -195,7 +195,7 @@ var sshCompletions = []string{"/exit", "/quit", "/help"}
 // redraw writes the line buffer to the channel starting from column 0,
 // then moves the cursor to the current position.
 func (s *SSHSession) redraw(line []byte, pos int) {
-	fmt.Fprint(s.ch, "\r> ", string(line))
+	fmt.Fprint(s.ch, "\r> ", string(line), "\x1b[K")
 	// If cursor isn't at end, move it back
 	back := len(line) - pos
 	for i := 0; i < back; i++ {

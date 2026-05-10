@@ -242,8 +242,8 @@ func (m *Manager) runLoop(ctx context.Context) {
 
 // checkDue checks all tasks and pushes due ones to the channel.
 func (m *Manager) checkDue() {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
 	now := time.Now()
 	for _, task := range m.tasks {

@@ -145,9 +145,10 @@ func (s *Session) LogToolResult(name string, result json.RawMessage, isErr bool)
 }
 
 func (s *Session) LogSystem(msg string) error {
+	encoded, _ := json.Marshal(msg)
 	return s.LogEvent(SessionEvent{
 		Type:    EventSystem,
-		Content: json.RawMessage(fmt.Sprintf(`"%s"`, msg)),
+		Content: json.RawMessage(encoded),
 	})
 }
 

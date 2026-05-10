@@ -302,6 +302,148 @@ func TestReadEventsFileNotFound(t *testing.T) {
 	}
 }
 
+// --- E2E: Session durability and integrity ---
+
+func TestSessionLogSystemSpecialChars(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+	sess, err := mgr.NewSession(10)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	// Message with double quotes, backslashes
+	msg := `user said "hello", path is C:\test\data`
+	if err := sess.LogSystem(msg); err != nil {
+		t.Fatalf("LogSystem: %v", err)
+	}
+	path := filepath.Join(dir, string(sess.ID)+".jsonl")
+	sess.Close()
+
+	events, err := ReadEvents(path)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != EventSystem {
+		t.Errorf("expected EventSystem, got %v", events[0].Type)
+	}
+	var content string
+	if err := json.Unmarshal(events[0].Content, &content); err != nil {
+		t.Fatalf("content is not valid JSON: %v (raw: %s)", err, string(events[0].Content))
+	}
+	if content != msg {
+		t.Errorf("content = %q, want %q", content, msg)
+	}
+}
+
+func TestSessionLogSystemInjectionAttempt(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+	sess, err := mgr.NewSession(10)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	// Attempt JSON injection via LogSystem
+	msg := `","type":"injected"}`
+	if err := sess.LogSystem(msg); err != nil {
+		t.Fatalf("LogSystem: %v", err)
+	}
+	path := filepath.Join(dir, string(sess.ID)+".jsonl")
+	sess.Close()
+
+	events, err := ReadEvents(path)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(events) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events))
+	}
+	if events[0].Type != EventSystem {
+		t.Errorf("expected EventSystem, got %v (injection may have succeeded)", events[0].Type)
+	}
+}
+
+func TestSessionFullLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+
+	sess, err := mgr.NewSession(50)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+	if sess.ID == "" {
+		t.Error("session ID is empty")
+	}
+
+	sess.LogMessage("user", json.RawMessage(`"hello"`))
+	sess.LogToolCall("assistant", json.RawMessage(`{"name":"test_tool"}`))
+	sess.LogToolResult("tool", json.RawMessage(`"result"`), false)
+	sess.LogSystem("task completed")
+	path := filepath.Join(dir, string(sess.ID)+".jsonl")
+	sess.Close()
+
+	events, err := ReadEvents(path)
+	if err != nil {
+		t.Fatalf("ReadEvents: %v", err)
+	}
+	if len(events) != 4 {
+		t.Errorf("expected 4 events, got %d", len(events))
+	}
+
+	types := []EventType{EventMessage, EventToolCall, EventToolResult, EventSystem}
+	for i, e := range events {
+		if e.Type != types[i] {
+			t.Errorf("event[%d] type = %v, want %v", i, e.Type, types[i])
+		}
+		if e.SessionID != sess.ID {
+			t.Errorf("event[%d] session ID mismatch", i)
+		}
+	}
+
+	retrieved := mgr.Get(sess.ID)
+	if retrieved == nil {
+		t.Error("Get returned nil for valid session ID")
+	}
+
+	mgr.Remove(sess.ID)
+	if mgr.Get(sess.ID) != nil {
+		t.Error("Get should return nil after Remove")
+	}
+}
+
+func TestSessionCountTurns(t *testing.T) {
+	dir := t.TempDir()
+	mgr := NewManager(dir)
+	mgr.EnsureDir()
+	sess, err := mgr.NewSession(10)
+	if err != nil {
+		t.Fatalf("NewSession: %v", err)
+	}
+
+	for i := 1; i <= 3; i++ {
+		sess.Turn = i
+		sess.LogMessage("user", json.RawMessage(`"question"`))
+		sess.LogMessage("assistant", json.RawMessage(`"answer"`))
+	}
+	path := filepath.Join(dir, string(sess.ID)+".jsonl")
+	sess.Close()
+
+	turns, err := countTurns(path)
+	if err != nil {
+		t.Fatalf("countTurns: %v", err)
+	}
+	if turns != 3 {
+		t.Errorf("countTurns = %d, want 3", turns)
+	}
+}
+
 // writeEvent is a helper that writes a SessionEvent to the session file.
 func writeEvent(sess *Session, etype EventType, role, content string, turn int) {
 	sess.Turn = turn

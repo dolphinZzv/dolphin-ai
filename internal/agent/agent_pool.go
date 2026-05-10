@@ -21,15 +21,16 @@ type AgentInstance struct {
 	agent *Agent
 	pool  *AgentPool
 
-	mu            sync.RWMutex
-	createdAt     time.Time
-	status        string // idle / busy / error
-	tasksDone     int
-	lastTaskAt    time.Time
-	taskCh        chan Task
-	cancel        context.CancelFunc // cancels the current task
-	currentTaskID string             // task ID currently being processed
-	doneCh        chan struct{}      // closed when the worker goroutine exits
+	mu              sync.RWMutex
+	createdAt       time.Time
+	status          string // idle / busy / error
+	tasksDone       int
+	lastTaskAt      time.Time
+	taskCh          chan Task
+	cancel          context.CancelFunc // cancels the current task
+	currentTaskID   string             // task ID currently being processed
+	doneCh          chan struct{}      // closed when the worker goroutine exits
+	taskChCloseOnce sync.Once
 }
 
 func (inst *AgentInstance) Status() string {
@@ -90,7 +91,7 @@ func NewAgentPool(ctx context.Context, cfg PoolConfig) *AgentPool {
 	p := &AgentPool{
 		cfg:            cfg,
 		agents:         make(map[string]*AgentInstance),
-		resultCh:       make(chan TaskResult, 64),
+		resultCh:       make(chan TaskResult, 128),
 		sem:            make(chan struct{}, cfg.MaxConcurrency),
 		coordinatorCtx: ctx,
 		cancel:         cancel,
@@ -166,11 +167,17 @@ func (p *AgentPool) workerLoop(inst *AgentInstance, taskCh <-chan Task) {
 			inst.mu.Lock()
 			inst.status = "error"
 			inst.mu.Unlock()
-			p.resultCh <- TaskResult{
+			select {
+			case p.resultCh <- TaskResult{
 				AgentName: inst.Def.Name,
 				Success:   false,
 				Status:    "error",
 				Error:     fmt.Sprintf("panic: %v", r),
+			}:
+			default:
+				zap.S().Warnw("result channel closed, dropping panic result",
+					"name", inst.Def.Name,
+				)
 			}
 		}
 	}()
@@ -275,7 +282,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	select {
 	case p.resultCh <- result:
 	default:
-		zap.S().Warnw("result channel full, dropping result", "agent", inst.Def.Name, "task_id", task.ID)
+		zap.S().Errorw("result channel full, dropping result", "agent", inst.Def.Name, "task_id", task.ID)
 	}
 }
 
@@ -302,7 +309,10 @@ func (p *AgentPool) Collect() []TaskResult {
 	var results []TaskResult
 	for {
 		select {
-		case r := <-p.resultCh:
+		case r, ok := <-p.resultCh:
+			if !ok {
+				return results
+			}
 			results = append(results, r)
 		default:
 			return results
@@ -393,7 +403,9 @@ func (p *AgentPool) Remove(name string) bool {
 		}
 		inst.mu.Unlock()
 
-		close(inst.taskCh)
+		inst.taskChCloseOnce.Do(func() {
+			close(inst.taskCh)
+		})
 
 		// Wait for worker to exit (with timeout to prevent deadlock)
 		select {
@@ -416,6 +428,7 @@ func (p *AgentPool) Shutdown() {
 	zap.S().Infow("agent pool shutting down...")
 	p.cancel()  // Cancel all tasks
 	p.wg.Wait() // Wait for all goroutines
+	close(p.resultCh)
 	// Clean up all coordinator-created workspaces
 	p.mu.Lock()
 	for name, inst := range p.agents {
@@ -425,7 +438,6 @@ func (p *AgentPool) Shutdown() {
 		delete(p.agents, name)
 	}
 	p.mu.Unlock()
-	close(p.resultCh)
 	zap.S().Infow("agent pool shutdown complete")
 }
 
@@ -466,7 +478,9 @@ func (p *AgentPool) reapIdleAgents() {
 				if !lastRun.IsZero() && time.Since(lastRun) > p.cfg.IdleTimeout {
 					zap.S().Infow("reaping idle coordinator-created agent", "name", name)
 					delete(p.agents, name)
-					close(inst.taskCh)
+					inst.taskChCloseOnce.Do(func() {
+						close(inst.taskCh)
+					})
 					reap = append(reap, inst)
 				}
 			}

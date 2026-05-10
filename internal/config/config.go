@@ -260,15 +260,14 @@ func Load(cfgFile string) (*Config, error) {
 		if data, err := os.ReadFile(pwFile); err == nil && len(data) > 0 {
 			cfg.Transport.SSH.Password = string(data)
 		} else {
-			buf := make([]byte, 6)
+			buf := make([]byte, 16)
 			rand.Read(buf)
 			cfg.Transport.SSH.Password = hex.EncodeToString(buf)
 			os.MkdirAll(filepath.Dir(pwFile), 0700)
 			os.WriteFile(pwFile, []byte(cfg.Transport.SSH.Password), 0600)
-			fmt.Fprintf(os.Stderr, "\n=== SSH auto-generated password: %s ===\n", cfg.Transport.SSH.Password)
+			fmt.Fprintf(os.Stderr, "\n=== SSH auto-generated password saved to: %s ===\n", pwFile)
 			fmt.Fprintf(os.Stderr, "Username: %s\n", cfg.Transport.SSH.Username)
-			fmt.Fprintf(os.Stderr, "WARNING: Password stored in plaintext at: %s\n", pwFile)
-			fmt.Fprintf(os.Stderr, "For better security, configure SSH key authentication.\n")
+			fmt.Fprintf(os.Stderr, "WARNING: Password stored in plaintext. For better security, configure SSH key authentication.\n")
 		}
 	}
 

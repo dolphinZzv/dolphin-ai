@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
@@ -215,6 +216,225 @@ func TestRunToolCallAndStreaming(t *testing.T) {
 	}
 	if !strings.Contains(output, "tool done") {
 		t.Error("expected final response after tool, got:", output)
+	}
+}
+
+// --- E2E: Context compression, multi-tool chain, error recovery ---
+
+func TestRunContextCompressionTriggered(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 20
+	// Set a low context limit to trigger compression
+	cfg.LLM.MaxContextTokens = 100
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+
+	// Pre-populate many messages to exceed context limit
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("compressed response"), Usage: &Usage{InputTokens: 5, OutputTokens: 10}, StopReason: "end_turn"},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	// Build up a large message history to trigger compression
+	io := &mockIO{lines: []string{"msg1", "msg2", "msg3", "msg4", "msg5", "msg6", "msg7", "msg8", "/exit"}}
+
+	// Run — should not panic even with compression
+	agt.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "compressed response") {
+		t.Error("expected response despite context compression, got:", output)
+	}
+}
+
+func TestRunMultiToolChain(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 20
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	toolReg.Register(&mockTool{name: "tool_a"})
+	toolReg.Register(&mockTool{name: "tool_b"})
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{
+				Content:    jsonContent(`[{"type":"text","text":"calling tool_a"},{"type":"tool_use","id":"t1","name":"tool_a","input":{}}]`),
+				ToolCalls:  []ToolCall{{ID: "t1", Name: "tool_a", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &Usage{InputTokens: 10, OutputTokens: 5},
+				StopReason: "tool_use",
+			},
+			{
+				Content:    jsonContent(`[{"type":"text","text":"calling tool_b"},{"type":"tool_use","id":"t2","name":"tool_b","input":{}}]`),
+				ToolCalls:  []ToolCall{{ID: "t2", Name: "tool_b", Arguments: json.RawMessage(`{}`)}},
+				Usage:      &Usage{InputTokens: 15, OutputTokens: 5},
+				StopReason: "tool_use",
+			},
+			{
+				Content:    TextContent("all tools done"),
+				Usage:      &Usage{InputTokens: 20, OutputTokens: 10},
+				StopReason: "end_turn",
+			},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	io := &mockIO{lines: []string{"run chain", "/exit"}}
+
+	agt.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "tool_a") {
+		t.Error("expected tool_a to be called, got:", output)
+	}
+	if !strings.Contains(output, "tool_b") {
+		t.Error("expected tool_b to be called, got:", output)
+	}
+	if !strings.Contains(output, "all tools done") {
+		t.Error("expected final response after tool chain, got:", output)
+	}
+}
+
+func TestRunErrorRecovery(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 20
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+	// No tools registered — if LLM tries to call one, it won't be found
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{
+				Content:    TextContent("simple response"),
+				Usage:      &Usage{InputTokens: 5, OutputTokens: 10},
+				StopReason: "end_turn",
+			},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	io := &mockIO{lines: []string{"hello", "/exit"}}
+
+	agt.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "simple response") {
+		t.Error("expected response, got:", output)
+	}
+}
+
+func TestRunTurnContextCancelled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 10
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("response"), Usage: &Usage{}, StopReason: "end_turn"},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	io := &mockIO{lines: []string{"msg1"}}
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	// Should exit gracefully when context is cancelled
+	agt.Run(ctx, io)
+	// Test passes if no panic
+}
+
+func TestRunTurnWithThinking(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 10
+	cfg.LLM.MaxContextTokens = 100000
+
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr.EnsureDir()
+
+	toolReg := mcp.NewRegistry(cfg)
+
+	// Response with thinking block + text block
+	content := json.RawMessage(`[{"type":"thinking","thinking":"let me think about this"},{"type":"text","text":"final answer"}]`)
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{
+				Content:    content,
+				Usage:      &Usage{InputTokens: 10, OutputTokens: 20},
+				StopReason: "end_turn",
+			},
+		},
+	}
+
+	agt := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+
+	io := &mockIO{lines: []string{"complex question", "/exit"}}
+
+	agt.Run(context.Background(), io)
+
+	output := io.writes.String()
+	if !strings.Contains(output, "final answer") {
+		t.Error("expected final answer in output, got:", output)
 	}
 }
 

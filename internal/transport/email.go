@@ -158,19 +158,19 @@ func (t *EmailTransport) poll() {
 
 	c, err := client.DialTLS(addr, nil)
 	if err != nil {
-		zap.S().Debugw("email imap connect failed", "error", err)
+		zap.S().Warnw("email imap connect failed", "error", err)
 		return
 	}
 	defer c.Logout()
 
 	if err := c.Login(t.cfg.Username, t.cfg.Password); err != nil {
-		zap.S().Debugw("email imap login failed", "error", err)
+		zap.S().Warnw("email imap login failed", "error", err)
 		return
 	}
 
 	mbox, err := c.Select("INBOX", false)
 	if err != nil {
-		zap.S().Debugw("email imap select inbox failed", "error", err)
+		zap.S().Warnw("email imap select inbox failed", "error", err)
 		return
 	}
 	if mbox.Messages == 0 {

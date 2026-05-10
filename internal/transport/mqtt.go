@@ -32,18 +32,19 @@ type MQTTTransport struct {
 	msgCh     chan string
 	closeCh   chan struct{}
 	closeOnce sync.Once
-	respTopic atomic.Value // stores last derived response topic (string)
+	respTopic string
+	respMu    sync.Mutex
 	connected atomic.Bool
 	closeMu   sync.Mutex
 }
 
 func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
 	t := &MQTTTransport{
-		cfg:     &cfg.Transport.MQTT,
-		msgCh:   make(chan string, 1024),
-		closeCh: make(chan struct{}),
+		cfg:       &cfg.Transport.MQTT,
+		msgCh:     make(chan string, 4096),
+		closeCh:   make(chan struct{}),
+		respTopic: cfg.Transport.MQTT.ResponseTopic,
 	}
-	t.respTopic.Store(cfg.Transport.MQTT.ResponseTopic)
 	return t
 }
 
@@ -81,7 +82,9 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	token = t.client.Subscribe(t.cfg.Topic, 0, func(c mqtt.Client, msg mqtt.Message) {
 		// Derive response topic from the actual incoming topic
 		respTopic := deriveResponseTopic(t.cfg.Topic, t.cfg.ResponseTopic, msg.Topic())
-		t.respTopic.Store(respTopic)
+		t.respMu.Lock()
+		t.respTopic = respTopic
+		t.respMu.Unlock()
 
 		payload := string(msg.Payload())
 		zap.S().Debugw("mqtt command received",
@@ -92,7 +95,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		select {
 		case t.msgCh <- payload:
 		default:
-			zap.S().Warnw("mqtt message dropped, channel full")
+			zap.S().Errorw("mqtt message dropped, channel full")
 		}
 	})
 	if token.Wait() && token.Error() != nil {
@@ -132,7 +135,9 @@ func (t *MQTTTransport) publish(payload string) error {
 		return fmt.Errorf("mqtt not connected")
 	}
 	msgsSent.Inc()
-	topic, _ := t.respTopic.Load().(string)
+	t.respMu.Lock()
+	topic := t.respTopic
+	t.respMu.Unlock()
 	if topic == "" {
 		topic = t.cfg.ResponseTopic
 	}
@@ -145,12 +150,12 @@ func (t *MQTTTransport) publish(payload string) error {
 func (t *MQTTTransport) Close() error {
 	t.closeOnce.Do(func() {
 		t.closeMu.Lock()
+		defer t.closeMu.Unlock()
 		if t.client != nil && t.connected.Load() {
 			t.connected.Store(false)
 			t.client.Unsubscribe(t.cfg.Topic)
 			t.client.Disconnect(250)
 		}
-		t.closeMu.Unlock()
 		close(t.closeCh)
 	})
 	return nil

@@ -79,10 +79,13 @@ type Registry struct {
 
 func NewRegistry(cfg *config.Config) *Registry {
 	return &Registry{
-		tools:   make(map[string]Tool),
-		servers: make([]*ServerClient, 0),
-		cfg:     &cfg.MCP,
-		stats:   make(map[string]*ToolStats),
+		tools:        make(map[string]Tool),
+		servers:      make([]*ServerClient, 0),
+		cfg:          &cfg.MCP,
+		stats:        make(map[string]*ToolStats),
+		toolCalls:    metrics.NewCounter("mcp_tool_calls_total", "Total MCP tool calls", map[string]string{}),
+		toolErrors:   metrics.NewCounter("mcp_tool_errors_total", "Total MCP tool errors", map[string]string{}),
+		toolDuration: metrics.NewHistogram("mcp_tool_duration_seconds", "MCP tool execution duration", map[string]string{}, nil),
 	}
 }
 
@@ -277,12 +280,15 @@ func (r *Registry) FilteredView(names []string) *Registry {
 	}
 
 	return &Registry{
-		tools:   tools,
-		order:   r.order,
-		servers: servers,
-		cfg:     r.cfg,
-		filter:  filter,
-		stats:   stats,
+		tools:        tools,
+		order:        r.order,
+		servers:      servers,
+		cfg:          r.cfg,
+		filter:       filter,
+		stats:        stats,
+		toolCalls:    r.toolCalls,
+		toolErrors:   r.toolErrors,
+		toolDuration: r.toolDuration,
 	}
 }
 
@@ -339,12 +345,15 @@ func (r *Registry) Clone() *Registry {
 	copy(order, r.order)
 
 	return &Registry{
-		tools:   tools,
-		order:   order,
-		servers: servers,
-		cfg:     r.cfg,
-		filter:  filter,
-		stats:   stats,
+		tools:        tools,
+		order:        order,
+		servers:      servers,
+		cfg:          r.cfg,
+		filter:       filter,
+		stats:        stats,
+		toolCalls:    r.toolCalls,
+		toolErrors:   r.toolErrors,
+		toolDuration: r.toolDuration,
 	}
 }
 
@@ -367,15 +376,6 @@ func (r *Registry) Execute(ctx context.Context, name string, input json.RawMessa
 	if !ok {
 		return nil, fmt.Errorf("tool not found: %s", name)
 	}
-
-	// Lazy init metrics on first execution
-	r.mu.Lock()
-	if r.toolCalls == nil {
-		r.toolCalls = metrics.NewCounter("mcp_tool_calls_total", "Total MCP tool calls", map[string]string{})
-		r.toolErrors = metrics.NewCounter("mcp_tool_errors_total", "Total MCP tool errors", map[string]string{})
-		r.toolDuration = metrics.NewHistogram("mcp_tool_duration_seconds", "MCP tool execution duration", map[string]string{}, nil)
-	}
-	r.mu.Unlock()
 
 	r.toolCalls.Inc()
 	start := time.Now()

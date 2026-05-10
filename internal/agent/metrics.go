@@ -8,7 +8,7 @@ var (
 	llmRequests     = metrics.NewCounter("llm_requests_total", "Total LLM API requests", map[string]string{})
 	llmErrors       = metrics.NewCounter("llm_errors_total", "Total LLM API errors", map[string]string{})
 	llmDuration     = metrics.NewHistogram("llm_request_duration_seconds", "LLM request duration", map[string]string{}, nil)
-	llmInputTokens  = metrics.NewCounter("llm_tokens_total", "Total LLM tokens", map[string]string{})
+	llmInputTokens  = metrics.NewCounter("llm_input_tokens_total", "Total LLM input tokens", map[string]string{})
 	llmOutputTokens = metrics.NewCounter("llm_output_tokens_total", "Total LLM output tokens", map[string]string{})
 
 	// Task metrics

@@ -217,7 +217,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Fprintf(os.Stderr, "\n=== SSH server listening on %s ===\n", addr)
 		fmt.Fprintf(os.Stderr, "Connect: ssh %s@<host> -p %s\n", cfg.Transport.SSH.Username, addr[1:])
-		fmt.Fprintf(os.Stderr, "Password: %s\n\n", cfg.Transport.SSH.Password)
 		zap.S().Infow("ssh transport listening", "addr", addr)
 
 		ctx, cancel := context.WithCancel(context.Background())

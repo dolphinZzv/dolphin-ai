@@ -246,11 +246,7 @@ func writeMetric(b *strings.Builder, mtype, name, help string, labels map[string
 		}
 	}
 
-	if name, ok := trimName(name); ok {
-		b.WriteString(name)
-	} else {
-		b.WriteString(sanitizeName(name))
-	}
+	b.WriteString(sanitizeName(name))
 
 	if len(labels) > 0 {
 		b.WriteString("{")
@@ -284,10 +280,6 @@ func formatFloat(v float64) string {
 
 func isHistogramBucket(name string) bool {
 	return strings.HasSuffix(name, "_bucket") || strings.HasSuffix(name, "_sum") || strings.HasSuffix(name, "_count")
-}
-
-func trimName(name string) (string, bool) {
-	return name, true
 }
 
 func mergeLabels(base map[string]string, key, value string) map[string]string {

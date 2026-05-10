@@ -36,7 +36,6 @@ func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
 		"base_url", baseURL,
 		"model", cfg.Model,
 		"has_key", cfg.APIKey != "",
-		"key_len", len(cfg.APIKey),
 	)
 
 	return &AnthropicProvider{
@@ -48,7 +47,7 @@ func NewAnthropicProvider(cfg *config.LLMConfig) *AnthropicProvider {
 	}
 }
 
-func (p *AnthropicProvider) Type() ProviderType { return "anthropic" }
+func (p *AnthropicProvider) Type() ProviderType { return ProviderAnthropic }
 
 // ---- API types ----
 

@@ -9,7 +9,8 @@ import (
 type ProviderType string
 
 const (
-	ProviderOpenAI ProviderType = "openai"
+	ProviderOpenAI    ProviderType = "openai"
+	ProviderAnthropic ProviderType = "anthropic"
 )
 
 // Message represents a message in the conversation.
