@@ -25,7 +25,8 @@ coverage.out
 *.swp
 *.swo
 
-app
+# macOS app (old, now in panda submodule)
+app/dolphin/
 .DS_Store
 
 .sisyphus
