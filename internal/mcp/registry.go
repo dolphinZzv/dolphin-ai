@@ -20,6 +20,7 @@ type ToolDefinition struct {
 	Description string          `json:"description"`
 	InputSchema json.RawMessage `json:"input_schema"`
 	Priority    int             `json:"priority"` // lower = preferred in tool listing; 0 = default (100)
+	Source      string          `json:"source"`   // origin: "built-in", server name, etc.
 }
 
 // ToolCall is a request to execute a tool.
@@ -115,6 +116,7 @@ func (r *Registry) LoadServers() error {
 		}
 
 		for _, def := range defs {
+			def.Source = name
 			wrapper := &serverTool{
 				server: client,
 				def:    def,

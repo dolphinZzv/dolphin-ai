@@ -174,8 +174,11 @@ func TestManager_RecordUsage(t *testing.T) {
 func TestManager_LoadNonExistentDir(t *testing.T) {
 	m := NewManager("/nonexistent/path")
 	err := m.Load()
-	if err == nil {
-		t.Error("expected error for nonexistent directory")
+	if err != nil {
+		t.Fatalf("Load() should not error for nonexistent dir: %v", err)
+	}
+	if len(m.List()) != 0 {
+		t.Errorf("expected 0 skills, got %d", len(m.List()))
 	}
 }
 
@@ -183,6 +186,51 @@ func TestManager_DefaultDir(t *testing.T) {
 	m := NewManager("")
 	if m.Dir() != ".dolphinzZ/skills" {
 		t.Errorf("default dir = %q", m.Dir())
+	}
+}
+
+func TestManager_MultiDir(t *testing.T) {
+	baseDir := t.TempDir()
+	overrideDir := t.TempDir()
+
+	// Base dir: skill-a
+	os.WriteFile(filepath.Join(baseDir, "a.md"), []byte("---\nname: skill-a\ndescription: Base A\n---\n# Base A"), 0644)
+	// Override dir: skill-a (overrides), skill-b (new)
+	os.WriteFile(filepath.Join(overrideDir, "a.md"), []byte("---\nname: skill-a\ndescription: Override A\n---\n# Override A"), 0644)
+	os.WriteFile(filepath.Join(overrideDir, "b.md"), []byte("---\nname: skill-b\ndescription: B\n---\n# B"), 0644)
+
+	m := NewManager(baseDir, overrideDir)
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	// skill-a: should come from overrideDir (later dir wins)
+	sa, ok := m.Get("skill-a")
+	if !ok {
+		t.Fatal("expected skill-a")
+	}
+	if sa.Description != "Override A" {
+		t.Errorf("skill-a description = %q, want 'Override A'", sa.Description)
+	}
+	if sa.Source != overrideDir {
+		t.Errorf("skill-a source = %q, want %q", sa.Source, overrideDir)
+	}
+
+	// skill-b: from overrideDir
+	sb, ok := m.Get("skill-b")
+	if !ok {
+		t.Fatal("expected skill-b")
+	}
+	if sb.Source != overrideDir {
+		t.Errorf("skill-b source = %q, want %q", sb.Source, overrideDir)
+	}
+}
+
+func TestManager_Dirs(t *testing.T) {
+	m := NewManager("a", "b", "c")
+	dirs := m.Dirs()
+	if len(dirs) != 3 || dirs[0] != "a" || dirs[1] != "b" || dirs[2] != "c" {
+		t.Errorf("Dirs() = %v, want [a b c]", dirs)
 	}
 }
 

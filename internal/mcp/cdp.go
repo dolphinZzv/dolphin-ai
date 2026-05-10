@@ -70,6 +70,7 @@ func (c *CDPTool) Definition() ToolDefinition {
 		Description: "Control a browser using Chrome DevTools Protocol. Actions: navigate (goto a URL and wait for page load), click (click an element by CSS selector), screenshot (capture page or element as base64 PNG), evaluate (run JavaScript, supports async/await), get_text (extract visible text from element). Browser state persists across calls within the same session.",
 		InputSchema: c.schema,
 		Priority:    c.cfg.Priority,
+		Source:      "built-in",
 	}
 }
 

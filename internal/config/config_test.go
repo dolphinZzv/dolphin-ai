@@ -281,3 +281,192 @@ func TestMaxContextTokensDefault(t *testing.T) {
 		t.Errorf("max_context_tokens = %d, want 1048576", cfg.LLM.MaxContextTokens)
 	}
 }
+
+func TestMultiLevelMerge(t *testing.T) {
+	// Create three config levels
+	sysDir := t.TempDir()
+	userHome := t.TempDir()
+	projectDir := t.TempDir()
+
+	// System config (lowest priority)
+	writeConfig(t, sysDir, `
+llm:
+  type: "anthropic"
+  model: "claude-3"
+session:
+  max_loop: 10
+`)
+
+	// User config (medium priority) — override model, add mcp server
+	writeConfig(t, filepath.Join(userHome, ".dolphinzZ"), `
+llm:
+  model: "gpt-4o"
+mcp:
+  servers:
+    server-a:
+      type: "stdio"
+      command: "node"
+      args: ["a.js"]
+`)
+
+	// Project config (highest priority among defaults) — override max_loop, add another server
+	writeConfig(t, projectDir, `
+session:
+  max_loop: 99
+mcp:
+  servers:
+    server-b:
+      type: "stdio"
+      command: "python"
+      args: ["b.py"]
+`)
+
+	origSystem := SystemConfigDir
+	origProject := ProjectConfigDir
+	SystemConfigDir = sysDir
+	ProjectConfigDir = projectDir
+	t.Cleanup(func() {
+		SystemConfigDir = origSystem
+		ProjectConfigDir = origProject
+	})
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", userHome)
+	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	// From system config (not overridden)
+	if cfg.LLM.Type != "anthropic" {
+		t.Errorf("llm.type = %q, want anthropic", cfg.LLM.Type)
+	}
+
+	// From user config (overrides system)
+	if cfg.LLM.Model != "gpt-4o" {
+		t.Errorf("llm.model = %q, want gpt-4o", cfg.LLM.Model)
+	}
+
+	// From project config (overrides system)
+	if cfg.Session.MaxLoop != 99 {
+		t.Errorf("session.max_loop = %d, want 99", cfg.Session.MaxLoop)
+	}
+
+	// Deep-merge: both servers should exist
+	if _, ok := cfg.MCP.Servers["server-a"]; !ok {
+		t.Errorf("expected server-a in merged config, got servers: %v", cfg.MCP.Servers)
+	}
+	if _, ok := cfg.MCP.Servers["server-b"]; !ok {
+		t.Errorf("expected server-b in merged config, got servers: %v", cfg.MCP.Servers)
+	}
+
+	// server-a args from user config should be preserved
+	sa := cfg.MCP.Servers["server-a"]
+	if sa.Command != "node" {
+		t.Errorf("server-a command = %q, want node", sa.Command)
+	}
+}
+
+func TestMultiLevelMergeWithCFlag(t *testing.T) {
+	projectDir := t.TempDir()
+	overrideDir := t.TempDir()
+
+	// Project config
+	writeConfig(t, projectDir, `
+llm:
+  model: "gpt-4o"
+session:
+  max_loop: 50
+`)
+
+	// -c override file (highest priority)
+	writeConfig(t, overrideDir, `
+session:
+  max_loop: 999
+`)
+
+	origProject := ProjectConfigDir
+	ProjectConfigDir = projectDir
+	t.Cleanup(func() { ProjectConfigDir = origProject })
+
+	cfgFile := filepath.Join(overrideDir, "config.yaml")
+	cfg, err := Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	// From project config (not overridden by -c)
+	if cfg.LLM.Model != "gpt-4o" {
+		t.Errorf("llm.model = %q, want gpt-4o", cfg.LLM.Model)
+	}
+
+	// From -c flag (overrides project)
+	if cfg.Session.MaxLoop != 999 {
+		t.Errorf("session.max_loop = %d, want 999", cfg.Session.MaxLoop)
+	}
+}
+
+func TestMCPServersDeepMerge(t *testing.T) {
+	userHome := t.TempDir()
+	projectDir := t.TempDir()
+
+	// User config: server-a with args
+	writeConfig(t, filepath.Join(userHome, ".dolphinzZ"), `
+mcp:
+  servers:
+    server-a:
+      type: "stdio"
+      command: "node"
+      args: ["index.js"]
+      url: ""
+`)
+
+	// Project config: server-a overrides args, adds server-b
+	writeConfig(t, projectDir, `
+mcp:
+  servers:
+    server-a:
+      args: ["override.js"]
+    server-b:
+      type: "stdio"
+      command: "python"
+      args: ["server.py"]
+`)
+
+	origProject := ProjectConfigDir
+	ProjectConfigDir = projectDir
+	t.Cleanup(func() { ProjectConfigDir = origProject })
+
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", userHome)
+	t.Cleanup(func() { os.Setenv("HOME", origHome) })
+
+	cfg, err := Load("")
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+
+	// Both servers should exist
+	sa, ok := cfg.MCP.Servers["server-a"]
+	if !ok {
+		t.Fatal("expected server-a in merged config")
+	}
+	// server-a command from user (not overridden)
+	if sa.Command != "node" {
+		t.Errorf("server-a command = %q, want node", sa.Command)
+	}
+	// server-a args overridden by project
+	if len(sa.Args) != 1 || sa.Args[0] != "override.js" {
+		t.Errorf("server-a args = %v, want [override.js]", sa.Args)
+	}
+
+	sb, ok := cfg.MCP.Servers["server-b"]
+	if !ok {
+		t.Fatal("expected server-b in merged config")
+	}
+	if sb.Command != "python" {
+		t.Errorf("server-b command = %q, want python", sb.Command)
+	}
+}

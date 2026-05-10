@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"dolphinzZ/internal/agent"
+	"dolphinzZ/internal/command"
 	"dolphinzZ/internal/config"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/metrics"
@@ -116,13 +117,30 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		slog.Info("no agents directory, using single-agent mode", "dir", agentsDir)
 	}
 
-	// Initialize skill manager
-	skillMgr := skill.NewManager(cfg.Skills.Dir)
-	if err := skillMgr.Load(); err != nil {
-		slog.Debug("skills directory not found, skills disabled", "dir", cfg.Skills.Dir, "error", err)
-	} else {
-		skills := skillMgr.List()
-		slog.Info("skills loaded", "dir", cfg.Skills.Dir, "count", len(skills))
+	// Initialize skill manager with multi-directory support (user + project)
+	skillDirs := []string{cfg.Skills.Dir}
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userSkillsDir := filepath.Join(homeDir, config.UserConfigDir, "skills")
+		if userSkillsDir != cfg.Skills.Dir {
+			skillDirs = append([]string{userSkillsDir}, skillDirs...)
+		}
+	}
+	skillMgr := skill.NewManager(skillDirs...)
+	skillMgr.Load()
+	if skills := skillMgr.List(); len(skills) > 0 {
+		slog.Info("skills loaded", "dirs", skillDirs, "count", len(skills))
+	}
+
+	// Initialize user-defined /command manager (multi-dir: user + project)
+	cmdDirs := []string{filepath.Join(config.ProjectConfigDir, "commands")}
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userCmdDir := filepath.Join(homeDir, config.UserConfigDir, "commands")
+		cmdDirs = append([]string{userCmdDir}, cmdDirs...)
+	}
+	cmdMgr := command.NewManager(cmdDirs...)
+	cmdMgr.Load()
+	if cmds := cmdMgr.List(); len(cmds) > 0 {
+		slog.Info("commands loaded", "dirs", cmdDirs, "count", len(cmds))
 	}
 
 	// Initialize cron task manager
@@ -144,6 +162,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 		coord := agent.NewCoordinator(agt, pool)
 		coord.SetSkillManager(skillMgr)
+		coord.SetCommandManager(cmdMgr)
 		coord.SetCronManager(cronMgr)
 		return coord
 	}

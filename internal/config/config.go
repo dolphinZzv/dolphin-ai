@@ -1,10 +1,12 @@
 package config
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -149,36 +151,49 @@ type MetricsConfig struct {
 
 func Load(cfgFile string) (*Config, error) {
 	v := viper.New()
-	v.SetConfigName(ConfigFileName)
 	v.SetConfigType("yaml")
 
-	// Load order: cfgFile > system < user < project (each overrides previous)
+	// Defaults (lowest priority)
+	setDefaults(v)
+
+	// Collect config files in priority order (each overrides the previous)
+	var configFiles []string
+
+	// 1. System config: /etc/dolphinzZ/config.yaml
+	configFiles = append(configFiles, filepath.Join(SystemConfigDir, ConfigFileName+".yaml"))
+
+	// 2. User config: ~/.dolphinzZ/config.yaml
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		configFiles = append(configFiles, filepath.Join(homeDir, UserConfigDir, ConfigFileName+".yaml"))
+	}
+
+	// 3. Project config: .dolphinzZ/config.yaml
+	configFiles = append(configFiles, filepath.Join(ProjectConfigDir, ConfigFileName+".yaml"))
+
+	// 4. -c flag (highest priority, overrides all)
 	if cfgFile != "" {
-		v.SetConfigFile(cfgFile)
-	} else {
-		userConfigDir, err := os.UserHomeDir()
-		if err == nil {
-			v.AddConfigPath(filepath.Join(userConfigDir, UserConfigDir))
+		configFiles = append(configFiles, cfgFile)
+	}
+
+	// Read and merge each config file (skip missing)
+	for _, f := range configFiles {
+		data, err := os.ReadFile(filepath.Clean(f))
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				continue
+			}
+			return nil, fmt.Errorf("read config %s: %w", f, err)
 		}
-		v.AddConfigPath(SystemConfigDir)
-		v.AddConfigPath(ProjectConfigDir)
+		v.SetConfigType(configType(f))
+		if err := v.MergeConfig(bytes.NewReader(data)); err != nil {
+			return nil, fmt.Errorf("merge config %s: %w", f, err)
+		}
+		slog.Debug("config merged", "file", f)
 	}
 
 	// Env vars: DZ_LLM_MODEL -> llm.model
 	v.SetEnvPrefix("DZ")
 	v.AutomaticEnv()
-
-	// Defaults
-	setDefaults(v)
-
-	// Read config (allow not found)
-	if err := v.ReadInConfig(); err != nil {
-		var nfe viper.ConfigFileNotFoundError
-		if !errors.As(err, &nfe) {
-			return nil, err
-		}
-		slog.Warn("no config file found, using defaults and env vars")
-	}
 
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
@@ -262,6 +277,17 @@ func DefaultConfig() *Config {
 	v.Unmarshal(&cfg)
 	cfg.Session.Dir = "/tmp/dolphinzZ"
 	return &cfg
+}
+
+func configType(path string) string {
+	switch filepath.Ext(path) {
+	case ".json":
+		return "json"
+	case ".toml":
+		return "toml"
+	default:
+		return "yaml"
+	}
 }
 
 // Validate checks the configuration and returns an error for invalid settings.

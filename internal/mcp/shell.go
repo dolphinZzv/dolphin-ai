@@ -59,6 +59,7 @@ func (s *ShellTool) Definition() ToolDefinition {
 		Description: "Execute a shell command and return its output. Use this for file operations, running scripts, and interacting with the system.",
 		InputSchema: s.schema,
 		Priority:    s.cfg.Priority,
+		Source:      "built-in",
 	}
 }
 

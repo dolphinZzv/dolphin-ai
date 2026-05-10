@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"dolphinzZ/internal/command"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/scheduler"
 	"dolphinzZ/internal/session"
@@ -23,6 +24,7 @@ type Coordinator struct {
 	*Agent
 	pool       *AgentPool
 	skills     *skill.Manager
+	commands   *command.Manager
 	cronMgr    *scheduler.Manager
 	basePrompt string
 	pending    []TaskResult // results collected but not yet in LLM context
@@ -52,6 +54,11 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 // Should be called before Run().
 func (c *Coordinator) SetSkillManager(mgr *skill.Manager) {
 	c.skills = mgr
+}
+
+// SetCommandManager sets the command manager for user-defined /commands.
+func (c *Coordinator) SetCommandManager(mgr *command.Manager) {
+	c.commands = mgr
 }
 
 // SetCronManager sets the cron task manager for scheduled tasks.
@@ -107,7 +114,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		go c.processDueTasks(ctx, dueCh, sess.ID)
 	}
 
-	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /crontab for scheduled tasks.")
+	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /commands to list user commands, /crontab for scheduled tasks.")
 	io.WriteLine("")
 
 	for {
@@ -146,11 +153,34 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/skills":
 			c.printSkills(io)
 			continue
+		case line == "/commands":
+			c.printCommands(io)
+			continue
 		case strings.HasPrefix(line, "/cancel"):
 			c.handleCancelCmd(line, io)
 			continue
 		case line == "":
 			continue
+		}
+
+		// Check user-defined /commands (matched after built-in commands)
+		if c.commands != nil && strings.HasPrefix(line, "/") {
+			if cmdName := parseCommandName(line); cmdName != "" {
+				if cmd, ok := c.commands.Get(cmdName); ok {
+					c.commands.RecordUsage(cmdName)
+					var sb strings.Builder
+					sb.WriteString("用户触发了命令 /")
+					sb.WriteString(cmdName)
+					sb.WriteString("\n\n")
+					sb.WriteString(cmd.Content)
+					args := strings.TrimSpace(line[len("/"+cmdName):])
+					if args != "" {
+						sb.WriteString("\n\n用户参数: ")
+						sb.WriteString(args)
+					}
+					line = sb.String()
+				}
+			}
 		}
 
 		state.Turn++
@@ -780,6 +810,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine("  /help         - This help")
 	io.WriteLine("  /agents       - List available agents and their status")
 	io.WriteLine("  /skills       - List available skills")
+	io.WriteLine("  /commands     - List user-defined commands")
 	io.WriteLine("  /cancel       - Cancel all running tasks")
 	io.WriteLine("  /cancel <id>  - Cancel a specific task by ID")
 	io.WriteLine("")
@@ -847,6 +878,26 @@ func (c *Coordinator) printSkills(io transport.UserIO) {
 	io.WriteLine("")
 }
 
+func (c *Coordinator) printCommands(io transport.UserIO) {
+	if c.commands == nil {
+		io.WriteLine("Commands system not available.")
+		return
+	}
+	cmds := c.commands.List()
+	if len(cmds) == 0 {
+		io.WriteLine("No user-defined commands. Add .md files to .dolphinzZ/commands/")
+		return
+	}
+	io.WriteLine(fmt.Sprintf("%-20s  %s", "COMMAND", "DESCRIPTION"))
+	io.WriteLine("------------------------------------------")
+	for _, cmd := range cmds {
+		io.WriteLine(fmt.Sprintf("/%-19s  %s", cmd.Name, cmd.Description))
+	}
+	io.WriteLine("")
+	io.WriteLine("Type /<command> to run a command, optionally with arguments.")
+	io.WriteLine("")
+}
+
 func (c *Coordinator) printCronTasks(io transport.UserIO) {
 	if c.cronMgr == nil {
 		io.WriteLine("Cron scheduler not available.")
@@ -902,6 +953,17 @@ func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
 		c.pool.CancelAll()
 		io.WriteLine("All running tasks cancelled.")
 	}
+}
+
+// parseCommandName extracts the command name from a /command line.
+// "/分析竞争对手 华为" -> "分析竞争对手"
+// "/dev-run" -> "dev-run"
+func parseCommandName(line string) string {
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.TrimPrefix(parts[0], "/")
 }
 
 // tryResumeSession checks for a previous session and prompts the user to resume.

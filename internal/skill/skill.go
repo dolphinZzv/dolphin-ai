@@ -16,54 +16,80 @@ type Skill struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Content     string    `json:"content"`
+	Source      string    `json:"source"` // directory origin, e.g. "~/.dolphinzZ/skills"
 	CallCount   int64     `json:"call_count"`
 	LastCalled  time.Time `json:"last_called_at"`
 }
 
-// Manager loads and manages skills from a directory of markdown files.
+// Manager loads and manages skills from directories of markdown files.
+// Multiple directories are supported: later directories override earlier ones on name conflict.
 type Manager struct {
 	mu     sync.RWMutex
 	skills map[string]*Skill
-	dir    string
+	dirs   []string
 }
 
-// NewManager creates a skill manager. If dir is empty, uses ".dolphinzZ/skills".
-func NewManager(dir string) *Manager {
-	if dir == "" {
-		dir = ".dolphinzZ/skills"
+// NewManager creates a skill manager from one or more directories.
+// Skills are loaded from all directories; later directories override earlier ones.
+// Empty strings are filtered out. If no dirs remain, defaults to [".dolphinzZ/skills"].
+func NewManager(dirs ...string) *Manager {
+	filtered := make([]string, 0, len(dirs))
+	for _, d := range dirs {
+		if d != "" {
+			filtered = append(filtered, d)
+		}
+	}
+	if len(filtered) == 0 {
+		filtered = []string{".dolphinzZ/skills"}
 	}
 	return &Manager{
 		skills: make(map[string]*Skill),
-		dir:    dir,
+		dirs:   filtered,
 	}
 }
 
-// Dir returns the skills directory path.
-func (m *Manager) Dir() string { return m.dir }
-
-// Load scans the skills directory and loads all skill files.
-// Returns an error if the directory doesn't exist (caller should check).
-func (m *Manager) Load() error {
-	entries, err := os.ReadDir(m.dir)
-	if err != nil {
-		return fmt.Errorf("read skills dir %q: %w", m.dir, err)
+// Dir returns the primary skills directory path.
+func (m *Manager) Dir() string {
+	if len(m.dirs) > 0 {
+		return m.dirs[0]
 	}
+	return ""
+}
 
+// Dirs returns all configured skills directories.
+func (m *Manager) Dirs() []string { return m.dirs }
+
+// Load scans all skills directories and loads all skill files.
+// Missing or unreadable directories are silently skipped.
+func (m *Manager) Load() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-			continue
-		}
-		path := filepath.Join(m.dir, entry.Name())
-		data, err := os.ReadFile(path)
+	// Clear and reload from all dirs
+	m.skills = make(map[string]*Skill)
+
+	for _, dir := range m.dirs {
+		entries, err := os.ReadDir(dir)
 		if err != nil {
-			continue
+			if os.IsNotExist(err) {
+				continue
+			}
+			return fmt.Errorf("read skills dir %q: %w", dir, err)
 		}
-		skill := parseSkillFile(data, entry.Name())
-		if skill != nil {
-			m.skills[skill.Name] = skill
+		for _, entry := range entries {
+			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
+				continue
+			}
+			path := filepath.Join(dir, entry.Name())
+			data, err := os.ReadFile(path)
+			if err != nil {
+				continue
+			}
+			skill := parseSkillFile(data, entry.Name())
+			if skill != nil {
+				skill.Source = dir
+				m.skills[skill.Name] = skill // later dir overrides earlier
+			}
 		}
 	}
 	return nil
