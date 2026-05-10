@@ -137,6 +137,40 @@ Enable in config. Send an email to the configured `from` address; the subject li
 
 **Note**: The email transport sends responses back to the `from` address (reply-to-self).
 
+## Panda macOS App
+
+Panda is a native macOS MQTT chat client for DolphinzZ. It connects to the backend via MQTT, listing agents and exchanging messages in real time.
+
+### Prerequisites
+
+- MQTT broker running (e.g., Mosquitto: `brew install mosquitto && brew services start mosquitto`)
+- Backend MQTT transport enabled (`transport.mqtt.enabled: true` in `.dolphinzZ/config.yaml`)
+
+### Build and launch
+
+```bash
+make app          # build + open panda.app
+make app-clean    # remove panda.app
+```
+
+### Usage
+
+1. Open panda.app, click Settings (⚙️), set Broker Host/Port (default `localhost:1883`), click Connect
+2. Click **+** to add an agent — enter the Agent ID (matches backend agent name, e.g. `reviewer`) and a display name
+3. Select an agent, type a message, press Return
+4. Backend processes the message and the reply appears in chat
+
+### How it works
+
+| Direction | MQTT Topic |
+|-----------|-----------|
+| Message to agent | `dolphinzZ/agent/command/<agentID>` |
+| Response from agent | `dolphinzZ/agent/response/<agentID>` |
+
+The app auto-subscribes to response topics when adding agents.
+
+> Panda is maintained as a [separate repository](https://github.com/dolphinZzv/panda) and included as a git submodule at `app/panda`.
+
 ## Cron Scheduling (v0.3)
 
 Periodic tasks are defined in `.dolphinzZ/CRONTAB.md` using YAML frontmatter + Markdown body:
