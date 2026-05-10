@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -63,6 +64,27 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Setup logging
 	setupLogging(cfg)
 	zap.S().Infow("config loaded", "session_dir", cfg.Session.Dir)
+
+	// First-run career-guided tool loading (only when stdio is the transport)
+	if config.IsFirstRun() && cfg.Transport.Stdio.Enabled {
+		profile, err := config.RunFirstRunPrompt()
+		if err != nil {
+			zap.S().Warnw("first-run prompt failed", "error", err)
+		}
+		if profile != nil {
+			fmt.Fprintf(os.Stderr, "\n=== Recommended tools for %s ===\n", profile.Description)
+			if len(profile.Skills) > 0 {
+				fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(profile.Skills, ", "))
+			}
+			if len(profile.MCP) > 0 {
+				fmt.Fprintf(os.Stderr, "MCP:    %s\n", strings.Join(profile.MCP, ", "))
+			}
+			fmt.Fprintf(os.Stderr, "\nTo install, add tools to your skill/MCP repos or config.\n")
+			fmt.Fprintf(os.Stderr, "You can re-run setup anytime with: dolphinzZ setup\n\n")
+		}
+		// Always create the marker so first-run only triggers once
+		config.CreateFirstRunMarker()
+	}
 
 	// Init session manager
 	sessMgr := session.NewManager(cfg.Session.Dir)
