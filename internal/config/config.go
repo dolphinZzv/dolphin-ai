@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -98,6 +99,7 @@ type MCPConfig struct {
 	Shell   ShellConfig                `mapstructure:"shell"`
 	CDP     CDPConfig                  `mapstructure:"cdp"`
 	Servers map[string]MCPServerConfig `mapstructure:"servers"`
+	Repos   []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinzZv/mcp"]
 }
 
 type MCPServerConfig struct {
@@ -131,8 +133,9 @@ type PoolConfig struct {
 }
 
 type SkillsConfig struct {
-	Dir    string `mapstructure:"dir"`     // skills directory (default: .dolphinzZ/skills)
-	MaxTop int    `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
+	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphinzZ/skills)
+	MaxTop int      `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
+	Repos  []string `mapstructure:"repos"`   // manifest repos, e.g. ["dolphinzZv/skills"]
 }
 
 type PprofConfig struct {
@@ -288,6 +291,90 @@ func DefaultConfig() *Config {
 	return &cfg
 }
 
+// ToolSelection is a lightweight config fragment for saving skill/MCP tool choices.
+type ToolSelection struct {
+	Skills []string `yaml:"skills"`
+	MCP    []string `yaml:"mcp"`
+}
+
+// LoadedConfig is the structure written to config files for tool loading.
+type LoadedConfig struct {
+	Skills LoadedTools `yaml:"skills"`
+	MCP    LoadedTools `yaml:"mcp"`
+}
+
+// LoadedTools holds the list of loaded tool names.
+type LoadedTools struct {
+	Loaded []string `yaml:"loaded"`
+}
+
+// SaveToolSelection persists the user's tool choices to the config file at the given
+// scope ("user" or "project"). It merges with existing loaded tools if any.
+func SaveToolSelection(selection *ToolSelection, scope string) error {
+	var configPath string
+	if scope == "user" {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("home dir: %w", err)
+		}
+		configPath = filepath.Join(homeDir, UserConfigDir, ConfigFileName+".yaml")
+	} else {
+		configPath = filepath.Join(ProjectConfigDir, ConfigFileName+".yaml")
+	}
+
+	// Read existing loaded config
+	existing := LoadedConfig{}
+	if data, err := os.ReadFile(configPath); err == nil {
+		yaml.Unmarshal(data, &existing)
+	}
+
+	// Merge selections, deduplicate
+	skillSet := make(map[string]bool)
+	for _, s := range existing.Skills.Loaded {
+		skillSet[s] = true
+	}
+	for _, s := range selection.Skills {
+		skillSet[s] = true
+	}
+	existing.Skills.Loaded = make([]string, 0, len(skillSet))
+	for s := range skillSet {
+		existing.Skills.Loaded = append(existing.Skills.Loaded, s)
+	}
+
+	mcpSet := make(map[string]bool)
+	for _, m := range existing.MCP.Loaded {
+		mcpSet[m] = true
+	}
+	for _, m := range selection.MCP {
+		mcpSet[m] = true
+	}
+	existing.MCP.Loaded = make([]string, 0, len(mcpSet))
+	for m := range mcpSet {
+		existing.MCP.Loaded = append(existing.MCP.Loaded, m)
+	}
+
+	data, err := yaml.Marshal(&existing)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+		return fmt.Errorf("create config dir: %w", err)
+	}
+
+	// Append to existing file (preserve other settings)
+	f, err := os.OpenFile(configPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open config: %w", err)
+	}
+	defer f.Close()
+
+	// Write a separator and the new section
+	f.WriteString("\n# Tool selections (auto-generated)\n")
+	f.Write(data)
+	return nil
+}
+
 func configType(path string) string {
 	switch filepath.Ext(path) {
 	case ".json":
@@ -384,6 +471,7 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("skills.dir", ".dolphinzZ/skills")
 	v.SetDefault("skills.max_top", 10)
+	v.SetDefault("skills.repos", []string{})
 
 	v.SetDefault("crontab.file", ".dolphinzZ/CRONTAB.md")
 	v.SetDefault("crontab.check_interval", "30s")
@@ -395,5 +483,5 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.addr", ":9090")
 
 	v.SetDefault("log_level", "info")
-	v.SetDefault("log_file", "")
+	v.SetDefault("log_file", ".dolphinzZ/logs/agent.log")
 }

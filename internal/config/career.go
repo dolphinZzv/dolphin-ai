@@ -2,10 +2,15 @@ package config
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
+
+	"dolphinzZ/internal/i18n"
 )
 
 // CareerProfile maps a career name to recommended skills and MCP tools.
@@ -62,10 +67,46 @@ var CareerTools = []CareerProfile{
 		Description: "安全工程师 — 安全审计/渗透测试/代码审查",
 	},
 	{
-		Name:        "general",
-		Skills:      []string{"code-review", "documentation-expert", "testing-expert"},
+		Name:        "product",
+		Skills:      []string{"prd-writing", "user-story-mapping", "competitive-analysis"},
+		MCP:         []string{"browser-preview", "figma-to-code"},
+		Description: "产品经理 — PRD/用户故事/竞品分析/原型",
+	},
+	{
+		Name:        "design",
+		Skills:      []string{"ui-ux-review", "design-system", "accessibility-check"},
+		MCP:         []string{"figma-to-code", "browser-preview"},
+		Description: "设计师 — UI/UX 审查/设计系统/可访问性",
+	},
+	{
+		Name:        "writer",
+		Skills:      []string{"documentation-expert", "api-docs", "technical-blog"},
 		MCP:         []string{},
-		Description: "通用开发 — 代码审查/文档/测试",
+		Description: "技术写作者 — 文档/API 文档/技术博客",
+	},
+	{
+		Name:        "operations",
+		Skills:      []string{"data-report", "automation", "content-workflow"},
+		MCP:         []string{"browser-preview"},
+		Description: "运营 — 数据报表/自动化/内容工作流",
+	},
+	{
+		Name:        "student",
+		Skills:      []string{"code-learning", "note-taking", "concept-explanation"},
+		MCP:         []string{},
+		Description: "学生/学习者 — 代码学习/笔记/概念讲解",
+	},
+	{
+		Name:        "researcher",
+		Skills:      []string{"literature-review", "data-analysis", "writing-assistant"},
+		MCP:         []string{"browser-preview"},
+		Description: "研究员 — 文献综述/数据分析/写作辅助",
+	},
+	{
+		Name:        "general",
+		Skills:      []string{"task-automation", "file-management", "web-research"},
+		MCP:         []string{"browser-preview"},
+		Description: "通用助手 — 任务自动化/文件管理/网络搜索",
 	},
 }
 
@@ -102,22 +143,94 @@ func CreateFirstRunMarker() error {
 	return os.WriteFile(path, []byte{}, 0644)
 }
 
-// RunFirstRunPrompt displays the career selection prompt and returns the chosen profile.
-// This is used during the first-run experience to guide tool loading.
+// careerKeywords maps career names to search keywords for matching repo tools.
+var careerKeywords = map[string][]string{
+	"frontend":   {"frontend", "react", "vue", "angular", "typescript", "css", "ui", "browser"},
+	"backend":    {"go", "api", "database", "microservice", "rest", "grpc", "backend", "server"},
+	"fullstack":  {"fullstack", "frontend", "backend", "react", "go", "api", "database"},
+	"devops":     {"docker", "kubernetes", "k8s", "ci", "cd", "deploy", "monitor", "infra"},
+	"data":       {"python", "sql", "data", "jupyter", "pandas", "ml", "analytics"},
+	"mobile":     {"ios", "android", "swift", "kotlin", "react-native", "flutter", "mobile"},
+	"security":   {"security", "audit", "penetration", "vulnerability", "scan", "dependency"},
+	"product":    {"prd", "product", "spec", "roadmap", "user-story", "requirement"},
+	"design":     {"design", "figma", "ui", "ux", "accessibility", "prototype", "visual"},
+	"writer":     {"documentation", "writing", "blog", "markdown", "api-docs", "guide"},
+	"operations": {"report", "automation", "workflow", "content", "spreadsheet", "data"},
+	"student":    {"learning", "tutorial", "beginner", "concept", "study", "note"},
+	"researcher": {"research", "literature", "paper", "analysis", "survey", "academic"},
+	"general":    {"automation", "file", "web", "search", "organize", "task"},
+}
+
+// AugmentWithRepos fetches tool manifests from configured repos and finds tools
+// matching the career profile keywords. Returns additional skill and MCP tool names.
+// This is best-effort: network errors are silent, and results supplement the
+// hardcoded CareerTools mapping.
+func AugmentWithRepos(profile *CareerProfile, skillRepos, mcpRepos []string) (extraSkills, extraMCP []string) {
+	if profile == nil {
+		return nil, nil
+	}
+
+	// Handle merged profiles (multi-select): split on "+" and merge keywords
+	var keywords []string
+	for _, name := range strings.Split(profile.Name, "+") {
+		if kw, ok := careerKeywords[strings.TrimSpace(name)]; ok {
+			keywords = append(keywords, kw...)
+		}
+	}
+	if len(keywords) == 0 {
+		keywords = careerKeywords["general"]
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, nil
+	}
+	cacheDir := filepath.Join(homeDir, UserConfigDir, "cache")
+	fetcher := NewRepoFetcher(cacheDir)
+	// Short timeout for first-run — don't block for long
+	fetcher.SetTTL(1 * time.Hour)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if len(skillRepos) > 0 {
+		manifests := fetcher.FetchAll(ctx, skillRepos)
+		if matches := fetcher.SearchTools(manifests, keywords); len(matches) > 0 {
+			for _, m := range matches {
+				extraSkills = append(extraSkills, m.Name)
+			}
+		}
+	}
+
+	if len(mcpRepos) > 0 {
+		manifests := fetcher.FetchAll(ctx, mcpRepos)
+		if matches := fetcher.SearchTools(manifests, keywords); len(matches) > 0 {
+			for _, m := range matches {
+				extraMCP = append(extraMCP, m.Name)
+			}
+		}
+	}
+
+	return extraSkills, extraMCP
+}
+
+// RunFirstRunPrompt shows a domain selection prompt so we can recommend relevant
+// tools. Supports multi-select (e.g. "1,3,5"). No data is sent anywhere.
 func RunFirstRunPrompt() (*CareerProfile, error) {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "============================================")
-	fmt.Fprintln(os.Stderr, "  Welcome to DolphinzZ — AI Coding Agent")
+	fmt.Fprintf(os.Stderr, "  %s\n", i18n.TL(i18n.KeyWelcome))
 	fmt.Fprintln(os.Stderr, "============================================")
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "To recommend the right tools for you, please select your role:")
+	fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeySelectDomain))
+	fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyPrivacyNote))
 
 	for i, p := range CareerTools {
 		fmt.Fprintf(os.Stderr, "  [%d] %s\n", i+1, p.Description)
 	}
-	fmt.Fprintf(os.Stderr, "  [s] Skip — I'll configure tools later\n")
+	fmt.Fprintf(os.Stderr, "  [s] %s\n", i18n.TL(i18n.KeySkip))
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "Choice: ")
+	fmt.Fprintf(os.Stderr, "%s: ", i18n.TL(i18n.KeyChoice))
 
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
@@ -130,21 +243,146 @@ func RunFirstRunPrompt() (*CareerProfile, error) {
 		return nil, nil
 	}
 
-	// Try numeric selection
-	idx := 0
-	if _, err := fmt.Sscanf(input, "%d", &idx); err == nil && idx >= 1 && idx <= len(CareerTools) {
-		return &CareerTools[idx-1], nil
+	// Parse comma/space-separated numbers
+	parts := strings.FieldsFunc(input, func(r rune) bool {
+		return r == ',' || r == ' ' || r == ';'
+	})
+
+	var selected []CareerProfile
+	seen := make(map[int]bool)
+	for _, part := range parts {
+		idx := 0
+		if _, err := fmt.Sscanf(part, "%d", &idx); err != nil || idx < 1 || idx > len(CareerTools) {
+			continue
+		}
+		if seen[idx] {
+			continue
+		}
+		seen[idx] = true
+		selected = append(selected, CareerTools[idx-1])
 	}
 
-	// Try keyword match
-	lower := strings.ToLower(input)
-	for _, p := range CareerTools {
-		if strings.Contains(lower, p.Name) {
-			return &p, nil
+	// Try keyword match for any non-numeric input
+	if len(selected) == 0 {
+		lower := strings.ToLower(input)
+		for _, p := range CareerTools {
+			if strings.Contains(lower, p.Name) {
+				selected = append(selected, p)
+			}
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "\nNo matching role found. Skipping tool recommendation.\n")
-	fmt.Fprintf(os.Stderr, "You can add skills and MCP tools later in ~/.dolphinzZ/config.yaml\n\n")
-	return nil, nil
+	if len(selected) == 0 {
+		fmt.Fprintf(os.Stderr, "\n%s\n\n", i18n.TL(i18n.KeyNoMatch))
+		return nil, nil
+	}
+
+	// Merge all selected profiles
+	return mergeProfiles(selected), nil
+}
+
+// GenerateSystemMD creates SYSTEM.md with system environment info.
+// Content adapts to the user's detected language.
+func GenerateSystemMD(lang i18n.Lang) (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("home dir: %w", err)
+	}
+	path := filepath.Join(home, UserConfigDir, "SYSTEM.md")
+
+	var sb strings.Builder
+	sb.WriteString("# ")
+	sb.WriteString(i18n.T(i18n.KeySystemMDContent, lang))
+	sb.WriteString("\n\n")
+
+	hostname, _ := os.Hostname()
+	cwd, _ := os.Getwd()
+
+	switch lang {
+	case i18n.ZH:
+		sb.WriteString(fmt.Sprintf("- 操作系统: %s/%s\n", runtime.GOOS, runtime.GOARCH))
+		sb.WriteString(fmt.Sprintf("- 主机名: %s\n", hostname))
+		sb.WriteString(fmt.Sprintf("- Shell: %s\n", os.Getenv("SHELL")))
+		sb.WriteString(fmt.Sprintf("- 用户目录: %s\n", home))
+		sb.WriteString(fmt.Sprintf("- 工作目录: %s\n", cwd))
+		sb.WriteString(fmt.Sprintf("- CPU 核心数: %d\n", runtime.NumCPU()))
+	default:
+		sb.WriteString(fmt.Sprintf("- OS: %s/%s\n", runtime.GOOS, runtime.GOARCH))
+		sb.WriteString(fmt.Sprintf("- Hostname: %s\n", hostname))
+		sb.WriteString(fmt.Sprintf("- Shell: %s\n", os.Getenv("SHELL")))
+		sb.WriteString(fmt.Sprintf("- Home: %s\n", home))
+		sb.WriteString(fmt.Sprintf("- Working Dir: %s\n", cwd))
+		sb.WriteString(fmt.Sprintf("- CPUs: %d\n", runtime.NumCPU()))
+	}
+
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return "", err
+	}
+	return path, os.WriteFile(path, []byte(sb.String()), 0644)
+}
+
+// PromptSystemMD asks the user whether to auto-generate SYSTEM.md with system info.
+// Returns true if generated.
+func PromptSystemMD() (bool, error) {
+	lang := i18n.DetectLang()
+	fmt.Fprintf(os.Stderr, "\n%s\n", i18n.T(i18n.KeySystemMDPrompt, lang))
+	fmt.Fprintf(os.Stderr, "%s\n", i18n.T(i18n.KeySystemMDExplain, lang))
+	fmt.Fprintf(os.Stderr, "  [y] %s  [n] %s\n", i18n.T(i18n.KeySystemMDYes, lang), i18n.T(i18n.KeySystemMDNo, lang))
+	fmt.Fprintf(os.Stderr, "%s: ", i18n.T(i18n.KeyChoice, lang))
+
+	reader := bufio.NewReader(os.Stdin)
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, nil
+	}
+	input = strings.TrimSpace(strings.ToLower(input))
+
+	if input != "y" && input != "yes" {
+		fmt.Fprintf(os.Stderr, "%s\n", i18n.T(i18n.KeySystemMDSkipped, lang))
+		return false, nil
+	}
+
+	path, err := GenerateSystemMD(lang)
+	if err != nil {
+		return false, fmt.Errorf("generate SYSTEM.md: %w", err)
+	}
+	fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.T(i18n.KeySystemMDGenerated, lang), path)
+	return true, nil
+}
+
+// mergeProfiles combines multiple career profiles into one, deduplicating skills and MCP.
+func mergeProfiles(profiles []CareerProfile) *CareerProfile {
+	if len(profiles) == 0 {
+		return nil
+	}
+	if len(profiles) == 1 {
+		return &profiles[0]
+	}
+
+	skillSet := make(map[string]bool)
+	mcpSet := make(map[string]bool)
+	var names, descs []string
+
+	for _, p := range profiles {
+		names = append(names, p.Name)
+		descs = append(descs, p.Description)
+		for _, s := range p.Skills {
+			skillSet[s] = true
+		}
+		for _, m := range p.MCP {
+			mcpSet[m] = true
+		}
+	}
+
+	merged := &CareerProfile{
+		Name:        strings.Join(names, "+"),
+		Description: strings.Join(descs, "; "),
+	}
+	for s := range skillSet {
+		merged.Skills = append(merged.Skills, s)
+	}
+	for m := range mcpSet {
+		merged.MCP = append(merged.MCP, m)
+	}
+	return merged
 }

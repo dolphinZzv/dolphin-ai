@@ -11,11 +11,17 @@ import (
 
 	"dolphinzZ/internal/command"
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/i18n"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/scheduler"
 	"dolphinzZ/internal/session"
 	"dolphinzZ/internal/skill"
 )
+
+func TestMain(m *testing.M) {
+	i18n.SetLang(i18n.EN)
+	os.Exit(m.Run())
+}
 
 func TestReplayMessagesUserAssistant(t *testing.T) {
 	events := []session.SessionEvent{

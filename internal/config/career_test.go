@@ -68,3 +68,43 @@ func TestCareerProfileSelection(t *testing.T) {
 		names[p.Name] = true
 	}
 }
+
+func TestMergeProfiles(t *testing.T) {
+	profiles := []CareerProfile{
+		{Name: "frontend", Skills: []string{"react", "vue"}, MCP: []string{"browser"}, Description: "前端"},
+		{Name: "backend", Skills: []string{"go", "api"}, MCP: []string{"postgres"}, Description: "后端"},
+		{Name: "devops", Skills: []string{"docker", "api"}, MCP: []string{"postgres"}, Description: "运维"},
+	}
+
+	merged := mergeProfiles(profiles)
+	if merged.Name != "frontend+backend+devops" {
+		t.Errorf("Name = %q, want frontend+backend+devops", merged.Name)
+	}
+	if len(merged.Skills) != 5 { // react,vue,go,api,docker — api deduped once
+		t.Errorf("Skills count = %d, want 5 (deduped)", len(merged.Skills))
+	}
+	if len(merged.MCP) != 2 { // browser,postgres — postgres deduped
+		t.Errorf("MCP count = %d, want 2 (deduped)", len(merged.MCP))
+	}
+}
+
+func TestMergeProfilesSingle(t *testing.T) {
+	profiles := []CareerProfile{
+		{Name: "frontend", Skills: []string{"react"}, MCP: []string{}, Description: "前端"},
+	}
+	merged := mergeProfiles(profiles)
+	if merged.Name != "frontend" {
+		t.Errorf("Name = %q, want frontend", merged.Name)
+	}
+}
+
+func TestMergeProfilesEmpty(t *testing.T) {
+	merged := mergeProfiles(nil)
+	if merged != nil {
+		t.Error("expected nil for empty input")
+	}
+	merged = mergeProfiles([]CareerProfile{})
+	if merged != nil {
+		t.Error("expected nil for empty slice")
+	}
+}

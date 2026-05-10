@@ -14,6 +14,7 @@ import (
 	"dolphinzZ/internal/agent"
 	"dolphinzZ/internal/command"
 	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/i18n"
 	"dolphinzZ/internal/logger"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/metrics"
@@ -37,8 +38,8 @@ var (
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "dolphinzZ",
-		Short: "AI coding agent — stdio / SSH / MQTT / Email transport, MCP tools (shell + cdp)",
-		Long: `DolphinzZ is an AI coding agent with MCP tool support.
+		Short: "AI Agent — stdio / SSH / MQTT / Email transport, MCP tools (shell + cdp)",
+		Long: `DolphinzZ is an AI Agent with MCP tool support.
 
 Transports: stdio (default), SSH (:2222), MQTT, Email
 Tools: shell, cdp (browser automation)
@@ -50,6 +51,8 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 
 	cmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "path to config file (searches .dolphinzZ/, ~/.dolphinzZ/, /etc/dolphinzZ/ by default)")
 	cmd.SetVersionTemplate("dolphinzZ {{.Version}}\n")
+
+	cmd.AddCommand(NewSetupCmd())
 
 	return cmd
 }
@@ -72,15 +75,25 @@ func runAgent(cmd *cobra.Command, args []string) error {
 			zap.S().Warnw("first-run prompt failed", "error", err)
 		}
 		if profile != nil {
-			fmt.Fprintf(os.Stderr, "\n=== Recommended tools for %s ===\n", profile.Description)
-			if len(profile.Skills) > 0 {
-				fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(profile.Skills, ", "))
+			fmt.Fprintf(os.Stderr, "\n=== %s: %s ===\n", i18n.TL(i18n.KeyRecommendedTools), profile.Description)
+			// Augment built-in mapping with tools from configured repos (best-effort)
+			extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
+			allSkills := append([]string{}, profile.Skills...)
+			allSkills = append(allSkills, extraSkills...)
+			allMCP := append([]string{}, profile.MCP...)
+			allMCP = append(allMCP, extraMCP...)
+
+			if len(allSkills) > 0 {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeySkills), strings.Join(allSkills, ", "))
 			}
-			if len(profile.MCP) > 0 {
-				fmt.Fprintf(os.Stderr, "MCP:    %s\n", strings.Join(profile.MCP, ", "))
+			if len(allMCP) > 0 {
+				fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(allMCP, ", "))
 			}
-			fmt.Fprintf(os.Stderr, "\nTo install, add tools to your skill/MCP repos or config.\n")
-			fmt.Fprintf(os.Stderr, "You can re-run setup anytime with: dolphinzZ setup\n\n")
+			fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyInstallHint))
+			fmt.Fprintf(os.Stderr, "%s\n\n", i18n.TL(i18n.KeySetupHint))
+
+			// Ask about SYSTEM.md generation (first run only)
+			config.PromptSystemMD()
 		}
 		// Always create the marker so first-run only triggers once
 		config.CreateFirstRunMarker()
@@ -153,6 +166,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if skills := skillMgr.List(); len(skills) > 0 {
 		zap.S().Infow("skills loaded", "dirs", skillDirs, "count", len(skills))
 	}
+	// Start skill hot-reload watcher (ticker-based polling)
+	go skillMgr.WatchAndReload(context.Background(), 30*time.Second)
 
 	// Initialize user-defined /command manager (multi-dir: user + project)
 	cmdDirs := []string{filepath.Join(config.ProjectConfigDir, "commands")}
@@ -165,6 +180,17 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if cmds := cmdMgr.List(); len(cmds) > 0 {
 		zap.S().Infow("commands loaded", "dirs", cmdDirs, "count", len(cmds))
 	}
+
+	// Launch async project detection + repo recommendation (non-blocking)
+	recommendCh := make(chan *config.Recommendation, 1)
+	go func() {
+		workDir, _ := os.Getwd()
+		rec := config.RecommendTools(context.Background(), workDir, nil, cfg.Skills.Repos, cfg.MCP.Repos)
+		if rec != nil && (len(rec.Skills) > 0 || len(rec.MCP) > 0) {
+			recommendCh <- rec
+		}
+		close(recommendCh)
+	}()
 
 	// Initialize cron task manager
 	cronMgr := scheduler.NewManager(cfg.Crontab)
@@ -187,6 +213,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		coord.SetSkillManager(skillMgr)
 		coord.SetCommandManager(cmdMgr)
 		coord.SetCronManager(cronMgr)
+		// Non-blocking: pick up async recommendation if ready
+		select {
+		case rec := <-recommendCh:
+			if rec != nil {
+				coord.SetStartupRecommend(rec)
+			}
+		default:
+		}
 		return coord
 	}
 

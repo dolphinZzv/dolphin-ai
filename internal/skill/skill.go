@@ -1,6 +1,7 @@
 package skill
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -175,6 +176,93 @@ func (m *Manager) RecordUsage(name string) {
 	if s, ok := m.skills[name]; ok {
 		s.CallCount++
 		s.LastCalled = time.Now()
+	}
+}
+
+// Register adds or updates a skill at runtime and persists it to the primary
+// skills directory as a markdown file.
+func (m *Manager) Register(name, description, content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	skill := &Skill{
+		Name:        name,
+		Description: description,
+		Content:     content,
+		Source:      m.dirs[0],
+		CallCount:   0,
+	}
+
+	m.skills[name] = skill
+
+	// Persist to disk
+	dir := m.dirs[0]
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create skills dir: %w", err)
+	}
+
+	var sb strings.Builder
+	if description != "" {
+		fmt.Fprintf(&sb, "---\nname: %s\ndescription: %s\n---\n\n", name, description)
+	}
+	sb.WriteString(content)
+
+	return os.WriteFile(filepath.Join(dir, name+".md"), []byte(sb.String()), 0644)
+}
+
+// Unregister removes a skill from memory and deletes its file from the
+// primary skills directory.
+func (m *Manager) Unregister(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.skills, name)
+
+	path := filepath.Join(m.dirs[0], name+".md")
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// Reload re-scans all skill directories. This is the hot-reload entry point.
+func (m *Manager) Reload() error { return m.Load() }
+
+// WatchAndReload periodically reloads skills when directory mtimes change.
+// This follows the ticker-based polling pattern used elsewhere in the codebase.
+func (m *Manager) WatchAndReload(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	var lastMod time.Time
+	for _, dir := range m.dirs {
+		if info, err := os.Stat(dir); err == nil {
+			if info.ModTime().After(lastMod) {
+				lastMod = info.ModTime()
+			}
+		}
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			var latest time.Time
+			for _, dir := range m.dirs {
+				if info, err := os.Stat(dir); err == nil {
+					if info.ModTime().After(latest) {
+						latest = info.ModTime()
+					}
+				}
+			}
+			if latest.After(lastMod) {
+				if err := m.Reload(); err != nil {
+					fmt.Fprintf(os.Stderr, "[skills] reload error: %v\n", err)
+				}
+				lastMod = latest
+			}
+		}
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"dolphinzZ/internal/command"
+	"dolphinzZ/internal/config"
+	"dolphinzZ/internal/i18n"
 	"dolphinzZ/internal/mcp"
 	"dolphinzZ/internal/scheduler"
 	"dolphinzZ/internal/session"
@@ -22,12 +24,13 @@ import (
 // Coordinator wraps an Agent with multi-agent coordination capabilities.
 type Coordinator struct {
 	*Agent
-	pool       *AgentPool
-	skills     *skill.Manager
-	commands   *command.Manager
-	cronMgr    *scheduler.Manager
-	basePrompt string
-	pending    []TaskResult // results collected but not yet in LLM context
+	pool             *AgentPool
+	skills           *skill.Manager
+	commands         *command.Manager
+	cronMgr          *scheduler.Manager
+	basePrompt       string
+	pending          []TaskResult // results collected but not yet in LLM context
+	startupRecommend *config.Recommendation
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -64,6 +67,11 @@ func (c *Coordinator) SetCommandManager(mgr *command.Manager) {
 // SetCronManager sets the cron task manager for scheduled tasks.
 func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 	c.cronMgr = mgr
+}
+
+// SetStartupRecommend sets a recommendation to display on startup (async, non-blocking).
+func (c *Coordinator) SetStartupRecommend(rec *config.Recommendation) {
+	c.startupRecommend = rec
 }
 
 // Run starts the coordinator event loop.
@@ -114,7 +122,12 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		go c.processDueTasks(ctx, dueCh, sess.ID)
 	}
 
-	io.WriteLine("DolphinzZ Coordinator ready. Type /exit to quit, /help for help, /agents to list agents, /commands to list user commands, /crontab for scheduled tasks.\n")
+	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
+
+	// Display async startup recommendation if ready
+	if c.startupRecommend != nil && (len(c.startupRecommend.Skills) > 0 || len(c.startupRecommend.MCP) > 0) {
+		io.WriteLine(config.PrintRecommendation(c.startupRecommend))
+	}
 
 	for {
 		select {
@@ -129,7 +142,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			state.SummaryGenerated = true
 			zap.S().Infow("max loop reached, generating summary", "turns", state.Turn)
 			c.generateSummary(sess, state)
-			io.WriteLine("\n[Session checkpoint: summary saved, continuing...]\n")
+			io.WriteLine(i18n.TL(i18n.KeySessionCheckpoint))
 		}
 
 		line, err := io.ReadLine()
@@ -211,7 +224,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// Run agent sub-loop
 		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg); err != nil {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
-			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
+			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), err))
 		}
 	}
 }
@@ -807,16 +820,16 @@ func (c *Coordinator) handleToggleCronTask(_ context.Context, input json.RawMess
 // ---- Commands ----
 
 func (c *Coordinator) printHelp(io transport.UserIO) {
-	io.WriteLine("Commands:")
-	io.WriteLine("  /exit, /quit  - Exit")
-	io.WriteLine("  /help         - This help")
-	io.WriteLine("  /agents       - List available agents and their status")
-	io.WriteLine("  /skills       - List available skills")
-	io.WriteLine("  /commands     - List user-defined commands")
-	io.WriteLine("  /cancel       - Cancel all running tasks")
-	io.WriteLine("  /cancel <id>  - Cancel a specific task by ID")
+	io.WriteLine(i18n.TL(i18n.KeyHelpHeader))
+	io.WriteLine(i18n.TL(i18n.KeyHelpExit))
+	io.WriteLine(i18n.TL(i18n.KeyHelpHelp))
+	io.WriteLine(i18n.TL(i18n.KeyHelpAgents))
+	io.WriteLine(i18n.TL(i18n.KeyHelpSkills))
+	io.WriteLine(i18n.TL(i18n.KeyHelpCommands))
+	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
+	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
 	io.WriteLine("")
-	io.WriteLine("Top MCP tools (by usage, use search_mcp_tools to find more):")
+	io.WriteLine(i18n.TL(i18n.KeyHelpTopMCP))
 	stats := c.toolReg.ToolStats()
 	toolDefs := c.toolReg.MostUsedTools(10)
 	if len(toolDefs) > 0 {
@@ -831,7 +844,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	if c.skills != nil {
 		skills := c.skills.List()
 		if len(skills) > 0 {
-			io.WriteLine(fmt.Sprintf("\nSkills: %d available (use /skills to list, search_skills to find)", len(skills)))
+			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyHelpSkillsAvail), len(skills)))
 		}
 	}
 	io.WriteLine("")
@@ -840,12 +853,12 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 func (c *Coordinator) printAgents(io transport.UserIO) {
 	agents := c.pool.List()
 	if len(agents) == 0 {
-		// Check if pool is empty because agents/ dir doesn't exist
-		io.WriteLine("No agents configured. Create agents in .dolphinzZ/agents/<name>/agent.yaml")
+		io.WriteLine(i18n.TL(i18n.KeyNoAgents))
+		io.WriteLine(i18n.TL(i18n.KeyNoAgentsHint))
 		return
 	}
 
-	io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %s", "AGENT", "STATUS", "TYPE", "TASKS"))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyAgentHeader), "AGENT", "STATUS", "TYPE", "TASKS"))
 	io.WriteLine("------------------------------------------------")
 	for _, a := range agents {
 		io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %d",
@@ -856,17 +869,19 @@ func (c *Coordinator) printAgents(io transport.UserIO) {
 
 func (c *Coordinator) printSkills(io transport.UserIO) {
 	if c.skills == nil {
-		io.WriteLine("Skills system not available. Create skills in .dolphinzZ/skills/")
+		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
+		io.WriteLine(i18n.TL(i18n.KeyNoSkillsHint))
 		return
 	}
 
 	skills := c.skills.List()
 	if len(skills) == 0 {
-		io.WriteLine("No skills found. Add .md files to .dolphinzZ/skills/")
+		io.WriteLine(i18n.TL(i18n.KeyNoSkills))
+		io.WriteLine(i18n.TL(i18n.KeyNoSkillsHint))
 		return
 	}
 
-	io.WriteLine(fmt.Sprintf("%-20s %-8s %s", "SKILL", "USAGE", "DESCRIPTION"))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillHeader), "SKILL", "USAGE", "DESCRIPTION"))
 	io.WriteLine("----------------------------------------------------------")
 	for _, s := range skills {
 		usage := "0"
@@ -876,41 +891,43 @@ func (c *Coordinator) printSkills(io transport.UserIO) {
 		io.WriteLine(fmt.Sprintf("%-20s %-8s %s", s.Name, usage, s.Description))
 	}
 	io.WriteLine("")
-	io.WriteLine("Use search_skills to find skills, load_skill to load one.")
+	io.WriteLine(i18n.TL(i18n.KeySkillSearchHint))
 	io.WriteLine("")
 }
 
 func (c *Coordinator) printCommands(io transport.UserIO) {
 	if c.commands == nil {
-		io.WriteLine("Commands system not available.")
+		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
 		return
 	}
 	cmds := c.commands.List()
 	if len(cmds) == 0 {
-		io.WriteLine("No user-defined commands. Add .md files to .dolphinzZ/commands/")
+		io.WriteLine(i18n.TL(i18n.KeyNoCommands))
+		io.WriteLine(i18n.TL(i18n.KeyNoCommandsHint))
 		return
 	}
-	io.WriteLine(fmt.Sprintf("%-20s  %s", "COMMAND", "DESCRIPTION"))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCommandHeader), "COMMAND", "DESCRIPTION"))
 	io.WriteLine("------------------------------------------")
 	for _, cmd := range cmds {
 		io.WriteLine(fmt.Sprintf("/%-19s  %s", cmd.Name, cmd.Description))
 	}
 	io.WriteLine("")
-	io.WriteLine("Type /<command> to run a command, optionally with arguments.")
+	io.WriteLine(i18n.TL(i18n.KeyCommandRunHint))
 	io.WriteLine("")
 }
 
 func (c *Coordinator) printCronTasks(io transport.UserIO) {
 	if c.cronMgr == nil {
-		io.WriteLine("Cron scheduler not available.")
+		io.WriteLine(i18n.TL(i18n.KeyCronNotAvail))
 		return
 	}
 	tasks := c.cronMgr.List()
 	if len(tasks) == 0 {
-		io.WriteLine("No scheduled tasks. Use the add_cron_task tool to create one.")
+		io.WriteLine(i18n.TL(i18n.KeyNoCronTasks))
+		io.WriteLine(i18n.TL(i18n.KeyNoCronHint))
 		return
 	}
-	io.WriteLine(fmt.Sprintf("%-20s %-12s %s", "NAME", "SCHEDULE", "STATUS"))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCronHeader), "NAME", "SCHEDULE", "STATUS"))
 	io.WriteLine("-----------------------------------------------------")
 	for _, t := range tasks {
 		status := "enabled"
@@ -919,11 +936,10 @@ func (c *Coordinator) printCronTasks(io transport.UserIO) {
 		}
 		io.WriteLine(fmt.Sprintf("%-20s %-12s %s", t.Name, t.Schedule, status))
 	}
-	// Show recent results
 	results := c.cronMgr.PendingResults()
 	if len(results) > 0 {
 		io.WriteLine("")
-		io.WriteLine("Recent results:")
+		io.WriteLine(i18n.TL(i18n.KeyCronRecent))
 		for _, r := range results {
 			mark := "✓"
 			if !r.Success {
@@ -947,13 +963,13 @@ func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
 	if len(parts) > 1 {
 		taskID := parts[1]
 		if c.pool.Cancel(taskID) {
-			io.WriteLine(fmt.Sprintf("Task %s cancelled.", taskID))
+			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCancelTask), taskID))
 		} else {
-			io.WriteLine(fmt.Sprintf("No running task found with ID: %s", taskID))
+			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCancelNotFound), taskID))
 		}
 	} else {
 		c.pool.CancelAll()
-		io.WriteLine("All running tasks cancelled.")
+		io.WriteLine(i18n.TL(i18n.KeyCancelAll))
 	}
 }
 
@@ -988,9 +1004,9 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 		age = formatDuration(time.Since(info.ModTime()))
 	}
 
-	io.WriteLine(fmt.Sprintf("\nFound previous session %s (%d turns, %s ago). Resume? [Y/n]: ", id, turns, age))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyResumePrompt), id, turns, age))
 	line, rerr := io.ReadLine()
-	if rerr != nil || (line != "" && line != "y" && line != "Y" && line != "yes") {
+	if rerr != nil || (line != "" && line != "y" && line != "Y" && line != strings.ToLower(i18n.TL(i18n.KeyResumeYes))) {
 		io.WriteLine("")
 		return nil, nil
 	}

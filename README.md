@@ -1,286 +1,76 @@
 # DolphinzZ
 
-[![CI](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml)
+An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
 
-AI coding agent with MCP tool support, multi-agent coordination, and skills system.
-Runs via stdio, SSH, MQTT, or Email.
+## Why DolphinzZ?
 
-## Quick Start
+Most AI coding tools lock you into a specific editor or a web UI. That's fine for writing code, but real work sprawls. You might want to ask the agent something over email while you're on your phone. Or have it run a scheduled task every evening without anyone touching a keyboard. Or SSH into a server and ask the agent sitting there to diagnose an issue.
+
+DolphinzZ doesn't care which door you knock on — it answers them all. The same agent, the same tools, the same session state, regardless of transport.
+
+## What it can do
+
+**Run commands and automate workflows.** The shell tool gives it access to your filesystem, git, package managers, build tools — anything you'd type into a terminal. Timeouts and optional allowlists keep it safe.
+
+**Drive a browser.** Through the CDP (Chrome DevTools Protocol) tool, it can open pages, click around, fill forms, take screenshots, and extract data. Useful for testing, scraping, or automating web tasks that don't have an API.
+
+**Coordinate multiple agents.** Need a code review, a security audit, and a deployment check at the same time? The coordinator dispatches tasks to specialized sub-agents that run in parallel. You define persistent agents for recurring roles, or the coordinator creates temporary ones on the fly.
+
+**Learn skills on demand.** Skills are markdown files that teach the agent how to do specific things — code review patterns, deployment checklists, database migration steps. The agent loads only what it needs, when it needs it, so the system prompt stays lean.
+
+**Follow a schedule.** Drop a CRONTAB.md in your project and the agent will run tasks on a cron schedule — daily summaries, weekly maintenance, whatever rhythm your project needs. Results show up in the session like any other agent output.
+
+**Plug into external tools.** Any MCP-compatible server (database inspectors, API explorers, code linters) can be wired in through config. The agent discovers available tools and uses them when relevant.
+
+## How to connect
+
+DolphinzZ speaks four transports, and you can enable any combination of them:
+
+- **stdio** — the default. Run `./dolphinzZ` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
+- **SSH** — connect from anywhere. `ssh dolphinzZ@host -p 2222`. Same agent session, terminal interface.
+- **MQTT** — lightweight pub/sub messaging. Great for embedded devices, chat apps, or event-driven automation. Ships with a native macOS client (Panda).
+- **Email** — send a command as an email subject, get the response back. Polls IMAP on a configurable interval.
+
+All transports share the same agent instance, tools, and session state. Switch between them freely.
+
+## Getting started
+
+Clone the repo, build, and run:
 
 ```bash
-# Build
-make build
-
-# Set your API key and run
+go build -o dolphinzZ ./main.go
 export DZ_LLM_API_KEY="sk-..."
 ./dolphinzZ
 ```
 
-## Configuration
+You'll be asked what kind of work you do — pick one or more roles and DolphinzZ recommends tools and skills that match. Everything stays local. After that, you're in a session with the coordinator.
 
-Priority (higher overrides lower):
-1. Environment variables (`DZ_*`)
-2. Project: `.dolphinzZ/config.yaml`
-3. User: `~/.dolphinzZ/config.yaml`
-4. System: `/etc/dolphinzZ/config.yaml`
+Configuration lives in `.dolphinzZ/config.yaml` (project-level) or `~/.dolphinzZ/config.yaml` (user-level). Most things have sensible defaults, so a minimal config is just the API key via environment variable.
 
-Key environment variables:
+## Project structure
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `DZ_LLM_API_KEY` | — | API key |
-| `DZ_LLM_TYPE` | `openai` | `openai` or `anthropic` |
-| `DZ_LLM_MODEL` | `gpt-4o` | Model name |
-| `DZ_LLM_BASE_URL` | `https://api.openai.com/v1` | API base URL |
-| `DZ_LLM_MAX_TOKENS` | `4096` | Max output tokens |
-| `DZ_LOG_LEVEL` | `info` | Log level (`debug`, `info`, `warn`, `error`) |
-| `DZ_EMAIL_USERNAME` | — | Email SMTP/IMAP username |
-| `DZ_EMAIL_PASSWORD` | — | Email SMTP/IMAP password |
-
-### Example config (`.dolphinzZ/config.yaml`)
-
-```yaml
-llm:
-  type: "anthropic"
-  base_url: "https://api.anthropic.com"
-  api_key: ""
-  model: "claude-sonnet-4-20250514"
-  max_tokens: 4096
-
-session:
-  dir: "./sessions"
-  max_loop: 50
-  max_age: "24h"
-
-transport:
-  stdio:
-    enabled: true
-  ssh:
-    enabled: false
-  mqtt:
-    enabled: false
-  email:
-    enabled: false
-    smtp_host: "smtp.qq.com"
-    smtp_port: 587
-    imap_host: "imap.qq.com"
-    imap_port: 993
-    username: "your_email@qq.com"
-    password: "your_smtp_authorization_code"
-    from: "your_email@qq.com"
-    use_tls: true
-    poll_interval: "10s"
-
-mcp:
-  shell:
-    enabled: true
-    allowed_commands: []
-    timeout_seconds: 30
-  cdp:
-    enabled: true
-    headless: true
-
-agent_pool:
-  max_concurrency: 5
-  default_timeout: 300
-  workspace_dir: ".dolphinzZ/workspaces"
-  idle_timeout: 600
-
-crontab:
-  file: ".dolphinzZ/CRONTAB.md"
-  check_interval: "30s"
+```
+.dolphinzZ/
+├── config.yaml          # project configuration
+├── agents/              # user-defined sub-agents
+│   └── reviewer/
+│       └── agent.yaml
+├── skills/              # on-demand skill definitions
+│   └── code-review.md
+├── commands/            # custom slash commands
+│   └── deploy.md
+├── CRONTAB.md           # scheduled tasks
+└── logs/                # agent logs (rotated)
 ```
 
-## Usage
+Documentation lives in `design/` — read the design doc and the full README there for details on configuration, MCP tools, and the multi-agent system.
 
-### stdio (default)
+## Philosophy
 
-```bash
-./dolphinzZ
-```
+DolphinzZ is built around a few beliefs about how AI agents should work:
 
-Built-in commands:
-
-- `/exit`, `/quit` — end session
-- `/help` — show help and top MCP tools
-- `/agents` — list available agents
-- `/skills` — list available skills
-- `/cancel` — cancel running tasks
-- `/cancel <id>` — cancel specific task
-- `/crontab` — list scheduled tasks
-
-### SSH
-
-Enable in config, then connect:
-
-```bash
-ssh dolphinzZ@<host> -p 2222
-```
-
-### MQTT
-
-Enable in config. Subscribe to `dolphinzZ/agent/response` and publish to `dolphinzZ/agent/command`:
-
-```bash
-mosquitto_sub -t "dolphinzZ/agent/response" &
-mosquitto_pub -t "dolphinzZ/agent/command" -m "your prompt"
-```
-
-### Email
-
-Enable in config. Send an email to the configured `from` address; the subject line is used as the command. The agent replies via SMTP.
-
-```bash
-# The agent polls IMAP every poll_interval (default 10s)
-# Send a command email — subject becomes the prompt
-```
-
-**Note**: The email transport sends responses back to the `from` address (reply-to-self).
-
-## Panda macOS App
-
-Panda is a native macOS MQTT chat client for DolphinzZ. It connects to the backend via MQTT, listing agents and exchanging messages in real time.
-
-### Prerequisites
-
-- MQTT broker running (e.g., Mosquitto: `brew install mosquitto && brew services start mosquitto`)
-- Backend MQTT transport enabled (`transport.mqtt.enabled: true` in `.dolphinzZ/config.yaml`)
-
-### Build and launch
-
-```bash
-make app          # build + open panda.app
-make app-clean    # remove panda.app
-```
-
-### Usage
-
-1. Open panda.app, click Settings (⚙️), set Broker Host/Port (default `localhost:1883`), click Connect
-2. Click **+** to add an agent — enter the Agent ID (matches backend agent name, e.g. `reviewer`) and a display name
-3. Select an agent, type a message, press Return
-4. Backend processes the message and the reply appears in chat
-
-### How it works
-
-| Direction | MQTT Topic |
-|-----------|-----------|
-| Message to agent | `dolphinzZ/agent/command/<agentID>` |
-| Response from agent | `dolphinzZ/agent/response/<agentID>` |
-
-The app auto-subscribes to response topics when adding agents.
-
-> Panda is maintained as a [separate repository](https://github.com/dolphinZzv/panda) and included as a git submodule at `app/panda`.
-
-## Cron Scheduling (v0.3)
-
-Periodic tasks are defined in `.dolphinzZ/CRONTAB.md` using YAML frontmatter + Markdown body:
-
-```markdown
----
-name: auto-commit
-schedule: "0 18 * * 1-5"
-description: Daily auto-commit at 6pm weekdays
-enabled: true
----
-
-Run git add -A, git commit -m "auto commit", and git push in the current repository.
-```
-
-The scheduler checks every 30s and dispatches due tasks to a background goroutine. Results are stored independently and don't interfere with active conversations.
-
-### Built-in commands
-
-- `/crontab` — list all scheduled tasks and recent results
-
-### Coordinator tools for cron
-
-| Tool | Description |
-|------|-------------|
-| `add_cron_task` | Add a new scheduled task |
-| `remove_cron_task` | Remove a scheduled task |
-| `list_cron_tasks` | List all tasks and their status |
-| `toggle_cron_task` | Enable/disable a task |
-
-## MCP Tools
-
-| Tool | Description |
-|------|-------------|
-| `shell` | Execute shell commands with timeout control |
-| `cdp` | Browser automation via CDP (navigate, click, screenshot, evaluate JS) |
-| `search_mcp_tools` | Search available MCP tools by name/description |
-| External | Any stdio-based MCP server (configured via `mcp.servers`) |
-
-**Progressive disclosure**: Only the top 10 most-used tools are shown to the LLM by default. Use `search_mcp_tools` to discover more.
-
-## Multi-Agent Coordination (v0.2)
-
-DolphinzZ supports a coordinator-subagent architecture:
-
-- **Coordinator**: default agent that dispatches tasks to specialized sub-agents
-- **User-created agents**: persistent agents defined in `.dolphinzZ/agents/<name>/agent.yaml`
-- **Coordinator-created agents**: ephemeral agents created at runtime via `create_agent`
-
-### Coordinator tools
-
-| Tool | Description |
-|------|-------------|
-| `dispatch_task` | Send a task to a sub-agent for async processing |
-| `create_agent` | Create a temporary agent with custom role and tools |
-| `get_agent_status` | Check agent status |
-| `cancel_task` | Cancel a running task |
-| `delete_agent` | Delete a temporary agent |
-
-## Skills System
-
-Skills are specialized capabilities defined as markdown files in `.dolphinzZ/skills/`.
-Each skill has a name, description, and full instructions that can be loaded on demand.
-
-**Progressive disclosure**: Top 10 skills by usage shown in context. Use `search_skills` and `load_skill` to find and activate more.
-
-### Coordinator tools for skills
-
-| Tool | Description |
-|------|-------------|
-| `search_skills` | Search skills by name or description |
-| `load_skill` | Load full skill content into context |
-
-### Creating a skill
-
-```markdown
----
-name: code-review
-description: Perform thorough code review
----
-
-# Code Review Skill
-
-Detailed instructions for code review...
-```
-
-## Agent Definitions (user-created)
-
-Create agents in `.dolphinzZ/agents/<name>/agent.yaml`:
-
-```yaml
-name: reviewer
-role: You are a code review specialist...
-tools: ["shell"]
-workspace: ".dolphinzZ/workspaces/reviewer"
-timeout: 300
-```
-
-## Development
-
-```bash
-make test    # run all tests
-make build   # build binary
-make fmt     # format code
-make clean   # clean build artifacts
-```
-
-## Safety
-
-- Shell commands are unrestricted by default (`allowed_commands: []`). Set explicit allowlist for production use.
-- SSH password is stored in plaintext at `~/.dolphinzZ/ssh_password`. Use SSH key authentication for better security.
-- Session files are retained for 24 hours by default (`session.max_age`). Old files are cleaned up automatically.
-- Sub-agent workspaces are isolated, preventing cross-agent file interference.
+- **Meet people where they are.** The agent shouldn't require a special UI. It should plug into the tools and channels already in use.
+- **Progressive disclosure.** Show the most relevant tools and skills first. Let the LLM search for more when needed. Don't flood the context window.
+- **Local first, privacy respecting.** Career profile, SYSTEM.md, session files — all stored locally. Nothing gets sent anywhere except the LLM API calls you configure.
+- **Recoverable by design.** Sessions persist to disk. If the agent crashes or you shut down, you can resume where you left off. Logs rotate but don't disappear.
+- **Testable and observable.** Structured logging, Prometheus metrics, pprof endpoints, and a test suite that enforces race detection and coverage gates.

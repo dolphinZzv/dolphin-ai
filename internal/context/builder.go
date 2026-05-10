@@ -37,6 +37,7 @@ func (b *Builder) Build() (string, error) {
 //	order for AGENTS.md: agentDir > projectDir > userDir > systemDir
 //	order for RULES.md:  agentDir > projectDir > userDir > systemDir
 //	order for USER.md:   agentDir > projectDir > userDir > systemDir
+//	SYSTEM.md: user dir only — generated once, injected every session
 func (b *Builder) BuildForAgent(agentName string) (string, error) {
 	var agentDir string
 	if agentName != "" {
@@ -63,7 +64,24 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 		parts = append(parts, "## User Context\n"+user)
 	}
 
+	// 5. SYSTEM.md (user dir only — generated once, injected every startup)
+	if sys := b.loadSystemMD(); sys != "" {
+		parts = append(parts, "## System\n"+sys)
+	}
+
 	return strings.Join(parts, "\n\n"), nil
+}
+
+// loadSystemMD loads SYSTEM.md from the user config directory only.
+// This file is generated once on first startup, injected into every session.
+func (b *Builder) loadSystemMD() string {
+	path := filepath.Join(b.userDir, "SYSTEM.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	zap.S().Debugw("loaded SYSTEM.md", "path", path)
+	return string(data)
 }
 
 // loadFileFallback loads a context file with cascading fallback.
