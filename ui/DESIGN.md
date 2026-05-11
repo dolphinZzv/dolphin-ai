@@ -40,7 +40,7 @@
 JS 产物:   ≤ 150KB (gzip)
 首屏加载:  ≤ 2s (3G 模拟)
 图片:      不加载非首屏图片
-字体:      Noto Sans SC 只加载中文子集 (subset)
+字体:      系统自带字体，零网络开销（Noto Sans SC 后期按需加载）
 Lazy Load: 页面/弹窗按需加载
 ```
 
@@ -68,13 +68,13 @@ Tailwind 写法:
 中文场景下字体栈调整，确保中文字符渲染细腻：
 
 ```
-字体栈: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', Inter, sans-serif
+字体栈: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', Inter, sans-serif
 等宽:   'JetBrains Mono', 'Noto Sans Mono SC', monospace
 ```
 
-- Noto Sans SC 优先（Google Fonts，无版权问题）
-- PingFang SC 备选（macOS 内置）
+- PingFang SC 优先（macOS 内置，系统字体零开销）
 - Microsoft YaHei 备选（Windows 内置）
+- Noto Sans SC 备选（后期优化按需加载）
 - 英文字体放在中文字体之后，确保英文/数字优先用 Inter
 
 ### 字号
@@ -167,7 +167,7 @@ small:    text-xs (12px) → 中文最小字号，不再缩小
 ## 字体
 
 ```
-字体栈: 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', Inter, sans-serif
+字体栈: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', Inter, sans-serif
 等宽:   'JetBrains Mono', 'Noto Sans Mono SC', monospace
 层级:
   h1: text-2xl font-semibold     — 页面标题
@@ -405,3 +405,62 @@ Label Badge:
 - 操作: Plus, Trash2, Pencil, X, Check, ChevronDown
 - 状态: Circle (绿/琥珀/红/灰)
 - 用户: User, LogOut, Sun, Moon
+
+## 无障碍 (a11y)
+
+基于 shadcn/Radix 原语，大部分无障碍能力开箱即得。以下清单覆盖需要人工关注的场景。
+
+### 焦点管理
+
+| 场景 | 要求 |
+|------|------|
+| Dialog / Action Sheet 打开 | 焦点锁定在弹窗内 (Radix 默认) |
+| Dialog / Action Sheet 关闭 | 焦点恢复到触发按钮 |
+| 页面路由跳转 | 页面 `<h1>` 获得焦点 (用 `useEffect` + `ref.focus()`) |
+| IssueBoard 拖拽 | 拖拽结束后焦点回到卡片 |
+| Toast 出现 | 不抢焦点（仅 aria-live 播报） |
+| 错误状态 | ErrorBoundary fallback 中的重试按钮自动获焦 |
+
+### 键盘导航
+
+| 场景 | 要求 |
+|------|------|
+| Dialog | Escape 关闭 (Radix 默认) |
+| Dropdown / Select | 方向键导航 (Radix 默认) |
+| IssueBoard | `Tab` 在列间移动，Enter 打开详情 |
+| Comment 输入 | `Cmd+Enter` / `Ctrl+Enter` 提交 |
+| 列表页 | `Tab` 在卡片间导航 |
+| 侧栏 | Escape 关闭（移动端 overlay） |
+
+### ARIA
+
+| 场景 | 要求 |
+|------|------|
+| 图标按钮 (icon-only) | `<Button aria-label="创建 Issue">` |
+| Badge (State/Priority) | `<span role="status">` |
+| Toast 通知 | `<div role="alert" aria-live="assertive">` |
+| Loading Skeleton | `<div aria-busy="true">` |
+| 错误提示 | `<div role="alert">` |
+| 导航栏 | `<nav aria-label="主导航">` |
+| 移动端底部导航 | `<nav aria-label="底部导航">` |
+| 当前页标识 | `aria-current="page"` |
+
+### 色彩与对比度
+
+- 所有文本/背景组合满足 WCAG AA 标准 (对比度 ≥ 4.5:1)
+- 状态/优先级不单独依赖颜色标识，同时使用文字标签（State Badge 含中文名，Priority Badge 含文本）
+- 暗色模式色值已定义，不影响对比度
+
+### 屏幕阅读器
+
+| 场景 | 要求 |
+|------|------|
+| 头像 (Avatar) | `<img alt="张三的头像">` 或 `aria-label` |
+| 图表/统计卡片 | `<span aria-label="3 个进行中的 Issue">` |
+| 相对时间 | 同时包含机器可读时间 `<time datetime="...">` |
+| 拖拽 (dnd-kit) | `aria-roledescription="sortable"` |
+| 状态变更通知 | `aria-live="polite"` 播报 |
+
+### Touch 目标
+
+已在手机优先章节定义：最小 44px，间距 ≥ 8px。所有可交互元素必须满足此标准。
