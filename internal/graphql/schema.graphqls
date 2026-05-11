@@ -1,0 +1,172 @@
+scalar Time
+
+enum AgentKind {
+  ai
+  human
+  hybrid
+}
+
+enum AgentStatus {
+  online
+  busy
+  offline
+  error
+}
+
+type Agent {
+  id: ID!
+  name: String!
+  kind: AgentKind!
+  status: AgentStatus!
+  externalID: String!
+  capabilities: [String!]
+  lastSeenAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+type LoginResult {
+  agent: Agent!
+  token: String!
+}
+
+enum ProjectRole {
+  admin
+  member
+  viewer
+}
+
+type ProjectMember {
+  id: ID!
+  projectID: ID!
+  agentID: ID!
+  role: ProjectRole!
+  agent: Agent!
+}
+
+type Project {
+  id: ID!
+  name: String!
+  description: String
+  createdAt: Time!
+  updatedAt: Time!
+  members: [ProjectMember!]
+}
+
+enum IssueState {
+  open
+  in_progress
+  blocked
+  review
+  closed_completed
+  closed_not_planned
+}
+
+enum Priority {
+  critical
+  high
+  medium
+  low
+}
+
+type IssueAssignee {
+  id: ID!
+  issueID: ID!
+  agentID: ID!
+  state: AssigneeState!
+  agent: Agent!
+}
+
+enum AssigneeState {
+  pending
+  accepted
+  declined
+  completed
+}
+
+type Label {
+  id: ID!
+  name: String!
+  color: String
+  projectID: ID!
+}
+
+type Issue {
+  id: ID!
+  number: Int!
+  projectID: ID!
+  title: String!
+  description: String
+  state: IssueState!
+  priority: Priority!
+  creatorID: ID!
+  parentID: ID
+  dueDate: Time
+  closedAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+  creator: Agent!
+  assignees: [IssueAssignee!]
+  labels: [Label!]
+}
+
+enum CommentContentType {
+  markdown
+  tool_call
+  tool_result
+  code_diff
+  decision
+  approval
+  rejection
+  structured
+}
+
+type Comment {
+  id: ID!
+  issueID: ID!
+  authorID: ID!
+  parentID: ID
+  body: String!
+  contentType: CommentContentType!
+  createdAt: Time!
+  updatedAt: Time!
+  author: Agent!
+}
+
+type TimelineEvent {
+  id: ID!
+  issueID: ID!
+  actorID: ID!
+  eventType: String!
+  createdAt: Time!
+  actor: Agent!
+}
+
+type IssueConnection {
+  edges: [Issue!]!
+  total: Int!
+}
+
+type Query {
+  agents(kind: AgentKind, status: AgentStatus): [Agent!]!
+  projects: [Project!]!
+  project(id: ID!): Project
+  issue(id: ID!): Issue
+  issues(projectID: ID!, state: IssueState, priority: Priority, limit: Int, offset: Int): IssueConnection!
+  comments(issueID: ID!): [Comment!]!
+  timeline(issueID: ID!): [TimelineEvent!]!
+  validTransitions(state: IssueState!): [IssueState!]!
+}
+
+type Mutation {
+  registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!]): Agent!
+  loginAgent(externalID: String!, secret: String!): LoginResult!
+  createProject(name: String!, description: String): Project!
+  addProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
+  removeProjectMember(projectID: ID!, agentID: ID!): Boolean!
+  createIssue(projectID: ID!, creatorID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!]): Issue!
+  transitionIssue(id: ID!, newState: IssueState!, actorID: ID!): Issue!
+  addAssignee(issueID: ID!, agentID: ID!): IssueAssignee!
+  removeAssignee(issueID: ID!, agentID: ID!): Boolean!
+  addComment(issueID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!, parentID: ID): Comment!
+}

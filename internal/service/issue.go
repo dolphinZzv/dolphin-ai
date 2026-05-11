@@ -199,6 +199,10 @@ func (s *IssueService) UpdateAssigneeState(issueID, agentID uint, state models.A
 	return nil, fmt.Errorf("assignee not found")
 }
 
+func (s *IssueService) ListTimeline(issueID uint) ([]models.TimelineEvent, error) {
+	return s.timelineRepo.ListByIssue(issueID)
+}
+
 func (s *IssueService) AddLabel(issueID, labelID uint) error {
 	return s.issueRepo.AddLabel(issueID, labelID)
 }

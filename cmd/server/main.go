@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"chick/internal/config"
+	graphql "chick/internal/graphql"
 	"chick/internal/mcp"
 	"chick/internal/server"
 )
@@ -59,6 +60,7 @@ func main() {
 
 	// SSE mode — HTTP server
 	http.HandleFunc("/mcp", handleSSE(mcpServer))
+	http.Handle("/graphql", graphql.NewHandler(srv.ProjectService, srv.AgentService, srv.IssueService, srv.CommentService, srv.WorkflowService))
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
