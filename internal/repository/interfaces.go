@@ -76,6 +76,7 @@ type CommentRepository interface {
 	GetByID(id uint) (*models.Comment, error)
 	ListByIssue(issueID uint) ([]models.Comment, error)
 	ListByParent(parentID uint) ([]models.Comment, error)
+	Update(id uint, body string) error
 	Delete(id uint) error
 }
 
@@ -102,6 +103,15 @@ type MilestoneRepository interface {
 type TimelineRepository interface {
 	Create(event *models.TimelineEvent) error
 	ListByIssue(issueID uint) ([]models.TimelineEvent, error)
+}
+
+// ─── Skill ─────────────────────────────────────────────────
+
+type SkillRepository interface {
+	Create(skill *models.Skill) error
+	GetByID(id uint) (*models.Skill, error)
+	ListByProject(projectID uint) ([]models.Skill, error)
+	Delete(id uint) error
 }
 
 // ─── Feedback ──────────────────────────────────────────────

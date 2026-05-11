@@ -16,7 +16,7 @@ func NewWorkflowService(issueService *IssueService) *WorkflowService {
 }
 
 var validTransitions = map[models.IssueState][]models.IssueState{
-	models.IssueStateOpen:              {models.IssueStateInProgress},
+	models.IssueStateOpen:              {models.IssueStateInProgress, models.IssueStateBlocked},
 	models.IssueStateInProgress:        {models.IssueStateBlocked, models.IssueStateReview},
 	models.IssueStateBlocked:           {models.IssueStateInProgress, models.IssueStateClosedNotPlanned},
 	models.IssueStateReview:            {models.IssueStateInProgress, models.IssueStateClosedCompleted, models.IssueStateClosedNotPlanned},

@@ -1,4 +1,5 @@
 scalar Time
+scalar Map
 
 enum AgentKind {
   ai
@@ -19,10 +20,14 @@ type Agent {
   kind: AgentKind!
   status: AgentStatus!
   externalID: String!
+  systemPrompt: String
   capabilities: [String!]
+  metadata: Map
   lastSeenAt: Time
   createdAt: Time!
   updatedAt: Time!
+  assignedIssues: [IssueAssignee!]
+  createdIssues: [Issue!]
 }
 
 type LoginResult {
@@ -31,9 +36,10 @@ type LoginResult {
 }
 
 enum ProjectRole {
-  admin
+  owner
+  maintainer
   member
-  viewer
+  observer
 }
 
 type ProjectMember {
@@ -51,6 +57,9 @@ type Project {
   createdAt: Time!
   updatedAt: Time!
   members: [ProjectMember!]
+  labels: [Label!]
+  milestones: [Milestone!]
+  skills: [Skill!]
 }
 
 enum IssueState {
@@ -74,21 +83,51 @@ type IssueAssignee {
   issueID: ID!
   agentID: ID!
   state: AssigneeState!
+  assignedAt: Time!
   agent: Agent!
 }
 
 enum AssigneeState {
   pending
-  accepted
-  declined
+  in_progress
   completed
+  blocked
 }
 
 type Label {
   id: ID!
   name: String!
   color: String
+  description: String
   projectID: ID!
+  capability: String
+  group: String
+}
+
+type Milestone {
+  id: ID!
+  projectID: ID!
+  title: String!
+  description: String
+  state: MilestoneState!
+  dueDate: Time
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum MilestoneState {
+  open
+  closed
+}
+
+type Skill {
+  id: ID!
+  projectID: ID!
+  name: String!
+  description: String
+  definition: String!
+  createdAt: Time!
+  updatedAt: Time!
 }
 
 type Issue {
@@ -108,6 +147,9 @@ type Issue {
   creator: Agent!
   assignees: [IssueAssignee!]
   labels: [Label!]
+  children: [Issue!]
+  milestone: Milestone
+  structuredOutput: Map
 }
 
 enum CommentContentType {
@@ -131,6 +173,8 @@ type Comment {
   createdAt: Time!
   updatedAt: Time!
   author: Agent!
+  parent: Comment
+  replies: [Comment!]
 }
 
 type TimelineEvent {
@@ -138,6 +182,7 @@ type TimelineEvent {
   issueID: ID!
   actorID: ID!
   eventType: String!
+  payload: Map
   createdAt: Time!
   actor: Agent!
 }
@@ -147,26 +192,101 @@ type IssueConnection {
   total: Int!
 }
 
+enum FeedbackTargetType {
+  issue
+  comment
+  agent
+  assignment
+}
+
+enum FeedbackRating {
+  one
+  two
+  three
+  four
+  five
+}
+
+type Feedback {
+  id: ID!
+  targetType: FeedbackTargetType!
+  targetID: ID!
+  authorID: ID!
+  rating: FeedbackRating!
+  body: String
+  createdAt: Time!
+  author: Agent!
+}
+
 type Query {
-  agents(kind: AgentKind, status: AgentStatus): [Agent!]!
+  agents(kind: AgentKind, status: AgentStatus, capabilities: [String!], projectID: ID): [Agent!]!
+  agent(id: ID!): Agent
   projects: [Project!]!
   project(id: ID!): Project
+  labels(projectID: ID!, group: String): [Label!]!
+  milestones(projectID: ID!, state: MilestoneState): [Milestone!]!
+  skills(projectID: ID!): [Skill!]!
   issue(id: ID!): Issue
-  issues(projectID: ID!, state: IssueState, priority: Priority, limit: Int, offset: Int): IssueConnection!
+  issues(projectID: ID!, state: IssueState, priority: Priority, assigneeID: ID, limit: Int, offset: Int): IssueConnection!
   comments(issueID: ID!): [Comment!]!
   timeline(issueID: ID!): [TimelineEvent!]!
   validTransitions(state: IssueState!): [IssueState!]!
+  feedback(targetType: FeedbackTargetType!, targetID: ID!): [Feedback!]!
 }
 
 type Mutation {
   registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!]): Agent!
   loginAgent(externalID: String!, secret: String!): LoginResult!
+  updateAgentStatus(id: ID!, status: AgentStatus!): Agent!
+
   createProject(name: String!, description: String): Project!
+  updateProject(id: ID!, name: String, description: String): Project!
+  deleteProject(id: ID!): Boolean!
   addProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
+  updateProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
   removeProjectMember(projectID: ID!, agentID: ID!): Boolean!
+
   createIssue(projectID: ID!, creatorID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!]): Issue!
+  updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time): Issue!
+  deleteIssue(id: ID!): Boolean!
   transitionIssue(id: ID!, newState: IssueState!, actorID: ID!): Issue!
+
   addAssignee(issueID: ID!, agentID: ID!): IssueAssignee!
   removeAssignee(issueID: ID!, agentID: ID!): Boolean!
+  updateAssigneeState(issueID: ID!, agentID: ID!, state: AssigneeState!): IssueAssignee!
+
   addComment(issueID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!, parentID: ID): Comment!
+  updateComment(id: ID!, body: String!): Comment!
+  deleteComment(id: ID!): Boolean!
+
+  addLabels(issueID: ID!, labelIDs: [ID!]!): Issue!
+  removeLabels(issueID: ID!, labelIDs: [ID!]!): Issue!
+  createLabel(projectID: ID!, name: String!, color: String, capability: String, group: String): Label!
+  deleteLabel(id: ID!): Boolean!
+
+  createMilestone(projectID: ID!, title: String!, description: String, dueDate: Time): Milestone!
+  deleteMilestone(id: ID!): Boolean!
+
+  createFeedback(targetType: FeedbackTargetType!, targetID: ID!, authorID: ID!, rating: FeedbackRating!, body: String): Feedback!
+}
+
+type Subscription {
+  issueUpdated(issueID: ID!): Issue!
+  agentNotifications(agentID: ID!): NotificationEvent!
+  agentStatusChanged: AgentStatusEvent!
+}
+
+type NotificationEvent {
+  id: ID!
+  notificationType: String!
+  issueID: ID
+  message: String!
+  read: Boolean!
+  createdAt: Time!
+}
+
+type AgentStatusEvent {
+  agentID: ID!
+  status: AgentStatus!
+  timestamp: Time!
 }

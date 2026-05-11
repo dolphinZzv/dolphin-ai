@@ -1,1 +1,7 @@
 .claude/
+internal/graphql/generated.go
+internal/graphql/models_gen.go
+coverage.out
+*.db
+/server
+/bin/

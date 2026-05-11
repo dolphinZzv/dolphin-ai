@@ -199,6 +199,33 @@ func (s *IssueService) UpdateAssigneeState(issueID, agentID uint, state models.A
 	return nil, fmt.Errorf("assignee not found")
 }
 
+func (s *IssueService) Update(id uint, title, description string, priority models.Priority, dueDate *models.UnixNullTime) (*models.Issue, error) {
+	changes := map[string]interface{}{}
+	if title != "" {
+		changes["title"] = title
+	}
+	if description != "" {
+		changes["description"] = description
+	}
+	if priority != "" {
+		changes["priority"] = priority
+	}
+	if dueDate != nil && dueDate.Valid {
+		changes["due_date"] = dueDate.Time
+	}
+	if len(changes) == 0 {
+		return s.issueRepo.GetByID(id)
+	}
+	if err := s.issueRepo.Update(id, changes); err != nil {
+		return nil, fmt.Errorf("update issue: %w", err)
+	}
+	return s.issueRepo.GetByID(id)
+}
+
+func (s *IssueService) Delete(id uint) error {
+	return s.issueRepo.Delete(id)
+}
+
 func (s *IssueService) ListTimeline(issueID uint) ([]models.TimelineEvent, error) {
 	return s.timelineRepo.ListByIssue(issueID)
 }

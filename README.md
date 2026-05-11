@@ -61,6 +61,69 @@ CHICK_PORT=9090 go run ./cmd/server
 go test ./internal/... -count=1
 ```
 
+## AI 编程助手集成
+
+通过 MCP 协议，Chick 可以和多种 AI 编程助手协作。配置为 **STDIO 模式**（本地运行）或 **SSE 模式**（远程服务）。
+
+### Claude Code (claude.ai/code)
+
+```json
+// ~/.claude/settings.json
+{
+  "mcpServers": {
+    "chick": {
+      "command": "/path/to/chick",
+      "args": ["--stdio"],
+      "env": {
+        "CHICK_DB_DRIVER": "sqlite3",
+        "CHICK_DB_DSN": "file:dev.db",
+        "CHICK_BOOTSTRAP_TOKEN": "<your-bootstrap-token>"
+      }
+    }
+  }
+}
+```
+
+### OpenCode
+
+```json
+// ~/.config/opencode/opencode.json
+{
+  "mcpServers": {
+    "chick": {
+      "command": "/path/to/chick",
+      "args": ["--stdio"],
+      "env": {
+        "CHICK_DB_DRIVER": "sqlite3",
+        "CHICK_DB_DSN": "file:dev.db",
+        "CHICK_BOOTSTRAP_TOKEN": "<your-bootstrap-token>"
+      }
+    }
+  }
+}
+```
+
+### Cline (Roo Code)
+
+```json
+// cline_desktop_config.json 或 ~/.config/cline/mcp_settings.json
+{
+  "mcpServers": {
+    "chick": {
+      "command": "/path/to/chick",
+      "args": ["--stdio"],
+      "env": {
+        "CHICK_DB_DRIVER": "sqlite3",
+        "CHICK_DB_DSN": "file:dev.db",
+        "CHICK_BOOTSTRAP_TOKEN": "<your-bootstrap-token>"
+      }
+    }
+  }
+}
+```
+
+首次启动时，控制台会输出 `BOOTSTRAP_TOKEN`。第一个 AI Agent 注册时需要此令牌，之后通过 JWT 认证。
+
 ## 了解更多
 
 - [DESIGN.md](DESIGN.md) — 完整设计文档

@@ -28,10 +28,6 @@ func NewDB(cfg *config.Config) (*gorm.DB, error) {
 		return nil, fmt.Errorf("open db (%s): %w", cfg.DBDriver, err)
 	}
 
-	if cfg.UsePostgreSQL() {
-		db = db.Set("gorm:table_options", "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4")
-	}
-
 	return db, nil
 }
 

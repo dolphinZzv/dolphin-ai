@@ -102,3 +102,31 @@ func (r *FeedbackRepo) ListByTarget(targetType models.FeedbackTargetType, target
 		Preload("Author").Find(&list).Error
 	return list, err
 }
+
+type SkillRepo struct {
+	db *gorm.DB
+}
+
+func NewSkillRepo(db *gorm.DB) repository.SkillRepository {
+	return &SkillRepo{db: db}
+}
+
+func (r *SkillRepo) Create(skill *models.Skill) error {
+	return r.db.Create(skill).Error
+}
+
+func (r *SkillRepo) GetByID(id uint) (*models.Skill, error) {
+	var s models.Skill
+	err := r.db.First(&s, id).Error
+	return &s, err
+}
+
+func (r *SkillRepo) ListByProject(projectID uint) ([]models.Skill, error) {
+	var list []models.Skill
+	err := r.db.Where("project_id = ?", projectID).Find(&list).Error
+	return list, err
+}
+
+func (r *SkillRepo) Delete(id uint) error {
+	return r.db.Delete(&models.Skill{}, id).Error
+}

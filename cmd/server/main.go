@@ -45,6 +45,8 @@ func main() {
 		srv.IssueService,
 		srv.CommentService,
 		srv.WorkflowService,
+		srv.FeedbackService,
+		srv.SkillService,
 		srv.NotifService,
 		srv.Authenticator,
 	)
@@ -60,7 +62,7 @@ func main() {
 
 	// SSE mode — HTTP server
 	http.HandleFunc("/mcp", handleSSE(mcpServer))
-	http.Handle("/graphql", graphql.NewHandler(srv.ProjectService, srv.AgentService, srv.IssueService, srv.CommentService, srv.WorkflowService))
+	http.Handle("/graphql", graphql.NewHandler(srv.ProjectService, srv.AgentService, srv.IssueService, srv.CommentService, srv.WorkflowService, srv.FeedbackService, srv.EventBus))
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))

@@ -12,13 +12,15 @@ import (
 )
 
 type Handlers struct {
-	projectSvc  *service.ProjectService
-	agentSvc    *service.AgentService
-	issueSvc    *service.IssueService
-	commentSvc  *service.CommentService
-	workflowSvc *service.WorkflowService
-	notifSvc    *notifications.Service
-	auth        *auth.Authenticator
+	projectSvc   *service.ProjectService
+	agentSvc     *service.AgentService
+	issueSvc     *service.IssueService
+	commentSvc   *service.CommentService
+	workflowSvc  *service.WorkflowService
+	feedbackSvc  *service.FeedbackService
+	skillSvc     *service.SkillService
+	notifSvc     *notifications.Service
+	auth         *auth.Authenticator
 }
 
 func NewHandlers(
@@ -27,17 +29,21 @@ func NewHandlers(
 	issueSvc *service.IssueService,
 	commentSvc *service.CommentService,
 	workflowSvc *service.WorkflowService,
+	feedbackSvc *service.FeedbackService,
+	skillSvc *service.SkillService,
 	notifSvc *notifications.Service,
 	auth *auth.Authenticator,
 ) *Handlers {
 	return &Handlers{
-		projectSvc:  projectSvc,
-		agentSvc:    agentSvc,
-		issueSvc:    issueSvc,
-		commentSvc:  commentSvc,
-		workflowSvc: workflowSvc,
-		notifSvc:    notifSvc,
-		auth:        auth,
+		projectSvc:   projectSvc,
+		agentSvc:     agentSvc,
+		issueSvc:     issueSvc,
+		commentSvc:   commentSvc,
+		workflowSvc:  workflowSvc,
+		feedbackSvc:  feedbackSvc,
+		skillSvc:     skillSvc,
+		notifSvc:     notifSvc,
+		auth:         auth,
 	}
 }
 
@@ -164,6 +170,47 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"agentId": StringRequiredParam("Agent ID"),
 		}, []string{"agentId"}),
 		Handler: h.handleCheckNotifications,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "submit_feedback",
+		Description: "Submit feedback for an issue, comment, agent, or assignment",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"targetType": StringRequiredParam("Target type: issue / comment / agent / assignment"),
+			"targetId":   StringRequiredParam("Target ID"),
+			"authorId":   StringRequiredParam("Author agent ID"),
+			"rating":     StringRequiredParam("Rating 1-5"),
+			"body":       StringParam("Feedback body text"),
+		}, []string{"targetType", "targetId", "authorId", "rating"}),
+		Handler: h.handleSubmitFeedback,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "list_feedback",
+		Description: "List feedback for a target",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"targetType": StringRequiredParam("Target type: issue / comment / agent / assignment"),
+			"targetId":   StringRequiredParam("Target ID"),
+		}, []string{"targetType", "targetId"}),
+		Handler: h.handleListFeedback,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "list_skills",
+		Description: "List available skills for a project",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"projectId": StringRequiredParam("Project ID"),
+		}, []string{"projectId"}),
+		Handler: h.handleListSkills,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "run_skill",
+		Description: "Execute a skill and return its definition",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"skillId": StringRequiredParam("Skill ID"),
+		}, []string{"skillId"}),
+		Handler: h.handleRunSkill,
 	})
 }
 
@@ -484,4 +531,114 @@ func (h *Handlers) handleCheckNotifications(id json.RawMessage, params json.RawM
 		}
 	}
 	return NewResponse(id, map[string]interface{}{"notifications": items})
+}
+
+func (h *Handlers) handleSubmitFeedback(id json.RawMessage, params json.RawMessage) Response {
+	var p struct {
+		TargetType string `json:"targetType"`
+		TargetID   string `json:"targetId"`
+		AuthorID   string `json:"authorId"`
+		Rating     string `json:"rating"`
+		Body       string `json:"body"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+
+	targetID, _ := strconv.ParseUint(p.TargetID, 10, 64)
+	authorID, _ := strconv.ParseUint(p.AuthorID, 10, 64)
+	rating, _ := strconv.Atoi(p.Rating)
+
+	feedback, err := h.feedbackSvc.Create(
+		models.FeedbackTargetType(p.TargetType),
+		uint(targetID),
+		uint(authorID),
+		rating,
+		p.Body,
+	)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":     feedback.ID,
+		"rating": feedback.Rating,
+		"body":   feedback.Body,
+	})
+}
+
+func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage) Response {
+	var p struct {
+		TargetType string `json:"targetType"`
+		TargetID   string `json:"targetId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+
+	targetID, _ := strconv.ParseUint(p.TargetID, 10, 64)
+
+	items, err := h.feedbackSvc.ListByTarget(models.FeedbackTargetType(p.TargetType), uint(targetID))
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+
+	result := make([]map[string]interface{}, len(items))
+	for i, f := range items {
+		result[i] = map[string]interface{}{
+			"id":       f.ID,
+			"rating":   f.Rating,
+			"body":     f.Body,
+			"authorId": f.AuthorID,
+		}
+	}
+	return NewResponse(id, map[string]interface{}{"items": result})
+}
+
+func (h *Handlers) handleListSkills(id json.RawMessage, params json.RawMessage) Response {
+	var p struct {
+		ProjectID string `json:"projectId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+
+	projectID, _ := strconv.ParseUint(p.ProjectID, 10, 64)
+
+	skills, err := h.skillSvc.ListByProject(uint(projectID))
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+
+	result := make([]map[string]interface{}, len(skills))
+	for i, s := range skills {
+		result[i] = map[string]interface{}{
+			"id":          fmt.Sprintf("%d", s.ID),
+			"name":        s.Name,
+			"description": s.Description,
+		}
+	}
+	return NewResponse(id, map[string]interface{}{"items": result})
+}
+
+func (h *Handlers) handleRunSkill(id json.RawMessage, params json.RawMessage) Response {
+	var p struct {
+		SkillID string `json:"skillId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+
+	skillID, _ := strconv.ParseUint(p.SkillID, 10, 64)
+
+	skill, err := h.skillSvc.GetByID(uint(skillID))
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+
+	return NewResponse(id, map[string]interface{}{
+		"id":          fmt.Sprintf("%d", skill.ID),
+		"name":        skill.Name,
+		"description": skill.Description,
+		"definition":  skill.Definition,
+	})
 }

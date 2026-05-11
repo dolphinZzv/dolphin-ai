@@ -42,19 +42,26 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 	assigneeRepo := gormrepo.NewIssueAssigneeRepo(db)
 	commentRepo := gormrepo.NewCommentRepo(db)
 	timelineRepo := gormrepo.NewTimelineRepo(db)
+	labelRepo := gormrepo.NewLabelRepo(db)
+	milestoneRepo := gormrepo.NewMilestoneRepo(db)
+	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	skillRepo := gormrepo.NewSkillRepo(db)
 	bus := events.NewBus()
 
 	// Init services
-	projectSvc := service.NewProjectService(projectRepo, memberRepo)
+	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil)
 	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
 	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
+	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
+	skillSvc := service.NewSkillService(skillRepo)
+
 	// Init MCP
 	notifSvc := notifications.NewService()
 	notifSvc.Subscribe(bus)
-	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, notifSvc, nil)
+	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, skillSvc, notifSvc, nil)
 	mcpServer := mcp.NewServer(handlers)
 
 	return mcpServer, projectSvc, agentSvc, issueSvc
@@ -124,6 +131,8 @@ func TestToolsList(t *testing.T) {
 		"create_project", "register_agent", "login_agent",
 		"create_issue", "add_comment", "assign_issue",
 		"transition_issue", "search_issues", "list_agents", "agent_heartbeat",
+		"check_notifications", "submit_feedback", "list_feedback",
+		"list_skills", "run_skill",
 	}
 	for _, r := range required {
 		if !names[r] {

@@ -30,6 +30,12 @@ func agentFromModel(a *models.Agent) *Agent {
 		CreatedAt:    a.CreatedAt,
 		UpdatedAt:    a.UpdatedAt,
 	}
+	if a.SystemPrompt != "" {
+		agent.SystemPrompt = &a.SystemPrompt
+	}
+	if a.Metadata != nil {
+		agent.Metadata = map[string]any(a.Metadata)
+	}
 	return agent
 }
 
@@ -100,25 +106,84 @@ func issueFromModel(i *models.Issue) *Issue {
 		}
 		issue.Labels = labels
 	}
+	if len(i.Children) > 0 {
+		children := make([]*Issue, len(i.Children))
+		for j, c := range i.Children {
+			children[j] = issueFromModel(&c)
+		}
+		issue.Children = children
+	}
+	if i.Milestone != nil {
+		issue.Milestone = milestoneFromModel(i.Milestone)
+	}
+	if i.StructuredOutput != nil {
+		issue.StructuredOutput = map[string]any(i.StructuredOutput)
+	}
 	return issue
 }
 
 func issueAssigneeFromModel(ia *models.IssueAssignee) *IssueAssignee {
 	return &IssueAssignee{
-		ID:      formatID(ia.ID),
-		IssueID: formatID(ia.IssueID),
-		AgentID: formatID(ia.AgentID),
-		State:   AssigneeState(ia.State),
-		Agent:   agentFromModel(&ia.Agent),
+		ID:         formatID(ia.ID),
+		IssueID:    formatID(ia.IssueID),
+		AgentID:    formatID(ia.AgentID),
+		State:      AssigneeState(ia.State),
+		AssignedAt: ia.AssignedAt,
+		Agent:      agentFromModel(&ia.Agent),
 	}
 }
 
 func labelFromModel(l *models.Label) *Label {
-	return &Label{
-		ID:        formatID(l.ID),
-		Name:      l.Name,
-		Color:     strPtr(l.Color),
-		ProjectID: formatID(l.ProjectID),
+	if l == nil {
+		return nil
+	}
+	label := &Label{
+		ID:          formatID(l.ID),
+		Name:        l.Name,
+		Description: strPtr(l.Description),
+		ProjectID:   formatID(l.ProjectID),
+	}
+	if l.Color != "" {
+		label.Color = &l.Color
+	}
+	if l.Capability != "" {
+		c := string(l.Capability)
+		label.Capability = &c
+	}
+	if l.Group != "" {
+		label.Group = &l.Group
+	}
+	return label
+}
+
+func milestoneFromModel(m *models.Milestone) *Milestone {
+	if m == nil {
+		return nil
+	}
+	return &Milestone{
+		ID:          formatID(m.ID),
+		ProjectID:   formatID(m.ProjectID),
+		Title:       m.Title,
+		Description: strPtr(m.Description),
+		State:       MilestoneState(m.State),
+		DueDate:     m.DueDate,
+		CreatedAt:   m.CreatedAt,
+		UpdatedAt:   m.UpdatedAt,
+	}
+}
+
+func skillFromModel(s *models.Skill) *Skill {
+	if s == nil {
+		return nil
+	}
+	return &Skill{
+		ID:          formatID(s.ID),
+		ProjectID:   formatID(s.ProjectID),
+		Name:        s.Name,
+		Description: strPtr(s.Description),
+		Definition:  s.Definition,
+		CreatedAt:   s.CreatedAt,
+		UpdatedAt:   s.UpdatedAt,
 	}
 }
 
@@ -154,9 +219,64 @@ func timelineFromModel(t *models.TimelineEvent) *TimelineEvent {
 	}
 }
 
+func feedbackFromModel(f *models.Feedback) *Feedback {
+	if f == nil {
+		return nil
+	}
+	fb := &Feedback{
+		ID:         formatID(f.ID),
+		TargetType: FeedbackTargetType(f.TargetType),
+		TargetID:   formatID(f.TargetID),
+		AuthorID:   formatID(f.AuthorID),
+		Rating:     feedbackRatingFromInt(f.Rating),
+		CreatedAt:  f.CreatedAt,
+		Author:     agentFromModel(&f.Author),
+	}
+	if f.Body != "" {
+		fb.Body = &f.Body
+	}
+	return fb
+}
+
+func feedbackRatingFromInt(rating int) FeedbackRating {
+	switch {
+	case rating <= 1:
+		return FeedbackRatingOne
+	case rating == 2:
+		return FeedbackRatingTwo
+	case rating == 3:
+		return FeedbackRatingThree
+	case rating == 4:
+		return FeedbackRatingFour
+	default:
+		return FeedbackRatingFive
+	}
+}
+
+func feedbackRatingToInt(rating FeedbackRating) int {
+	switch rating {
+	case FeedbackRatingOne:
+		return 1
+	case FeedbackRatingTwo:
+		return 2
+	case FeedbackRatingThree:
+		return 3
+	case FeedbackRatingFour:
+		return 4
+	case FeedbackRatingFive:
+		return 5
+	default:
+		return 3
+	}
+}
+
 func strPtr(s string) *string {
 	if s == "" {
 		return nil
 	}
 	return &s
+}
+
+func uintPtr(v uint) *uint {
+	return &v
 }

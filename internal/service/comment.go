@@ -53,6 +53,21 @@ func (s *CommentService) Create(issueID, authorID uint, body string, contentType
 	return c, nil
 }
 
+func (s *CommentService) GetByID(id uint) (*models.Comment, error) {
+	return s.commentRepo.GetByID(id)
+}
+
 func (s *CommentService) ListByIssue(issueID uint) ([]models.Comment, error) {
 	return s.commentRepo.ListByIssue(issueID)
+}
+
+func (s *CommentService) Update(id uint, body string) (*models.Comment, error) {
+	if err := s.commentRepo.Update(id, body); err != nil {
+		return nil, fmt.Errorf("update comment: %w", err)
+	}
+	return s.commentRepo.GetByID(id)
+}
+
+func (s *CommentService) Delete(id uint) error {
+	return s.commentRepo.Delete(id)
 }

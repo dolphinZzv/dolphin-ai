@@ -24,8 +24,11 @@ type Server struct {
 	IssueService     *service.IssueService
 	CommentService   *service.CommentService
 	WorkflowService  *service.WorkflowService
+	FeedbackService  *service.FeedbackService
+	SkillService     *service.SkillService
 	Authenticator    *auth.Authenticator
 	NotifService     *notifications.Service
+	MatchingEngine   *matching.Engine
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -48,6 +51,10 @@ func New(cfg *config.Config) (*Server, error) {
 	assigneeRepo := gormrepo.NewIssueAssigneeRepo(db)
 	commentRepo := gormrepo.NewCommentRepo(db)
 	timelineRepo := gormrepo.NewTimelineRepo(db)
+	labelRepo := gormrepo.NewLabelRepo(db)
+	milestoneRepo := gormrepo.NewMilestoneRepo(db)
+	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	skillRepo := gormrepo.NewSkillRepo(db)
 
 	// Init auth
 	authn := auth.New(cfg.JWTSecret, cfg.BootstrapToken)
@@ -61,11 +68,13 @@ func New(cfg *config.Config) (*Server, error) {
 	notifSvc.Subscribe(bus)
 
 	// Init services
-	projectSvc := service.NewProjectService(projectRepo, memberRepo)
+	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, authn)
 	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
 	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
+	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
+	skillSvc := service.NewSkillService(skillRepo)
 
 	srv := &Server{
 		Config:           cfg,
@@ -76,8 +85,11 @@ func New(cfg *config.Config) (*Server, error) {
 		IssueService:     issueSvc,
 		CommentService:   commentSvc,
 		WorkflowService:  workflowSvc,
+		FeedbackService:  feedbackSvc,
+		SkillService:     skillSvc,
 		Authenticator:    authn,
 		NotifService:     notifSvc,
+		MatchingEngine:   matchingEngine,
 	}
 
 	log.Println("[server] initialized")

@@ -41,3 +41,6 @@ models:
   Timestamp:
     model:
       - github.com/99designs/gqlgen/graphql.Time
+  Map:
+    model:
+      - github.com/99designs/gqlgen/graphql.Map

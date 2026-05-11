@@ -43,6 +43,11 @@ func (r *CommentRepo) ListByParent(parentID uint) ([]models.Comment, error) {
 	return list, err
 }
 
+func (r *CommentRepo) Update(id uint, body string) error {
+	return r.db.Model(&models.Comment{}).Where("id = ?", id).
+		Update("body", body).Error
+}
+
 func (r *CommentRepo) Delete(id uint) error {
 	return r.db.Delete(&models.Comment{}, id).Error
 }
