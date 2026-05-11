@@ -1,0 +1,119 @@
+package notifications_test
+
+import (
+	"testing"
+
+	"chick/internal/events"
+	"chick/internal/notifications"
+)
+
+func TestSubscribeAndNotify(t *testing.T) {
+	bus := events.NewBus()
+	svc := notifications.NewService()
+	svc.Subscribe(bus)
+
+	// Publish an assignee changed event
+	bus.PublishSync(events.Event{
+		Type: events.EventIssueAssigneeChanged,
+		Payload: map[string]interface{}{
+			"issueID": uint(42),
+			"agentID": uint(1),
+			"action":  "assigned",
+		},
+	})
+
+	// Publish a comment event
+	bus.PublishSync(events.Event{
+		Type: events.EventCommentAdded,
+		Payload: map[string]interface{}{
+			"commentID": uint(10),
+			"issueID":   uint(42),
+			"authorID":  uint(2),
+		},
+	})
+
+	// Check agent 1's notifications
+	notifs := svc.ListByAgent(1)
+	if len(notifs) != 2 {
+		t.Errorf("expected 2 notifications, got %d", len(notifs))
+	}
+
+	if len(notifs) > 0 {
+		if notifs[0].Type != notifications.NotifCommentMention {
+			t.Errorf("expected newest to be comment_mention, got %s", notifs[0].Type)
+		}
+	}
+}
+
+func TestListByAgent_FiltersCorrectly(t *testing.T) {
+	svc := notifications.NewService()
+
+	// Create some notifications directly
+	bus := events.NewBus()
+	svc.Subscribe(bus)
+
+	bus.PublishSync(events.Event{
+		Type: events.EventIssueAssigneeChanged,
+		Payload: map[string]interface{}{
+			"issueID": uint(1),
+			"agentID": uint(5),
+			"action":  "assigned",
+		},
+	})
+
+	bus.PublishSync(events.Event{
+		Type: events.EventIssueAssigneeChanged,
+		Payload: map[string]interface{}{
+			"issueID": uint(2),
+			"agentID": uint(3),
+			"action":  "assigned",
+		},
+	})
+
+	// Agent 5 should see 1 notification
+	notifs5 := svc.ListByAgent(5)
+	if len(notifs5) != 1 {
+		t.Errorf("agent 5 expected 1 notification, got %d", len(notifs5))
+	}
+
+	// Agent 3 should see 1 notification
+	notifs3 := svc.ListByAgent(3)
+	if len(notifs3) != 1 {
+		t.Errorf("agent 3 expected 1 notification, got %d", len(notifs3))
+	}
+}
+
+func TestMarkRead(t *testing.T) {
+	svc := notifications.NewService()
+
+	bus := events.NewBus()
+	svc.Subscribe(bus)
+
+	bus.PublishSync(events.Event{
+		Type: events.EventIssueAssigneeChanged,
+		Payload: map[string]interface{}{
+			"issueID": uint(1),
+			"agentID": uint(1),
+			"action":  "assigned",
+		},
+	})
+
+	notifs := svc.ListByAgent(1)
+	if len(notifs) == 0 {
+		t.Fatal("expected notification")
+	}
+
+	if notifs[0].Read {
+		t.Error("expected notification to be unread")
+	}
+
+	err := svc.MarkRead(notifs[0].ID)
+	if err != nil {
+		t.Fatalf("mark read: %v", err)
+	}
+
+	notifs = svc.ListByAgent(1)
+	if !notifs[0].Read {
+		t.Error("expected notification to be read after MarkRead")
+	}
+}
