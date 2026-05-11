@@ -35,17 +35,49 @@ All transports share the same agent instance, tools, and session state. Switch b
 
 ## Getting started
 
-Clone the repo, build, and run:
+### Quick start
 
 ```bash
 go build -o dolphinzZ ./main.go
 export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_MODEL="gpt-4o"          # model name
+export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpoints
 ./dolphinzZ
 ```
 
-You'll be asked what kind of work you do — pick one or more roles and DolphinzZ recommends tools and skills that match. Everything stays local. After that, you're in a session with the coordinator.
+### Environment variables
 
-Configuration lives in `.dolphinzZ/config.yaml` (project-level) or `~/.dolphinzZ/config.yaml` (user-level). Most things have sensible defaults, so a minimal config is just the API key via environment variable.
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DZ_LLM_API_KEY` | **yes** | — | LLM API key |
+| `DZ_LLM_MODEL` | no | `gpt-4o` | Model name (e.g. `gpt-4o`, `claude-opus-4-7`) |
+| `DZ_LLM_BASE_URL` | no | `https://api.openai.com/v1` | API base URL (custom endpoints, proxies) |
+| `DZ_LLM_TYPE` | no | `openai` | Provider type: `openai` or `anthropic` |
+| `DZ_LLM_MAX_TOKENS` | no | `4096` | Max tokens per response |
+| `DZ_LOG_LEVEL` | no | `info` | Log level: `debug`, `info`, `warn`, `error` |
+
+### First-run flow
+
+On first run, DolphinzZ walks you through setup:
+
+1. **Career profile** — pick your role (frontend, backend, devops, data, etc.). The agent recommends matching skills and MCP tools.
+2. **SYSTEM.md** — optionally generate a system info file so the agent knows your OS, shell, and environment.
+3. **Config file** — optionally generate `.dolphinzZ/config.yaml` with all defaults pre-filled and commented.
+
+Everything happens interactively in the terminal. No data leaves your machine.
+
+To re-run the wizard later: `./dolphinzZ setup`
+
+### Configuration
+
+Config lives in `.dolphinzZ/config.yaml` (project-level) or `~/.dolphinzZ/config.yaml` (user-level). Project config overrides user config. All settings have sensible defaults — a working setup only needs an API key.
+
+```bash
+# Minimal: env vars only, no config file needed
+export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_MODEL="gpt-4o"
+./dolphinzZ
+```
 
 ## Project structure
 

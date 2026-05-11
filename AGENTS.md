@@ -105,10 +105,10 @@ main          ← production-ready, always deployable
 
 **Local setup:**
 1. Clone repo and read `README.md`
-2. Copy `config.example.yaml` → `config.yaml` and fill in required values
+2. Set required env vars: `DZ_LLM_API_KEY`, `DZ_LLM_MODEL`
 3. Run `go build ./...` to verify compilation
 4. Run `go test -race ./...` to verify test suite
-5. Start the agent with `./dolphinzz start`
+5. Start the agent with `./dolphinzZ` (first run walks you through setup)
 
 **Common issues:**
 - Build fails → check Go version matches `go.mod` (minimum 1.22)

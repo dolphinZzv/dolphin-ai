@@ -1,0 +1,107 @@
+# DolphinzZ 配置文件
+# 复制到 .dolphinzZ/config.yaml，修改后重启生效。
+# 所有设置都有默认值 — 只需取消注释需要修改的部分。
+
+# ── LLM 提供商 ────────────────────────────────────────────
+llm:
+  type: openai                # "openai" 或 "anthropic"
+  base_url: https://api.openai.com/v1
+  model: gpt-4o               # 模型名称，也可通过环境变量 DZ_LLM_MODEL 设置
+  api_key: ""                 # 建议通过环境变量 DZ_LLM_API_KEY 设置
+  max_tokens: 4096
+  max_context_tokens: 1048576 # 超过 70% 时触发上下文压缩
+  temperature: 0.7            # 0.0–2.0
+  max_sub_turns: 10           # 每轮用户输入最多工具调用反馈循环次数
+  compress_mode: drop         # "drop" | "segment" | "tiered" | "incremental" | "topic"
+  segment_merge_limit: 100    # segment 模式下的递归合并阈值
+
+# ── 会话 ──────────────────────────────────────────────────
+session:
+  dir: .dolphinzZ/sessions
+  max_loop: 50                # 每次会话最大轮数
+  summary: true               # 自动生成会话摘要
+  max_age: 24h                # 超过此时间的会话文件自动清理
+  resume: false               # 启动时是否提示恢复上次会话
+
+# ── MCP 工具 ──────────────────────────────────────────────
+mcp:
+  shell:
+    enabled: true
+    timeout_seconds: 30
+    priority: 10
+  cdp:
+    enabled: true             # 浏览器自动化（Chrome DevTools Protocol）
+    headless: true
+    priority: 1000
+    idle_timeout: 300         # 空闲多少秒后自动关闭浏览器
+  servers: {}                 # 外部 MCP 服务器，如 myserver: {type: stdio, command: npx, args: [...]}
+  repos: []                   # 清单仓库，如 ["dolphinzZv/mcp"]
+
+# ── Agent 池 ──────────────────────────────────────────────
+agent_pool:
+  max_concurrency: 5          # 最大并发子 agent 任务数
+  default_timeout: 300        # 每个任务的超时秒数
+  workspace_dir: .dolphinzZ/workspaces
+  idle_timeout: 600           # 空闲临时 agent 多久后被回收（秒）
+  max_pending_results: 10
+  max_pending_result_len: 500 # prompt 中每条结果最大字符数，0 = 不截断
+
+# ── 技能 ──────────────────────────────────────────────────
+skills:
+  dir: .dolphinzZ/skills
+  max_top: 10                 # LLM 上下文中展示的技能数
+  repos: []                   # 清单仓库，如 ["dolphinzZv/skills"]
+
+# ── 传输层 ────────────────────────────────────────────────
+transport:
+  stdio:
+    enabled: true
+  ssh:
+    enabled: false
+    addr: ":2222"
+    host_key: "~/.ssh/id_ed25519"
+    username: dolphinzZ
+    password: ""              # 首次 SSH 启动时自动生成
+  mqtt:
+    enabled: false
+    broker: tcp://localhost:1883
+    topic: dolphinzZ/agent/command
+    response_topic: dolphinzZ/agent/response
+    client_id: dolphinzZ-agent
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    imap_host: ""
+    imap_port: 993
+    username: ""
+    password: ""              # 建议通过环境变量 DZ_EMAIL_PASSWORD 设置
+    from: ""
+    use_tls: true
+    poll_interval: 10s
+
+# ── 定时任务 ──────────────────────────────────────────────
+crontab:
+  file: .dolphinzZ/CRONTAB.md
+  check_interval: 30s
+
+# ── 日记（会话摘要聚合）───────────────────────────────────
+diary:
+  dir: .dolphinzZ/diary
+  max_day_sessions: 200       # 每天最多保留的会话数
+  max_week_days: 7            # 每周最多保留的天数
+  max_month_weeks: 5          # 每月最多保留的周数
+  max_year_months: 12         # 每年最多保留的月数
+  max_total_mb: 500           # 日记总大小上限，超出则删除最旧年份
+
+# ── 可观测性 ──────────────────────────────────────────────
+log_level: info
+log_file: .dolphinzZ/logs/agent.log
+
+pprof:
+  enabled: false
+  addr: ":6060"
+
+metrics:
+  enabled: false
+  addr: ":9090"

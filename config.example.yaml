@@ -1,0 +1,107 @@
+# DolphinzZ configuration
+# Copy to .dolphinzZ/config.yaml, edit, and restart.
+# All settings have defaults — uncomment only what you need to change.
+
+# ── LLM Provider ──────────────────────────────────────────
+llm:
+  type: openai                # "openai" or "anthropic"
+  base_url: https://api.openai.com/v1
+  model: gpt-4o               # model name, or set via DZ_LLM_MODEL env
+  api_key: ""                 # set via DZ_LLM_API_KEY env var (recommended)
+  max_tokens: 4096
+  max_context_tokens: 1048576 # trigger compression above 70% of this
+  temperature: 0.7            # 0.0–2.0
+  max_sub_turns: 10           # max tool-call feedback loops per user turn
+  compress_mode: drop         # "drop" | "segment" | "tiered" | "incremental" | "topic"
+  segment_merge_limit: 100    # segments before recursive merge (segment mode)
+
+# ── Sessions ──────────────────────────────────────────────
+session:
+  dir: .dolphinzZ/sessions
+  max_loop: 50                # max turns per session
+  summary: true               # auto-generate session summary
+  max_age: 24h                # auto-delete sessions older than this
+  resume: false               # prompt to resume last session on start
+
+# ── MCP Tools ─────────────────────────────────────────────
+mcp:
+  shell:
+    enabled: true
+    timeout_seconds: 30
+    priority: 10
+  cdp:
+    enabled: true             # browser automation (Chrome DevTools Protocol)
+    headless: true
+    priority: 1000
+    idle_timeout: 300         # seconds before auto-closing idle browser
+  servers: {}                 # external MCP servers, e.g. myserver: {type: stdio, command: npx, args: [...]}
+  repos: []                   # manifest repos, e.g. ["dolphinzZv/mcp"]
+
+# ── Agent Pool ────────────────────────────────────────────
+agent_pool:
+  max_concurrency: 5          # max simultaneous sub-agent tasks
+  default_timeout: 300        # seconds per task
+  workspace_dir: .dolphinzZ/workspaces
+  idle_timeout: 600           # seconds before reaping idle temp agents
+  max_pending_results: 10
+  max_pending_result_len: 500 # chars per result in prompt, 0 = no truncation
+
+# ── Skills ────────────────────────────────────────────────
+skills:
+  dir: .dolphinzZ/skills
+  max_top: 10                 # skills shown in LLM context
+  repos: []                   # manifest repos, e.g. ["dolphinzZv/skills"]
+
+# ── Transports ────────────────────────────────────────────
+transport:
+  stdio:
+    enabled: true
+  ssh:
+    enabled: false
+    addr: ":2222"
+    host_key: "~/.ssh/id_ed25519"
+    username: dolphinzZ
+    password: ""              # auto-generated on first SSH start
+  mqtt:
+    enabled: false
+    broker: tcp://localhost:1883
+    topic: dolphinzZ/agent/command
+    response_topic: dolphinzZ/agent/response
+    client_id: dolphinzZ-agent
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+    imap_host: ""
+    imap_port: 993
+    username: ""
+    password: ""              # set via DZ_EMAIL_PASSWORD env var
+    from: ""
+    use_tls: true
+    poll_interval: 10s
+
+# ── Crontab ───────────────────────────────────────────────
+crontab:
+  file: .dolphinzZ/CRONTAB.md
+  check_interval: 30s
+
+# ── Diary (session summary aggregation) ───────────────────
+diary:
+  dir: .dolphinzZ/diary
+  max_day_sessions: 200       # sessions per day before pruning oldest
+  max_week_days: 7            # days per week before pruning oldest
+  max_month_weeks: 5          # weeks per month before pruning oldest
+  max_year_months: 12         # months per year before pruning oldest
+  max_total_mb: 500           # total diary size limit, deletes oldest year
+
+# ── Observability ─────────────────────────────────────────
+log_level: info
+log_file: .dolphinzZ/logs/agent.log
+
+pprof:
+  enabled: false
+  addr: ":6060"
+
+metrics:
+  enabled: false
+  addr: ":9090"

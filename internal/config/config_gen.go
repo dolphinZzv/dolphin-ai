@@ -95,6 +95,15 @@ crontab:
   file: .dolphinzZ/CRONTAB.md
   check_interval: 30s
 
+# ── Diary (session summary aggregation) ───────────────────
+diary:
+  dir: .dolphinzZ/diary
+  max_day_sessions: 200       # sessions per day before pruning oldest
+  max_week_days: 7            # days per week before pruning oldest
+  max_month_weeks: 5          # weeks per month before pruning oldest
+  max_year_months: 12         # months per year before pruning oldest
+  max_total_mb: 500           # total diary size limit, deletes oldest year
+
 # ── Observability ─────────────────────────────────────────
 log_level: info
 log_file: .dolphinzZ/logs/agent.log
@@ -192,6 +201,15 @@ transport:
 crontab:
   file: .dolphinzZ/CRONTAB.md
   check_interval: 30s
+
+# ── 日记（会话摘要聚合）───────────────────────────────────
+diary:
+  dir: .dolphinzZ/diary
+  max_day_sessions: 200       # 每天最多保留的会话数
+  max_week_days: 7            # 每周最多保留的天数
+  max_month_weeks: 5          # 每月最多保留的周数
+  max_year_months: 12         # 每年最多保留的月数
+  max_total_mb: 500           # 日记总大小上限，超出则删除最旧年份
 
 # ── 可观测性 ──────────────────────────────────────────────
 log_level: info
