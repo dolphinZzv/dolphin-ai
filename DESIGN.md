@@ -1772,13 +1772,17 @@ UI 地址: http://localhost:8080（生产），http://localhost:5173（开发）
 
 | 模块 | 内容 |
 |---|---|
+| **CORS 中间件** | 新增 `internal/server/cors.go`，允许 Vite 开发跨域请求，处理 OPTIONS preflight |
+| **Auth 中间件** | `internal/auth/middleware.go` 增加 GraphQL operationName 解析，放行 loginAgent/registerAgent |
+| **静态文件服务** | `cmd/server/main.go` 增加 `//go:embed ui/dist/*`，SPA fallback 路由（非 API 路径返回 index.html） |
+| **配置** | `internal/config/config.go` 新增 `AllowedOrigins` 字段 |
 | **UI 框架** | React 19 + TypeScript + Vite + shadcn/ui |
-| **GraphQL 客户端** | urql + subscriptions-transport-ws |
-| **认证** | Login 页 + JWT 存储 + urql authExchange |
-| **响应式布局** | Mobile-first: 底部导航(手机) → 图标栏(平板) → 侧栏(桌面) |
+| **GraphQL 客户端** | urql + authExchange + subscriptionExchange (subscriptions-transport-ws) |
+| **认证** | Login 页 + JWT 存储 + urql authExchange，401 自动跳登录 |
+| **响应式布局** | Mobile-first: 底部导航(手机 <640px) → 图标栏(平板 640-1023) → 侧栏(桌面 ≥1024) |
 | **看板** | dnd-kit 拖拽 Issue 切换状态，手机端 ActionSheet 替代 |
 | **Pages** | 登录、Dashboard、项目看板、Issue 详情、Agent 管理、项目设置 |
-| **后端适配** | CORS 中间件、Auth 中间件(跳过后台操作)、go:embed 静态文件 |
+| **单元测试** | Vitest + React Testing Library，覆盖 LoginPage、IssueBoard、CommentThread |
 | **中文本地化** | Noto Sans SC 字体、YYYY-MM-DD 时间、中文界面文案 |
 
 **UI 架构：**
