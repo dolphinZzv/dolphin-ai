@@ -49,7 +49,7 @@ Handler → Service → Repository → DB
 
 ## 修改流程
 
-1. 先读 DESIGN.md 理解设计意图
+1. 先读 design/ 理解设计意图
 2. 读 AGENTS.md 了解规范
 3. 检查 models/ 中对应数据结构是否存在
 4. 按依赖方向修改：models → repository → service → handler

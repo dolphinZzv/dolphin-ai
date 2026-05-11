@@ -164,6 +164,6 @@ cd ui && npm test
 
 ## 了解更多
 
-- [DESIGN.md](DESIGN.md) — 系统架构、API 设计、数据模型、实施路线图
+- [design/](design/) — 系统架构、API 设计、数据模型、路线图
 - [ui/DESIGN.md](ui/DESIGN.md) — 前端设计风格：色彩、字体、组件规范、手机优先策略
 - [AGENTS.md](AGENTS.md) — 贡献规范
