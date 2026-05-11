@@ -46,7 +46,7 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil)
 	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
 	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
@@ -54,7 +54,7 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 	// Init MCP
 	notifSvc := notifications.NewService()
 	notifSvc.Subscribe(bus)
-	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, notifSvc)
+	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, notifSvc, nil)
 	mcpServer := mcp.NewServer(handlers)
 
 	return mcpServer, projectSvc, agentSvc, issueSvc

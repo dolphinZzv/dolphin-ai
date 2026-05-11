@@ -45,6 +45,7 @@ func main() {
 		srv.CommentService,
 		srv.WorkflowService,
 		srv.NotifService,
+		srv.Authenticator,
 	)
 	mcpServer := mcp.NewServer(mcpHandlers)
 

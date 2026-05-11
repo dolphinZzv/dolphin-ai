@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 
+	"chick/internal/auth"
 	"chick/internal/config"
 	"chick/internal/events"
 	"chick/internal/matching"
@@ -23,6 +24,7 @@ type Server struct {
 	IssueService     *service.IssueService
 	CommentService   *service.CommentService
 	WorkflowService  *service.WorkflowService
+	Authenticator    *auth.Authenticator
 	NotifService     *notifications.Service
 }
 
@@ -47,6 +49,9 @@ func New(cfg *config.Config) (*Server, error) {
 	commentRepo := gormrepo.NewCommentRepo(db)
 	timelineRepo := gormrepo.NewTimelineRepo(db)
 
+	// Init auth
+	authn := auth.New(cfg.JWTSecret, cfg.BootstrapToken)
+
 	// Init matching engine
 	matchingEngine := matching.NewEngine(agentRepo, gormrepo.NewLabelRepo(db), assigneeRepo, issueRepo)
 	matchingEngine.Subscribe(bus)
@@ -57,7 +62,7 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus)
+	agentSvc := service.NewAgentService(agentRepo, bus, authn)
 	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
 	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
@@ -71,6 +76,7 @@ func New(cfg *config.Config) (*Server, error) {
 		IssueService:     issueSvc,
 		CommentService:   commentSvc,
 		WorkflowService:  workflowSvc,
+		Authenticator:    authn,
 		NotifService:     notifSvc,
 	}
 

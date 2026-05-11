@@ -10,6 +10,7 @@ type Config struct {
 	DBDSN          string
 	Port           string
 	BootstrapToken string
+	JWTSecret      string
 }
 
 func Load() *Config {
@@ -18,6 +19,7 @@ func Load() *Config {
 		DBDSN:          getEnv("CHICK_DB_DSN", "file:dev.db?_pragma=journal_mode(WAL)"),
 		Port:           getEnv("CHICK_PORT", "8080"),
 		BootstrapToken: getEnv("CHICK_BOOTSTRAP_TOKEN", ""),
+		JWTSecret:      getEnv("CHICK_JWT_SECRET", ""),
 	}
 }
 

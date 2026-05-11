@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"chick/internal/auth"
 	"chick/internal/models"
 	"chick/internal/notifications"
 	"chick/internal/service"
@@ -17,6 +18,7 @@ type Handlers struct {
 	commentSvc  *service.CommentService
 	workflowSvc *service.WorkflowService
 	notifSvc    *notifications.Service
+	auth        *auth.Authenticator
 }
 
 func NewHandlers(
@@ -26,6 +28,7 @@ func NewHandlers(
 	commentSvc *service.CommentService,
 	workflowSvc *service.WorkflowService,
 	notifSvc *notifications.Service,
+	auth *auth.Authenticator,
 ) *Handlers {
 	return &Handlers{
 		projectSvc:  projectSvc,
@@ -34,6 +37,7 @@ func NewHandlers(
 		commentSvc:  commentSvc,
 		workflowSvc: workflowSvc,
 		notifSvc:    notifSvc,
+		auth:        auth,
 	}
 }
 
@@ -196,10 +200,22 @@ func (h *Handlers) handleRegisterAgent(id json.RawMessage, params json.RawMessag
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
 
-	// Validate bootstrap token for AI agents if needed
 	kind := models.AgentKind(p.Kind)
 	if kind == "" {
 		kind = models.AgentKindAI
+	}
+
+	// AI agent registration requires bootstrap token unless an AI already exists
+	if kind == models.AgentKindAI && h.auth != nil {
+		count, err := h.agentSvc.CountByKind(models.AgentKindAI)
+		if err != nil {
+			return NewInternalError(id, err.Error())
+		}
+		if count == 0 {
+			if !h.auth.UseBootstrapToken(p.BootstrapToken) {
+				return NewError(id, -32002, "Invalid or already used bootstrap token")
+			}
+		}
 	}
 
 	agent, err := h.agentSvc.Register(p.Name, kind, p.ExternalID, p.Secret, p.Capabilities)
@@ -222,15 +238,16 @@ func (h *Handlers) handleLoginAgent(id json.RawMessage, params json.RawMessage) 
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
-	agent, err := h.agentSvc.Login(p.ExternalID, p.Secret)
+	result, err := h.agentSvc.Login(p.ExternalID, p.Secret)
 	if err != nil {
 		return NewError(id, -32001, "Authentication failed: "+err.Error())
 	}
 	return NewResponse(id, map[string]interface{}{
-		"id":     fmt.Sprintf("%d", agent.ID),
-		"name":   agent.Name,
-		"kind":   string(agent.Kind),
-		"status": string(agent.Status),
+		"id":     fmt.Sprintf("%d", result.Agent.ID),
+		"name":   result.Agent.Name,
+		"kind":   string(result.Agent.Kind),
+		"status": string(result.Agent.Status),
+		"token":  result.Token,
 	})
 }
 

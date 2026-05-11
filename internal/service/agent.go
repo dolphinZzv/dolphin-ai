@@ -12,13 +12,18 @@ import (
 	"gorm.io/gorm"
 )
 
+type TokenGenerator interface {
+	GenerateToken(agentID uint) (string, error)
+}
+
 type AgentService struct {
 	agentRepo repository.AgentRepository
 	eventBus  *events.Bus
+	tokenGen  TokenGenerator
 }
 
-func NewAgentService(agentRepo repository.AgentRepository, eventBus *events.Bus) *AgentService {
-	return &AgentService{agentRepo: agentRepo, eventBus: eventBus}
+func NewAgentService(agentRepo repository.AgentRepository, eventBus *events.Bus, tokenGen TokenGenerator) *AgentService {
+	return &AgentService{agentRepo: agentRepo, eventBus: eventBus, tokenGen: tokenGen}
 }
 
 func (s *AgentService) Register(name string, kind models.AgentKind, externalID, secret string, capabilities []string) (*models.Agent, error) {
@@ -46,7 +51,12 @@ func (s *AgentService) Register(name string, kind models.AgentKind, externalID, 
 	return a, nil
 }
 
-func (s *AgentService) Login(externalID, secret string) (*models.Agent, error) {
+type LoginResult struct {
+	Agent *models.Agent
+	Token string
+}
+
+func (s *AgentService) Login(externalID, secret string) (*LoginResult, error) {
 	a, err := s.agentRepo.GetByExternalID(externalID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -57,7 +67,16 @@ func (s *AgentService) Login(externalID, secret string) (*models.Agent, error) {
 	if err := bcrypt.CompareHashAndPassword([]byte(a.SecretHash), []byte(secret)); err != nil {
 		return nil, errors.New("invalid credentials")
 	}
-	return a, nil
+
+	token := ""
+	if s.tokenGen != nil {
+		token, err = s.tokenGen.GenerateToken(a.ID)
+		if err != nil {
+			return nil, fmt.Errorf("generate token: %w", err)
+		}
+	}
+
+	return &LoginResult{Agent: a, Token: token}, nil
 }
 
 func (s *AgentService) GetByID(id uint) (*models.Agent, error) {
