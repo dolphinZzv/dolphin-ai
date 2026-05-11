@@ -2,11 +2,64 @@
 
 ## 设计原则
 
+- **手机优先** — 默认手机布局，逐步增强到平板和桌面。不在手机上妥协
 - **清晰优先** — 每个页面只有一个主要操作，信息层级分明
 - **一致性** — 复用 shadcn 组件，不自定义视觉样式
-- **响应式** — 桌面/平板/手机三档适配，不割裂体验
 - **暗色模式** — 默认跟随系统，支持手动切换
 - **中文优先** — 全界面中文，符合中文用户阅读和操作习惯
+
+## 手机优先策略
+
+### 核心思路
+
+```
+默认 (手机)    →   平板 (≥640px)    →   桌面 (≥1024px)
+───────────────────────────────────────────────────────
+底部导航       →   侧栏图标         →   展开侧栏
+单列堆叠       →   2 列网格         →   多列/双栏
+全屏操作       →   弹窗/侧面板      →   弹窗
+大字+大触控    →   适中             →   标准
+```
+
+手机不是"缩水的桌面"，而是**默认体验**。桌面版在手机版基础上增加信息密度和快捷操作。
+
+### Touch 优先
+
+```
+交互元素最小尺寸: 44px (Apple HIG 标准)
+按钮间距:        ≥ 8px（防止误触）
+列表项:          整行可点击（不依赖小图标）
+下拉菜单:        选项高度 ≥ 44px
+```
+
+### 性能基线
+
+手机网络和硬件受限，纳入设计考量：
+
+```
+JS 产物:   ≤ 150KB (gzip)
+首屏加载:  ≤ 2s (3G 模拟)
+图片:      不加载非首屏图片
+字体:      Noto Sans SC 只加载中文子集 (subset)
+Lazy Load: 页面/弹窗按需加载
+```
+
+## 断点系统
+
+手机优先的 min-width 断点：
+
+```
+默认        < 640px    手机 (竖屏)
+sm:  640px  ~ 1023px   平板 (竖屏/横屏)
+lg:  1024px +          桌面
+
+Tailwind 写法:
+  <div className="grid grid-cols-1 lg:grid-cols-4">
+    默认手机 1 列 → 桌面 4 列
+  </div>
+```
+
+不在手机上用 `hidden` 隐藏内容 —— 手机上默认显示所有核心内容，桌面用 `lg:block` 增强布局。
 
 ## 中文适配
 
@@ -57,17 +110,12 @@ small:    text-xs (12px) → 中文最小字号，不再缩小
 - Toast 通知、错误提示、确认对话框全用中文
 - 键盘快捷键提示标注中文按键名（"确认" 而非 "Submit"）
 
-### 布局习惯
-
-- 列表页默认分页 20 条/页（中文用户习惯 20/50/100 选项）
-- 表格/列表顶部分页控件（中文用户习惯上方分页）
-- 表单标签右对齐（中文阅读视线从右到左扫到输入框更自然，但考虑到现代 Web 习惯，统一左对齐 + 顶部标签）
-- 确认弹窗按"取消 → 确认"顺序排列（符合平台一致性，不特地为中文反转）
-
 ### 搜索
 
 - 支持中文分词搜索（后端已有全文搜索）
 - 搜索框 placeholder 提示："搜索项目、Issue、Agent..."
+
+## 色彩系统
 
 基于 shadcn CSS 变量，覆盖 Tailwind 主题色。
 
@@ -133,40 +181,55 @@ small:    text-xs (12px) → 中文最小字号，不再缩小
 ## 间距
 
 ```
-页面 Padding: p-6 (桌面), p-4 (平板), p-3 (手机)
-卡片间距: gap-4
+页面 Padding: p-3 (手机默认) → lg:p-6
+卡片间距: gap-3 (手机) → lg:gap-4
 列表项间距: space-y-2
-内容与标题间距: mt-6
+内容与标题间距: mt-4 (手机) → lg:mt-6
 ```
 
 ## 布局
 
-### 侧边栏
+### 导航
 
 ```
-桌面 (≥1024px):  固定 240px，左侧放置
-平板 (768-1023): 收缩为 64px 图标栏
-手机 (<768px):   隐藏，从左侧滑出浮层
+手机 (<640px):        底部固定导航栏 (5 项: 首页/项目/Agent/设置/用户)
+                      当前页高亮，图标 + 标签文字
+                      无侧边栏
+
+平板 (640–1023px):    底部导航 + 左侧图标栏 (64px)
+                      图标栏只显示图标，文字隐藏
+
+桌面 (≥1024px):       底部导航隐藏，左侧展开侧栏 (240px)
+                      图标 + 文字标签
 ```
 
-每个导航项包含图标 + 文字标签（平板仅图标）。
+底部导航始终可见，不因桌面模式移除。桌面模式下 auto-hide。
 
 ### 看板 (Issue Board)
 
 ```
-桌面 4 列: open / in_progress / blocked / review + closed 折叠在底部
-平板 2 列: 左右滚动
-手机 1 列: 上下滚动，State 切换用 Dropdown
-```
+手机 (<640px):        单列列表，每条 Issue 占满宽度
+                      State 切换用底部 Action Sheet 或 Dropdown（不拖拽）
 
-每列宽度固定 280px，横向滚动，不压缩卡片。
+平板 (640–1023px):    2 列网格，横向滚动
+                      可以拖拽
+
+桌面 (≥1024px):       4 列 (open / in_progress / blocked / review)
+                      closed 折叠在底部，可展开
+                      拖拽切换状态
+```
 
 ### 详情页 (Issue Detail)
 
 ```
-桌面: 双栏布局 — 主内容区 2/3 + 元信息侧栏 1/3
-平板: 侧栏移到下方
-手机: 单列堆叠，元信息可折叠
+手机 (<640px):        单列堆叠
+                      元信息（Assignee/Labels/Priority）可折叠区域
+                      操作按钮固定在底部
+
+平板 (640–1023px):    单列，元信息在内容下方
+
+桌面 (≥1024px):       双栏 — 主内容 2/3 + 元信息侧栏 1/3
+                      操作按钮在顶部
 ```
 
 ## 组件设计规范
@@ -174,16 +237,17 @@ small:    text-xs (12px) → 中文最小字号，不再缩小
 ### Issue Card
 
 ```
-┌──────────────────────────┐
-│ ◯ Fix login timeout bug  │  ← 标题(1行截断)
-│ #42 · open               │  ← Issue 号 + State Badge
-│ 🔴 critical              │  ← Priority Badge
-│ 👤 alice · 🏷 bug · 🏷 auth│  ← Assignee + Label 药丸
-└──────────────────────────┘
+┌──────────────────────────────┐
+│ ◯ Fix login timeout bug      │  ← 标题(1行截断)
+│ #42 · open                   │  ← Issue 号 + State Badge
+│ 🔴 critical                  │  ← Priority Badge
+│ 👤 alice · 🏷 bug · 🏷 auth  │  ← Assignee + Label 药丸
+└──────────────────────────────┘
 - 圆角: rounded-lg
-- 悬浮: shadow-sm → shadow-md
-- 左侧彩色边框标识 State
-- 拖拽中: opacity-50 + rotate-2
+- 手机: 左右满宽，上下间距 8px
+- 桌面: 有边距，阴影微妙
+- 左侧 3px 彩色边框标识 State
+- 整行可点击（手机触摸友好）
 ```
 
 ### Button
@@ -195,7 +259,13 @@ outline:   border + bg-transparent
 ghost:     bg-transparent (hover 高亮)
 danger:    bg-destructive text-destructive-foreground
 
-尺寸: default (h-9) / sm (h-8) / lg (h-10) / icon (h-9 w-9)
+尺寸: default (h-10) — 手机默认更大
+      sm (h-9)
+      lg (h-11)
+      icon (h-10 w-10)
+
+手机: 默认按钮宽度 100%（撑满）
+桌面: 默认按钮宽度 auto
 ```
 
 ### Badge
@@ -210,7 +280,7 @@ State Badge (圆角 pill):
   closed_not_planned: bg-gray-100 text-gray-500 (strikethrough)
 
 Priority Badge:
-  关键(critical): bg-red-100 text-red-800 + 🔴
+  关键(critical): bg-red-100 text-red-800
   高(high):       bg-orange-100 text-orange-800
   中(medium):     bg-blue-100 text-blue-800
   低(low):        bg-sky-100 text-sky-800
@@ -219,14 +289,23 @@ Label Badge:
   bg-gray-100 text-gray-700 text-xs 圆角药丸
 ```
 
-### Dialog
+### Dialog / Action Sheet
 
 ```
-- 居中弹窗
-- 点击遮罩关闭
-- 标题: font-semibold
-- 底部: Cancel + Confirm 按钮
-- 宽度: sm:max-w-lg (默认), sm:max-w-xl (创建 Issue)
+手机 (<640px):
+  - Action Sheet 样式（从底部滑入）
+  - 遮罩 + 底部面板，可下滑关闭
+  - 取消按钮固定在底部
+
+桌面 (≥640px):
+  - 居中弹窗
+  - 点击遮罩关闭
+  - 宽度: sm:max-w-lg (默认)
+  - Cancel + Confirm 在底部右对齐
+
+创建 Issue:
+  - 手机: 全屏新页面（不是弹窗）
+  - 桌面: sm:max-w-xl 弹窗
 ```
 
 ### Comment Thread
@@ -236,73 +315,85 @@ Label Badge:
 │                         │
 │ Markdown 渲染内容        │
 │                         │
-│ Reply · Edit · Delete   │  ← 操作按钮(ghost, text-xs)
+│ 回复 · 编辑 · 删除      │  ← 操作按钮(ghost, text-xs)
 ├─────────────────────────┤
-│ Replies...              │  ← 缩进 8px 嵌套
+│ 回复...                 │  ← 缩进 8px 嵌套
 └─────────────────────────┘
 
 输入框:
   - textarea 自动增高
   - 支持 Markdown (预览切换)
-  - Cmd+Enter 提交
+  - 手机: 输入框固定在底部（类似 IM 应用）
+  - 桌面: 输入框在评论区底部
+  - Cmd+Enter / 发送按钮 提交
 ```
 
 ### Timeline
 
 ```
-● issue_created       — Alice created this issue        2h ago
+● 创建 Issue    — 张三          2 小时前
 │
-● assigned            — Bob assigned to this issue      1h ago
+● 分配          — 分配给 李四    1 小时前
 │
-● state_changed       → in_progress                     30m ago
+● 状态变更      → 进行中         30 分钟前
 │
-● comment_added       — Alice commented                 5m ago
+● 评论          — 王五          5 分钟前
 
-时间线按时间倒序排列，每个事件包含：
-  - 图标/圆点 + 事件类型标签
-  - 描述文字（可点击 Actor）
+每个事件包含：
+  - 圆点 + 事件类型标签（中文："创建 Issue" 而非 "issue_created"）
+  - 参与者姓名（可点击）
   - 相对时间
+  - 手机: 简洁版，只显示图标 + 一句话描述
+  - 桌面: 完整版，显示详情
 ```
 
 ## 动画
 
 ```
-- 页面切换: 无动画 (即时渲染)
-- Dialog:  fade-in + scale-in (150ms)
+- 页面切换: 无动画（即时渲染，手机感知更快）
+- 底部导航切换: 无动画
+- Action Sheet: slide-up (200ms) — 手机
+- Dialog: fade-in + scale-in (150ms) — 桌面
 - Dropdown: fade-in (100ms)
-- Toast:   slide-in-from-right (200ms)
-- Issue Card 拖拽: transition-transform (150ms)
-- Sidebar 展开/收起: transition-width (200ms)
+- Toast: slide-up-from-bottom (200ms) — 手机优先
+- Sidebar 展开/收起: transition-width (200ms) — 桌面
 - 暗色模式切换: transition-colors (200ms)
 ```
 
-## 响应式适配细则
+手机动画比桌面更少、更简单（降低低端设备负载）。
+
+## 布局细则
+
+### 手机 <640px（默认）
+
+- 底部固定导航栏 (Home · 项目 · Agent · 设置)
+- 当前页 tab 高亮
+- 页面标题固定在顶部
+- 操作按钮在底部（拇指热区）
+- Action Sheet 替代 Dialog
+- 单列布局，不隐藏关键信息
+- 列表整行可点击
+
+### 平板 640–1023px
+
+- 底部导航 + 左侧图标栏
+- 看板 2 列 + 横向滚动
+- 详情页单栏，元信息在内容下方
+- Dialog 弹窗（非 Action Sheet）
 
 ### 桌面 ≥1024px
-- Sidebar 固定 240px
-- 看板横向滚动 4 列
+
+- 展开侧栏，底部导航隐藏（可设置 auto-hide）
+- 看板 4 列横向滚动
 - 详情页双栏布局
-- Dialog 居中
-
-### 平板 768–1023px
-- Sidebar 收缩为 64px 图标栏（文本隐藏）
-- 看板 2 列 + 横向滚动
-- 详情页单栏（侧栏移到下方）
-- Dialog 宽度自适应
-
-### 手机 <768px
-- Sidebar 隐藏，左上角汉堡按钮展开浮层
-- 底部固定导航栏 (Home · Projects · Agents · Settings)
-- 看板单列，State 切换用 Dropdown 替代拖拽
-- 详情页全单栏 + 可折叠 Meta 区
-- 所有卡片圆角减小 (rounded-lg → rounded-md)
-- 页面 Padding 缩小 (p-6 → p-3)
+- 快捷操作（快捷键提示）
+- 信息密度更高（show more）
 
 ## 暗色模式
 
 - 使用 shadcn `next-themes` 的 `ThemeProvider`（class 策略）
 - 默认跟随系统 (`prefers-color-scheme`)
-- TopBar 右侧手动切换按钮 (Sun/Moon 图标)
+- TopBar/底部导航 右侧手动切换按钮 (Sun/Moon 图标)
 - 所有 CSS 变量通过 `:root` / `.dark` 切换
 - 不额外写 `dark:` Tailwind class（依赖 CSS 变量自动适配）
 
