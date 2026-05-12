@@ -6,7 +6,7 @@ import "time"
 type AgentKind int
 
 const (
-	AgentUser  AgentKind = iota // from .dolphinzZ/agents/<name>/
+	AgentUser  AgentKind = iota // from .dolphin/agents/<name>/
 	AgentCoord                  // created by coordinator at runtime
 )
 

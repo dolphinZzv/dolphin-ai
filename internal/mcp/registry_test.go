@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestRegistryRegisterAndGet(t *testing.T) {

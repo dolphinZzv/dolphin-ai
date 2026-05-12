@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 // startTestSMTPServer starts a minimal SMTP server that captures the message body.
@@ -208,7 +208,7 @@ func TestEmailTransportSendMailPlain(t *testing.T) {
 		if !strings.Contains(msg, "test body") {
 			t.Errorf("expected 'test body' in message, got: %q", msg)
 		}
-		if !strings.Contains(msg, "Subject: Re: DolphinzZ Agent") {
+		if !strings.Contains(msg, "Subject: Re: dolphin Agent") {
 			t.Errorf("expected Subject header")
 		}
 	case <-time.After(3 * time.Second):

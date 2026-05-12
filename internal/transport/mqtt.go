@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go.uber.org/zap"
@@ -20,9 +20,9 @@ import (
 // The response topic is derived from each incoming message's topic so that
 // multiple publishers on sub-topics each get their own response channel:
 //
-//	subscribe:   dolphinzZ/agent/command/+
-//	receive on:  dolphinzZ/agent/command/agent-1
-//	respond to:  dolphinzZ/agent/response/agent-1
+//	subscribe:   dolphin/agent/command/+
+//	receive on:  dolphin/agent/command/agent-1
+//	respond to:  dolphin/agent/response/agent-1
 //
 // When the incoming topic is an exact match (no wildcard suffix), the
 // configured response_topic is used as-is (backward compatible).
@@ -170,9 +170,9 @@ func (t *MQTTTransport) Close() error {
 
 // deriveResponseTopic maps an incoming command topic to the response topic.
 //
-//	cmdTopic:   "dolphinzZ/agent/command/+"
-//	incoming:   "dolphinzZ/agent/command/agent-1"
-//	result:     "dolphinzZ/agent/response/agent-1"
+//	cmdTopic:   "dolphin/agent/command/+"
+//	incoming:   "dolphin/agent/command/agent-1"
+//	result:     "dolphin/agent/response/agent-1"
 //
 // The MQTT wildcard suffix (/+ /#) is stripped from cmdTopic to find the
 // prefix. The remainder of the incoming topic after that prefix is appended

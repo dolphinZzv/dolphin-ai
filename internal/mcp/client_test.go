@@ -3,7 +3,7 @@ package mcp
 import (
 	"testing"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestNewServerClientEmptyCommand(t *testing.T) {

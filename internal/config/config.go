@@ -17,9 +17,9 @@ import (
 )
 
 var (
-	SystemConfigDir  = "/etc/dolphinzZ"
-	UserConfigDir    = ".dolphinzZ"
-	ProjectConfigDir = ".dolphinzZ"
+	SystemConfigDir  = "/etc/dolphin"
+	UserConfigDir    = ".dolphin"
+	ProjectConfigDir = ".dolphin"
 	ConfigFileName   = "config"
 )
 
@@ -103,7 +103,7 @@ type MCPConfig struct {
 	Shell   ShellConfig                `mapstructure:"shell"`
 	CDP     CDPConfig                  `mapstructure:"cdp"`
 	Servers map[string]MCPServerConfig `mapstructure:"servers"`
-	Repos   []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinzZv/mcp"]
+	Repos   []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
 }
 
 type MCPServerConfig struct {
@@ -148,9 +148,9 @@ type PoolConfig struct {
 }
 
 type SkillsConfig struct {
-	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphinzZ/skills)
+	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphin/skills)
 	MaxTop int      `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
-	Repos  []string `mapstructure:"repos"`   // manifest repos, e.g. ["dolphinzZv/skills"]
+	Repos  []string `mapstructure:"repos"`   // manifest repos, e.g. ["dolphinv/skills"]
 }
 
 type PprofConfig struct {
@@ -187,15 +187,15 @@ func Load(cfgFile string) (*Config, error) {
 	// Collect config files in priority order (each overrides the previous)
 	var configFiles []string
 
-	// 1. System config: /etc/dolphinzZ/config.yaml
+	// 1. System config: /etc/dolphin/config.yaml
 	configFiles = append(configFiles, filepath.Join(SystemConfigDir, ConfigFileName+".yaml"))
 
-	// 2. User config: ~/.dolphinzZ/config.yaml
+	// 2. User config: ~/.dolphin/config.yaml
 	if homeDir, err := os.UserHomeDir(); err == nil {
 		configFiles = append(configFiles, filepath.Join(homeDir, UserConfigDir, ConfigFileName+".yaml"))
 	}
 
-	// 3. Project config: .dolphinzZ/config.yaml
+	// 3. Project config: .dolphin/config.yaml
 	configFiles = append(configFiles, filepath.Join(ProjectConfigDir, ConfigFileName+".yaml"))
 
 	// 4. -c flag (highest priority, overrides all)
@@ -230,7 +230,7 @@ func Load(cfgFile string) (*Config, error) {
 
 	// Resolve session dir
 	if cfg.Session.Dir == "" {
-		cfg.Session.Dir = "/tmp/dolphinzZ"
+		cfg.Session.Dir = "/tmp/dolphin"
 	}
 
 	// Manual env var overrides (Viper v1.18.2 env binding has issues)
@@ -311,7 +311,7 @@ func DefaultConfig() *Config {
 	setDefaults(v)
 	var cfg Config
 	v.Unmarshal(&cfg)
-	cfg.Session.Dir = "/tmp/dolphinzZ"
+	cfg.Session.Dir = "/tmp/dolphin"
 	return &cfg
 }
 
@@ -459,7 +459,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.compress_mode", "drop")
 	v.SetDefault("llm.segment_merge_limit", 100)
 
-	v.SetDefault("session.dir", "/tmp/dolphinzZ")
+	v.SetDefault("session.dir", "/tmp/dolphin")
 	v.SetDefault("session.max_loop", 50)
 	v.SetDefault("session.summary", true)
 
@@ -467,13 +467,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.ssh.enabled", false)
 	v.SetDefault("transport.ssh.addr", ":2222")
 	v.SetDefault("transport.ssh.host_key", "~/.ssh/id_ed25519")
-	v.SetDefault("transport.ssh.username", "dolphinzZ")
+	v.SetDefault("transport.ssh.username", "dolphin")
 	v.SetDefault("transport.ssh.password", "")
 	v.SetDefault("transport.mqtt.enabled", false)
 	v.SetDefault("transport.mqtt.broker", "tcp://localhost:1883")
-	v.SetDefault("transport.mqtt.topic", "dolphinzZ/agent/command")
-	v.SetDefault("transport.mqtt.response_topic", "dolphinzZ/agent/response")
-	v.SetDefault("transport.mqtt.client_id", "dolphinzZ-agent")
+	v.SetDefault("transport.mqtt.topic", "dolphin/agent/command")
+	v.SetDefault("transport.mqtt.response_topic", "dolphin/agent/response")
+	v.SetDefault("transport.mqtt.client_id", "dolphin-agent")
 
 	v.SetDefault("transport.email.enabled", false)
 	v.SetDefault("transport.email.smtp_port", 587)
@@ -494,21 +494,21 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("agent_pool.max_concurrency", 5)
 	v.SetDefault("agent_pool.default_timeout", 300)
-	v.SetDefault("agent_pool.workspace_dir", ".dolphinzZ/workspaces")
+	v.SetDefault("agent_pool.workspace_dir", ".dolphin/workspaces")
 	v.SetDefault("agent_pool.idle_timeout", 600)
 	v.SetDefault("agent_pool.max_pending_results", 10)
 
-	v.SetDefault("skills.dir", ".dolphinzZ/skills")
+	v.SetDefault("skills.dir", ".dolphin/skills")
 	v.SetDefault("skills.max_top", 10)
 	v.SetDefault("skills.repos", []string{})
 
-	v.SetDefault("crontab.file", ".dolphinzZ/CRONTAB.md")
+	v.SetDefault("crontab.file", ".dolphin/CRONTAB.md")
 	v.SetDefault("crontab.check_interval", "30s")
 
 	v.SetDefault("pprof.enabled", false)
 	v.SetDefault("pprof.addr", ":6060")
 
-	v.SetDefault("diary.dir", ".dolphinzZ/diary")
+	v.SetDefault("diary.dir", ".dolphin/diary")
 	v.SetDefault("diary.max_day_sessions", 200)
 	v.SetDefault("diary.max_week_days", 7)
 	v.SetDefault("diary.max_month_weeks", 5)
@@ -519,5 +519,5 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("metrics.addr", ":9090")
 
 	v.SetDefault("log_level", "info")
-	v.SetDefault("log_file", ".dolphinzZ/logs/agent.log")
+	v.SetDefault("log_file", ".dolphin/logs/agent.log")
 }

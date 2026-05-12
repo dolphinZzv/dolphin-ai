@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestCDPShutdownUninitialized(t *testing.T) {

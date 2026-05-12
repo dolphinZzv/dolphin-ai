@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestNewManager(t *testing.T) {

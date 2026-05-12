@@ -11,18 +11,18 @@ import (
 	"syscall"
 	"time"
 
-	"dolphinzZ/internal/agent"
-	"dolphinzZ/internal/command"
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/diary"
-	"dolphinzZ/internal/i18n"
-	"dolphinzZ/internal/logger"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/metrics"
-	"dolphinzZ/internal/scheduler"
-	"dolphinzZ/internal/session"
-	"dolphinzZ/internal/skill"
-	"dolphinzZ/internal/transport"
+	"dolphin/internal/agent"
+	"dolphin/internal/command"
+	"dolphin/internal/config"
+	"dolphin/internal/diary"
+	"dolphin/internal/i18n"
+	"dolphin/internal/logger"
+	"dolphin/internal/mcp"
+	"dolphin/internal/metrics"
+	"dolphin/internal/scheduler"
+	"dolphin/internal/session"
+	"dolphin/internal/skill"
+	"dolphin/internal/transport"
 
 	"github.com/oklog/run"
 	"github.com/spf13/cobra"
@@ -38,20 +38,20 @@ var (
 
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "dolphinzZ",
+		Use:   "dolphin",
 		Short: "AI Agent — stdio / SSH / MQTT / Email transport, MCP tools (shell + cdp)",
-		Long: `DolphinzZ is an AI Agent with MCP tool support.
+		Long: `dolphin is an AI Agent with MCP tool support.
 
 Transports: stdio (default), SSH (:2222), MQTT, Email
 Tools: shell, cdp (browser automation)
-Config: .dolphinzZ/config.yaml > ~/.dolphinzZ/ > /etc/dolphinzZ/
+Config: .dolphin/config.yaml > ~/.dolphin/ > /etc/dolphin/
 Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 		RunE:    runAgent,
 		Version: Version,
 	}
 
-	cmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "path to config file (searches .dolphinzZ/, ~/.dolphinzZ/, /etc/dolphinzZ/ by default)")
-	cmd.SetVersionTemplate("dolphinzZ {{.Version}}\n")
+	cmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "path to config file (searches .dolphin/, ~/.dolphin/, /etc/dolphin/ by default)")
+	cmd.SetVersionTemplate("dolphin {{.Version}}\n")
 
 	cmd.AddCommand(NewSetupCmd())
 
@@ -142,7 +142,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 	}
 	// Check for agents directory to decide coordinator vs single-agent mode
-	agentsDir := filepath.Join(".dolphinzZ", "agents")
+	agentsDir := filepath.Join(".dolphin", "agents")
 	_, coordErr := os.Stat(agentsDir)
 	hasAgents := coordErr == nil
 

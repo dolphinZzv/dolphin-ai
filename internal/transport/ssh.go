@@ -14,11 +14,12 @@ import (
 	"strings"
 	"sync"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
+
+	"time"
 
 	"go.uber.org/zap"
 	gossh "golang.org/x/crypto/ssh"
-	"time"
 )
 
 // SSHTransport provides SSH server transport.
@@ -54,7 +55,7 @@ func NewSSHTransport(cfg *config.Config, handler func(context.Context, UserIO)) 
 	if err != nil {
 		// Try persistent auto-generated key
 		home, _ := os.UserHomeDir()
-		autoKeyPath := filepath.Join(home, ".dolphinzZ", "ssh_host_key")
+		autoKeyPath := filepath.Join(home, ".dolphin", "ssh_host_key")
 		signer, err = loadHostKey(autoKeyPath)
 		if err != nil {
 			zap.S().Infow("generating persistent SSH host key", "path", autoKeyPath)
@@ -425,7 +426,7 @@ func genAndSaveKey(path string) (gossh.Signer, error) {
 	}
 
 	os.MkdirAll(filepath.Dir(path), 0700)
-	pemBlock, err := gossh.MarshalPrivateKey(priv, "dolphinzZ-host-key")
+	pemBlock, err := gossh.MarshalPrivateKey(priv, "dolphin-host-key")
 	if err != nil {
 		return nil, err
 	}

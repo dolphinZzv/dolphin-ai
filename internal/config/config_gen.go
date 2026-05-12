@@ -7,11 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dolphinzZ/internal/i18n"
+	"dolphin/internal/i18n"
 )
 
 // configTemplateEN is the default config with English comments.
-const configTemplateEN = `# DolphinzZ configuration
+const configTemplateEN = `# dolphin configuration
 # This file is auto-generated. Edit and restart to apply changes.
 
 # ── LLM Provider ──────────────────────────────────────────
@@ -27,7 +27,7 @@ llm:
 
 # ── Sessions ──────────────────────────────────────────────
 session:
-  dir: .dolphinzZ/sessions
+  dir: .dolphin/sessions
   max_loop: 50            # max turns per session before checkpoint
   summary: true           # auto-generate session summary
   max_age: 24h            # auto-delete sessions older than this
@@ -47,22 +47,22 @@ mcp:
   servers: {}             # external MCP servers, e.g. myserver: {type: stdio, command: npx, args: [...]}
   #                       #   or remote: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
   #                       #   or remote: {type: http-stream, url: "https://..."}
-  repos: []               # manifest repos, e.g. ["dolphinzZv/mcp"]
+  repos: []               # manifest repos, e.g. ["dolphinv/mcp"]
 
 # ── Agent Pool ────────────────────────────────────────────
 agent_pool:
   max_concurrency: 5      # max simultaneous sub-agent tasks
   default_timeout: 300    # seconds per task
-  workspace_dir: .dolphinzZ/workspaces
+  workspace_dir: .dolphin/workspaces
   idle_timeout: 600       # seconds before reaping idle temp agents
   max_pending_results: 10
   max_pending_result_len: 500  # chars per result in prompt, 0 = no truncation
 
 # ── Skills ────────────────────────────────────────────────
 skills:
-  dir: .dolphinzZ/skills
+  dir: .dolphin/skills
   max_top: 10             # skills shown in LLM context
-  repos: []               # manifest repos, e.g. ["dolphinzZv/skills"]
+  repos: []               # manifest repos, e.g. ["dolphinv/skills"]
 
 # ── Transports ────────────────────────────────────────────
 transport:
@@ -94,12 +94,12 @@ transport:
 
 # ── Crontab ───────────────────────────────────────────────
 crontab:
-  file: .dolphinzZ/CRONTAB.md
+  file: .dolphin/CRONTAB.md
   check_interval: 30s
 
 # ── Diary (session summary aggregation) ───────────────────
 diary:
-  dir: .dolphinzZ/diary
+  dir: .dolphin/diary
   max_day_sessions: 200       # sessions per day before pruning oldest
   max_week_days: 7            # days per week before pruning oldest
   max_month_weeks: 5          # weeks per month before pruning oldest
@@ -108,7 +108,7 @@ diary:
 
 # ── Observability ─────────────────────────────────────────
 log_level: info
-log_file: .dolphinzZ/logs/agent.log
+log_file: .dolphin/logs/agent.log
 
 pprof:
   enabled: false
@@ -120,7 +120,7 @@ metrics:
 `
 
 // configTemplateZH is the default config with Chinese comments.
-const configTemplateZH = `# DolphinzZ 配置文件
+const configTemplateZH = `# dolphin 配置文件
 # 此文件由程序自动生成。修改后重启即可生效。
 
 # ── LLM 提供商 ────────────────────────────────────────────
@@ -136,7 +136,7 @@ llm:
 
 # ── 会话 ──────────────────────────────────────────────────
 session:
-  dir: .dolphinzZ/sessions
+  dir: .dolphin/sessions
   max_loop: 50            # 每次会话最大轮数，超出后生成检查点
   summary: true           # 自动生成会话摘要
   max_age: 24h            # 超过此时间的会话文件自动清理
@@ -156,22 +156,22 @@ mcp:
   servers: {}             # 外部 MCP 服务器，如 myserver: {type: stdio, command: npx, args: [...]}
   #                       #   或远程: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
   #                       #   或远程: {type: http-stream, url: "https://..."}
-  repos: []               # 清单仓库，如 ["dolphinzZv/mcp"]
+  repos: []               # 清单仓库，如 ["dolphinv/mcp"]
 
 # ── Agent 池 ──────────────────────────────────────────────
 agent_pool:
   max_concurrency: 5      # 最大并发子 agent 任务数
   default_timeout: 300    # 每个任务的超时秒数
-  workspace_dir: .dolphinzZ/workspaces
+  workspace_dir: .dolphin/workspaces
   idle_timeout: 600       # 空闲临时 agent 多久后被回收（秒）
   max_pending_results: 10
   max_pending_result_len: 500  # prompt 中每条结果最大字符数，0 = 不截断
 
 # ── 技能 ──────────────────────────────────────────────────
 skills:
-  dir: .dolphinzZ/skills
+  dir: .dolphin/skills
   max_top: 10             # LLM 上下文中展示的技能数
-  repos: []               # 清单仓库，如 ["dolphinzZv/skills"]
+  repos: []               # 清单仓库，如 ["dolphinv/skills"]
 
 # ── 传输层 ────────────────────────────────────────────────
 transport:
@@ -203,12 +203,12 @@ transport:
 
 # ── 定时任务 ──────────────────────────────────────────────
 crontab:
-  file: .dolphinzZ/CRONTAB.md
+  file: .dolphin/CRONTAB.md
   check_interval: 30s
 
 # ── 日记（会话摘要聚合）───────────────────────────────────
 diary:
-  dir: .dolphinzZ/diary
+  dir: .dolphin/diary
   max_day_sessions: 200       # 每天最多保留的会话数
   max_week_days: 7            # 每周最多保留的天数
   max_month_weeks: 5          # 每月最多保留的周数
@@ -217,7 +217,7 @@ diary:
 
 # ── 可观测性 ──────────────────────────────────────────────
 log_level: info
-log_file: .dolphinzZ/logs/agent.log
+log_file: .dolphin/logs/agent.log
 
 pprof:
   enabled: false
@@ -228,7 +228,7 @@ metrics:
   addr: ":9090"
 `
 
-// GenerateConfigFile writes a commented default config to .dolphinzZ/config.yaml.
+// GenerateConfigFile writes a commented default config to .dolphin/config.yaml.
 // Comments adapt to the given language. Returns the file path written.
 func GenerateConfigFile(lang i18n.Lang) (string, error) {
 	tmpl := configTemplateEN

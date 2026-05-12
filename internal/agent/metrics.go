@@ -1,6 +1,6 @@
 package agent
 
-import "dolphinzZ/internal/metrics"
+import "dolphin/internal/metrics"
 
 // Agent-level metrics collected via the global metrics registry.
 var (

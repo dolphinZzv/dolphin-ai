@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"

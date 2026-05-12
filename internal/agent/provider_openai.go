@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/metrics"
+	"dolphin/internal/config"
+	"dolphin/internal/metrics"
 
 	"github.com/sashabaranov/go-openai"
 	"go.uber.org/zap"

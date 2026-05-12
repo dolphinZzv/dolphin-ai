@@ -4,25 +4,25 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestDeriveResponseTopicExactMatch(t *testing.T) {
-	got := deriveResponseTopic("dolphinzZ/agent/command", "dolphinzZ/agent/response", "dolphinzZ/agent/command")
-	if got != "dolphinzZ/agent/response" {
+	got := deriveResponseTopic("dolphin/agent/command", "dolphin/agent/response", "dolphin/agent/command")
+	if got != "dolphin/agent/response" {
 		t.Errorf("exact match: got %q", got)
 	}
 }
 
 func TestDeriveResponseTopicWildcardSuffix(t *testing.T) {
-	got := deriveResponseTopic("dolphinzZ/agent/command/+", "dolphinzZ/agent/response", "dolphinzZ/agent/command/agent-1")
-	if got != "dolphinzZ/agent/response/agent-1" {
+	got := deriveResponseTopic("dolphin/agent/command/+", "dolphin/agent/response", "dolphin/agent/command/agent-1")
+	if got != "dolphin/agent/response/agent-1" {
 		t.Errorf("wildcard suffix: got %q", got)
 	}
 }
 
 func TestDeriveResponseTopicHashWildcard(t *testing.T) {
-	got := deriveResponseTopic("dolphinzZ/#", "response", "dolphinzZ/a/b/c")
+	got := deriveResponseTopic("dolphin/#", "response", "dolphin/a/b/c")
 	if got != "response/a/b/c" {
 		t.Errorf("hash wildcard: got %q", got)
 	}

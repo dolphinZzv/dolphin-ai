@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"dolphinzZ/internal/i18n"
+	"dolphin/internal/i18n"
 )
 
 func TestGenerateConfigFileEN(t *testing.T) {
@@ -28,7 +28,7 @@ func TestGenerateConfigFileEN(t *testing.T) {
 		t.Fatalf("read generated config: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "# DolphinzZ configuration") {
+	if !strings.Contains(content, "# dolphin configuration") {
 		t.Error("expected English header comment")
 	}
 	if !strings.Contains(content, "llm:") {
@@ -60,7 +60,7 @@ func TestGenerateConfigFileZH(t *testing.T) {
 		t.Fatalf("read generated config: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "# DolphinzZ 配置文件") {
+	if !strings.Contains(content, "# dolphin 配置文件") {
 		t.Error("expected Chinese header comment")
 	}
 	if !strings.Contains(content, "llm:") {

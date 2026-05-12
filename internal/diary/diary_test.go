@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/session"
+	"dolphin/internal/session"
 )
 
 // writeTestSessionSummary creates a -summary.json file for testing.

@@ -1,8 +1,8 @@
-# AGENTS.md — DolphinzZ Development Guidelines
+# AGENTS.md — dolphin Development Guidelines
 
 ## Project Scope
 
-DolphinzZ is an AI agent that connects to terminal, email, chat, and SSH — providing a unified agent experience across all transport layers. The agent runs shell commands, controls browsers, delegates to sub-agents, and follows user-defined schedules.
+dolphin is an AI agent that connects to terminal, email, chat, and SSH — providing a unified agent experience across all transport layers. The agent runs shell commands, controls browsers, delegates to sub-agents, and follows user-defined schedules.
 
 **Core principles:**
 - Work on all channels equally (terminal, email, chat, SSH)
@@ -108,7 +108,7 @@ main          ← production-ready, always deployable
 2. Set required env vars: `DZ_LLM_API_KEY`, `DZ_LLM_MODEL`
 3. Run `go build ./...` to verify compilation
 4. Run `go test -race ./...` to verify test suite
-5. Start the agent with `./dolphinzZ` (first run walks you through setup)
+5. Start the agent with `./dolphin` (first run walks you through setup)
 
 **Common issues:**
 - Build fails → check Go version matches `go.mod` (minimum 1.22)

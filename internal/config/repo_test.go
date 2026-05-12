@@ -219,8 +219,8 @@ func TestRepoFetcherEmptyRepos(t *testing.T) {
 
 func TestRepoFetcherCachePath(t *testing.T) {
 	fetcher := NewRepoFetcher("/tmp/cache")
-	path := fetcher.cachePath("dolphinzZv/skills")
-	expected := filepath.Join("/tmp/cache", "dolphinzZv-skills", "manifest.json")
+	path := fetcher.cachePath("dolphinv/skills")
+	expected := filepath.Join("/tmp/cache", "dolphinv-skills", "manifest.json")
 	if path != expected {
 		t.Errorf("cachePath = %q, want %q", path, expected)
 	}

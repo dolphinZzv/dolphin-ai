@@ -59,7 +59,7 @@ func (f *RepoFetcher) SetTTL(ttl time.Duration) {
 }
 
 // FetchManifest fetches the manifest.json for a single repo.
-// Repo name format: "owner/repo" (e.g. "dolphinzZv/skills").
+// Repo name format: "owner/repo" (e.g. "dolphinv/skills").
 func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*ToolManifest, error) {
 	// Check cache first
 	if m, ok := f.cacheHit(repoName); ok {

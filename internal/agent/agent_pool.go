@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/session"
+	"dolphin/internal/config"
+	"dolphin/internal/mcp"
+	"dolphin/internal/session"
 
 	"go.uber.org/zap"
 )

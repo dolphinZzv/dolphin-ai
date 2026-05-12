@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/session"
+	"dolphin/internal/config"
+	"dolphin/internal/mcp"
+	"dolphin/internal/session"
 )
 
 func newTestAgentForCompress(cfg *config.Config) *Agent {

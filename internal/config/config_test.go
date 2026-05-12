@@ -170,8 +170,8 @@ func TestSSHDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
-	if cfg.Transport.SSH.Username != "dolphinzZ" {
-		t.Errorf("ssh.username = %q, want dolphinzZ", cfg.Transport.SSH.Username)
+	if cfg.Transport.SSH.Username != "dolphin" {
+		t.Errorf("ssh.username = %q, want dolphin", cfg.Transport.SSH.Username)
 	}
 	if cfg.Transport.SSH.Addr != ":2222" {
 		t.Errorf("ssh.addr = %q, want :2222", cfg.Transport.SSH.Addr)
@@ -298,7 +298,7 @@ session:
 `)
 
 	// User config (medium priority) — override model, add mcp server
-	writeConfig(t, filepath.Join(userHome, ".dolphinzZ"), `
+	writeConfig(t, filepath.Join(userHome, ".dolphin"), `
 llm:
   model: "gpt-4o"
 mcp:
@@ -413,7 +413,7 @@ func TestMCPServersDeepMerge(t *testing.T) {
 	projectDir := t.TempDir()
 
 	// User config: server-a with args
-	writeConfig(t, filepath.Join(userHome, ".dolphinzZ"), `
+	writeConfig(t, filepath.Join(userHome, ".dolphin"), `
 mcp:
   servers:
     server-a:

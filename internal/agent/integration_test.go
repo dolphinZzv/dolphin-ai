@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/session"
+	"dolphin/internal/config"
+	"dolphin/internal/mcp"
+	"dolphin/internal/session"
 )
 
 func TestRunFullSessionWelcomeAndExit(t *testing.T) {
@@ -43,7 +43,7 @@ func TestRunFullSessionWelcomeAndExit(t *testing.T) {
 	agt.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "DolphinzZ Agent ready") {
+	if !strings.Contains(output, "dolphin Agent ready") {
 		t.Error("expected welcome message")
 	}
 	if !strings.Contains(output, "Loaded MCP tools:") {

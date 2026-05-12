@@ -9,13 +9,13 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/command"
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/i18n"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/scheduler"
-	"dolphinzZ/internal/session"
-	"dolphinzZ/internal/skill"
+	"dolphin/internal/command"
+	"dolphin/internal/config"
+	"dolphin/internal/i18n"
+	"dolphin/internal/mcp"
+	"dolphin/internal/scheduler"
+	"dolphin/internal/session"
+	"dolphin/internal/skill"
 )
 
 func TestMain(m *testing.M) {
@@ -358,7 +358,7 @@ func TestCoordinatorRunExitCommand(t *testing.T) {
 	coord.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "DolphinzZ Coordinator Ready") {
+	if !strings.Contains(output, "dolphin Coordinator Ready") {
 		t.Error("expected welcome message, got:", output)
 	}
 }

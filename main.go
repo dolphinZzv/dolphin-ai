@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"dolphinzZ/cmd"
+	"dolphin/cmd"
 )
 
 func main() {

@@ -1,5 +1,5 @@
-# DolphinzZ configuration
-# Copy to .dolphinzZ/config.yaml, edit, and restart.
+# dolphin configuration
+# Copy to .dolphin/config.yaml, edit, and restart.
 # All settings have defaults — uncomment only what you need to change.
 
 # ── LLM Provider ──────────────────────────────────────────
@@ -17,7 +17,7 @@ llm:
 
 # ── Sessions ──────────────────────────────────────────────
 session:
-  dir: .dolphinzZ/sessions
+  dir: .dolphin/sessions
   max_loop: 50                # max turns per session
   summary: true               # auto-generate session summary
   max_age: 24h                # auto-delete sessions older than this
@@ -35,22 +35,22 @@ mcp:
     priority: 1000
     idle_timeout: 300         # seconds before auto-closing idle browser
   servers: {}                 # external MCP servers, e.g. myserver: {type: stdio, command: npx, args: [...]}
-  repos: []                   # manifest repos, e.g. ["dolphinzZv/mcp"]
+  repos: []                   # manifest repos, e.g. ["dolphinv/mcp"]
 
 # ── Agent Pool ────────────────────────────────────────────
 agent_pool:
   max_concurrency: 5          # max simultaneous sub-agent tasks
   default_timeout: 300        # seconds per task
-  workspace_dir: .dolphinzZ/workspaces
+  workspace_dir: .dolphin/workspaces
   idle_timeout: 600           # seconds before reaping idle temp agents
   max_pending_results: 10
   max_pending_result_len: 500 # chars per result in prompt, 0 = no truncation
 
 # ── Skills ────────────────────────────────────────────────
 skills:
-  dir: .dolphinzZ/skills
+  dir: .dolphin/skills
   max_top: 10                 # skills shown in LLM context
-  repos: []                   # manifest repos, e.g. ["dolphinzZv/skills"]
+  repos: []                   # manifest repos, e.g. ["dolphinv/skills"]
 
 # ── Transports ────────────────────────────────────────────
 transport:
@@ -60,14 +60,14 @@ transport:
     enabled: false
     addr: ":2222"
     host_key: "~/.ssh/id_ed25519"
-    username: dolphinzZ
+    username: dolphin
     password: ""              # auto-generated on first SSH start
   mqtt:
     enabled: false
     broker: tcp://localhost:1883
-    topic: dolphinzZ/agent/command
-    response_topic: dolphinzZ/agent/response
-    client_id: dolphinzZ-agent
+    topic: dolphin/agent/command
+    response_topic: dolphin/agent/response
+    client_id: dolphin-agent
   email:
     enabled: false
     smtp_host: ""
@@ -82,12 +82,12 @@ transport:
 
 # ── Crontab ───────────────────────────────────────────────
 crontab:
-  file: .dolphinzZ/CRONTAB.md
+  file: .dolphin/CRONTAB.md
   check_interval: 30s
 
 # ── Diary (session summary aggregation) ───────────────────
 diary:
-  dir: .dolphinzZ/diary
+  dir: .dolphin/diary
   max_day_sessions: 200       # sessions per day before pruning oldest
   max_week_days: 7            # days per week before pruning oldest
   max_month_weeks: 5          # weeks per month before pruning oldest
@@ -96,7 +96,7 @@ diary:
 
 # ── Observability ─────────────────────────────────────────
 log_level: info
-log_file: .dolphinzZ/logs/agent.log
+log_file: .dolphin/logs/agent.log
 
 pprof:
   enabled: false

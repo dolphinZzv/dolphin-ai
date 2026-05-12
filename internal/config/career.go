@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"dolphinzZ/internal/i18n"
+	"dolphin/internal/i18n"
 )
 
 // CareerProfile maps a career name to recommended skills and MCP tools.

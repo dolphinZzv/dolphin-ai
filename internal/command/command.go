@@ -31,7 +31,7 @@ type Manager struct {
 }
 
 // NewManager creates a command manager from one or more directories.
-// Empty strings are filtered out. If no dirs remain, defaults to [".dolphinzZ/commands"].
+// Empty strings are filtered out. If no dirs remain, defaults to [".dolphin/commands"].
 func NewManager(dirs ...string) *Manager {
 	filtered := make([]string, 0, len(dirs))
 	for _, d := range dirs {
@@ -40,7 +40,7 @@ func NewManager(dirs ...string) *Manager {
 		}
 	}
 	if len(filtered) == 0 {
-		filtered = []string{".dolphinzZ/commands"}
+		filtered = []string{".dolphin/commands"}
 	}
 	return &Manager{
 		cmds: make(map[string]*Command),

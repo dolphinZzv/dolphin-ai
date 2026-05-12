@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync/atomic"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	"go.uber.org/zap"
 )
@@ -69,7 +69,7 @@ func (c *ServerClient) initialize(ctx context.Context) error {
 			"protocolVersion": "2024-11-05",
 			"capabilities":    map[string]any{},
 			"clientInfo": map[string]string{
-				"name":    "dolphinzZ",
+				"name":    "dolphin",
 				"version": "1.0",
 			},
 		},

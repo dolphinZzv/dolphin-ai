@@ -18,7 +18,7 @@ type StdioTransport struct {
 func NewStdioTransport() *StdioTransport {
 	// History file path
 	home, _ := os.UserHomeDir()
-	historyDir := filepath.Join(home, ".dolphinzZ")
+	historyDir := filepath.Join(home, ".dolphin")
 	historyFile := filepath.Join(historyDir, "history")
 	os.MkdirAll(historyDir, 0755)
 

@@ -18,7 +18,7 @@ type Skill struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Content     string    `json:"content"`
-	Source      string    `json:"source"` // directory origin, e.g. "~/.dolphinzZ/skills"
+	Source      string    `json:"source"` // directory origin, e.g. "~/.dolphin/skills"
 	CallCount   int64     `json:"call_count"`
 	LastCalled  time.Time `json:"last_called_at"`
 }
@@ -33,7 +33,7 @@ type Manager struct {
 
 // NewManager creates a skill manager from one or more directories.
 // Skills are loaded from all directories; later directories override earlier ones.
-// Empty strings are filtered out. If no dirs remain, defaults to [".dolphinzZ/skills"].
+// Empty strings are filtered out. If no dirs remain, defaults to [".dolphin/skills"].
 func NewManager(dirs ...string) *Manager {
 	filtered := make([]string, 0, len(dirs))
 	for _, d := range dirs {
@@ -42,7 +42,7 @@ func NewManager(dirs ...string) *Manager {
 		}
 	}
 	if len(filtered) == 0 {
-		filtered = []string{".dolphinzZ/skills"}
+		filtered = []string{".dolphin/skills"}
 	}
 	return &Manager{
 		skills: make(map[string]*Skill),

@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestAgentDefLoadNonExistentDir(t *testing.T) {

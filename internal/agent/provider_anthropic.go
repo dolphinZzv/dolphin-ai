@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/metrics"
+	"dolphin/internal/config"
+	"dolphin/internal/metrics"
 
 	"go.uber.org/zap"
 )

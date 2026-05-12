@@ -1,14 +1,14 @@
-# DolphinzZ
+# dolphin
 
 [English](README.md) | [中文](README.zh.md)
 
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
 
-## Why DolphinzZ?
+## Why dolphin?
 
 Most AI coding tools lock you into a specific editor or a web UI. That's fine for writing code, but real work sprawls. You might want to ask the agent something over email while you're on your phone. Or have it run a scheduled task every evening without anyone touching a keyboard. Or SSH into a server and ask the agent sitting there to diagnose an issue.
 
-DolphinzZ doesn't care which door you knock on — it answers them all. The same agent, the same tools, the same session state, regardless of transport.
+dolphin doesn't care which door you knock on — it answers them all. The same agent, the same tools, the same session state, regardless of transport.
 
 ## What it can do
 
@@ -26,10 +26,10 @@ DolphinzZ doesn't care which door you knock on — it answers them all. The same
 
 ## How to connect
 
-DolphinzZ speaks four transports, and you can enable any combination of them:
+dolphin speaks four transports, and you can enable any combination of them:
 
-- **stdio** — the default. Run `./dolphinzZ` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
-- **SSH** — connect from anywhere. `ssh dolphinzZ@host -p 2222`. Same agent session, terminal interface.
+- **stdio** — the default. Run `./dolphin` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
+- **SSH** — connect from anywhere. `ssh dolphin@host -p 2222`. Same agent session, terminal interface.
 - **MQTT** — lightweight pub/sub messaging. Great for embedded devices, chat apps, or event-driven automation. Ships with a native macOS client (Panda).
 - **Email** — send a command as an email subject, get the response back. Polls IMAP on a configurable interval.
 
@@ -40,11 +40,11 @@ All transports share the same agent instance, tools, and session state. Switch b
 ### Quick start
 
 ```bash
-go build -o dolphinzZ ./main.go
+go build -o dolphin ./main.go
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="gpt-4o"          # model name
 export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpoints
-./dolphinzZ
+./dolphin
 ```
 
 ### Environment variables
@@ -60,31 +60,31 @@ export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpo
 
 ### First-run flow
 
-On first run, DolphinzZ walks you through setup:
+On first run, dolphin walks you through setup:
 
 1. **Career profile** — pick your role (frontend, backend, devops, data, etc.). The agent recommends matching skills and MCP tools.
 2. **SYSTEM.md** — optionally generate a system info file so the agent knows your OS, shell, and environment.
-3. **Config file** — optionally generate `.dolphinzZ/config.yaml` with all defaults pre-filled and commented.
+3. **Config file** — optionally generate `.dolphin/config.yaml` with all defaults pre-filled and commented.
 
 Everything happens interactively in the terminal. No data leaves your machine.
 
-To re-run the wizard later: `./dolphinzZ setup`
+To re-run the wizard later: `./dolphin setup`
 
 ### Configuration
 
-Config lives in `.dolphinzZ/config.yaml` (project-level) or `~/.dolphinzZ/config.yaml` (user-level). Project config overrides user config. All settings have sensible defaults — a working setup only needs an API key.
+Config lives in `.dolphin/config.yaml` (project-level) or `~/.dolphin/config.yaml` (user-level). Project config overrides user config. All settings have sensible defaults — a working setup only needs an API key.
 
 ```bash
 # Minimal: env vars only, no config file needed
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="gpt-4o"
-./dolphinzZ
+./dolphin
 ```
 
 ## Project structure
 
 ```
-.dolphinzZ/
+.dolphin/
 ├── config.yaml          # project configuration
 ├── agents/              # user-defined sub-agents
 │   └── reviewer/
@@ -101,7 +101,7 @@ Documentation lives in `design/` — read the design doc and the full README the
 
 ## Philosophy
 
-DolphinzZ is built around a few beliefs about how AI agents should work:
+dolphin is built around a few beliefs about how AI agents should work:
 
 - **Meet people where they are.** The agent shouldn't require a special UI. It should plug into the tools and channels already in use.
 - **Progressive disclosure.** Show the most relevant tools and skills first. Let the LLM search for more when needed. Don't flood the context window.

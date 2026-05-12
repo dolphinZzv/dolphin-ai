@@ -10,10 +10,10 @@ import (
 	"sync"
 	"testing"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/session"
-	"dolphinzZ/internal/transport"
+	"dolphin/internal/config"
+	"dolphin/internal/mcp"
+	"dolphin/internal/session"
+	"dolphin/internal/transport"
 )
 
 // mockProvider implements Provider for testing.

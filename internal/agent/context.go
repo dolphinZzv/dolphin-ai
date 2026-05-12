@@ -1,6 +1,6 @@
 package agent
 
-import ctx "dolphinzZ/internal/context"
+import ctx "dolphin/internal/context"
 
 // ContextBuilder builds the system prompt from context files.
 // Delegates to internal/context package.

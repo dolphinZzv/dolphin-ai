@@ -1,4 +1,4 @@
-module dolphinzZ
+module dolphin
 
 go 1.26
 

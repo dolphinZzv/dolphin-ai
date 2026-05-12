@@ -1,12 +1,12 @@
 # Binary
-dolphinzZ
+dolphin
 
 # Session logs
 /sessions/
 
 # Config with API keys
-.dolphinzZ/config.yaml
-.dolphinzZ/testdata/
+.dolphin/config.yaml
+.dolphin/testdata/
 
 # Claude Code
 .claude/
@@ -43,4 +43,5 @@ TODO.md
 logs
 /diary
 
-/.dolphinzZ/diary
+/.dolphin/diary
+.dolphinzZ

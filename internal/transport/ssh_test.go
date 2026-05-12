@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	gossh "golang.org/x/crypto/ssh"
 )

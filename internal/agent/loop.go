@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/mcp"
-	"dolphinzZ/internal/session"
-	"dolphinzZ/internal/transport"
+	"dolphin/internal/config"
+	"dolphin/internal/mcp"
+	"dolphin/internal/session"
+	"dolphin/internal/transport"
 
 	"go.uber.org/zap"
 )
@@ -108,7 +108,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	)
 
 	// Print welcome with MCP tools list
-	io.WriteLine("DolphinzZ Agent ready. Type /exit to quit, /help for help.")
+	io.WriteLine("dolphin Agent ready. Type /exit to quit, /help for help.")
 	toolDefs := a.toolReg.List()
 	if len(toolDefs) > 0 {
 		io.WriteString("Loaded MCP tools: ")

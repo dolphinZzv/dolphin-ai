@@ -184,7 +184,7 @@ func TestManager_LoadNonExistentDir(t *testing.T) {
 
 func TestManager_DefaultDir(t *testing.T) {
 	m := NewManager("")
-	if m.Dir() != ".dolphinzZ/skills" {
+	if m.Dir() != ".dolphin/skills" {
 		t.Errorf("default dir = %q", m.Dir())
 	}
 }

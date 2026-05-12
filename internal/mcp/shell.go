@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	"go.uber.org/zap"
 )

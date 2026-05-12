@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 func TestAgentInstanceStatus(t *testing.T) {

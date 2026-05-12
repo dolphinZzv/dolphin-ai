@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	goimap "github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
@@ -108,7 +108,7 @@ func (t *EmailTransport) sendMail(body string) error {
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("From: %s\r\n", from))
 	sb.WriteString(fmt.Sprintf("To: %s\r\n", from))
-	sb.WriteString(fmt.Sprintf("Subject: Re: DolphinzZ Agent\r\n"))
+	sb.WriteString(fmt.Sprintf("Subject: Re: dolphin Agent\r\n"))
 	sb.WriteString(fmt.Sprintf("Date: %s\r\n", time.Now().Format(time.RFC1123Z)))
 	sb.WriteString("MIME-Version: 1.0\r\n")
 	sb.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 )
 
 // sseServerConfig builds a config for the remote SSE MCP server.
@@ -28,7 +28,7 @@ func sseServerConfig(t *testing.T) config.MCPServerConfig {
 		}
 	}
 	if token == "" {
-		t.Skip("DZ_TEST_MCP_TOKEN not set and .dolphinzZ/testdata/sse_token not found")
+		t.Skip("DZ_TEST_MCP_TOKEN not set and .dolphin/testdata/sse_token not found")
 	}
 	headers["Authorization"] = "Bearer " + token
 	return config.MCPServerConfig{
@@ -41,8 +41,8 @@ func sseServerConfig(t *testing.T) config.MCPServerConfig {
 
 // readTokenFile reads the SSE test token from the repo's gitignored secrets dir.
 func readTokenFile() (string, error) {
-	// Test working dir is internal/mcp/, token is at repo root .dolphinzZ/testdata/sse_token
-	p := filepath.Join("..", "..", ".dolphinzZ", "testdata", "sse_token")
+	// Test working dir is internal/mcp/, token is at repo root .dolphin/testdata/sse_token
+	p := filepath.Join("..", "..", ".dolphin", "testdata", "sse_token")
 	b, err := os.ReadFile(p)
 	if err != nil {
 		return "", fmt.Errorf("read sse_token: %w", err)
@@ -78,7 +78,7 @@ func TestSSETransportInitialize(t *testing.T) {
 			"protocolVersion": "2024-11-05",
 			"capabilities":    map[string]any{},
 			"clientInfo": map[string]string{
-				"name":    "dolphinzZ",
+				"name":    "dolphin",
 				"version": "1.0",
 			},
 		},

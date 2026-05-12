@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"dolphinzZ/internal/config"
-	"dolphinzZ/internal/mcp"
+	"dolphin/internal/config"
+	"dolphin/internal/mcp"
 )
 
 func TestNewOpenAIProvider(t *testing.T) {

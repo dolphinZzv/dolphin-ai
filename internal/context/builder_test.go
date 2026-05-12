@@ -104,10 +104,10 @@ func TestNewBuilder(t *testing.T) {
 	if b == nil {
 		t.Fatal("NewBuilder returned nil")
 	}
-	if b.projectDir != ".dolphinzZ" {
+	if b.projectDir != ".dolphin" {
 		t.Errorf("projectDir = %q", b.projectDir)
 	}
-	if b.systemDir != "/etc/dolphinzZ" {
+	if b.systemDir != "/etc/dolphin" {
 		t.Errorf("systemDir = %q", b.systemDir)
 	}
 	if b.statCache == nil {

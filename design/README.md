@@ -1,6 +1,6 @@
-# DolphinzZ
+# dolphin
 
-[![CI](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinZzv/dolphin/actions/workflows/ci.yml)
+[![CI](https://github.com/dolphinv/dolphin/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinv/dolphin/actions/workflows/ci.yml)
 
 AI coding agent with MCP tool support, multi-agent coordination, and skills system.
 Runs via stdio, SSH, MQTT, or Email.
@@ -13,16 +13,16 @@ make build
 
 # Set your API key and run
 export DZ_LLM_API_KEY="sk-..."
-./dolphinzZ
+./dolphin
 ```
 
 ## Configuration
 
 Priority (higher overrides lower):
 1. Environment variables (`DZ_*`)
-2. Project: `.dolphinzZ/config.yaml`
-3. User: `~/.dolphinzZ/config.yaml`
-4. System: `/etc/dolphinzZ/config.yaml`
+2. Project: `.dolphin/config.yaml`
+3. User: `~/.dolphin/config.yaml`
+4. System: `/etc/dolphin/config.yaml`
 
 Key environment variables:
 
@@ -37,7 +37,7 @@ Key environment variables:
 | `DZ_EMAIL_USERNAME` | — | Email SMTP/IMAP username |
 | `DZ_EMAIL_PASSWORD` | — | Email SMTP/IMAP password |
 
-### Example config (`.dolphinzZ/config.yaml`)
+### Example config (`.dolphin/config.yaml`)
 
 ```yaml
 llm:
@@ -83,11 +83,11 @@ mcp:
 agent_pool:
   max_concurrency: 5
   default_timeout: 300
-  workspace_dir: ".dolphinzZ/workspaces"
+  workspace_dir: ".dolphin/workspaces"
   idle_timeout: 600
 
 crontab:
-  file: ".dolphinzZ/CRONTAB.md"
+  file: ".dolphin/CRONTAB.md"
   check_interval: "30s"
 ```
 
@@ -96,7 +96,7 @@ crontab:
 ### stdio (default)
 
 ```bash
-./dolphinzZ
+./dolphin
 ```
 
 Built-in commands:
@@ -114,16 +114,16 @@ Built-in commands:
 Enable in config, then connect:
 
 ```bash
-ssh dolphinzZ@<host> -p 2222
+ssh dolphin@<host> -p 2222
 ```
 
 ### MQTT
 
-Enable in config. Subscribe to `dolphinzZ/agent/response` and publish to `dolphinzZ/agent/command`:
+Enable in config. Subscribe to `dolphin/agent/response` and publish to `dolphin/agent/command`:
 
 ```bash
-mosquitto_sub -t "dolphinzZ/agent/response" &
-mosquitto_pub -t "dolphinzZ/agent/command" -m "your prompt"
+mosquitto_sub -t "dolphin/agent/response" &
+mosquitto_pub -t "dolphin/agent/command" -m "your prompt"
 ```
 
 ### Email
@@ -139,12 +139,12 @@ Enable in config. Send an email to the configured `from` address; the subject li
 
 ## Panda macOS App
 
-Panda is a native macOS MQTT chat client for DolphinzZ. It connects to the backend via MQTT, listing agents and exchanging messages in real time.
+Panda is a native macOS MQTT chat client for dolphin. It connects to the backend via MQTT, listing agents and exchanging messages in real time.
 
 ### Prerequisites
 
 - MQTT broker running (e.g., Mosquitto: `brew install mosquitto && brew services start mosquitto`)
-- Backend MQTT transport enabled (`transport.mqtt.enabled: true` in `.dolphinzZ/config.yaml`)
+- Backend MQTT transport enabled (`transport.mqtt.enabled: true` in `.dolphin/config.yaml`)
 
 ### Build and launch
 
@@ -164,16 +164,16 @@ make app-clean    # remove panda.app
 
 | Direction | MQTT Topic |
 |-----------|-----------|
-| Message to agent | `dolphinzZ/agent/command/<agentID>` |
-| Response from agent | `dolphinzZ/agent/response/<agentID>` |
+| Message to agent | `dolphin/agent/command/<agentID>` |
+| Response from agent | `dolphin/agent/response/<agentID>` |
 
 The app auto-subscribes to response topics when adding agents.
 
-> Panda is maintained as a [separate repository](https://github.com/dolphinZzv/panda) and included as a git submodule at `app/panda`.
+> Panda is maintained as a [separate repository](https://github.com/dolphinv/panda) and included as a git submodule at `app/panda`.
 
 ## Cron Scheduling (v0.3)
 
-Periodic tasks are defined in `.dolphinzZ/CRONTAB.md` using YAML frontmatter + Markdown body:
+Periodic tasks are defined in `.dolphin/CRONTAB.md` using YAML frontmatter + Markdown body:
 
 ```markdown
 ---
@@ -214,10 +214,10 @@ The scheduler checks every 30s and dispatches due tasks to a background goroutin
 
 ## Multi-Agent Coordination (v0.2)
 
-DolphinzZ supports a coordinator-subagent architecture:
+dolphin supports a coordinator-subagent architecture:
 
 - **Coordinator**: default agent that dispatches tasks to specialized sub-agents
-- **User-created agents**: persistent agents defined in `.dolphinzZ/agents/<name>/agent.yaml`
+- **User-created agents**: persistent agents defined in `.dolphin/agents/<name>/agent.yaml`
 - **Coordinator-created agents**: ephemeral agents created at runtime via `create_agent`
 
 ### Coordinator tools
@@ -232,7 +232,7 @@ DolphinzZ supports a coordinator-subagent architecture:
 
 ## Skills System
 
-Skills are specialized capabilities defined as markdown files in `.dolphinzZ/skills/`.
+Skills are specialized capabilities defined as markdown files in `.dolphin/skills/`.
 Each skill has a name, description, and full instructions that can be loaded on demand.
 
 **Progressive disclosure**: Top 10 skills by usage shown in context. Use `search_skills` and `load_skill` to find and activate more.
@@ -259,13 +259,13 @@ Detailed instructions for code review...
 
 ## Agent Definitions (user-created)
 
-Create agents in `.dolphinzZ/agents/<name>/agent.yaml`:
+Create agents in `.dolphin/agents/<name>/agent.yaml`:
 
 ```yaml
 name: reviewer
 role: You are a code review specialist...
 tools: ["shell"]
-workspace: ".dolphinzZ/workspaces/reviewer"
+workspace: ".dolphin/workspaces/reviewer"
 timeout: 300
 ```
 
@@ -281,6 +281,6 @@ make clean   # clean build artifacts
 ## Safety
 
 - Shell commands are unrestricted by default (`allowed_commands: []`). Set explicit allowlist for production use.
-- SSH password is stored in plaintext at `~/.dolphinzZ/ssh_password`. Use SSH key authentication for better security.
+- SSH password is stored in plaintext at `~/.dolphin/ssh_password`. Use SSH key authentication for better security.
 - Session files are retained for 24 hours by default (`session.max_age`). Old files are cleaned up automatically.
 - Sub-agent workspaces are isolated, preventing cross-agent file interference.

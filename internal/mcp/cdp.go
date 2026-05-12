@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	"github.com/chromedp/chromedp"
 	"go.uber.org/zap"

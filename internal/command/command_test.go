@@ -238,8 +238,8 @@ func TestManager_Dirs(t *testing.T) {
 
 func TestManager_DefaultDir(t *testing.T) {
 	m := NewManager()
-	if len(m.Dirs()) != 1 || m.Dirs()[0] != ".dolphinzZ/commands" {
-		t.Errorf("default dirs = %v, want [.dolphinzZ/commands]", m.Dirs())
+	if len(m.Dirs()) != 1 || m.Dirs()[0] != ".dolphin/commands" {
+		t.Errorf("default dirs = %v, want [.dolphin/commands]", m.Dirs())
 	}
 }
 

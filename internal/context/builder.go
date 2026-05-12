@@ -29,9 +29,9 @@ func NewBuilder() *Builder {
 		zap.S().Warnw("cannot determine home directory, user-level context files disabled", "error", err)
 	}
 	return &Builder{
-		projectDir: ".dolphinzZ",
-		userDir:    filepath.Join(home, ".dolphinzZ"),
-		systemDir:  "/etc/dolphinzZ",
+		projectDir: ".dolphin",
+		userDir:    filepath.Join(home, ".dolphin"),
+		systemDir:  "/etc/dolphin",
 		statCache:  make(map[string]cachedFile),
 	}
 }
@@ -45,7 +45,7 @@ func (b *Builder) Build() (string, error) {
 // For each context file, agent-specific directory is checked first, then
 // the default locations: project > user > system.
 //
-//	agentDir = .dolphinzZ/agents/<name>/
+//	agentDir = .dolphin/agents/<name>/
 //	order for AGENTS.md: agentDir > projectDir > userDir > systemDir
 //	order for RULES.md:  agentDir > projectDir > userDir > systemDir
 //	order for USER.md:   agentDir > projectDir > userDir > systemDir

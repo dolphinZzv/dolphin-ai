@@ -4,7 +4,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"dolphinzZ/internal/config"
+	"dolphin/internal/config"
 
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"

@@ -5,14 +5,14 @@ PANDA_DIR := app/panda
 .PHONY: build run clean test fmt check-fmt init-hooks app app-clean
 
 build:
-	go build -ldflags="-X 'dolphinzZ/cmd.Version=$(VERSION)'" -o dolphinzZ .
+	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
 
 run: build
-	./dolphinzZ
+	./dolphin
 
 clean:
-	rm -f dolphinzZ
-	rm -f /tmp/dolphinzZ/*.jsonl
+	rm -f dolphin
+	rm -f /tmp/dolphin/*.jsonl
 
 check-fmt:
 	@gofmt -l . | grep -q . && { \

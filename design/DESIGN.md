@@ -1,4 +1,4 @@
-# DolphinzZ Agent Code 架构设计方案
+# dolphin Agent Code 架构设计方案
 
 ## Context
 
@@ -38,7 +38,7 @@ flowchart TB
 
     subgraph Session["会话管理"]
         sessionMgr["session.NewManager()"]
-        jsonl["/tmp/dolphinzZ/{id}.jsonl"]
+        jsonl["/tmp/dolphin/{id}.jsonl"]
         reaper["Reaper — 定时清理过期会话"]
     end
 
@@ -93,7 +93,7 @@ flowchart TB
     end
 
     subgraph Startup["启动决策"]
-        agentsDir[".dolphinzZ/agents/ 存在?"]
+        agentsDir[".dolphin/agents/ 存在?"]
         yes["是 → Coordinator 模式<br/>加载 AgentDefs"]
         no["否 → 单 Agent 模式<br/>(向后兼容)"]
     end
@@ -119,7 +119,7 @@ flowchart TB
 
     subgraph Session2["会话 & 文件"]
         sessMgr2["session.Manager"]
-        sessFile["/tmp/dolphinzZ/{id}.jsonl"]
+        sessFile["/tmp/dolphin/{id}.jsonl"]
     end
 
     cmd2 --> cfg2
@@ -146,7 +146,7 @@ flowchart TB
 
 ### 1. 配置管理 (`internal/config/`)
 
-- **三级路径**: `/etc/dolphinzZ/` (系统) → `~/.dolphinzZ/` (用户) → `./.dolphinzZ/` (项目)
+- **三级路径**: `/etc/dolphin/` (系统) → `~/.dolphin/` (用户) → `./.dolphin/` (项目)
 - Viper 按优先级顺序 AddConfigPath，后加载的覆盖先加载的
 - 环境变量前缀 `DZ`，如 `DZ_LLM_MODEL` 覆盖 `llm.model`
 - Config struct 含 LLM、Session、Transport、MCP、Crontab 五个子配置
@@ -214,7 +214,7 @@ Builder 按顺序拼接成最终的 System Prompt。
 
 ### 5. 会话管理 (`internal/session/`)
 
-- 每 session 一个文件: `/tmp/dolphinzZ/{uuid}.jsonl`
+- 每 session 一个文件: `/tmp/dolphin/{uuid}.jsonl`
 - **JSONL 格式**，每行一个 JSON Event:
   - `message` — 用户/助手消息
   - `tool_call` — LLM 请求的工具调用
@@ -483,10 +483,10 @@ sequenceDiagram
 
 ### 10. Skills 系统 (`internal/skill/` — v0.3)
 
-Skills 是命名的专项能力定义，以 Markdown 文件形式存储在 `.dolphinzZ/skills/` 目录下。与 MCP 工具不同，Skills 不是可执行代码，而是可注入上下文的指令/知识。
+Skills 是命名的专项能力定义，以 Markdown 文件形式存储在 `.dolphin/skills/` 目录下。与 MCP 工具不同，Skills 不是可执行代码，而是可注入上下文的指令/知识。
 
 ```
-.dolphinzZ/skills/
+.dolphin/skills/
 ├── code-review.md       # YAML frontmatter + Markdown 内容
 └── data-analysis.md
 ```
@@ -496,7 +496,7 @@ sequenceDiagram
     participant L as LLM
     participant C as Coordinator
     participant S as SkillManager
-    participant D as .dolphinzZ/skills/
+    participant D as .dolphin/skills/
 
     Note over C: 构建动态 Prompt
     C->>S: TopSkills(10)
@@ -535,7 +535,7 @@ sequenceDiagram
 | [v0.2] 工作区隔离 | 每个 Agent 独立 Workspace 目录 | Shell 命令在限定目录内执行 |
 | [v0.3] MCP 渐进披露 | MostUsedTools(10) + search_mcp_tools | 减少 LLM 上下文占用，只有最常用工具自动展示 |
 | [v0.3] MCP 统计 | ToolStats (CallCount, ErrorCount, Duration) | 支撑渐进披露的排序依据 |
-| [v0.3] Skills 系统 | .dolphinzZ/skills/ Markdown + 渐进披露 | 可扩展的专项指令注入，不增加 LLM 默认上下文 |
+| [v0.3] Skills 系统 | .dolphin/skills/ Markdown + 渐进披露 | 可扩展的专项指令注入，不增加 LLM 默认上下文 |
 | [v0.3] Stats 隔离 | Clone() 复制 stats map | 避免跨连接统计干扰 |
 | [v0.3] 定时任务 | CRONTAB.md YAML frontmatter + robfig/cron/v3 | 与 Skills 相同文件模式，支持标准 cron 表达式 |
 | [v0.3] Cron 结果存储 | cronMgr.AddResult() + 独立 session | 结果与用户对话隔离，不干扰当前会话 |
@@ -547,7 +547,7 @@ sequenceDiagram
 ## 四、目录结构
 
 ```
-/Users/jzx/Desktop/DolphinzZ/
+/Users/{xxx}/dolphin/
 ├── main.go                        # 入口
 ├── cmd/root.go                    # Cobra 根命令
 ├── internal/
@@ -585,7 +585,7 @@ sequenceDiagram
 │       ├── agents.go              # AGENTS.md 加载
 │       ├── rules.go               # RULES.md 加载
 │       └── user.go                # USER.md 加载
-├── .dolphinzZ/
+├── .dolphin/
 │   ├── config.yaml                # 项目级配置示例 (含 agent_pool 段)
 │   ├── AGENTS.md
 │   ├── RULES.md
@@ -650,7 +650,7 @@ sequenceDiagram
 
 1. **stdio 模式**: `go run .` → 标准输入输出交互
 2. **Shell 工具测试**: 在 agent loop 中调用 shell 执行命令，验证输出回填
-3. **Session 文件验证**: 检查 `/tmp/dolphinzZ/` 下生成的 JSONL
+3. **Session 文件验证**: 检查 `/tmp/dolphin/` 下生成的 JSONL
 4. **Summary 验证**: MaxLoop 触发后检查 summary 文件
 5. **配置合并验证**: 分别在不同层级放配置，验证优先级
 
