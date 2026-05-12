@@ -15,20 +15,20 @@ func TestSubscribeAndNotify(t *testing.T) {
 	// Publish an assignee changed event
 	bus.PublishSync(events.Event{
 		Type: events.EventIssueAssigneeChanged,
-		Payload: map[string]interface{}{
-			"issueID": uint(42),
-			"agentID": uint(1),
-			"action":  "assigned",
+		Payload: events.IssueAssigneeChangedPayload{
+			IssueID: 42,
+			AgentID: 1,
+			Action:  "assigned",
 		},
 	})
 
 	// Publish a comment event
 	bus.PublishSync(events.Event{
 		Type: events.EventCommentAdded,
-		Payload: map[string]interface{}{
-			"commentID": uint(10),
-			"issueID":   uint(42),
-			"authorID":  uint(2),
+		Payload: events.CommentAddedPayload{
+			CommentID: 10,
+			IssueID:   42,
+			AuthorID:  2,
 		},
 	})
 
@@ -54,19 +54,19 @@ func TestListByAgent_FiltersCorrectly(t *testing.T) {
 
 	bus.PublishSync(events.Event{
 		Type: events.EventIssueAssigneeChanged,
-		Payload: map[string]interface{}{
-			"issueID": uint(1),
-			"agentID": uint(5),
-			"action":  "assigned",
+		Payload: events.IssueAssigneeChangedPayload{
+			IssueID: 1,
+			AgentID: 5,
+			Action:  "assigned",
 		},
 	})
 
 	bus.PublishSync(events.Event{
 		Type: events.EventIssueAssigneeChanged,
-		Payload: map[string]interface{}{
-			"issueID": uint(2),
-			"agentID": uint(3),
-			"action":  "assigned",
+		Payload: events.IssueAssigneeChangedPayload{
+			IssueID: 2,
+			AgentID: 3,
+			Action:  "assigned",
 		},
 	})
 
@@ -91,10 +91,10 @@ func TestMarkRead(t *testing.T) {
 
 	bus.PublishSync(events.Event{
 		Type: events.EventIssueAssigneeChanged,
-		Payload: map[string]interface{}{
-			"issueID": uint(1),
-			"agentID": uint(1),
-			"action":  "assigned",
+		Payload: events.IssueAssigneeChangedPayload{
+			IssueID: 1,
+			AgentID: 1,
+			Action:  "assigned",
 		},
 	})
 

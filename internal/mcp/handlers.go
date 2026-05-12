@@ -5,22 +5,19 @@ import (
 	"fmt"
 	"strconv"
 
-	"chick/internal/auth"
 	"chick/internal/models"
 	"chick/internal/notifications"
 	"chick/internal/service"
 )
 
 type Handlers struct {
-	projectSvc   *service.ProjectService
-	agentSvc     *service.AgentService
-	issueSvc     *service.IssueService
-	commentSvc   *service.CommentService
-	workflowSvc  *service.WorkflowService
-	feedbackSvc  *service.FeedbackService
-	skillSvc     *service.SkillService
-	notifSvc     *notifications.Service
-	auth         *auth.Authenticator
+	projectSvc  *service.ProjectService
+	agentSvc    *service.AgentService
+	issueSvc    *service.IssueService
+	commentSvc  *service.CommentService
+	workflowSvc *service.WorkflowService
+	feedbackSvc *service.FeedbackService
+	notifSvc    *notifications.Service
 }
 
 func NewHandlers(
@@ -30,70 +27,67 @@ func NewHandlers(
 	commentSvc *service.CommentService,
 	workflowSvc *service.WorkflowService,
 	feedbackSvc *service.FeedbackService,
-	skillSvc *service.SkillService,
 	notifSvc *notifications.Service,
-	auth *auth.Authenticator,
 ) *Handlers {
 	return &Handlers{
-		projectSvc:   projectSvc,
-		agentSvc:     agentSvc,
-		issueSvc:     issueSvc,
-		commentSvc:   commentSvc,
-		workflowSvc:  workflowSvc,
-		feedbackSvc:  feedbackSvc,
-		skillSvc:     skillSvc,
-		notifSvc:     notifSvc,
-		auth:         auth,
+		projectSvc:  projectSvc,
+		agentSvc:    agentSvc,
+		issueSvc:    issueSvc,
+		commentSvc:  commentSvc,
+		workflowSvc: workflowSvc,
+		feedbackSvc: feedbackSvc,
+		notifSvc:    notifSvc,
 	}
+}
+
+// resolveProject resolves a project ID from an explicit projectId or the agent's single membership.
+func (h *Handlers) resolveProject(projectIDStr string, agentID uint) (uint, error) {
+	if projectIDStr != "" {
+		pid, err := strconv.ParseUint(projectIDStr, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("invalid projectId: %s", projectIDStr)
+		}
+		return uint(pid), nil
+	}
+	if agentID == 0 {
+		return 0, fmt.Errorf("cannot determine project: not authenticated")
+	}
+	projects, err := h.projectSvc.ListByAgent(agentID)
+	if err != nil {
+		return 0, fmt.Errorf("cannot determine project: %w", err)
+	}
+	if len(projects) == 0 {
+		return 0, fmt.Errorf("agent is not a member of any project")
+	}
+	if len(projects) > 1 {
+		return 0, fmt.Errorf("agent is member of multiple projects, specify projectId")
+	}
+	return projects[0].ID, nil
 }
 
 // RegisterAll registers all MCP tools with the registry
 func (h *Handlers) RegisterAll(registry *ToolRegistry) {
-	registry.Register(&ToolDefinition{
-		Name:        "create_project",
-		Description: "Create a new project",
-		InputSchema: ObjectSchema(map[string]interface{}{
-			"name":        StringRequiredParam("Project name"),
-			"description": StringParam("Project description"),
-		}, []string{"name"}),
-		Handler: h.handleCreateProject,
-	})
 
 	registry.Register(&ToolDefinition{
-		Name:        "register_agent",
-		Description: "Register a new agent (AI or Human)",
+		Name:        "get_agent_info",
+		Description: "Get agent details by ID or external ID",
 		InputSchema: ObjectSchema(map[string]interface{}{
-			"name":         StringRequiredParam("Agent name"),
-			"kind":         StringRequiredParam("Agent kind: ai / human / hybrid"),
-			"externalId":   StringRequiredParam("Unique external identifier"),
-			"secret":       StringRequiredParam("Password or API secret"),
-			"capabilities": ArrayParam("List of capabilities", "string"),
-			"bootstrapToken": StringParam("Bootstrap token for first AI agent registration"),
-		}, []string{"name", "kind", "externalId", "secret"}),
-		Handler: h.handleRegisterAgent,
-	})
-
-	registry.Register(&ToolDefinition{
-		Name:        "login_agent",
-		Description: "Login and get a JWT token",
-		InputSchema: ObjectSchema(map[string]interface{}{
-			"externalId": StringRequiredParam("Agent external ID"),
-			"secret":     StringRequiredParam("Agent secret"),
-		}, []string{"externalId", "secret"}),
-		Handler: h.handleLoginAgent,
+			"agentId":    StringParam("Agent numeric ID"),
+			"externalId": StringParam("Agent external ID"),
+		}, nil),
+		Handler: h.handleGetAgentInfo,
 	})
 
 	registry.Register(&ToolDefinition{
 		Name:        "create_issue",
-		Description: "Create a new issue in a project",
+		Description: "Create a new issue",
 		InputSchema: ObjectSchema(map[string]interface{}{
-			"projectId":   StringRequiredParam("Project ID"),
 			"title":       StringRequiredParam("Issue title"),
 			"description": StringParam("Issue description in Markdown"),
-			"creatorId":   StringRequiredParam("Creator agent ID"),
 			"priority":    StringParam("Priority: critical / high / medium / low"),
 			"assigneeIds": ArrayParam("Agent IDs to assign", "string"),
-		}, []string{"projectId", "title", "creatorId"}),
+			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
+		}, []string{"title"}),
 		Handler: h.handleCreateIssue,
 	})
 
@@ -101,10 +95,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		Name:        "add_comment",
 		Description: "Add a comment to an issue",
 		InputSchema: ObjectSchema(map[string]interface{}{
-			"issueId": StringRequiredParam("Issue ID"),
-			"authorId": StringRequiredParam("Author agent ID"),
-			"body":    StringRequiredParam("Comment body (Markdown)"),
-		}, []string{"issueId", "authorId", "body"}),
+			"issueId":  StringRequiredParam("Issue ID"),
+			"body":     StringRequiredParam("Comment body (Markdown)"),
+		}, []string{"issueId", "body"}),
 		Handler: h.handleAddComment,
 	})
 
@@ -124,8 +117,7 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		InputSchema: ObjectSchema(map[string]interface{}{
 			"issueId": StringRequiredParam("Issue ID"),
 			"toState": StringRequiredParam("Target state: open / in_progress / blocked / review / closed_completed / closed_not_planned"),
-			"actorId": StringRequiredParam("Actor agent ID"),
-		}, []string{"issueId", "toState", "actorId"}),
+		}, []string{"issueId", "toState"}),
 		Handler: h.handleTransitionIssue,
 	})
 
@@ -133,12 +125,12 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		Name:        "search_issues",
 		Description: "Search issues with filters",
 		InputSchema: ObjectSchema(map[string]interface{}{
-			"projectId": StringParam("Project ID"),
-			"state":     StringParam("Filter by state"),
-			"search":    StringParam("Full text search"),
+			"state":      StringParam("Filter by state"),
+			"search":     StringParam("Full text search"),
 			"assigneeId": StringParam("Filter by assignee agent ID"),
-			"limit":     StringParam("Max results (default 20)"),
-			"offset":    StringParam("Offset for pagination"),
+			"limit":      StringParam("Max results (default 20)"),
+			"offset":     StringParam("Offset for pagination"),
+			"projectId":  StringParam("Project ID (filter by project)"),
 		}, nil),
 		Handler: h.handleSearchIssues,
 	})
@@ -149,7 +141,7 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		InputSchema: ObjectSchema(map[string]interface{}{
 			"kind":      StringParam("Filter by kind: ai / human / hybrid"),
 			"status":    StringParam("Filter by status: online / busy / offline / error"),
-			"projectId": StringParam("Filter by project membership"),
+			"projectId": StringParam("Project ID (filter by project)"),
 		}, nil),
 		Handler: h.handleListAgents,
 	})
@@ -158,17 +150,16 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		Name:        "agent_heartbeat",
 		Description: "Update agent heartbeat timestamp",
 		InputSchema: ObjectSchema(map[string]interface{}{
-			"agentId": StringRequiredParam("Agent ID"),
-		}, []string{"agentId"}),
+		}, nil),
 		Handler: h.handleHeartbeat,
 	})
 
 	registry.Register(&ToolDefinition{
 		Name:        "check_notifications",
-		Description: "Check notifications for an agent",
-		InputSchema: ObjectSchema(map[string]interface{}{
-			"agentId": StringRequiredParam("Agent ID"),
-		}, []string{"agentId"}),
+		Description: "Check notifications for the authenticated agent",
+		InputSchema:  ObjectSchema(map[string]interface{}{
+			"projectId": StringParam("Optional: filter notifications by project ID"),
+			}, nil),
 		Handler: h.handleCheckNotifications,
 	})
 
@@ -178,10 +169,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		InputSchema: ObjectSchema(map[string]interface{}{
 			"targetType": StringRequiredParam("Target type: issue / comment / agent / assignment"),
 			"targetId":   StringRequiredParam("Target ID"),
-			"authorId":   StringRequiredParam("Author agent ID"),
 			"rating":     StringRequiredParam("Rating 1-5"),
 			"body":       StringParam("Feedback body text"),
-		}, []string{"targetType", "targetId", "authorId", "rating"}),
+		}, []string{"targetType", "targetId", "rating"}),
 		Handler: h.handleSubmitFeedback,
 	})
 
@@ -195,142 +185,77 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		Handler: h.handleListFeedback,
 	})
 
-	registry.Register(&ToolDefinition{
-		Name:        "list_skills",
-		Description: "List available skills for a project",
-		InputSchema: ObjectSchema(map[string]interface{}{
-			"projectId": StringRequiredParam("Project ID"),
-		}, []string{"projectId"}),
-		Handler: h.handleListSkills,
-	})
-
-	registry.Register(&ToolDefinition{
-		Name:        "run_skill",
-		Description: "Execute a skill and return its definition",
-		InputSchema: ObjectSchema(map[string]interface{}{
-			"skillId": StringRequiredParam("Skill ID"),
-		}, []string{"skillId"}),
-		Handler: h.handleRunSkill,
-	})
-
-	registry.Register(&ToolDefinition{
-		Name:        "create_skill",
-		Description: "Create a new skill definition for a project",
-		InputSchema: ObjectSchema(map[string]interface{}{
-			"projectId":   StringRequiredParam("Project ID"),
-			"name":        StringRequiredParam("Skill name"),
-			"description": StringRequiredParam("Skill description"),
-			"definition":  StringRequiredParam("Skill YAML definition"),
-		}, []string{"projectId", "name", "description", "definition"}),
-		Handler: h.handleCreateSkill,
-	})
 }
 
 // ─── Handler Implementations ───────────────────────────────
 
-func (h *Handlers) handleCreateProject(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleGetAgentInfo(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var p struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-	project, err := h.projectSvc.Create(p.Name, p.Description)
-	if err != nil {
-		return NewInternalError(id, err.Error())
-	}
-	return NewResponse(id, map[string]interface{}{
-		"id":   fmt.Sprintf("%d", project.ID),
-		"name": project.Name,
-	})
-}
-
-func (h *Handlers) handleRegisterAgent(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
-		Name           string   `json:"name"`
-		Kind           string   `json:"kind"`
-		ExternalID     string   `json:"externalId"`
-		Secret         string   `json:"secret"`
-		Capabilities   []string `json:"capabilities"`
-		BootstrapToken string   `json:"bootstrapToken"`
-		DeviceInfo     string   `json:"deviceInfo"`
-		ModelInfo      string   `json:"modelInfo"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-
-	kind := models.AgentKind(p.Kind)
-	if kind == "" {
-		kind = models.AgentKindAI
-	}
-
-	// AI agent registration requires bootstrap token unless an AI already exists
-	if kind == models.AgentKindAI && h.auth != nil {
-		count, err := h.agentSvc.CountByKind(models.AgentKindAI)
-		if err != nil {
-			return NewInternalError(id, err.Error())
-		}
-		if count == 0 {
-			if !h.auth.UseBootstrapToken(p.BootstrapToken) {
-				return NewError(id, -32002, "Invalid or already used bootstrap token")
-			}
-		}
-	}
-
-	agent, err := h.agentSvc.Register(p.Name, kind, p.ExternalID, p.Secret, p.Capabilities, p.DeviceInfo, p.ModelInfo)
-	if err != nil {
-		return NewInternalError(id, err.Error())
-	}
-	return NewResponse(id, map[string]interface{}{
-		"id":         fmt.Sprintf("%d", agent.ID),
-		"name":       agent.Name,
-		"kind":       string(agent.Kind),
-		"externalId": agent.ExternalID,
-	})
-}
-
-func (h *Handlers) handleLoginAgent(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
+		AgentID    string `json:"agentId"`
 		ExternalID string `json:"externalId"`
-		Secret     string `json:"secret"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
-	result, err := h.agentSvc.Login(p.ExternalID, p.Secret)
-	if err != nil {
-		return NewError(id, -32001, "Authentication failed: "+err.Error())
+
+	var agent *models.Agent
+	var err error
+
+	if p.AgentID != "" {
+		aid, err := strconv.ParseUint(p.AgentID, 10, 64)
+		if err != nil {
+			return NewError(id, -32602, "Invalid agentId: "+p.AgentID)
+		}
+		agent, err = h.agentSvc.GetByID(uint(aid))
+	} else if p.ExternalID != "" {
+		agent, err = h.agentSvc.GetByExternalID(p.ExternalID)
+	} else {
+		return NewError(id, -32602, "Provide agentId or externalId")
 	}
+
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	if agent == nil {
+		return NewError(id, -32602, "Agent not found")
+	}
+
 	return NewResponse(id, map[string]interface{}{
-		"id":     fmt.Sprintf("%d", result.Agent.ID),
-		"name":   result.Agent.Name,
-		"kind":   string(result.Agent.Kind),
-		"status": string(result.Agent.Status),
-		"token":  result.Token,
+		"id":           fmt.Sprintf("%d", agent.ID),
+		"number":       agent.Number,
+		"name":         agent.Name,
+		"kind":         string(agent.Kind),
+		"status":       string(agent.Status),
+		"externalId":   agent.ExternalID,
+		"capabilities": agent.Capabilities,
+		"deviceInfo":   agent.DeviceInfo,
+		"modelInfo":    agent.ModelInfo,
+		"lastIp":       agent.LastIP,
 	})
 }
 
-func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage, creatorID uint, remoteAddr string) Response {
 	var p struct {
-		ProjectID   string   `json:"projectId"`
 		Title       string   `json:"title"`
 		Description string   `json:"description"`
-		CreatorID   string   `json:"creatorId"`
 		Priority    string   `json:"priority"`
 		AssigneeIDs []string `json:"assigneeIds"`
+		ProjectID   string   `json:"projectId"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
 
-	if p.Title == "" || p.ProjectID == "" || p.CreatorID == "" {
-		return NewError(id, -32602, "Missing required params: projectId, title, creatorId")
+	if p.Title == "" {
+		return NewError(id, -32602, "Missing required param: title")
 	}
-
-	projectID, _ := strconv.ParseUint(p.ProjectID, 10, 64)
-	creatorID, _ := strconv.ParseUint(p.CreatorID, 10, 64)
+	if creatorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	projectID, err := h.resolveProject(p.ProjectID, creatorID)
+	if err != nil {
+		return NewError(id, -32602, err.Error())
+	}
 	priority := models.PriorityMedium
 	if p.Priority != "" {
 		priority = models.Priority(p.Priority)
@@ -343,7 +268,7 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage)
 		}
 	}
 
-	issue, err := h.issueSvc.Create(uint(projectID), uint(creatorID), p.Title, p.Description, priority, assigneeIDs, nil)
+	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -355,19 +280,23 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage)
 	})
 }
 
-func (h *Handlers) handleAddComment(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleAddComment(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
 	var p struct {
-		IssueID  string `json:"issueId"`
-		AuthorID string `json:"authorId"`
-		Body     string `json:"body"`
+		IssueID string `json:"issueId"`
+		Body    string `json:"body"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
-	issueID, _ := strconv.ParseUint(p.IssueID, 10, 64)
-	authorID, _ := strconv.ParseUint(p.AuthorID, 10, 64)
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
+	}
 
-	comment, err := h.commentSvc.Create(uint(issueID), uint(authorID), p.Body, models.CommentMarkdown, nil)
+	comment, err := h.commentSvc.Create(uint(issueID), authorID, p.Body, models.CommentMarkdown, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -377,7 +306,7 @@ func (h *Handlers) handleAddComment(id json.RawMessage, params json.RawMessage) 
 	})
 }
 
-func (h *Handlers) handleAssignIssue(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleAssignIssue(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var p struct {
 		IssueID string `json:"issueId"`
 		AgentID string `json:"agentId"`
@@ -385,29 +314,39 @@ func (h *Handlers) handleAssignIssue(id json.RawMessage, params json.RawMessage)
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
-	issueID, _ := strconv.ParseUint(p.IssueID, 10, 64)
-	agentID, _ := strconv.ParseUint(p.AgentID, 10, 64)
+	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
+	}
+	assignAgentID, err := strconv.ParseUint(p.AgentID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid agentId: "+p.AgentID)
+	}
 
-	_, err := h.issueSvc.AddAssignee(uint(issueID), uint(agentID))
+	_, err = h.issueSvc.AddAssignee(uint(issueID), uint(assignAgentID))
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
 	return NewResponse(id, map[string]interface{}{"success": true})
 }
 
-func (h *Handlers) handleTransitionIssue(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleTransitionIssue(id json.RawMessage, params json.RawMessage, actorID uint, remoteAddr string) Response {
 	var p struct {
 		IssueID string `json:"issueId"`
 		ToState string `json:"toState"`
-		ActorID string `json:"actorId"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
-	issueID, _ := strconv.ParseUint(p.IssueID, 10, 64)
-	actorID, _ := strconv.ParseUint(p.ActorID, 10, 64)
+	if actorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
+	}
 
-	issue, err := h.workflowSvc.Transition(uint(issueID), models.IssueState(p.ToState), uint(actorID))
+	issue, err := h.workflowSvc.Transition(uint(issueID), models.IssueState(p.ToState), actorID)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -417,16 +356,18 @@ func (h *Handlers) handleTransitionIssue(id json.RawMessage, params json.RawMess
 	})
 }
 
-func (h *Handlers) handleSearchIssues(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleSearchIssues(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var p struct {
-		ProjectID  string `json:"projectId"`
 		State      string `json:"state"`
 		Search     string `json:"search"`
 		AssigneeID string `json:"assigneeId"`
 		Limit      int    `json:"limit"`
 		Offset     int    `json:"offset"`
+		ProjectID  string `json:"projectId"`
 	}
-	json.Unmarshal(params, &p) // nolint: errcheck
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
 
 	filter := models.IssueFilter{
 		Search: p.Search,
@@ -440,12 +381,24 @@ func (h *Handlers) handleSearchIssues(id json.RawMessage, params json.RawMessage
 		filter.State = []models.IssueState{models.IssueState(p.State)}
 	}
 	if p.ProjectID != "" {
-		pid, _ := strconv.ParseUint(p.ProjectID, 10, 64)
+		pid, err := strconv.ParseUint(p.ProjectID, 10, 64)
+		if err != nil {
+			return NewError(id, -32602, "Invalid projectId: "+p.ProjectID)
+		}
 		v := uint(pid)
 		filter.ProjectID = &v
+	} else if agentID > 0 {
+		projects, err := h.projectSvc.ListByAgent(agentID)
+		if err == nil && len(projects) == 1 {
+			v := projects[0].ID
+			filter.ProjectID = &v
+		}
 	}
 	if p.AssigneeID != "" {
-		aid, _ := strconv.ParseUint(p.AssigneeID, 10, 64)
+		aid, err := strconv.ParseUint(p.AssigneeID, 10, 64)
+		if err != nil {
+			return NewError(id, -32602, "Invalid assigneeId: "+p.AssigneeID)
+		}
 		filter.AssigneeIDs = []uint{uint(aid)}
 	}
 
@@ -469,13 +422,15 @@ func (h *Handlers) handleSearchIssues(id json.RawMessage, params json.RawMessage
 	})
 }
 
-func (h *Handlers) handleListAgents(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleListAgents(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var p struct {
 		Kind      string `json:"kind"`
 		Status    string `json:"status"`
 		ProjectID string `json:"projectId"`
 	}
-	json.Unmarshal(params, &p) // nolint: errcheck
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
 
 	filter := models.AgentFilter{}
 	if p.Kind != "" {
@@ -487,11 +442,19 @@ func (h *Handlers) handleListAgents(id json.RawMessage, params json.RawMessage) 
 		filter.Status = &v
 	}
 	if p.ProjectID != "" {
-		pid, _ := strconv.ParseUint(p.ProjectID, 10, 64)
+		pid, err := strconv.ParseUint(p.ProjectID, 10, 64)
+		if err != nil {
+			return NewError(id, -32602, "Invalid projectId: "+p.ProjectID)
+		}
 		v := uint(pid)
 		filter.ProjectID = &v
+	} else if agentID > 0 {
+		projects, err := h.projectSvc.ListByAgent(agentID)
+		if err == nil && len(projects) == 1 {
+			v := projects[0].ID
+			filter.ProjectID = &v
+		}
 	}
-
 	agents, err := h.agentSvc.List(filter)
 	if err != nil {
 		return NewInternalError(id, err.Error())
@@ -500,6 +463,7 @@ func (h *Handlers) handleListAgents(id json.RawMessage, params json.RawMessage) 
 	items := make([]map[string]interface{}, len(agents))
 	for i, a := range agents {
 		items[i] = map[string]interface{}{
+			"number": a.Number,
 			"id":     fmt.Sprintf("%d", a.ID),
 			"name":   a.Name,
 			"kind":   string(a.Kind),
@@ -509,40 +473,52 @@ func (h *Handlers) handleListAgents(id json.RawMessage, params json.RawMessage) 
 	return NewResponse(id, map[string]interface{}{"items": items})
 }
 
-func (h *Handlers) handleHeartbeat(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
-		AgentID string `json:"agentId"`
+func (h *Handlers) handleHeartbeat(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
 	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-	aid, _ := strconv.ParseUint(p.AgentID, 10, 64)
-	if err := h.agentSvc.Heartbeat(uint(aid)); err != nil {
+	if err := h.agentSvc.Heartbeat(agentID); err != nil {
 		return NewInternalError(id, err.Error())
+	}
+	if remoteAddr != "" {
+		h.agentSvc.UpdateIP(agentID, remoteAddr)
 	}
 	return NewResponse(id, map[string]interface{}{"success": true})
 }
 
-func (h *Handlers) handleCheckNotifications(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
-		AgentID string `json:"agentId"`
+func (h *Handlers) handleCheckNotifications(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
 	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-	aid, _ := strconv.ParseUint(p.AgentID, 10, 64)
 
 	if h.notifSvc == nil {
 		return NewResponse(id, map[string]interface{}{"notifications": []interface{}{}})
 	}
 
-	notifs := h.notifSvc.ListByAgent(uint(aid))
+	var p struct {
+		ProjectID string `json:"projectId"`
+	}
+	json.Unmarshal(params, &p)
+
+	var notifs []notifications.Notification
+	if p.ProjectID != "" {
+		pid, err := strconv.ParseUint(p.ProjectID, 10, 64)
+		if err == nil && pid > 0 {
+			notifs = h.notifSvc.ListByAgent(agentID, uint(pid))
+		} else {
+			notifs = h.notifSvc.ListByAgent(agentID)
+		}
+	} else {
+		notifs = h.notifSvc.ListByAgent(agentID)
+	}
+
 	items := make([]map[string]interface{}, len(notifs))
 	for i, n := range notifs {
 		items[i] = map[string]interface{}{
 			"id":        n.ID,
 			"type":      string(n.Type),
 			"issueId":   n.IssueID,
+			"projectId": n.ProjectID,
 			"message":   n.Message,
 			"read":      n.Read,
 			"createdAt": n.CreatedAt,
@@ -551,26 +527,33 @@ func (h *Handlers) handleCheckNotifications(id json.RawMessage, params json.RawM
 	return NewResponse(id, map[string]interface{}{"notifications": items})
 }
 
-func (h *Handlers) handleSubmitFeedback(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleSubmitFeedback(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
 	var p struct {
 		TargetType string `json:"targetType"`
 		TargetID   string `json:"targetId"`
-		AuthorID   string `json:"authorId"`
 		Rating     string `json:"rating"`
 		Body       string `json:"body"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
 
-	targetID, _ := strconv.ParseUint(p.TargetID, 10, 64)
-	authorID, _ := strconv.ParseUint(p.AuthorID, 10, 64)
-	rating, _ := strconv.Atoi(p.Rating)
+	targetID, err := strconv.ParseUint(p.TargetID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid targetId: "+p.TargetID)
+	}
+	rating, err := strconv.Atoi(p.Rating)
+	if err != nil || rating < 1 || rating > 5 {
+		return NewError(id, -32602, "Invalid rating: must be 1-5")
+	}
 
 	feedback, err := h.feedbackSvc.Create(
 		models.FeedbackTargetType(p.TargetType),
 		uint(targetID),
-		uint(authorID),
+		authorID,
 		rating,
 		p.Body,
 	)
@@ -584,7 +567,7 @@ func (h *Handlers) handleSubmitFeedback(id json.RawMessage, params json.RawMessa
 	})
 }
 
-func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage) Response {
+func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var p struct {
 		TargetType string `json:"targetType"`
 		TargetID   string `json:"targetId"`
@@ -593,7 +576,10 @@ func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
 
-	targetID, _ := strconv.ParseUint(p.TargetID, 10, 64)
+	targetID, err := strconv.ParseUint(p.TargetID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid targetId: "+p.TargetID)
+	}
 
 	items, err := h.feedbackSvc.ListByTarget(models.FeedbackTargetType(p.TargetType), uint(targetID))
 	if err != nil {
@@ -610,81 +596,4 @@ func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage
 		}
 	}
 	return NewResponse(id, map[string]interface{}{"items": result})
-}
-
-func (h *Handlers) handleCreateSkill(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
-		ProjectID   string `json:"projectId"`
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Definition  string `json:"definition"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-	projectID, err := strconv.ParseUint(p.ProjectID, 10, 64)
-	if err != nil || projectID == 0 {
-		return NewError(id, -32602, "Invalid projectId")
-	}
-	if p.Name == "" || p.Definition == "" {
-		return NewError(id, -32602, "Missing required params: name, definition")
-	}
-	skill, err := h.skillSvc.Create(uint(projectID), p.Name, p.Description, p.Definition)
-	if err != nil {
-		return NewInternalError(id, err.Error())
-	}
-	return NewResponse(id, map[string]interface{}{
-		"id":          fmt.Sprintf("%d", skill.ID),
-		"name":        skill.Name,
-		"description": skill.Description,
-	})
-}
-
-func (h *Handlers) handleListSkills(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
-		ProjectID string `json:"projectId"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-
-	projectID, _ := strconv.ParseUint(p.ProjectID, 10, 64)
-
-	skills, err := h.skillSvc.ListByProject(uint(projectID))
-	if err != nil {
-		return NewInternalError(id, err.Error())
-	}
-
-	result := make([]map[string]interface{}, len(skills))
-	for i, s := range skills {
-		result[i] = map[string]interface{}{
-			"id":          fmt.Sprintf("%d", s.ID),
-			"name":        s.Name,
-			"description": s.Description,
-		}
-	}
-	return NewResponse(id, map[string]interface{}{"items": result})
-}
-
-func (h *Handlers) handleRunSkill(id json.RawMessage, params json.RawMessage) Response {
-	var p struct {
-		SkillID string `json:"skillId"`
-	}
-	if err := json.Unmarshal(params, &p); err != nil {
-		return NewError(id, -32602, "Invalid params: "+err.Error())
-	}
-
-	skillID, _ := strconv.ParseUint(p.SkillID, 10, 64)
-
-	skill, err := h.skillSvc.GetByID(uint(skillID))
-	if err != nil {
-		return NewInternalError(id, err.Error())
-	}
-
-	return NewResponse(id, map[string]interface{}{
-		"id":          fmt.Sprintf("%d", skill.ID),
-		"name":        skill.Name,
-		"description": skill.Description,
-		"definition":  skill.Definition,
-	})
 }

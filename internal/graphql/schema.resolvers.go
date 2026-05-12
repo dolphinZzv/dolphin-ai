@@ -15,7 +15,7 @@ import (
 )
 
 // RegisterAgent is the resolver for the registerAgent field.
-func (r *mutationResolver) RegisterAgent(ctx context.Context, name string, kind AgentKind, externalID string, secret string, capabilities []string, bootstrapToken *string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
+func (r *mutationResolver) RegisterAgent(ctx context.Context, name string, kind AgentKind, externalID string, secret string, capabilities []string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
 	caps := capabilities
 	if caps == nil {
 		caps = []string{}
@@ -30,17 +30,6 @@ func (r *mutationResolver) RegisterAgent(ctx context.Context, name string, kind 
 	a, err := r.AgentSvc.Register(name, models.AgentKind(kind), externalID, secret, caps, di, mi)
 	if err != nil {
 		return nil, fmt.Errorf("register agent: %w", err)
-	}
-
-	// If a bootstrap token is provided, join the project
-	if bootstrapToken != nil && *bootstrapToken != "" {
-		projectID, ok := r.ProjectSvc.ValidateBootstrapToken(*bootstrapToken)
-		if !ok {
-			return nil, fmt.Errorf("invalid or expired bootstrap token")
-		}
-		if _, err := r.ProjectSvc.AddMember(projectID, a.ID, models.ProjectRoleMember); err != nil {
-			return nil, fmt.Errorf("add to project: %w", err)
-		}
 	}
 
 	loginResult, err := r.AgentSvc.Login(externalID, secret)
@@ -75,6 +64,51 @@ func (r *mutationResolver) UpdateAgentStatus(ctx context.Context, id string, sta
 		return nil, err
 	}
 	return agentFromModel(a), nil
+}
+
+// CreateProjectAgent is the resolver for the createProjectAgent field.
+func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID string, name string, kind AgentKind, externalID *string, secret *string, capabilities []string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
+	caps := capabilities
+	if caps == nil {
+		caps = []string{}
+	}
+	di, mi := "", ""
+	if deviceInfo != nil {
+		di = *deviceInfo
+	}
+	if modelInfo != nil {
+		mi = *modelInfo
+	}
+
+	// Auto-generate externalID if not provided
+	extID := name
+	if externalID != nil && *externalID != "" {
+		extID = *externalID
+	} else {
+		extID = extID + "-" + randomHex(4)
+	}
+
+	// Auto-generate secret if not provided
+	pw := ""
+	if secret != nil && *secret != "" {
+		pw = *secret
+	} else {
+		pw = randomHex(16)
+	}
+
+	a, err := r.AgentSvc.Register(name, models.AgentKind(kind), extID, pw, caps, di, mi)
+	if err != nil {
+		return nil, fmt.Errorf("register agent: %w", err)
+	}
+
+	if _, err := r.ProjectSvc.AddMember(parseID(projectID), a.ID, models.ProjectRoleMember); err != nil {
+		return nil, fmt.Errorf("add project member: %w", err)
+	}
+
+	return &RegisterResult{
+		Agent: agentFromModel(a),
+		Token: a.Token,
+	}, nil
 }
 
 // CreateProject is the resolver for the createProject field.
@@ -170,15 +204,11 @@ func (r *mutationResolver) RemoveProjectMember(ctx context.Context, projectID st
 }
 
 // CreateIssue is the resolver for the createIssue field.
-func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, creatorID string, title string, description *string, priority Priority, assigneeIDs []string, labelIDs []string) (*Issue, error) {
+func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, title string, description *string, priority Priority, assigneeIDs []string, labelIDs []string) (*Issue, error) {
 	pid := parseID(projectID)
 	agentID, err := r.requireIssueProjectMemberByProject(ctx, pid)
 	if err != nil {
 		return nil, err
-	}
-	// Validate creatorID matches authenticated agent
-	if parseID(creatorID) != agentID {
-		return nil, errors.New("creatorID 与认证身份不匹配")
 	}
 	desc := ""
 	if description != nil {
@@ -606,16 +636,6 @@ func (r *queryResolver) Milestones(ctx context.Context, projectID string, state 
 		result[i] = milestoneFromModel(&m)
 	}
 	return result, nil
-}
-
-// Skills is the resolver for the skills field.
-func (r *queryResolver) Skills(ctx context.Context, projectID string) ([]*Skill, error) {
-	pid := parseID(projectID)
-	if _, err := r.requireProjectMember(ctx, pid); err != nil {
-		return nil, err
-	}
-	// Skills not yet implemented via service, return empty
-	return []*Skill{}, nil
 }
 
 // Issue is the resolver for the issue field.

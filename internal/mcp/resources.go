@@ -58,14 +58,6 @@ func NewPrompts() *Prompts {
 				},
 			},
 			{
-				Name:        "skill-exec",
-				Description: "Guide for executing a skill on an issue",
-				Arguments: []PromptArgument{
-					{Name: "skillName", Description: "Skill name", Required: true},
-					{Name: "issueId", Description: "Issue ID", Required: true},
-				},
-			},
-			{
 				Name:        "issue-triage",
 				Description: "Guide for triaging a new issue",
 				Arguments: []PromptArgument{
@@ -84,10 +76,6 @@ func (p *Prompts) Get(name string, args map[string]string) (string, error) {
 	switch name {
 	case "review-workflow":
 		return "You are reviewing issue " + args["issueId"] + ". Check the code, add comments, and approve or reject.", nil
-	case "skill-exec":
-		return "You are executing skill " + args["skillName"] + " on issue " + args["issueId"] + ". Follow the skill steps.", nil
-	case "issue-triage":
-		return "You are triaging issue " + args["issueId"] + ". Analyze the description, add labels, and assign priority.", nil
 	default:
 		return "", nil
 	}

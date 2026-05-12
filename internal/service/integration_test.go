@@ -59,8 +59,8 @@ func setupIntegration(t *testing.T) *integrationFixture {
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil)
-	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
-	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
 	// Create default creator agent (PostgreSQL enforces FK constraints)

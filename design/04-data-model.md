@@ -7,8 +7,7 @@ Project
   ├── Members (ProjectMember → Agent)
   ├── Issues (→ Creator, Assignees, Comments, Timeline)
   ├── Labels
-  ├── Milestones
-  └── Skills
+  └── Milestones
 
 Agent
   ├── CreatedIssues
@@ -30,7 +29,7 @@ Issue
 完整 GORM 模型定义见 `internal/models/`，以下是关键字段摘要：
 
 ### Project
-`id, name, description` → HasMany: Members, Issues, Labels, Milestones, Skills
+`id, name, description` → HasMany: Members, Issues, Labels, Milestones
 
 ### Agent
 `id, name, kind(ai/human/hybrid), status, external_id, capabilities(jsonb), device_info, model_info, metadata(jsonb), last_seen_at`
@@ -49,9 +48,6 @@ Issue
 
 ### Milestone
 `id, project_id, title, description, state(open/closed), due_date`
-
-### Skill
-`id, project_id, name, description, definition(YAML)` — MCP Tool 编排定义
 
 ### TimelineEvent
 `id, issue_id, actor_id, event_type, payload(jsonb)` — 事件溯源

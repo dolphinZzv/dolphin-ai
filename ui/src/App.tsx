@@ -7,10 +7,8 @@ import { AuthProvider } from "@/hooks/useAuth";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Layout } from "@/components/layout/Layout";
 import { LoginPage } from "@/pages/LoginPage";
-import { DashboardPage } from "@/pages/DashboardPage";
 import { ProjectDetailPage } from "@/pages/ProjectDetailPage";
 import { IssueDetailPage } from "@/pages/IssueDetailPage";
-import { AgentListPage } from "@/pages/AgentListPage";
 import { AgentDetailPage } from "@/pages/AgentDetailPage";
 import { ProjectsPage } from "@/pages/ProjectsPage";
 import { ProjectSettingsPage } from "@/pages/ProjectSettingsPage";
@@ -34,12 +32,11 @@ export default function App() {
               <Routes>
                 <Route path="/login" element={<PageBoundary><LoginPage /></PageBoundary>} />
                 <Route element={<Layout />}>
-                  <Route path="/" element={<PageBoundary><DashboardPage /></PageBoundary>} />
+                  <Route path="/" element={<Navigate to="/projects" replace />} />
                   <Route path="/projects" element={<PageBoundary><ProjectsPage /></PageBoundary>} />
                   <Route path="/projects/:id" element={<PageBoundary><ProjectDetailPage /></PageBoundary>} />
                   <Route path="/projects/:id/settings" element={<PageBoundary><ProjectSettingsPage /></PageBoundary>} />
                   <Route path="/issues/:id" element={<PageBoundary><IssueDetailPage /></PageBoundary>} />
-                  <Route path="/agents" element={<PageBoundary><AgentListPage /></PageBoundary>} />
                   <Route path="/agents/:id" element={<PageBoundary><AgentDetailPage /></PageBoundary>} />
                 </Route>
                 <Route path="/404" element={<PageBoundary><NotFoundPage /></PageBoundary>} />

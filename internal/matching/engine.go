@@ -38,26 +38,23 @@ func (e *Engine) Subscribe(bus *events.Bus) {
 }
 
 func (e *Engine) handleIssueCreated(evt events.Event) {
-	payload, ok := evt.Payload.(map[string]interface{})
+	payload, ok := evt.Payload.(events.IssueCreatedPayload)
 	if !ok {
 		return
 	}
-	issueID, _ := payload["issueID"].(uint)
-	projectID, _ := payload["projectID"].(uint)
-	labelIDs, _ := payload["labelIDs"].([]uint)
 
-	if issueID == 0 || projectID == 0 {
+	if payload.IssueID == 0 || payload.ProjectID == 0 {
 		return
 	}
 
 	// If labels are provided, try matching via label→capability→agent
-	if len(labelIDs) > 0 {
-		e.matchAndAssign(issueID, projectID, labelIDs)
+	if len(payload.LabelIDs) > 0 {
+		e.matchAndAssign(payload.IssueID, payload.ProjectID, payload.LabelIDs)
 		return
 	}
 
 	// No labels — assign to any online project member
-	e.assignAnyOnline(issueID, projectID)
+	e.assignAnyOnline(payload.IssueID, payload.ProjectID)
 }
 
 func (e *Engine) matchAndAssign(issueID, projectID uint, labelIDs []uint) {
@@ -161,8 +158,11 @@ func (e *Engine) releaseTimedOut(timeout time.Duration) {
 		}
 		for _, assignment := range assignments {
 			if assignment.State == models.AssigneeStatePending || assignment.State == models.AssigneeStateInProgress {
-				_ = e.assigneeRepo.UpdateState(assignment.IssueID, a.ID, models.AssigneeStateBlocked)
-				log.Printf("[matching] released assignment issue %d from agent %d (timeout)", assignment.IssueID, a.ID)
+				if err := e.assigneeRepo.UpdateState(assignment.IssueID, a.ID, models.AssigneeStateBlocked); err != nil {
+					log.Printf("[matching] failed to release assignment issue %d from agent %d: %v", assignment.IssueID, a.ID, err)
+				} else {
+					log.Printf("[matching] released assignment issue %d from agent %d (timeout)", assignment.IssueID, a.ID)
+				}
 			}
 		}
 	}

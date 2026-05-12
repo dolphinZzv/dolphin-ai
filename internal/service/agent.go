@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -32,6 +34,11 @@ func (s *AgentService) Register(name string, kind models.AgentKind, externalID, 
 		return nil, fmt.Errorf("hash secret: %w", err)
 	}
 
+	tokenBytes := make([]byte, 32)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, fmt.Errorf("generate token: %w", err)
+	}
+
 	caps := make(models.StringSlice, len(capabilities))
 	for i, c := range capabilities {
 		caps[i] = c
@@ -43,6 +50,7 @@ func (s *AgentService) Register(name string, kind models.AgentKind, externalID, 
 		Status:       models.AgentStatusOnline,
 		ExternalID:   externalID,
 		SecretHash:   string(hash),
+		Token:        hex.EncodeToString(tokenBytes),
 		Capabilities: caps,
 		DeviceInfo:   deviceInfo,
 		ModelInfo:    modelInfo,
@@ -96,17 +104,33 @@ func (s *AgentService) UpdateStatus(id uint, status models.AgentStatus) error {
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventAgentStatusChanged,
-			Payload: map[string]interface{}{
-				"agentID": id,
-				"status":  string(status),
+			Payload: events.AgentStatusChangedPayload{
+				AgentID: id,
+				Status:  string(status),
 			},
 		})
 	}
 	return nil
 }
 
+// Authenticate verifies an agent token and returns the agent.
+func (s *AgentService) Authenticate(token string) (*models.Agent, error) {
+	if token == "" {
+		return nil, errors.New("empty token")
+	}
+	a, err := s.agentRepo.FindByToken(token)
+	if err != nil {
+		return nil, errors.New("invalid token")
+	}
+	return a, nil
+}
+
 func (s *AgentService) Heartbeat(id uint) error {
 	return s.agentRepo.UpdateLastSeen(id)
+}
+
+func (s *AgentService) UpdateIP(id uint, ip string) error {
+	return s.agentRepo.UpdateIP(id, ip)
 }
 
 func (s *AgentService) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {

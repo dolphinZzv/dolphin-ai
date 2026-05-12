@@ -5,3 +5,15 @@ coverage.out
 *.db
 /server
 /bin/
+
+# binaries
+chick-server
+chick
+
+# root node_modules (misplaced)
+node_modules/
+package.json
+package-lock.json
+
+# todo notes
+todo/

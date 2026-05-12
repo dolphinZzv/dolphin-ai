@@ -1,8 +1,6 @@
 package service
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 
 	"chick/internal/models"
@@ -31,14 +29,9 @@ func NewProjectService(
 }
 
 func (s *ProjectService) Create(name, description string) (*models.Project, error) {
-	tokenBytes := make([]byte, 16)
-	if _, err := rand.Read(tokenBytes); err != nil {
-		return nil, fmt.Errorf("generate bootstrap token: %w", err)
-	}
 	p := &models.Project{
-		Name:           name,
-		Description:    description,
-		BootstrapToken: hex.EncodeToString(tokenBytes),
+		Name:        name,
+		Description: description,
 	}
 	if err := s.projectRepo.Create(p); err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
@@ -48,18 +41,6 @@ func (s *ProjectService) Create(name, description string) (*models.Project, erro
 
 func (s *ProjectService) GetByID(id uint) (*models.Project, error) {
 	return s.projectRepo.GetByID(id)
-}
-
-// ValidateBootstrapToken finds a project by the given bootstrap token.
-// If valid, the token is consumed and the project ID is returned.
-func (s *ProjectService) ValidateBootstrapToken(token string) (uint, bool) {
-	p, err := s.projectRepo.FindByBootstrapToken(token)
-	if err != nil || p == nil {
-		return 0, false
-	}
-	// consume the token
-	s.projectRepo.Update(p.ID, map[string]interface{}{"BootstrapToken": ""})
-	return p.ID, true
 }
 
 func (s *ProjectService) List() ([]models.Project, error) {
@@ -142,11 +123,11 @@ func (s *ProjectService) ListByAgent(agentID uint) ([]models.Project, error) {
 
 func (s *ProjectService) CreateLabel(projectID uint, name, color, capability, group string) (*models.Label, error) {
 	l := &models.Label{
-		ProjectID:   projectID,
-		Name:        name,
-		Color:       color,
-		Capability:  models.CapabilityType(capability),
-		Group:       group,
+		ProjectID:  projectID,
+		Name:       name,
+		Color:      color,
+		Capability: models.CapabilityType(capability),
+		Group:      group,
 	}
 	if l.Color == "" {
 		l.Color = "#0366d6"
@@ -158,20 +139,7 @@ func (s *ProjectService) CreateLabel(projectID uint, name, color, capability, gr
 }
 
 func (s *ProjectService) ListLabels(projectID uint, group string) ([]models.Label, error) {
-	labels, err := s.labelRepo.ListByProject(projectID)
-	if err != nil {
-		return nil, err
-	}
-	if group == "" {
-		return labels, nil
-	}
-	filtered := make([]models.Label, 0, len(labels))
-	for _, l := range labels {
-		if l.Group == group {
-			filtered = append(filtered, l)
-		}
-	}
-	return filtered, nil
+	return s.labelRepo.ListByProject(projectID, group)
 }
 
 func (s *ProjectService) DeleteLabel(id uint) error {
@@ -201,20 +169,7 @@ func (s *ProjectService) CreateMilestone(projectID uint, title, description stri
 }
 
 func (s *ProjectService) ListMilestones(projectID uint, state models.MilestoneState) ([]models.Milestone, error) {
-	milestones, err := s.milestoneRepo.ListByProject(projectID)
-	if err != nil {
-		return nil, err
-	}
-	if state == "" {
-		return milestones, nil
-	}
-	filtered := make([]models.Milestone, 0, len(milestones))
-	for _, m := range milestones {
-		if m.State == state {
-			filtered = append(filtered, m)
-		}
-	}
-	return filtered, nil
+	return s.milestoneRepo.ListByProject(projectID, state)
 }
 
 func (s *ProjectService) DeleteMilestone(id uint) error {

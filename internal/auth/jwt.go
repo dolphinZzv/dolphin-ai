@@ -23,46 +23,24 @@ type Claims struct {
 }
 
 type Authenticator struct {
-	secret     []byte
-	bootstrap  string
-	bootstrapUsed bool
+	secret []byte
 }
 
-func New(secret string, bootstrapToken string) *Authenticator {
+func New(secret string) *Authenticator {
 	if secret == "" {
 		secret = randomHex(32)
 	}
-	if bootstrapToken == "" {
-		bootstrapToken = randomHex(16)
-	}
 	return &Authenticator{
-		secret:    []byte(secret),
-		bootstrap: bootstrapToken,
+		secret: []byte(secret),
 	}
 }
 
 func randomHex(n int) string {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
+	if _, err := rand.Read(b); err != nil {
+		panic("failed to generate random bytes: " + err.Error())
+	}
 	return hex.EncodeToString(b)
-}
-
-// BootstrapToken returns the current bootstrap token.
-func (a *Authenticator) BootstrapToken() string {
-	return a.bootstrap
-}
-
-// UseBootstrapToken validates and consumes the bootstrap token.
-// Returns true if valid and consumed.
-func (a *Authenticator) UseBootstrapToken(token string) bool {
-	if a.bootstrapUsed {
-		return false
-	}
-	if token == a.bootstrap {
-		a.bootstrapUsed = true
-		return true
-	}
-	return false
 }
 
 // GenerateToken creates a signed JWT for the given agent ID.

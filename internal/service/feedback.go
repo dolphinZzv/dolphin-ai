@@ -32,11 +32,11 @@ func (s *FeedbackService) Create(targetType models.FeedbackTargetType, targetID,
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventFeedbackCreated,
-			Payload: map[string]interface{}{
-				"feedbackID": f.ID,
-				"targetType": string(targetType),
-				"targetID":   targetID,
-				"authorID":   authorID,
+			Payload: events.FeedbackCreatedPayload{
+				FeedbackID: f.ID,
+				TargetType: string(targetType),
+				TargetID:   targetID,
+				AuthorID:   authorID,
 			},
 		})
 	}

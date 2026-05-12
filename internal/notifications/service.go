@@ -12,15 +12,16 @@ import (
 type NotificationType string
 
 const (
-	NotifIssueAssigned      NotificationType = "issue_assigned"
-	NotifCommentMention     NotificationType = "comment_mention"
-	NotifIssueStateChanged  NotificationType = "issue_state_changed"
+	NotifIssueAssigned       NotificationType = "issue_assigned"
+	NotifCommentMention      NotificationType = "comment_mention"
+	NotifIssueStateChanged   NotificationType = "issue_state_changed"
 	NotifStatusChangeRequest NotificationType = "status_change_request"
 )
 
 type Notification struct {
 	ID        uint             `json:"id"`
 	AgentID   uint             `json:"agentId"`
+	ProjectID uint             `json:"projectId,omitempty"`
 	Type      NotificationType `json:"type"`
 	IssueID   uint             `json:"issueId,omitempty"`
 	CommentID uint             `json:"commentId,omitempty"`
@@ -53,85 +54,87 @@ func (s *Service) Subscribe(bus *events.Bus) {
 }
 
 func (s *Service) handleIssueCreated(evt events.Event) {
-	payload, ok := evt.Payload.(map[string]interface{})
+	payload, ok := evt.Payload.(events.IssueCreatedPayload)
 	if !ok {
 		return
 	}
-	projectID, _ := payload["projectID"].(uint)
-	issueID, _ := payload["issueID"].(uint)
 
 	s.add(Notification{
+		ProjectID: payload.ProjectID,
 		AgentID:   0, // broadcast to project
 		Type:      NotifIssueAssigned,
-		IssueID:   issueID,
-		Message:   fmt.Sprintf("New issue created in project %d", projectID),
+		IssueID:   payload.IssueID,
+		Message:   fmt.Sprintf("New issue created in project %d", payload.ProjectID),
 		CreatedAt: time.Now(),
 	})
 }
 
 func (s *Service) handleAssigneeChanged(evt events.Event) {
-	payload, ok := evt.Payload.(map[string]interface{})
+	payload, ok := evt.Payload.(events.IssueAssigneeChangedPayload)
 	if !ok {
 		return
 	}
-	issueID, _ := payload["issueID"].(uint)
-	agentID, _ := payload["agentID"].(uint)
-	action, _ := payload["action"].(string)
 
-	if action == "assigned" {
+	if payload.Action == "assigned" {
 		s.add(Notification{
-			AgentID:   agentID,
+			ProjectID: payload.ProjectID,
+			AgentID:   payload.AgentID,
 			Type:      NotifIssueAssigned,
-			IssueID:   issueID,
-			Message:   fmt.Sprintf("You have been assigned to issue %d", issueID),
+			IssueID:   payload.IssueID,
+			Message:   fmt.Sprintf("You have been assigned to issue %d", payload.IssueID),
 			CreatedAt: time.Now(),
 		})
 	}
 }
 
 func (s *Service) handleStateChanged(evt events.Event) {
-	payload, ok := evt.Payload.(map[string]interface{})
+	payload, ok := evt.Payload.(events.IssueStateChangedPayload)
 	if !ok {
 		return
 	}
-	issueID, _ := payload["issueID"].(uint)
-	to, _ := payload["to"].(string)
 
 	s.add(Notification{
+		ProjectID: payload.ProjectID,
 		Type:      NotifIssueStateChanged,
-		IssueID:   issueID,
-		Message:   fmt.Sprintf("Issue %d changed to %s", issueID, to),
+		IssueID:   payload.IssueID,
+		Message:   fmt.Sprintf("Issue %d changed to %s", payload.IssueID, payload.To),
 		CreatedAt: time.Now(),
 	})
 }
 
 func (s *Service) handleCommentAdded(evt events.Event) {
-	payload, ok := evt.Payload.(map[string]interface{})
+	payload, ok := evt.Payload.(events.CommentAddedPayload)
 	if !ok {
 		return
 	}
-	commentID, _ := payload["commentID"].(uint)
-	issueID, _ := payload["issueID"].(uint)
 
 	s.add(Notification{
+		ProjectID: payload.ProjectID,
 		Type:      NotifCommentMention,
-		IssueID:   issueID,
-		CommentID: commentID,
-		Message:   fmt.Sprintf("New comment on issue %d", issueID),
+		IssueID:   payload.IssueID,
+		CommentID: payload.CommentID,
+		Message:   fmt.Sprintf("New comment on issue %d", payload.IssueID),
 		CreatedAt: time.Now(),
 	})
 }
 
-// ListByAgent returns notifications for a specific agent, newest first.
-func (s *Service) ListByAgent(agentID uint) []Notification {
+// ListByAgent returns notifications for a specific agent, optionally filtered by project.
+// Pass projectID = 0 to skip project filtering.
+func (s *Service) ListByAgent(agentID uint, projectID ...uint) []Notification {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	filterProject := len(projectID) > 0 && projectID[0] > 0
+
 	var result []Notification
 	for _, n := range s.notifications {
-		if n.AgentID == 0 || n.AgentID == agentID {
-			result = append(result, n)
+		if n.AgentID != 0 && n.AgentID != agentID {
+			continue
 		}
+		if filterProject && n.ProjectID != projectID[0] {
+			continue
+		}
+		result = append(result, n)
 	}
 	// Return newest first (last elements)
 	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {

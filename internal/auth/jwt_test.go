@@ -8,7 +8,7 @@ import (
 )
 
 func TestGenerateAndValidateToken(t *testing.T) {
-	a := New("my-secret-key", "bootstrap-token")
+	a := New("my-secret-key")
 
 	token, err := a.GenerateToken(uint(42))
 	if err != nil {
@@ -28,7 +28,7 @@ func TestGenerateAndValidateToken(t *testing.T) {
 }
 
 func TestValidateInvalidToken(t *testing.T) {
-	a := New("my-secret-key", "bootstrap-token")
+	a := New("my-secret-key")
 
 	_, err := a.ValidateToken("invalid-token")
 	if err == nil {
@@ -42,45 +42,13 @@ func TestValidateInvalidToken(t *testing.T) {
 }
 
 func TestValidateTokenWrongSecret(t *testing.T) {
-	a1 := New("secret-1", "bootstrap")
-	a2 := New("secret-2", "bootstrap")
+	a1 := New("secret-1")
+	a2 := New("secret-2")
 
 	token, _ := a1.GenerateToken(uint(1))
 	_, err := a2.ValidateToken(token)
 	if err == nil {
 		t.Fatal("expected error for token signed with different secret")
-	}
-}
-
-func TestBootstrapToken(t *testing.T) {
-	a := New("secret", "my-bootstrap-token")
-
-	ok := a.UseBootstrapToken("my-bootstrap-token")
-	if !ok {
-		t.Fatal("expected bootstrap token to be accepted")
-	}
-
-	ok = a.UseBootstrapToken("my-bootstrap-token")
-	if ok {
-		t.Fatal("expected bootstrap token to be rejected on second use")
-	}
-}
-
-func TestBootstrapTokenWrong(t *testing.T) {
-	a := New("secret", "bootstrap-token")
-
-	ok := a.UseBootstrapToken("wrong-token")
-	if ok {
-		t.Fatal("expected wrong bootstrap token to be rejected")
-	}
-}
-
-func TestBootstrapTokenEmpty(t *testing.T) {
-	a := New("secret", "")
-
-	ok := a.UseBootstrapToken("anything")
-	if ok {
-		t.Fatal("expected empty bootstrap token config to reject all")
 	}
 }
 
@@ -102,7 +70,7 @@ func TestAgentIDFromContext(t *testing.T) {
 }
 
 func TestHTTPMiddleware(t *testing.T) {
-	a := New("my-secret-key", "bootstrap")
+	a := New("my-secret-key")
 	token, _ := a.GenerateToken(uint(5))
 
 	// Valid token — middleware should inject agent ID into context
@@ -157,7 +125,7 @@ func TestHTTPMiddleware(t *testing.T) {
 }
 
 func TestHTTPMiddlewareSkipPaths(t *testing.T) {
-	a := New("secret", "bootstrap")
+	a := New("secret")
 	handler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}), "/health")
@@ -166,35 +134,5 @@ func TestHTTPMiddlewareSkipPaths(t *testing.T) {
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/health", nil))
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200 for skip path, got %d", rec.Code)
-	}
-}
-
-func TestMCPTokenValidator(t *testing.T) {
-	a := New("secret", "bootstrap")
-	v := NewMCPTokenValidator(a)
-
-	// Empty token
-	id, err := v.Validate("")
-	if err != nil {
-		t.Fatalf("empty token: %v", err)
-	}
-	if id != 0 {
-		t.Errorf("expected 0, got %d", id)
-	}
-
-	// Valid token
-	token, _ := a.GenerateToken(uint(10))
-	id, err = v.Validate(token)
-	if err != nil {
-		t.Fatalf("valid token: %v", err)
-	}
-	if id != 10 {
-		t.Errorf("expected 10, got %d", id)
-	}
-
-	// Invalid token
-	_, err = v.Validate("bad-token")
-	if err == nil {
-		t.Fatal("expected error for bad token")
 	}
 }

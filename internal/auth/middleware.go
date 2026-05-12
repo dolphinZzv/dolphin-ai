@@ -41,24 +41,3 @@ func (a *Authenticator) HTTPMiddleware(next http.Handler, skipPaths ...string) h
 		next.ServeHTTP(w, r)
 	})
 }
-
-// MCPTokenValidator validates MCP tool call tokens.
-type MCPTokenValidator struct {
-	auth *Authenticator
-}
-
-func NewMCPTokenValidator(auth *Authenticator) *MCPTokenValidator {
-	return &MCPTokenValidator{auth: auth}
-}
-
-// Validate extracts agent ID from a Bearer token string.
-func (v *MCPTokenValidator) Validate(tokenStr string) (uint, error) {
-	if tokenStr == "" {
-		return 0, nil
-	}
-	claims, err := v.auth.ValidateToken(tokenStr)
-	if err != nil {
-		return 0, err
-	}
-	return claims.AgentID, nil
-}

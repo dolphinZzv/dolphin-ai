@@ -52,6 +52,22 @@ const priorityColors: Record<string, string> = {
   low: "bg-sky-100 text-sky-800 dark:bg-sky-900 dark:text-sky-200",
 };
 
+const stateLabels: Record<string, string> = {
+  open: "待处理",
+  in_progress: "进行中",
+  blocked: "阻塞",
+  review: "审查",
+  closed_completed: "已完成",
+  closed_not_planned: "已关闭",
+};
+
+const validTransitions: Record<string, string[]> = {
+  open: ["in_progress", "blocked"],
+  in_progress: ["review", "blocked"],
+  blocked: ["in_progress", "open"],
+  review: ["closed_completed", "closed_not_planned", "in_progress"],
+};
+
 function DraggableIssue({
   issue,
 }: {
@@ -89,6 +105,69 @@ function DraggableIssue({
   );
 }
 
+function SimpleIssueCard({
+  issue,
+  onTransition,
+}: {
+  issue: Issue;
+  onTransition: (issueId: string, toState: string) => Promise<void>;
+}) {
+  const [moving, setMoving] = useState(false);
+
+  const handleQuickMove = async (e: React.MouseEvent, toState: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMoving(true);
+    try {
+      await onTransition(issue.id, toState);
+      toast.success(`已移至 ${stateLabels[toState]}`);
+    } catch {
+      toast.error("状态变更失败");
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const transitions = validTransitions[issue.state] || [];
+
+  return (
+    <Link
+      to={`/issues/${issue.id}`}
+      className={`block rounded-lg border bg-card border-l-2 transition-colors hover:bg-accent ${
+        stateColors[issue.state] || "border-l-border"
+      }`}
+    >
+      <div className="p-3">
+        <div className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span>#{issue.number}</span>
+          <Badge className={`text-xs ${priorityColors[issue.priority] || ""}`}>
+            {priorityLabels[issue.priority] || issue.priority}
+          </Badge>
+        </div>
+        <p className="mt-1 text-sm line-clamp-2">{issue.title}</p>
+      </div>
+      {transitions.length > 0 && (
+        <div
+          className="flex gap-1 border-t px-3 py-1.5 overflow-x-auto scrollbar-none"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {transitions.map((s) => (
+            <button
+              key={s}
+              onClick={(e) => handleQuickMove(e, s)}
+              disabled={moving}
+              className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium bg-accent text-accent-foreground hover:bg-primary hover:text-primary-foreground transition-colors disabled:opacity-50 min-h-[28px]"
+            >
+              {stateLabels[s]}
+            </button>
+          ))}
+        </div>
+      )}
+    </Link>
+  );
+}
+
 function DroppableColumn({
   column,
   issues,
@@ -119,6 +198,33 @@ function DroppableColumn({
       )}
       {issues.map((issue) => (
         <DraggableIssue key={issue.id} issue={issue} />
+      ))}
+    </div>
+  );
+}
+
+function StaticColumn({
+  column,
+  issues,
+  onTransition,
+}: {
+  column: Column;
+  issues: Issue[];
+  onTransition: (issueId: string, toState: string) => Promise<void>;
+}) {
+  return (
+    <div className="space-y-2 rounded-lg p-2">
+      <h2 className="flex items-center gap-2 text-sm font-medium px-1">
+        <span className="text-muted-foreground">{column.label}</span>
+        <Badge variant="secondary" className="text-xs">
+          {issues.length}
+        </Badge>
+      </h2>
+      {issues.length === 0 && (
+        <p className="py-4 text-center text-xs text-muted-foreground">无</p>
+      )}
+      {issues.map((issue) => (
+        <SimpleIssueCard key={issue.id} issue={issue} onTransition={onTransition} />
       ))}
     </div>
   );
@@ -195,25 +301,41 @@ export function IssueBoard({
     items: issues.filter((i) => i.state === col.state),
   }));
 
+  if (isDesktop) {
+    return (
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        <div className="grid grid-cols-4 gap-3">
+          {grouped.map((col) => (
+            <DroppableColumn
+              key={col.state}
+              column={col}
+              issues={col.items}
+            />
+          ))}
+        </div>
+
+        <DragOverlay>
+          {activeIssue ? <DragOverlayCard issue={activeIssue} /> : null}
+        </DragOverlay>
+      </DndContext>
+    );
+  }
+
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <div className={`grid gap-3 ${isDesktop ? "grid-cols-4" : "grid-cols-1 sm:grid-cols-2"}`}>
-        {grouped.map((col) => (
-          <DroppableColumn
-            key={col.state}
+    <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-none">
+      {grouped.map((col) => (
+        <div key={col.state} className="min-w-[280px] w-[80vw] snap-start shrink-0">
+          <StaticColumn
             column={col}
             issues={col.items}
+            onTransition={onTransition}
           />
-        ))}
-      </div>
-
-      <DragOverlay>
-        {activeIssue ? <DragOverlayCard issue={activeIssue} /> : null}
-      </DragOverlay>
-    </DndContext>
+        </div>
+      ))}
+    </div>
   );
 }

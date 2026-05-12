@@ -27,24 +27,36 @@ func resetDist() {
 
 func loadDist() {
 	dist.once.Do(func() {
-		dir := filepath.Join(".", "ui", "dist")
-		indexPath := filepath.Join(dir, "index.html")
+		candidates := []string{}
 
-		var err error
-		dist.index, err = os.ReadFile(indexPath)
-		if err != nil {
-			return
+		exe, err := os.Executable()
+		if err == nil {
+			candidates = append(candidates, filepath.Join(filepath.Dir(exe), "ui", "dist"))
 		}
 
-		dist.assets = make(map[string][]byte)
-		filepath.Walk(filepath.Join(dir, "assets"), func(p string, fi os.FileInfo, _ error) error {
-			if fi == nil || fi.IsDir() {
-				return nil
+		cwd, err := os.Getwd()
+		if err == nil {
+			candidates = append(candidates, filepath.Join(cwd, "ui", "dist"))
+		}
+
+		for _, dir := range candidates {
+			indexPath := filepath.Join(dir, "index.html")
+			data, err := os.ReadFile(indexPath)
+			if err != nil {
+				continue
 			}
-			rel, _ := filepath.Rel(dir, p)
-			dist.assets[rel], _ = os.ReadFile(p)
-			return nil
-		})
+			dist.index = data
+			dist.assets = make(map[string][]byte)
+			filepath.Walk(dir, func(p string, fi os.FileInfo, _ error) error {
+				if fi == nil || fi.IsDir() || fi.Name() == "index.html" {
+					return nil
+				}
+				rel, _ := filepath.Rel(dir, p)
+				dist.assets[rel], _ = os.ReadFile(p)
+				return nil
+			})
+			return
+		}
 	})
 }
 
@@ -64,6 +76,7 @@ func SPAHandler() http.Handler {
 		".js":   "application/javascript",
 		".css":  "text/css",
 		".html": "text/html; charset=utf-8",
+		".md":   "text/markdown; charset=utf-8",
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -72,16 +85,13 @@ func SPAHandler() http.Handler {
 			path = "index.html"
 		}
 
-		// If the path is a known static asset type, serve from cache
-		if ext := filepath.Ext(path); ext == ".js" || ext == ".css" {
-			data, ok := dist.assets[path]
-			if ok {
-				if ct, ok := mime[ext]; ok {
-					w.Header().Set("Content-Type", ct)
-				}
-				w.Write(data)
-				return
+		// Serve any cached file (js, css, md, etc.)
+		if data, ok := dist.assets[path]; ok {
+			if ct, ok := mime[filepath.Ext(path)]; ok {
+				w.Header().Set("Content-Type", ct)
 			}
+			w.Write(data)
+			return
 		}
 
 		// SPA fallback: serve index.html for all other paths

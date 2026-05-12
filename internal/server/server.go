@@ -25,7 +25,6 @@ type Server struct {
 	CommentService   *service.CommentService
 	WorkflowService  *service.WorkflowService
 	FeedbackService  *service.FeedbackService
-	SkillService     *service.SkillService
 	Authenticator    *auth.Authenticator
 	NotifService     *notifications.Service
 	MatchingEngine   *matching.Engine
@@ -54,10 +53,9 @@ func New(cfg *config.Config) (*Server, error) {
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	feedbackRepo := gormrepo.NewFeedbackRepo(db)
-	skillRepo := gormrepo.NewSkillRepo(db)
 
 	// Init auth
-	authn := auth.New(cfg.JWTSecret, cfg.BootstrapToken)
+	authn := auth.New(cfg.JWTSecret)
 
 	// Init matching engine
 	matchingEngine := matching.NewEngine(agentRepo, gormrepo.NewLabelRepo(db), assigneeRepo, issueRepo)
@@ -70,11 +68,10 @@ func New(cfg *config.Config) (*Server, error) {
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, authn)
-	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
-	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
-	skillSvc := service.NewSkillService(skillRepo)
 
 	srv := &Server{
 		Config:           cfg,
@@ -86,7 +83,6 @@ func New(cfg *config.Config) (*Server, error) {
 		CommentService:   commentSvc,
 		WorkflowService:  workflowSvc,
 		FeedbackService:  feedbackSvc,
-		SkillService:     skillSvc,
 		Authenticator:    authn,
 		NotifService:     notifSvc,
 		MatchingEngine:   matchingEngine,

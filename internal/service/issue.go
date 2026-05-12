@@ -7,9 +7,13 @@ import (
 	"chick/internal/events"
 	"chick/internal/models"
 	"chick/internal/repository"
+	gormrepo "chick/internal/repository/gorm"
+
+	"gorm.io/gorm"
 )
 
 type IssueService struct {
+	db            *gorm.DB
 	issueRepo     repository.IssueRepository
 	assigneeRepo  repository.IssueAssigneeRepository
 	timelineRepo  repository.TimelineRepository
@@ -18,6 +22,7 @@ type IssueService struct {
 }
 
 func NewIssueService(
+	db *gorm.DB,
 	issueRepo repository.IssueRepository,
 	assigneeRepo repository.IssueAssigneeRepository,
 	timelineRepo repository.TimelineRepository,
@@ -25,6 +30,7 @@ func NewIssueService(
 	eventBus *events.Bus,
 ) *IssueService {
 	return &IssueService{
+		db:           db,
 		issueRepo:    issueRepo,
 		assigneeRepo: assigneeRepo,
 		timelineRepo: timelineRepo,
@@ -34,38 +40,48 @@ func NewIssueService(
 }
 
 func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs []uint, labelIDs []uint) (*models.Issue, error) {
-	issue := &models.Issue{
-		ProjectID:   projectID,
-		Title:       title,
-		Description: description,
-		State:       models.IssueStateOpen,
-		Priority:    priority,
-		CreatorID:   creatorID,
-	}
-	if err := s.issueRepo.Create(issue); err != nil {
-		return nil, fmt.Errorf("create issue: %w", err)
+	var issue *models.Issue
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		txIssueRepo := gormrepo.NewIssueRepo(tx)
+		txAssigneeRepo := gormrepo.NewIssueAssigneeRepo(tx)
+
+		issue = &models.Issue{
+			ProjectID:   projectID,
+			Title:       title,
+			Description: description,
+			State:       models.IssueStateOpen,
+			Priority:    priority,
+			CreatorID:   creatorID,
+		}
+		if err := txIssueRepo.Create(issue); err != nil {
+			return fmt.Errorf("create issue: %w", err)
+		}
+
+		for _, agentID := range assigneeIDs {
+			ia := &models.IssueAssignee{
+				IssueID: issue.ID,
+				AgentID: agentID,
+				State:   models.AssigneeStatePending,
+			}
+			if err := txAssigneeRepo.Create(ia); err != nil {
+				return fmt.Errorf("add assignee %d: %w", agentID, err)
+			}
+		}
+
+		for _, labelID := range labelIDs {
+			if err := txIssueRepo.AddLabel(issue.ID, labelID); err != nil {
+				return fmt.Errorf("add label %d: %w", labelID, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	// Add assignees
-	for _, agentID := range assigneeIDs {
-		ia := &models.IssueAssignee{
-			IssueID: issue.ID,
-			AgentID: agentID,
-			State:   models.AssigneeStatePending,
-		}
-		if err := s.assigneeRepo.Create(ia); err != nil {
-			return nil, fmt.Errorf("add assignee %d: %w", agentID, err)
-		}
-	}
-
-	// Add labels
-	for _, labelID := range labelIDs {
-		if err := s.issueRepo.AddLabel(issue.ID, labelID); err != nil {
-			return nil, fmt.Errorf("add label %d: %w", labelID, err)
-		}
-	}
-
-	// Add timeline event
+	// Timeline event (best-effort, outside transaction)
 	event := &models.TimelineEvent{
 		IssueID:   issue.ID,
 		ActorID:   creatorID,
@@ -76,15 +92,15 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 		log.Printf("[issue] failed to create timeline event: %v", err)
 	}
 
-	// Publish event
+	// Publish event (outside transaction)
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventIssueCreated,
-			Payload: map[string]interface{}{
-				"issueID":   issue.ID,
-				"projectID": projectID,
-				"creatorID": creatorID,
-				"labelIDs":  labelIDs,
+			Payload: events.IssueCreatedPayload{
+				IssueID:   issue.ID,
+				ProjectID: projectID,
+				CreatorID: creatorID,
+				LabelIDs:  labelIDs,
 			},
 		})
 	}
@@ -111,9 +127,15 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 	}
 	oldState := issue.State
 
-	if err := s.issueRepo.UpdateState(id, newState); err != nil {
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		txIssueRepo := gormrepo.NewIssueRepo(tx)
+		return txIssueRepo.UpdateState(id, newState)
+	})
+	if err != nil {
 		return nil, fmt.Errorf("transition state: %w", err)
 	}
+
+	// Timeline event (best-effort)
 	event := &models.TimelineEvent{
 		IssueID:   id,
 		ActorID:   actorID,
@@ -127,11 +149,12 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventIssueStateChanged,
-			Payload: map[string]interface{}{
-				"issueID":  id,
-				"from":     string(oldState),
-				"to":       string(newState),
-				"actorID":  actorID,
+			Payload: events.IssueStateChangedPayload{
+				IssueID:   id,
+				ProjectID: issue.ProjectID,
+				From:      string(oldState),
+				To:        string(newState),
+				ActorID:   actorID,
 			},
 		})
 	}
@@ -149,13 +172,20 @@ func (s *IssueService) AddAssignee(issueID, agentID uint) (*models.IssueAssignee
 		return nil, fmt.Errorf("add assignee: %w", err)
 	}
 
+	projectID := uint(0)
+	issue, err := s.issueRepo.GetByID(issueID)
+	if err == nil {
+		projectID = issue.ProjectID
+	}
+
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventIssueAssigneeChanged,
-			Payload: map[string]interface{}{
-				"issueID": issueID,
-				"agentID": agentID,
-				"action":  "assigned",
+			Payload: events.IssueAssigneeChangedPayload{
+				IssueID:   issueID,
+				ProjectID: projectID,
+				AgentID:   agentID,
+				Action:    "assigned",
 			},
 		})
 	}
@@ -168,13 +198,20 @@ func (s *IssueService) RemoveAssignee(issueID, agentID uint) error {
 		return err
 	}
 
+	projectID := uint(0)
+	issue, err := s.issueRepo.GetByID(issueID)
+	if err == nil {
+		projectID = issue.ProjectID
+	}
+
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventIssueAssigneeChanged,
-			Payload: map[string]interface{}{
-				"issueID": issueID,
-				"agentID": agentID,
-				"action":  "removed",
+			Payload: events.IssueAssigneeChangedPayload{
+				IssueID:   issueID,
+				ProjectID: projectID,
+				AgentID:   agentID,
+				Action:    "removed",
 			},
 		})
 	}

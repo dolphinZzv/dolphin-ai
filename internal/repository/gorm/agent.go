@@ -1,6 +1,8 @@
 package gorm
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"chick/internal/models"
 	"chick/internal/repository"
 	"time"
@@ -17,7 +19,25 @@ func NewAgentRepo(db *gorm.DB) repository.AgentRepository {
 }
 
 func (r *AgentRepo) Create(agent *models.Agent) error {
-	return r.db.Create(agent).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var max struct {
+			Number uint
+		}
+		if err := tx.Model(&models.Agent{}).
+			Select("COALESCE(MAX(number), 0) as number").
+			Scan(&max).Error; err != nil {
+			return err
+		}
+		agent.Number = max.Number + 1
+		if agent.Token == "" {
+			b := make([]byte, 32)
+			if _, err := rand.Read(b); err != nil {
+				return err
+			}
+			agent.Token = hex.EncodeToString(b)
+		}
+		return tx.Create(agent).Error
+	})
 }
 
 func (r *AgentRepo) GetByID(id uint) (*models.Agent, error) {
@@ -32,6 +52,12 @@ func (r *AgentRepo) GetByExternalID(externalID string) (*models.Agent, error) {
 	return &a, err
 }
 
+func (r *AgentRepo) FindByToken(token string) (*models.Agent, error) {
+	var a models.Agent
+	err := r.db.Where("token = ?", token).First(&a).Error
+	return &a, err
+}
+
 func (r *AgentRepo) UpdateStatus(id uint, status models.AgentStatus) error {
 	return r.db.Model(&models.Agent{}).Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -43,6 +69,11 @@ func (r *AgentRepo) UpdateLastSeen(id uint) error {
 	now := time.Now()
 	return r.db.Model(&models.Agent{}).Where("id = ?", id).
 		Update("last_seen_at", &now).Error
+}
+
+func (r *AgentRepo) UpdateIP(id uint, ip string) error {
+	return r.db.Model(&models.Agent{}).Where("id = ?", id).
+		Update("last_ip", ip).Error
 }
 
 func (r *AgentRepo) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {
@@ -103,4 +134,12 @@ func (r *AgentRepo) CountByKind(kind models.AgentKind) (int64, error) {
 	var count int64
 	err := r.db.Model(&models.Agent{}).Where("kind = ?", kind).Count(&count).Error
 	return count, err
+}
+
+func (r *AgentRepo) NextNumber() (uint, error) {
+	var max struct {
+		Max uint
+	}
+	err := r.db.Model(&models.Agent{}).Select("COALESCE(MAX(number), 0) as max").Scan(&max).Error
+	return max.Max + 1, err
 }

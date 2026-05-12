@@ -31,7 +31,6 @@ interface Project {
   id: string;
   name: string;
   description: string;
-  bootstrapToken?: string;
 }
 
 const columns = [
@@ -67,7 +66,7 @@ export function ProjectDetailPage() {
     setError(null);
 
     Promise.all([
-      gql(`query project($id: ID!) { project(id: $id) { id name description bootstrapToken } }`, { id }),
+      gql(`query project($id: ID!) { project(id: $id) { id name description } }`, { id }),
       gql(
         `query issues($projectId: ID!) { issues(projectID: $projectId) { edges { id number title state priority } } }`,
         { projectId: id }
@@ -129,27 +128,20 @@ export function ProjectDetailPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">{project.name}</h1>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-semibold">{project.name}</h1>
           {project.description && (
             <p className="mt-1 text-sm text-muted-foreground">{project.description}</p>
           )}
-          {project.bootstrapToken && (
-            <div className="mt-2 flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">BootstrapToken:</span>
-              <code className="rounded bg-muted px-2 py-0.5 text-xs font-mono select-all">{project.bootstrapToken}</code>
-            </div>
-          )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <Link to={`/projects/${id}/settings`}>
-            <Button variant="outline" size="sm">设置</Button>
+            <Button variant="outline" size="sm" className="text-xs sm:text-sm">设置</Button>
           </Link>
           {agent && (
             <CreateIssueDialog
               projectId={id!}
-              creatorId={agent.agentId}
               onCreated={fetchData}
             />
           )}
@@ -162,7 +154,7 @@ export function ProjectDetailPage() {
           placeholder="搜索 Issue..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-9 w-60"
+          className="h-9 w-full sm:w-60"
         />
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
           <SelectTrigger className="h-9 w-32">

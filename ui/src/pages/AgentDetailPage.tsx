@@ -8,12 +8,17 @@ import { Bot } from "lucide-react";
 
 interface AgentDetail {
   id: string;
+  number: number;
   name: string;
   kind: string;
   status: string;
+  externalID: string;
   capabilities: string[];
   deviceInfo?: string;
   modelInfo?: string;
+  lastIP?: string;
+  lastSeenAt?: string;
+  createdAt: string;
 }
 
 const statusConfig: Record<string, { label: string; dot: string }> = {
@@ -48,7 +53,7 @@ export function AgentDetailPage() {
       headers,
       body: JSON.stringify({
         operationName: "agent",
-        query: `query agent($id: ID!) { agent(id: $id) { id name kind status capabilities deviceInfo modelInfo } }`,
+        query: `query agent($id: ID!) { agent(id: $id) { id number name kind status externalID capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
         variables: { id },
       }),
     })
@@ -82,7 +87,7 @@ export function AgentDetailPage() {
             </div>
             <div className="flex-1">
               <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-semibold">{agent.name}</h1>
+                <h1 className="text-2xl font-semibold">#{agent.number} {agent.name}</h1>
                 <div className={`h-3 w-3 rounded-full ${status.dot}`} />
               </div>
               <p className="text-sm text-muted-foreground mt-1">
@@ -94,9 +99,52 @@ export function AgentDetailPage() {
       </Card>
 
       <Card>
+        <CardContent className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">基本信息</h2>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground mb-0.5">编号</p>
+              <p className="font-mono">#{agent.number}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">ID</p>
+              <p className="font-mono">{agent.id}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">外部 ID</p>
+              <p className="font-mono">{agent.externalID}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">类型</p>
+              <p>{kindLabels[agent.kind] || agent.kind}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">状态</p>
+              <div className="flex items-center gap-1.5">
+                <div className={`h-2.5 w-2.5 rounded-full ${status.dot}`} />
+                <span>{status.label}</span>
+              </div>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">IP 地址</p>
+              <p className="font-mono">{agent.lastIP || "未知"}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">注册时间</p>
+              <p>{new Date(agent.createdAt).toLocaleString("zh-CN")}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground mb-0.5">最后活跃</p>
+              <p>{agent.lastSeenAt ? new Date(agent.lastSeenAt).toLocaleString("zh-CN") : "未知"}</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardContent className="p-6">
           <h2 className="text-lg font-semibold mb-3">能力</h2>
-          {agent.capabilities.length === 0 ? (
+          {!agent.capabilities || agent.capabilities.length === 0 ? (
             <p className="text-sm text-muted-foreground">暂无能力</p>
           ) : (
             <div className="flex flex-wrap gap-2">
@@ -108,25 +156,19 @@ export function AgentDetailPage() {
         </CardContent>
       </Card>
 
-      {(agent.deviceInfo || agent.modelInfo) && (
-        <Card>
-          <CardContent className="p-6 space-y-3">
-            <h2 className="text-lg font-semibold">设备与模型</h2>
-            {agent.modelInfo && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-0.5">AI 模型</p>
-                <p className="text-sm font-mono">{agent.modelInfo}</p>
-              </div>
-            )}
-            {agent.deviceInfo && (
-              <div>
-                <p className="text-sm text-muted-foreground mb-0.5">设备信息</p>
-                <p className="text-sm font-mono whitespace-pre-wrap">{agent.deviceInfo}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <Card>
+        <CardContent className="p-6 space-y-3">
+          <h2 className="text-lg font-semibold">设备与模型</h2>
+          <div>
+            <p className="text-sm text-muted-foreground mb-0.5">AI 模型</p>
+            <p className="text-sm font-mono">{agent.modelInfo || "未提供"}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-0.5">设备信息</p>
+            <p className="text-sm font-mono whitespace-pre-wrap">{agent.deviceInfo || "未提供"}</p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

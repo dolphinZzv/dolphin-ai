@@ -13,7 +13,6 @@ import (
 type ProjectRepository interface {
 	Create(project *models.Project) error
 	GetByID(id uint) (*models.Project, error)
-	FindByBootstrapToken(token string) (*models.Project, error)
 	Update(id uint, changes map[string]interface{}) error
 	Delete(id uint) error
 	List() ([]models.Project, error)
@@ -43,7 +42,10 @@ type AgentRepository interface {
 	FindTimedOut(cutoffTime time.Time) ([]models.Agent, error)
 	List(filter models.AgentFilter) ([]models.Agent, error)
 	CountByKind(kind models.AgentKind) (int64, error)
-}
+		NextNumber() (uint, error)
+		UpdateIP(id uint, ip string) error
+		FindByToken(token string) (*models.Agent, error)
+	}
 
 // ─── Issue ─────────────────────────────────────────────────
 
@@ -87,7 +89,7 @@ type CommentRepository interface {
 type LabelRepository interface {
 	Create(label *models.Label) error
 	GetByID(id uint) (*models.Label, error)
-	ListByProject(projectID uint) ([]models.Label, error)
+	ListByProject(projectID uint, group string) ([]models.Label, error)
 	Delete(id uint) error
 }
 
@@ -96,7 +98,7 @@ type LabelRepository interface {
 type MilestoneRepository interface {
 	Create(milestone *models.Milestone) error
 	GetByID(id uint) (*models.Milestone, error)
-	ListByProject(projectID uint) ([]models.Milestone, error)
+	ListByProject(projectID uint, state models.MilestoneState) ([]models.Milestone, error)
 	Update(id uint, changes map[string]interface{}) error
 	Delete(id uint) error
 }
@@ -106,15 +108,6 @@ type MilestoneRepository interface {
 type TimelineRepository interface {
 	Create(event *models.TimelineEvent) error
 	ListByIssue(issueID uint) ([]models.TimelineEvent, error)
-}
-
-// ─── Skill ─────────────────────────────────────────────────
-
-type SkillRepository interface {
-	Create(skill *models.Skill) error
-	GetByID(id uint) (*models.Skill, error)
-	ListByProject(projectID uint) ([]models.Skill, error)
-	Delete(id uint) error
 }
 
 // ─── Feedback ──────────────────────────────────────────────

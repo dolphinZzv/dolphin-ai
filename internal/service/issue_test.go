@@ -34,8 +34,8 @@ func setupIssueTest(t *testing.T) (*service.IssueService, *service.AgentService,
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil)
-	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
-	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
 	_ = commentSvc
@@ -152,8 +152,8 @@ func TestAddComment(t *testing.T) {
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil)
-	issueSvc := service.NewIssueService(issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
-	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
+	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
 
 	p, _ := projectSvc.Create("Test", "")
 	agent, _ := agentSvc.Register("user", models.AgentKindHuman, "user-1", "secret", nil, "", "")

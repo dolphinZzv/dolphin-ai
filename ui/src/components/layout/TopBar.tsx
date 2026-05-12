@@ -20,7 +20,7 @@ export function TopBar() {
 
   const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && searchValue.trim()) {
-      navigate(`/agents?search=${encodeURIComponent(searchValue.trim())}`);
+      navigate('/projects');;
       setSearchValue("");
     }
   };

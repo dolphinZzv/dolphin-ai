@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,7 +19,6 @@ import (
 	"chick/internal/config"
 	graphql "chick/internal/graphql"
 	"chick/internal/mcp"
-	"chick/internal/models"
 	"chick/internal/server"
 )
 
@@ -28,19 +28,9 @@ type mcpSession struct {
 }
 
 func main() {
-	stdioMode := flag.Bool("stdio", false, "Run MCP in STDIO mode")
 	flag.Parse()
 
 	cfg := config.Load()
-
-	// Generate bootstrap token if not set
-	if cfg.BootstrapToken == "" {
-		bytes := make([]byte, 16)
-		if _, err := rand.Read(bytes); err != nil {
-			log.Fatalf("generate bootstrap token: %v", err)
-		}
-		cfg.BootstrapToken = hex.EncodeToString(bytes)
-	}
 
 	srv, err := server.New(cfg)
 	if err != nil {
@@ -55,21 +45,9 @@ func main() {
 		srv.CommentService,
 		srv.WorkflowService,
 		srv.FeedbackService,
-		srv.SkillService,
 		srv.NotifService,
-		srv.Authenticator,
 	)
 	mcpServer := mcp.NewServer(mcpHandlers)
-
-	if *stdioMode {
-		// STDIO mode — suitable for Claude Code local integration
-		log.Println("[mcp] running in STDIO mode")
-		transport := mcp.NewSTDIOTransport()
-		transport.Run(mcpServer.HandleRequest)
-		return
-	}
-
-	// --- HTTP mode ---
 
 	// Start offline timeout watcher (每 60 秒检查一次，5 分钟超时)
 	go srv.MatchingEngine.WatchOfflineTimeout(60*time.Second, 5*time.Minute)
@@ -105,6 +83,12 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// MCP OAuth discovery — not supported, return empty so inspector falls back to Bearer Token
+	http.Handle("/.well-known/", corsMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte(`{"error":"oauth not supported"}`))
+	})))
+
 	// SPA fallback (no auth — login page needs to load)
 	http.Handle("/", corsMW(server.SPAHandler()))
 
@@ -116,7 +100,6 @@ func main() {
 	if len(cfg.AllowedOrigins) > 0 {
 		log.Printf("│  CORS: %-30s │", cfg.AllowedOrigins[0])
 	}
-	log.Printf("│  BOOTSTRAP_TOKEN=%s     │", cfg.BootstrapToken)
 	if cfg.DevMode {
 		log.Printf("│  MODE: DEV                                            │")
 	}
@@ -147,25 +130,29 @@ func main() {
 
 func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		// Authenticate via Bearer Token
+		auth := r.Header.Get("Authorization")
+		if auth == "" || !strings.HasPrefix(auth, "Bearer ") {
+			http.Error(w, "Missing or invalid Authorization header", http.StatusUnauthorized)
+			return
+		}
+		token := strings.TrimPrefix(auth, "Bearer ")
+		agent, err := srv.AgentService.Authenticate(token)
+		if err != nil {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-
-		// Direct POST to /mcp (backward compat, no session)
+		// Direct POST to /mcp (Streamable HTTP)
 		if r.Method == http.MethodPost {
+			ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 			var req mcp.Request
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				resp := mcp.NewParseError(nil)
 				json.NewEncoder(w).Encode(resp)
 				return
 			}
-			resp := mcpServer.HandleRequest(&req)
+			resp := mcpServer.HandleRequest(&req, agent.ID, ip)
 			data, _ := json.Marshal(resp)
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(data)
@@ -173,33 +160,25 @@ func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) ht
 		}
 
 		// GET /mcp — create SSE session
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		// Update IP on SSE connect
+		if ip := r.RemoteAddr; ip != "" {
+			host, _, _ := net.SplitHostPort(ip)
+			srv.AgentService.UpdateIP(agent.ID, host)
+		}
+
 		sessionID := randomID()
-		bootstrapToken := r.URL.Query().Get("bootstrapToken")
+		sessions.Store(sessionID, &mcpSession{agentID: agent.ID})
 
-		// Auto-register agent if bootstrap token provided
-		var registeredProjectID uint
-		if bootstrapToken != "" {
-			projectID, ok := srv.ProjectService.ValidateBootstrapToken(bootstrapToken)
-			if ok {
-				registeredProjectID = projectID
-				extID := "mcp-bootstrap-" + bootstrapToken[:8]
-				agent, err := srv.AgentService.GetByExternalID(extID)
-				if err != nil {
-					agent, err = srv.AgentService.Register("mcp-"+fmt.Sprint(projectID), models.AgentKindAI, extID, randomID(), nil, "", "")
-					if err == nil {
-						srv.ProjectService.AddMember(projectID, agent.ID, models.ProjectRoleMember)
-					}
-				}
-				if agent != nil {
-					sessions.Store(sessionID, &mcpSession{agentID: agent.ID})
-				}
-			}
-		}
-
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
 		w.WriteHeader(http.StatusOK)
-		if registeredProjectID > 0 {
-			fmt.Fprintf(w, "event: project\ndata: {\"projectId\":%d}\n\n", registeredProjectID)
-		}
 		fmt.Fprintf(w, "event: endpoint\ndata: /mcp/session/%s\n\n", sessionID)
 		flusher.Flush()
 
@@ -216,8 +195,14 @@ func handleMCPSessionPost(w http.ResponseWriter, r *http.Request, mcpServer *mcp
 		json.NewEncoder(w).Encode(resp)
 		return
 	}
-
-	resp := mcpServer.HandleRequest(&req)
+	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+	var agentID uint
+	if s, ok := sessions.Load(sessionID); ok {
+		if session, ok := s.(*mcpSession); ok {
+			agentID = session.agentID
+		}
+	}
+	resp := mcpServer.HandleRequest(&req, agentID, ip)
 	data, _ := json.Marshal(resp)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(data)

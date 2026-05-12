@@ -4,7 +4,6 @@ import (
 	"testing"
 
 	"chick/internal/models"
-
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -17,7 +16,7 @@ func db(t *testing.T) *gorm.DB {
 	}
 	d.AutoMigrate(&models.Project{}, &models.ProjectMember{}, &models.Agent{}, &models.Issue{},
 		&models.IssueAssignee{}, &models.Comment{}, &models.Label{}, &models.Milestone{},
-		&models.Skill{}, &models.TimelineEvent{}, &models.Feedback{})
+		&models.TimelineEvent{}, &models.Feedback{})
 	return d
 }
 

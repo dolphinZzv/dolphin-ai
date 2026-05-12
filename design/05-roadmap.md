@@ -6,7 +6,7 @@
 
 已交付：
 - Go 项目骨架、GORM Models、配置管理
-- MCP Server (SSE/STDIO) + 14 个 Tool
+- MCP Server (SSE) + 12 个 Tool
 - GraphQL API (13 Query + 26 Mutation + 3 Subscription)
 - Project CRUD + 成员管理
 - Agent 注册/状态/能力声明
@@ -42,7 +42,7 @@
 6. Project Detail (IssueBoard + dnd-kit)
 7. Issue Detail (Comments + Timeline + Transitions)
 8. Agent Management (List + filters)
-9. Project Settings (Labels + Milestones + Skills + Members)
+9. Project Settings (Labels + Milestones + Members)
 10. Dark Mode
 
 ## Phase 1.2 — 自动化测试
@@ -59,7 +59,7 @@ GraphQL Subscription 实时推送、审批流、结构化评论、子任务、Ag
 
 ## Phase 3 — 智能编排
 
-Skill YAML 定义 + 执行引擎、MCP Resources、Prompts、匹配增强。
+MCP Resources、Prompts、匹配增强。
 
 ## Phase 4 — 生态集成
 

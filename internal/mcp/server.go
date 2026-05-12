@@ -24,8 +24,9 @@ func NewServer(handlers *Handlers) *Server {
 	return s
 }
 
-// HandleRequest routes a JSON-RPC request to the appropriate handler
-func (s *Server) HandleRequest(req *Request) Response {
+// HandleRequest routes a JSON-RPC request to the appropriate handler.
+// agentID and remoteAddr are per-request authentication context (not global state).
+func (s *Server) HandleRequest(req *Request, agentID uint, remoteAddr string) Response {
 	if req.ID == nil {
 		// Notification — no response expected
 		return Response{JSONRPC: "2.0"}
@@ -39,7 +40,7 @@ func (s *Server) HandleRequest(req *Request) Response {
 	case MethodToolsList:
 		return s.handleToolsList(req.ID)
 	case MethodToolsCall:
-		return s.handleToolsCall(req.ID, req.Params)
+		return s.handleToolsCall(req.ID, req.Params, agentID, remoteAddr)
 	case MethodResourcesList:
 		return s.handleResourcesList(req.ID)
 	case MethodResourcesRead:
@@ -74,7 +75,7 @@ func (s *Server) handleToolsList(id json.RawMessage) Response {
 	})
 }
 
-func (s *Server) handleToolsCall(id json.RawMessage, params json.RawMessage) Response {
+func (s *Server) handleToolsCall(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var call struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -89,7 +90,23 @@ func (s *Server) handleToolsCall(id json.RawMessage, params json.RawMessage) Res
 	}
 
 	log.Printf("[mcp] tool call: %s", call.Name)
-	return tool.Handler(id, call.Arguments)
+	resp := tool.Handler(id, call.Arguments, agentID, remoteAddr)
+
+	// Wrap result in standard MCP content blocks (spec 2024-11-05)
+	if resp.Error == nil && resp.Result != nil {
+		data, _ := json.Marshal(resp.Result)
+		resp.Result = map[string]interface{}{
+			"content": []interface{}{
+				map[string]interface{}{
+					"type": "text",
+					"text": string(data),
+				},
+			},
+			"isError": false,
+		}
+	}
+
+	return resp
 }
 
 func (s *Server) handleResourcesList(id json.RawMessage) Response {

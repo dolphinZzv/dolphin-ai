@@ -19,13 +19,11 @@ func TestLoadFromEnv(t *testing.T) {
 	os.Setenv("CHICK_DB_DRIVER", "postgres")
 	os.Setenv("CHICK_DB_DSN", "host=localhost dbname=test")
 	os.Setenv("CHICK_PORT", "9090")
-	os.Setenv("CHICK_BOOTSTRAP_TOKEN", "my-token")
 	os.Setenv("CHICK_JWT_SECRET", "jwt-secret")
 	defer func() {
 		os.Unsetenv("CHICK_DB_DRIVER")
 		os.Unsetenv("CHICK_DB_DSN")
 		os.Unsetenv("CHICK_PORT")
-		os.Unsetenv("CHICK_BOOTSTRAP_TOKEN")
 		os.Unsetenv("CHICK_JWT_SECRET")
 	}()
 
@@ -38,9 +36,6 @@ func TestLoadFromEnv(t *testing.T) {
 	}
 	if cfg.Port != "9090" {
 		t.Errorf("expected 9090, got %s", cfg.Port)
-	}
-	if cfg.BootstrapToken != "my-token" {
-		t.Errorf("expected my-token, got %s", cfg.BootstrapToken)
 	}
 	if cfg.JWTSecret != "jwt-secret" {
 		t.Errorf("expected jwt-secret, got %s", cfg.JWTSecret)

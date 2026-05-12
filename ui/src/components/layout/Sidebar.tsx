@@ -1,11 +1,9 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Bot, FolderKanban } from "lucide-react";
+import { FolderKanban } from "lucide-react";
 
 const navItems = [
-  { to: "/", icon: LayoutDashboard, label: "首页" },
   { to: "/projects", icon: FolderKanban, label: "项目" },
-  { to: "/agents", icon: Bot, label: "Agent" },
 ];
 
 export function Sidebar() {

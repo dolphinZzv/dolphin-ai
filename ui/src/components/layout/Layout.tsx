@@ -21,7 +21,7 @@ export function Layout() {
         <TopBar />
 
         {/* Page content */}
-        <main className="flex-1 p-3 lg:p-6">
+        <main className="flex-1 p-3 lg:p-6 pb-16 lg:pb-6">
           <Outlet />
         </main>
       </div>

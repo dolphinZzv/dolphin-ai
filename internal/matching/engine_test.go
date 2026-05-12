@@ -80,11 +80,11 @@ func TestMatchByCapability(t *testing.T) {
 	// Publish event matching what IssueService.Create would publish
 	bus.PublishSync(events.Event{
 		Type: events.EventIssueCreated,
-		Payload: map[string]interface{}{
-			"issueID":   uint(1),
-			"projectID": project.ID,
-			"creatorID": uint(1),
-			"labelIDs":  []uint{label.ID},
+		Payload: events.IssueCreatedPayload{
+			IssueID:   1,
+			ProjectID: project.ID,
+			CreatorID: 1,
+			LabelIDs:  []uint{label.ID},
 		},
 	})
 

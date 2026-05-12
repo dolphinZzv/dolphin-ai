@@ -1,6 +1,8 @@
 package graph
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"strconv"
 
 	"chick/internal/models"
@@ -21,6 +23,7 @@ func agentFromModel(a *models.Agent) *Agent {
 	}
 	agent := &Agent{
 		ID:           formatID(a.ID),
+		Number:       int32(a.Number),
 		Name:         a.Name,
 		Kind:         AgentKind(a.Kind),
 		Status:       AgentStatus(a.Status),
@@ -42,6 +45,9 @@ func agentFromModel(a *models.Agent) *Agent {
 	if a.ModelInfo != "" {
 		agent.ModelInfo = &a.ModelInfo
 	}
+	if a.LastIP != "" {
+		agent.LastIP = &a.LastIP
+	}
 	return agent
 }
 
@@ -53,7 +59,6 @@ func projectFromModel(p *models.Project) *Project {
 		ID:             formatID(p.ID),
 		Name:           p.Name,
 		Description:    strPtr(p.Description),
-		BootstrapToken: strPtr(p.BootstrapToken),
 		CreatedAt:      p.CreatedAt,
 		UpdatedAt:      p.UpdatedAt,
 	}
@@ -183,20 +188,6 @@ func milestoneFromModel(m *models.Milestone) *Milestone {
 	}
 }
 
-func skillFromModel(s *models.Skill) *Skill {
-	if s == nil {
-		return nil
-	}
-	return &Skill{
-		ID:          formatID(s.ID),
-		ProjectID:   formatID(s.ProjectID),
-		Name:        s.Name,
-		Description: strPtr(s.Description),
-		Definition:  s.Definition,
-		CreatedAt:   s.CreatedAt,
-		UpdatedAt:   s.UpdatedAt,
-	}
-}
 
 func commentFromModel(c *models.Comment) *Comment {
 	if c == nil {
@@ -290,4 +281,12 @@ func strPtr(s string) *string {
 
 func uintPtr(v uint) *uint {
 	return &v
+}
+
+func randomHex(n int) string {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		panic("failed to generate random bytes: " + err.Error())
+	}
+	return hex.EncodeToString(b)
 }

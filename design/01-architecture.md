@@ -30,7 +30,7 @@
 
 **人与 AI 统一模型：** 人和 AI Agent 在系统中统一为 Agent 类型，只是 `kind` 不同。
 
-**Project = 协作边界：** 所有 Issue、Label、Milestone、Skill 都属于一个 Project。Agent 通过 Project Membership 获得权限。
+**Project = 协作边界：** 所有 Issue、Label、Milestone 都属于一个 Project。Agent 通过 Project Membership 获得权限。
 
 ## 2. 系统架构图
 
@@ -50,7 +50,7 @@
           │      Entry Points (peer, not chain)
           │  +--------------------------+  +--------------------------+
           │  |     GraphQL API          |  |     MCP Server           |
-          │  |  (gqlgen + WS)           |  |  (SSE / STDIO)           |
+          │  |  (gqlgen + WS)           |  |  (SSE)           |
           │  |  [Human UI / SDK入口]     |  |  [AI Assistant 入口]     |
           │  +------------+-------------+  +------------+-------------+
           │               |                             |
@@ -61,7 +61,7 @@
           │               |              |              |
           │  +------------+--------------+--------------+-------------+
           │  |                 Service Layer (共享)                  |
-          │  |  Project / Issue / Agent / Skill / Workflow          |
+          │  |  Project / Issue / Agent / Workflow                  |
           │  |  Matching Engine / Event Bus / Notification           |
           │  +---------------------------+-------------------------+
           │                              |
@@ -100,7 +100,7 @@
                     Service Layer
   ┌──────────────────────────────────────────────────────┐
   │  Project / Issue / Agent / Workflow / Matching      │
-  │  EventBus / Notification / Skill                    │
+  │  EventBus / Notification                            │
   │  职责: 业务编排、状态机、匹配算法                      │
   │  依赖: Repository 接口（不是具体实现）                  │
   └──────────────────────────────────────────────────────┘

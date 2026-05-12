@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 
+	"strings"
+
 	"chick/internal/config"
 	"chick/internal/models"
 
@@ -33,7 +35,11 @@ func NewDB(cfg *config.Config) (*gorm.DB, error) {
 
 func AutoMigrate(db *gorm.DB) error {
 	// Drop old single-column unique index on issues.number (rename to composite)
-	db.Exec("DROP INDEX IF EXISTS idx_project_number")
+	if strings.HasPrefix(db.Dialector.Name(), "sqlite") {
+		db.Exec("DROP INDEX IF EXISTS idx_project_number")
+	} else {
+		db.Exec("DROP INDEX IF EXISTS idx_issues_project_number")
+	}
 
 	err := db.AutoMigrate(
 		&models.Project{},
@@ -44,7 +50,6 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Comment{},
 		&models.Label{},
 		&models.Milestone{},
-		&models.Skill{},
 		&models.TimelineEvent{},
 		&models.Feedback{},
 	)

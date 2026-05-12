@@ -25,12 +25,6 @@ func (r *ProjectRepo) GetByID(id uint) (*models.Project, error) {
 	return &p, err
 }
 
-func (r *ProjectRepo) FindByBootstrapToken(token string) (*models.Project, error) {
-	var p models.Project
-	err := r.db.Where("bootstrap_token = ?", token).First(&p).Error
-	return &p, err
-}
-
 func (r *ProjectRepo) Update(id uint, changes map[string]interface{}) error {
 	return r.db.Model(&models.Project{}).Where("id = ?", id).Updates(changes).Error
 }
@@ -44,9 +38,6 @@ func (r *ProjectRepo) Delete(id uint) error {
 			return err
 		}
 		if err := tx.Where("project_id = ?", id).Delete(&models.Milestone{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("project_id = ?", id).Delete(&models.Skill{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("project_id = ?", id).Delete(&models.ProjectMember{}).Error; err != nil {

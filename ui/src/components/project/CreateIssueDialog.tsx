@@ -34,13 +34,11 @@ type CreateIssueForm = z.infer<typeof createIssueSchema>;
 
 interface CreateIssueDialogProps {
   projectId: string;
-  creatorId: string;
   onCreated: () => void;
 }
 
 export function CreateIssueDialog({
   projectId,
-  creatorId,
   onCreated,
 }: CreateIssueDialogProps) {
   const [open, setOpen] = useState(false);
@@ -72,12 +70,11 @@ export function CreateIssueDialog({
         headers,
         body: JSON.stringify({
           operationName: "createIssue",
-          query: `mutation createIssue($pid: ID!, $cid: ID!, $title: String!, $description: String, $priority: Priority!) {
-            createIssue(projectID: $pid, creatorID: $cid, title: $title, description: $description, priority: $priority) { id number title }
+          query: `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!) {
+            createIssue(projectID: $pid, title: $title, description: $description, priority: $priority) { id number title }
           }`,
           variables: {
             pid: projectId,
-            cid: creatorId,
             title: data.title,
             description: data.description || null,
             priority: data.priority,

@@ -25,9 +25,13 @@ func (r *LabelRepo) GetByID(id uint) (*models.Label, error) {
 	return &l, err
 }
 
-func (r *LabelRepo) ListByProject(projectID uint) ([]models.Label, error) {
+func (r *LabelRepo) ListByProject(projectID uint, group string) ([]models.Label, error) {
 	var list []models.Label
-	err := r.db.Where("project_id = ?", projectID).Find(&list).Error
+	q := r.db.Where("project_id = ?", projectID)
+	if group != "" {
+		q = q.Where("group = ?", group)
+	}
+	err := q.Find(&list).Error
 	return list, err
 }
 
@@ -53,9 +57,13 @@ func (r *MilestoneRepo) GetByID(id uint) (*models.Milestone, error) {
 	return &m, err
 }
 
-func (r *MilestoneRepo) ListByProject(projectID uint) ([]models.Milestone, error) {
+func (r *MilestoneRepo) ListByProject(projectID uint, state models.MilestoneState) ([]models.Milestone, error) {
 	var list []models.Milestone
-	err := r.db.Where("project_id = ?", projectID).Find(&list).Error
+	q := r.db.Where("project_id = ?", projectID)
+	if state != "" {
+		q = q.Where("state = ?", state)
+	}
+	err := q.Find(&list).Error
 	return list, err
 }
 
@@ -105,32 +113,4 @@ func (r *FeedbackRepo) ListByTarget(targetType models.FeedbackTargetType, target
 	err := r.db.Where("target_type = ? AND target_id = ?", targetType, targetID).
 		Preload("Author").Find(&list).Error
 	return list, err
-}
-
-type SkillRepo struct {
-	db *gorm.DB
-}
-
-func NewSkillRepo(db *gorm.DB) repository.SkillRepository {
-	return &SkillRepo{db: db}
-}
-
-func (r *SkillRepo) Create(skill *models.Skill) error {
-	return r.db.Create(skill).Error
-}
-
-func (r *SkillRepo) GetByID(id uint) (*models.Skill, error) {
-	var s models.Skill
-	err := r.db.First(&s, id).Error
-	return &s, err
-}
-
-func (r *SkillRepo) ListByProject(projectID uint) ([]models.Skill, error) {
-	var list []models.Skill
-	err := r.db.Where("project_id = ?", projectID).Find(&list).Error
-	return list, err
-}
-
-func (r *SkillRepo) Delete(id uint) error {
-	return r.db.Delete(&models.Skill{}, id).Error
 }

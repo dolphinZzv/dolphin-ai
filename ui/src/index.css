@@ -117,3 +117,10 @@ body {
   color: hsl(var(--foreground));
   font-family: var(--font-sans);
 }
+
+*,
+::before,
+::after,
+::backdrop {
+  border-color: hsl(var(--border));
+}

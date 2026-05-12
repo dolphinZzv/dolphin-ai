@@ -5,46 +5,45 @@ import (
 	"testing"
 
 	"chick/internal/mcp"
+	"chick/internal/models"
 )
 
 func TestAgentHeartbeat(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
-	_, err := agentSvc.Register("hb-agent", "ai", "hb-001", "pass", []string{"CODING"}, "", "")
+	agent, err := agentSvc.Register("hb-agent", "ai", "hb-001", "pass", []string{"CODING"}, "", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "agent_heartbeat",
-		"arguments": map[string]interface{}{
-			"agentId": "1",
-		},
-	})
+		"arguments": map[string]interface{}{},
+	}, agent.ID)
 	if result["success"] != true {
 		t.Error("expected heartbeat to succeed")
 	}
 }
 
 func TestAssignIssue(t *testing.T) {
-	srv, _, agentSvc, _ := setupTest(t)
+	srv, projectSvc, agentSvc, _ := setupTest(t)
 
-	agentSvc.Register("assign-agent", "ai", "assign-001", "pass", nil, "", "")
+	agent, err := agentSvc.Register("assign-agent", "ai", "assign-001", "pass", nil, "", "")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+
+	proj, _ := projectSvc.Create("AssignTest", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	agentSvc.Register("target-agent", "ai", "assign-002", "pass", nil, "", "")
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
-		"name": "create_project",
-		"arguments": map[string]interface{}{"name": "AssignTest"},
-	})
-	projectID := result["id"].(string)
-
-	result = call(t, srv, "tools/call", map[string]interface{}{
 		"name": "create_issue",
 		"arguments": map[string]interface{}{
-			"projectId": projectID,
-			"title":     "Assignable",
-			"creatorId": "1",
+			"title": "Assignable",
 		},
-	})
+	}, agent.ID)
 	issueID := result["id"].(string)
 
 	result = call(t, srv, "tools/call", map[string]interface{}{
@@ -53,7 +52,7 @@ func TestAssignIssue(t *testing.T) {
 			"issueId": issueID,
 			"agentId": "1",
 		},
-	})
+	}, agent.ID)
 	if result["success"] != true {
 		t.Errorf("expected assign to succeed, got %v", result)
 	}
@@ -70,7 +69,7 @@ func TestListAgents(t *testing.T) {
 		"arguments": map[string]interface{}{
 			"kind": "ai",
 		},
-	})
+	}, 0)
 	items, ok := result["items"].([]interface{})
 	if !ok {
 		data, _ := json.Marshal(result["items"])
@@ -90,7 +89,7 @@ func TestListAgentsAll(t *testing.T) {
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "list_agents",
 		"arguments": map[string]interface{}{},
-	})
+	}, 0)
 	data, _ := json.Marshal(result["items"])
 	var items []interface{}
 	json.Unmarshal(data, &items)
@@ -107,7 +106,7 @@ func TestJSONRPCBasic(t *testing.T) {
 		ID:      json.RawMessage(`1`),
 		Method:  "ping",
 	}
-	resp := srv.HandleRequest(req)
+	resp := srv.HandleRequest(req, 0, "")
 	if resp.Error != nil {
 		t.Fatalf("unexpected ping error: %s", resp.Error.Message)
 	}
@@ -117,7 +116,7 @@ func TestJSONRPCBasic(t *testing.T) {
 		ID:      json.RawMessage(`2`),
 		Method:  "invalid_method",
 	}
-	resp2 := srv.HandleRequest(req2)
+	resp2 := srv.HandleRequest(req2, 0, "")
 	if resp2.Error == nil {
 		t.Fatal("expected error for invalid method")
 	}

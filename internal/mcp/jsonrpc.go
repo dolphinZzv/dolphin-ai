@@ -69,7 +69,7 @@ type ToolDefinition struct {
 	Handler     ToolHandler `json:"-"`
 }
 
-type ToolHandler func(id json.RawMessage, params json.RawMessage) Response
+type ToolHandler func(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response
 
 // Resource definition
 type ResourceDefinition struct {

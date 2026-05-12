@@ -67,16 +67,19 @@ func (m *JSONMap) Scan(value interface{}) error {
 
 type Agent struct {
 	ID           uint         `gorm:"primaryKey;autoIncrement"`
+	Number       uint         `gorm:"not null;default:0"`
 	Name         string       `gorm:"type:varchar(255);not null"`
 	Kind         AgentKind    `gorm:"type:varchar(20);not null"`
 	Status       AgentStatus  `gorm:"type:varchar(20);not null;default:online"`
 	ExternalID   string       `gorm:"type:varchar(255);uniqueIndex"`
 	SecretHash   string       `gorm:"type:varchar(255);not null"`
+	Token        string       `gorm:"type:varchar(255);uniqueIndex"`
 	SystemPrompt string       `gorm:"type:text"`
 	Capabilities StringSlice  `gorm:"type:jsonb;serializer:json"`
 	Metadata     JSONMap      `gorm:"type:jsonb;serializer:json"`
 	DeviceInfo   string       `gorm:"type:text"`
 	ModelInfo    string       `gorm:"type:varchar(255)"`
+		LastIP       string       `gorm:"type:varchar(45)"`
 	LastSeenAt   *time.Time   `gorm:"index"`
 	CreatedAt    time.Time    `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time    `gorm:"autoUpdateTime"`

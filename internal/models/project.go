@@ -6,7 +6,6 @@ type Project struct {
 	ID             uint      `gorm:"primaryKey;autoIncrement"`
 	Name           string    `gorm:"type:varchar(255);not null"`
 	Description    string    `gorm:"type:text"`
-	BootstrapToken string    `gorm:"type:varchar(64);not null;default:''"`
 	CreatedAt      time.Time `gorm:"autoCreateTime"`
 	UpdatedAt      time.Time `gorm:"autoUpdateTime"`
 
@@ -14,5 +13,4 @@ type Project struct {
 	Issues   []Issue         `gorm:"foreignKey:ProjectID"`
 	Labels   []Label         `gorm:"foreignKey:ProjectID"`
 	Milestones []Milestone   `gorm:"foreignKey:ProjectID"`
-	Skills   []Skill         `gorm:"foreignKey:ProjectID"`
 }
