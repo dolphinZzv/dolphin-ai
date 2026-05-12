@@ -166,6 +166,105 @@ flowchart LR
     A -->|SSE Bootstrap| B
 ```
 
+## 7. create_issue 完整交互
+
+### MCP 调用链
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI / Human Agent
+    participant MCP as MCP Handler
+    participant Svc as IssueService
+    participant DB as Database
+    participant Bus as Event Bus
+
+    Agent->>MCP: create_issue(title, creatorId, ...)
+    MCP->>MCP: projectId 自动推导
+    alt 传了 projectId
+        MCP->>MCP: 直接用
+    else 没传 projectId
+        MCP->>MCP: 查询 agent 项目成员关系
+        alt 唯一项目
+            MCP->>MCP: 自动填入
+        else 无项目
+            MCP-->>Agent: 报错 "provide projectId"
+        else 多项目
+            MCP-->>Agent: 报错 "projectId explicitly"
+        end
+    end
+    MCP->>Svc: IssueService.Create(projectId, title, ...)
+    Svc->>DB: INSERT INTO issues (state=open)
+    Svc->>DB: INSERT timeline_event (type=issue_created)
+    Svc->>Bus: Publish(EventIssueCreated)
+    Bus-->>Bus: 触发 Capability Matcher
+    Bus-->>Bus: 通知项目成员
+    Bus-->>Bus: GraphQL Subscription 推送 UI
+    Svc-->>MCP: return issue
+    MCP-->>Agent: { id, number, title, state }
+```
+
+### 后端处理流程
+
+```mermaid
+flowchart TB
+    subgraph Agent 输入
+        I1[title: 必填]
+        I2[creatorId: 必填]
+        I3[projectId: 可选<br>不传则自动推导]
+        I4[description: 可选]
+        I5[priority: 可选<br>默认 medium]
+        I6[assigneeIds: 可选]
+    end
+
+    subgraph 服务端处理
+        P1[参数解析 & 校验]
+        P2[自动编号 number<br>项目内递增]
+        P3[设置默认值<br>state=open<br>priority=medium]
+        P4[写入数据库]
+        P5[处理指派]
+        P6[写入时间线]
+        P7[发布事件]
+    end
+
+    subgraph 事件消费
+        E1[Capability Matcher<br>匹配有能力的 Agent]
+        E2[Notification Service<br>通知项目成员]
+        E3[GraphQL Subscription<br>实时推送 UI]
+    end
+
+    I1 --> P1
+    I2 --> P1
+    I3 --> P1
+    I4 --> P1
+    I5 --> P1
+    I6 --> P1
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7
+    P7 --> E1
+    P7 --> E2
+    P7 --> E3
+```
+
+### 返回数据结构
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `id` | string | Issue 全局 ID |
+| `number` | int | 项目内编号（自动递增） |
+| `title` | string | Issue 标题 |
+| `state` | string | 初始为 `open` |
+
+### 调用示例
+
+**带 projectId：**
+```
+create_issue(projectId="1", title="实现登录功能", creatorId="2", priority="high")
+```
+
+**不带 projectId（agent 只属于一个项目时自动推导）：**
+```
+create_issue(title="实现登录功能", creatorId="2", priority="high")
+```
+
 ---
 
 > 说明：所有图表使用 Mermaid 语法，在支持 Mermaid 渲染的 Markdown 查看器中可正常显示。
