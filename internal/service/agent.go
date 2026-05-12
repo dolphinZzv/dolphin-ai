@@ -19,16 +19,20 @@ type TokenGenerator interface {
 }
 
 type AgentService struct {
-	agentRepo repository.AgentRepository
-	eventBus  *events.Bus
-	tokenGen  TokenGenerator
+	agentRepo              repository.AgentRepository
+	eventBus               *events.Bus
+	tokenGen               TokenGenerator
+	allowHumanRegistration bool
 }
 
-func NewAgentService(agentRepo repository.AgentRepository, eventBus *events.Bus, tokenGen TokenGenerator) *AgentService {
-	return &AgentService{agentRepo: agentRepo, eventBus: eventBus, tokenGen: tokenGen}
+func NewAgentService(agentRepo repository.AgentRepository, eventBus *events.Bus, tokenGen TokenGenerator, allowHumanRegistration bool) *AgentService {
+	return &AgentService{agentRepo: agentRepo, eventBus: eventBus, tokenGen: tokenGen, allowHumanRegistration: allowHumanRegistration}
 }
 
 func (s *AgentService) Register(name string, kind models.AgentKind, externalID, secret string, capabilities []string, deviceInfo, modelInfo string) (*models.Agent, error) {
+	if kind == models.AgentKindHuman && !s.allowHumanRegistration {
+		return nil, fmt.Errorf("human registration is disabled by the server administrator")
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash secret: %w", err)

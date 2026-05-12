@@ -6,12 +6,13 @@ import (
 )
 
 type Config struct {
-	DBDriver       string
-	DBDSN          string
-	Port           string
-	JWTSecret      string
-	AllowedOrigins []string
-	DevMode        bool
+	DBDriver                string
+	DBDSN                   string
+	Port                    string
+	JWTSecret               string
+	AllowedOrigins          []string
+	DevMode                 bool
+	AllowHumanRegistration  bool
 }
 
 func Load() *Config {
@@ -23,6 +24,7 @@ func Load() *Config {
 		JWTSecret:      getEnv("CHICK_JWT_SECRET", ""),
 		AllowedOrigins: splitOrigins(origins),
 		DevMode:        getEnv("CHICK_DEV_MODE", "") == "true",
+		AllowHumanRegistration: getEnv("CHICK_ALLOW_HUMAN_REGISTRATION", "false") == "true",
 	}
 }
 

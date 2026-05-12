@@ -40,7 +40,7 @@ func setupTestResolver(t *testing.T) *Resolver {
 	feedbackRepo := gormrepo.NewFeedbackRepo(db)
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus, nil)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)

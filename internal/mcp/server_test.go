@@ -50,7 +50,7 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus, nil)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)

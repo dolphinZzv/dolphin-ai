@@ -33,7 +33,7 @@ func setupIssueTest(t *testing.T) (*service.IssueService, *service.AgentService,
 	bus := events.NewBus()
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus, nil)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
@@ -151,7 +151,7 @@ func TestAddComment(t *testing.T) {
 	bus := events.NewBus()
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus, nil)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
 
@@ -217,7 +217,7 @@ func TestAgentRegisterAndLogin(t *testing.T) {
 	server.AutoMigrate(db)
 	agentRepo := gormrepo.NewAgentRepo(db)
 	bus := events.NewBus()
-	agentSvc := service.NewAgentService(agentRepo, bus, nil)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 
 	_, err := agentSvc.Register("bot", models.AgentKindAI, "bot-1", "mypass", []string{"CODING"}, "", "")
 	if err != nil {
@@ -245,7 +245,7 @@ func TestHeartbeat(t *testing.T) {
 	server.AutoMigrate(db)
 	agentRepo := gormrepo.NewAgentRepo(db)
 	bus := events.NewBus()
-	agentSvc := service.NewAgentService(agentRepo, bus, nil)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 
 	agent, _ := agentSvc.Register("bot", models.AgentKindAI, "bot-hb", "pass", nil, "", "")
 	if agent.LastSeenAt != nil {

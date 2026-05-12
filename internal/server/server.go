@@ -67,7 +67,7 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
-	agentSvc := service.NewAgentService(agentRepo, bus, authn)
+	agentSvc := service.NewAgentService(agentRepo, bus, authn, cfg.AllowHumanRegistration)
 	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
