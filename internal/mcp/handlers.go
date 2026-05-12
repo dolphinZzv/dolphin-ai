@@ -212,6 +212,18 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		}, []string{"skillId"}),
 		Handler: h.handleRunSkill,
 	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "create_skill",
+		Description: "Create a new skill definition for a project",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"projectId":   StringRequiredParam("Project ID"),
+			"name":        StringRequiredParam("Skill name"),
+			"description": StringRequiredParam("Skill description"),
+			"definition":  StringRequiredParam("Skill YAML definition"),
+		}, []string{"projectId", "name", "description", "definition"}),
+		Handler: h.handleCreateSkill,
+	})
 }
 
 // ─── Handler Implementations ───────────────────────────────
@@ -242,6 +254,8 @@ func (h *Handlers) handleRegisterAgent(id json.RawMessage, params json.RawMessag
 		Secret         string   `json:"secret"`
 		Capabilities   []string `json:"capabilities"`
 		BootstrapToken string   `json:"bootstrapToken"`
+		DeviceInfo     string   `json:"deviceInfo"`
+		ModelInfo      string   `json:"modelInfo"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
@@ -265,7 +279,7 @@ func (h *Handlers) handleRegisterAgent(id json.RawMessage, params json.RawMessag
 		}
 	}
 
-	agent, err := h.agentSvc.Register(p.Name, kind, p.ExternalID, p.Secret, p.Capabilities)
+	agent, err := h.agentSvc.Register(p.Name, kind, p.ExternalID, p.Secret, p.Capabilities, p.DeviceInfo, p.ModelInfo)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -309,6 +323,10 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage)
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+
+	if p.Title == "" || p.ProjectID == "" || p.CreatorID == "" {
+		return NewError(id, -32602, "Missing required params: projectId, title, creatorId")
 	}
 
 	projectID, _ := strconv.ParseUint(p.ProjectID, 10, 64)
@@ -592,6 +610,34 @@ func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage
 		}
 	}
 	return NewResponse(id, map[string]interface{}{"items": result})
+}
+
+func (h *Handlers) handleCreateSkill(id json.RawMessage, params json.RawMessage) Response {
+	var p struct {
+		ProjectID   string `json:"projectId"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Definition  string `json:"definition"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	projectID, err := strconv.ParseUint(p.ProjectID, 10, 64)
+	if err != nil || projectID == 0 {
+		return NewError(id, -32602, "Invalid projectId")
+	}
+	if p.Name == "" || p.Definition == "" {
+		return NewError(id, -32602, "Missing required params: name, definition")
+	}
+	skill, err := h.skillSvc.Create(uint(projectID), p.Name, p.Description, p.Definition)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":          fmt.Sprintf("%d", skill.ID),
+		"name":        skill.Name,
+		"description": skill.Description,
+	})
 }
 
 func (h *Handlers) handleListSkills(id json.RawMessage, params json.RawMessage) Response {

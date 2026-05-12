@@ -29,28 +29,80 @@ check_notifications               subscription agentNotifications
 
 ```
 方式 A：人类注册（永远可用）
-  signUpHuman(email, name, password)
-  → 创建 Agent(kind=HUMAN) + 自动创建 Personal Project
+  registerAgent(name, kind=human, externalID, secret, bootstrapToken?, deviceInfo?, modelInfo?)
+  → 创建 Agent
 
-方式 B：首次 AI Agent 注册（Bootstrap）
-  registerAgent(name, kind=AI, secret, capabilities, bootstrapToken)
-  → 验证 bootstrap token → 消耗 → Agent 创建
-  → Human Owner 调 addProjectMember 授权
+方式 B：AI Agent 注册（项目维度 Bootstrap）
+  registerAgent(name, kind=AI, externalID, secret, bootstrapToken, deviceInfo?, modelInfo?)
+  → 验证项目 bootstrap token → 消耗 → Agent 创建 + 自动加入项目成员
+  每个项目创建时自动生成 bootstrapToken，一次性使用
 
 方式 C：已有 Agent 注册新 Agent
-  loginAgent → JWT → registerAgent(name, kind=AI, ...)
+  loginAgent → JWT → registerAgent(...)
   → Authorization: Bearer <JWT>
   → addProjectMember(projectId, agentId, role)
 ```
+
+### Agent 设备与模型信息
+
+Agent 注册时可携带设备信息和 AI 模型信息，用于管理面展示和调度决策：
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| deviceInfo | String | 设备信息（OS、架构、主机名等） |
+| modelInfo | String | AI 模型信息（模型名称、版本等） |
+
+存储于 Agent 模型的 `device_info`（TEXT）和 `model_info`（varchar(255)）字段，GraphQL/MCP 响应中返回。
 
 ### 请求认证
 
 | 入口 | 认证方式 | 说明 |
 |------|---------|------|
 | MCP STDIO | 隐式信任 | 本地进程间通信，无需 token |
-| MCP SSE | `Authorization: Bearer <token>` | loginAgent 获取 |
+| MCP SSE | 无（agentId 参数） | 标准 MCP 协议，工具调用带 agentId 参数 |
+| MCP SSE + bootstrapToken | 查询参数 | `GET /mcp?bootstrapToken=xxx` 自动注册 agent |
 | GraphQL | `Authorization: Bearer <token>` | loginAgent 获取 |
-| registerAgent | bootstrapToken | 唯一无认证的端点（首次） |
+| registerAgent | bootstrapToken | 项目维度，一次性消耗 |
+
+### 项目 BootstrapToken
+
+```
+Project 模型内嵌 BootstrapToken，创建时自动生成 32 位 hex token：
+  field BootstrapToken string \`gorm:"type:varchar(64);not null;default:''"\`
+
+Token 一次性使用（ValidateBootstrapToken 消费后清空）：
+  func (s *ProjectService) ValidateBootstrapToken(token string) (uint, bool)
+  → 查找 Project → 匹配 token → 清空 → 返回 projectID
+```
+
+### MCP SSE 传输协议
+
+标准 MCP SSE Session 握手：
+
+```
+1. Client → GET /mcp
+2. Server → event: endpoint
+           data: /mcp/session/{sessionId}
+3. Client → POST /mcp/session/{sessionId}  (JSON-RPC: initialize, tools/list, tools/call...)
+4. Agent 通过 bootstrapToken 自动注册：
+   GET /mcp?bootstrapToken=xxx
+   → auto-register agent, 通过 externalID 去重（mcp-bootstrap-<token-prefix>）
+   → session 内工具调用使用该 agent 身份
+```
+
+OpenCode 配置：
+
+```json
+{
+  "mcpServers": {
+    "chick": {
+      "type": "remote",
+      "url": "http://47.95.200.101:8080/mcp",
+      "enabled": true
+    }
+  }
+}
+```
 
 ### Project 级别权限
 

@@ -3,11 +3,12 @@ package models
 import "time"
 
 type Project struct {
-	ID          uint      `gorm:"primaryKey;autoIncrement"`
-	Name        string    `gorm:"type:varchar(255);not null"`
-	Description string    `gorm:"type:text"`
-	CreatedAt   time.Time `gorm:"autoCreateTime"`
-	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
+	ID             uint      `gorm:"primaryKey;autoIncrement"`
+	Name           string    `gorm:"type:varchar(255);not null"`
+	Description    string    `gorm:"type:text"`
+	BootstrapToken string    `gorm:"type:varchar(64);not null;default:''"`
+	CreatedAt      time.Time `gorm:"autoCreateTime"`
+	UpdatedAt      time.Time `gorm:"autoUpdateTime"`
 
 	Members  []ProjectMember `gorm:"foreignKey:ProjectID"`
 	Issues   []Issue         `gorm:"foreignKey:ProjectID"`

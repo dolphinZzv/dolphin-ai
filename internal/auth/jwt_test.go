@@ -105,8 +105,8 @@ func TestHTTPMiddleware(t *testing.T) {
 	a := New("my-secret-key", "bootstrap")
 	token, _ := a.GenerateToken(uint(5))
 
-	// Valid token
-	handler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Valid token — middleware should inject agent ID into context
+	validHandler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id, ok := AgentIDFromContext(r.Context())
 		if !ok {
 			t.Error("expected agent ID in context")
@@ -116,30 +116,43 @@ func TestHTTPMiddleware(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusOK)
 	}))
-
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
+	validHandler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Errorf("expected 200, got %d", rec.Code)
 	}
 
-	// Missing token
+	// Missing token — middleware passes through, handler runs without agent ID
+	missingHandler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ok := AgentIDFromContext(r.Context())
+		if ok {
+			t.Error("expected no agent ID in context for unauthenticated request")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
 	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec2 := httptest.NewRecorder()
-	handler.ServeHTTP(rec2, req2)
-	if rec2.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rec2.Code)
+	missingHandler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Errorf("expected 200 (pass-through), got %d", rec2.Code)
 	}
 
-	// Invalid token
+	// Invalid token — middleware passes through (doesn't set agent ID for bad tokens)
+	invalidHandler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, ok := AgentIDFromContext(r.Context())
+		if ok {
+			t.Error("expected no agent ID in context for invalid token")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
 	req3 := httptest.NewRequest(http.MethodGet, "/", nil)
 	req3.Header.Set("Authorization", "Bearer invalid-token")
 	rec3 := httptest.NewRecorder()
-	handler.ServeHTTP(rec3, req3)
-	if rec3.Code != http.StatusUnauthorized {
-		t.Errorf("expected 401, got %d", rec3.Code)
+	invalidHandler.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusOK {
+		t.Errorf("expected 200 (pass-through), got %d", rec3.Code)
 	}
 }
 

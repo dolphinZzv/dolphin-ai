@@ -10,7 +10,7 @@ import (
 func TestAgentHeartbeat(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
-	_, err := agentSvc.Register("hb-agent", "ai", "hb-001", "pass", []string{"CODING"})
+	_, err := agentSvc.Register("hb-agent", "ai", "hb-001", "pass", []string{"CODING"}, "", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -29,7 +29,7 @@ func TestAgentHeartbeat(t *testing.T) {
 func TestAssignIssue(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
-	agentSvc.Register("assign-agent", "ai", "assign-001", "pass", nil)
+	agentSvc.Register("assign-agent", "ai", "assign-001", "pass", nil, "", "")
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "create_project",
@@ -62,8 +62,8 @@ func TestAssignIssue(t *testing.T) {
 func TestListAgents(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
-	agentSvc.Register("list-agent-1", "ai", "list-001", "pass", []string{"CODING"})
-	agentSvc.Register("list-agent-2", "ai", "list-002", "pass", []string{"TESTING"})
+	agentSvc.Register("list-agent-1", "ai", "list-001", "pass", []string{"CODING"}, "", "")
+	agentSvc.Register("list-agent-2", "ai", "list-002", "pass", []string{"TESTING"}, "", "")
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "list_agents",
@@ -84,8 +84,8 @@ func TestListAgents(t *testing.T) {
 func TestListAgentsAll(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
-	agentSvc.Register("agent-1", "ai", "la-001", "pass", nil)
-	agentSvc.Register("agent-2", "human", "la-002", "pass", nil)
+	agentSvc.Register("agent-1", "ai", "la-001", "pass", nil, "", "")
+	agentSvc.Register("agent-2", "human", "la-002", "pass", nil, "", "")
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "list_agents",

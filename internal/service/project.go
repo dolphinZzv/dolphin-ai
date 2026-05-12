@@ -1,6 +1,8 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 
 	"chick/internal/models"
@@ -29,9 +31,14 @@ func NewProjectService(
 }
 
 func (s *ProjectService) Create(name, description string) (*models.Project, error) {
+	tokenBytes := make([]byte, 16)
+	if _, err := rand.Read(tokenBytes); err != nil {
+		return nil, fmt.Errorf("generate bootstrap token: %w", err)
+	}
 	p := &models.Project{
-		Name:        name,
-		Description: description,
+		Name:           name,
+		Description:    description,
+		BootstrapToken: hex.EncodeToString(tokenBytes),
 	}
 	if err := s.projectRepo.Create(p); err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
@@ -41,6 +48,18 @@ func (s *ProjectService) Create(name, description string) (*models.Project, erro
 
 func (s *ProjectService) GetByID(id uint) (*models.Project, error) {
 	return s.projectRepo.GetByID(id)
+}
+
+// ValidateBootstrapToken finds a project by the given bootstrap token.
+// If valid, the token is consumed and the project ID is returned.
+func (s *ProjectService) ValidateBootstrapToken(token string) (uint, bool) {
+	p, err := s.projectRepo.FindByBootstrapToken(token)
+	if err != nil || p == nil {
+		return 0, false
+	}
+	// consume the token
+	s.projectRepo.Update(p.ID, map[string]interface{}{"BootstrapToken": ""})
+	return p.ID, true
 }
 
 func (s *ProjectService) List() ([]models.Project, error) {
@@ -101,6 +120,24 @@ func (s *ProjectService) ListMembers(projectID uint) ([]models.ProjectMember, er
 	return s.memberRepo.ListByProject(projectID)
 }
 
+// GetMemberRole returns the role of an agent in a project, or an error if not a member.
+func (s *ProjectService) GetMemberRole(projectID, agentID uint) (models.ProjectRole, error) {
+	return s.memberRepo.GetRole(projectID, agentID)
+}
+
+// ListByAgent returns all projects the given agent is a member of.
+func (s *ProjectService) ListByAgent(agentID uint) ([]models.Project, error) {
+	members, err := s.memberRepo.ListByAgent(agentID)
+	if err != nil {
+		return nil, err
+	}
+	projects := make([]models.Project, 0, len(members))
+	for _, m := range members {
+		projects = append(projects, m.Project)
+	}
+	return projects, nil
+}
+
 // ─── Labels ─────────────────────────────────────────────────────
 
 func (s *ProjectService) CreateLabel(projectID uint, name, color, capability, group string) (*models.Label, error) {
@@ -141,6 +178,10 @@ func (s *ProjectService) DeleteLabel(id uint) error {
 	return s.labelRepo.Delete(id)
 }
 
+func (s *ProjectService) GetLabelByID(id uint) (*models.Label, error) {
+	return s.labelRepo.GetByID(id)
+}
+
 // ─── Milestones ─────────────────────────────────────────────────
 
 func (s *ProjectService) CreateMilestone(projectID uint, title, description string, dueDate *models.UnixNullTime) (*models.Milestone, error) {
@@ -177,5 +218,9 @@ func (s *ProjectService) ListMilestones(projectID uint, state models.MilestoneSt
 }
 
 func (s *ProjectService) DeleteMilestone(id uint) error {
-	return s.milestoneRepo.Update(id, map[string]interface{}{"state": models.MilestoneClosed})
+	return s.milestoneRepo.Delete(id)
+}
+
+func (s *ProjectService) GetMilestoneByID(id uint) (*models.Milestone, error) {
+	return s.milestoneRepo.GetByID(id)
 }

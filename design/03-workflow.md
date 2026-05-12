@@ -146,3 +146,38 @@ Human / Review Agent:
   ├── APPROVAL → transitionIssue(id, CLOSED_COMPLETED)
   └── REJECTION → transitionIssue(id, IN_PROGRESS) + comment
 ```
+
+## 6. Skills 系统
+
+Skills 是 YAML 定义的结构化指南，教会 AI Agent 如何使用 Chick 平台和执行任务。
+
+### Skill 结构
+
+```yaml
+name: skill-name
+description: 简短描述
+version: '1.0'
+
+steps:
+  - step: step_name
+    message: |
+      使用 Markdown 格式的指导内容。
+```
+
+### MCP Tools
+
+| Tool | 说明 |
+|------|------|
+| `list_skills` | 列出项目下所有可用 skills |
+| `run_skill` | 加载 skill 定义，返回完整 YAML |
+
+### 内置 chick-guide Skill
+
+每个新项目自动生成 `chick-guide` Skill，内容涵盖：
+- **intro** — Chick 平台概览（多 Agent 协作平台）
+- **projects** — 项目结构说明，如何获取 projectId
+- **issues** — Issue CRUD 操作
+- **agents** — Agent 管理与心跳
+- **workflow** — 推荐工作流（open → in_progress → review → closed）
+- **feedback** — 反馈与通知机制
+- **skills** — Skills 系统使用方式

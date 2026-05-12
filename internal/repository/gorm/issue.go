@@ -16,12 +16,24 @@ func NewIssueRepo(db *gorm.DB) repository.IssueRepository {
 }
 
 func (r *IssueRepo) Create(issue *models.Issue) error {
-	return r.db.Create(issue).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var max struct {
+			Number uint
+		}
+		if err := tx.Model(&models.Issue{}).
+			Select("COALESCE(MAX(number), 0) as number").
+			Where("project_id = ?", issue.ProjectID).
+			Scan(&max).Error; err != nil {
+			return err
+		}
+		issue.Number = max.Number + 1
+		return tx.Create(issue).Error
+	})
 }
 
 func (r *IssueRepo) GetByID(id uint) (*models.Issue, error) {
 	var i models.Issue
-	err := r.db.Preload("Assignees").Preload("Labels").Preload("Comments").
+	err := r.db.Preload("Assignees.Agent").Preload("Labels").Preload("Comments").Preload("Comments.Author").Preload("Creator").
 		First(&i, id).Error
 	return &i, err
 }
@@ -29,7 +41,7 @@ func (r *IssueRepo) GetByID(id uint) (*models.Issue, error) {
 func (r *IssueRepo) GetByNumber(projectID uint, number uint) (*models.Issue, error) {
 	var i models.Issue
 	err := r.db.Where("project_id = ? AND number = ?", projectID, number).
-		Preload("Assignees").Preload("Labels").
+		Preload("Assignees.Agent").Preload("Labels").Preload("Creator").
 		First(&i).Error
 	return &i, err
 }
@@ -77,7 +89,7 @@ func (r *IssueRepo) List(filter models.IssueFilter) ([]models.Issue, int64, erro
 	}
 
 	var issues []models.Issue
-	err := q.Preload("Assignees").Preload("Labels").Find(&issues).Error
+	err := q.Preload("Assignees.Agent").Preload("Labels").Preload("Creator").Find(&issues).Error
 	return issues, total, err
 }
 

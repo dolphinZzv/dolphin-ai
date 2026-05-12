@@ -161,7 +161,7 @@ func (e *Engine) releaseTimedOut(timeout time.Duration) {
 		}
 		for _, assignment := range assignments {
 			if assignment.State == models.AssigneeStatePending || assignment.State == models.AssigneeStateInProgress {
-				_ = e.assigneeRepo.UpdateState(assignment.IssueID, a.ID, models.AssigneeStatePending)
+				_ = e.assigneeRepo.UpdateState(assignment.IssueID, a.ID, models.AssigneeStateBlocked)
 				log.Printf("[matching] released assignment issue %d from agent %d (timeout)", assignment.IssueID, a.ID)
 			}
 		}

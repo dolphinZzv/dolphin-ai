@@ -2,6 +2,7 @@ package mcp_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"chick/internal/config"
@@ -145,7 +146,7 @@ func TestCreateProjectAndIssue(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
 	// Register an agent first
-	agent, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-001", "secret", []string{"CODING"})
+	agent, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-001", "secret", []string{"CODING"}, "", "")
 	if err != nil {
 		t.Fatalf("register agent: %v", err)
 	}
@@ -222,7 +223,7 @@ func TestTransitionIssue(t *testing.T) {
 	srv, _, agentSvc, _ := setupTest(t)
 
 	// Register agent
-	_, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-002", "secret", nil)
+	_, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-002", "secret", nil, "", "")
 	if err != nil {
 		t.Fatalf("register agent: %v", err)
 	}
@@ -265,7 +266,7 @@ func TestSearchIssues(t *testing.T) {
 	srv, _, agentSvc, issueSvc := setupTest(t)
 
 	// Register agent + create project + create issue
-	agentSvc.Register("test-agent", models.AgentKindAI, "test-003", "secret", nil)
+	agentSvc.Register("test-agent", models.AgentKindAI, "test-003", "secret", nil, "", "")
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "create_project",
@@ -295,6 +296,172 @@ func TestSearchIssues(t *testing.T) {
 	if totalVal == 0 {
 		t.Error("expected at least 1 search result for 'login'")
 	}
+}
+
+// ─── create_issue 专向测试 ─────────────────────────────────
+
+func TestMCPCreateIssue_HappyPath(t *testing.T) {
+	srv, _, agentSvc, _ := setupTest(t)
+
+	// Register agent + create project
+	agentSvc.Register("coder", models.AgentKindAI, "coder-001", "secret", nil, "", "")
+	proj := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_project",
+		"arguments": map[string]interface{}{
+			"name": "My Project",
+		},
+	})
+	projectID := proj["id"].(string)
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"projectId":   projectID,
+			"title":       "Fix login bug",
+			"description": "Users cannot login with OAuth",
+			"creatorId":   "1",
+			"priority":    "high",
+		},
+	})
+
+	if result["id"] == "" {
+		t.Error("expected issue id")
+	}
+	if result["title"] != "Fix login bug" {
+		t.Errorf("expected 'Fix login bug', got %v", result["title"])
+	}
+	if result["state"] != "open" {
+		t.Errorf("expected state 'open', got %v", result["state"])
+	}
+	// issue.Number is uint, stored as uint in resp.Result (not float64)
+	if result["number"] == nil || fmt.Sprint(result["number"]) == "0" {
+		t.Errorf("expected non-zero issue number, got %v", result["number"])
+	}
+}
+
+func TestMCPCreateIssue_MissingRequired(t *testing.T) {
+	srv, _, _, _ := setupTest(t)
+
+	tests := []struct {
+		name    string
+		args    map[string]interface{}
+		errCode int
+	}{
+		{
+			name:    "missing title",
+			args:    map[string]interface{}{"projectId": "1", "creatorId": "1"},
+			errCode: -32602, // service layer returns internal error
+		},
+		{
+			name:    "missing creatorId",
+			args:    map[string]interface{}{"projectId": "1", "title": "No creator"},
+			errCode: -32602,
+		},
+		{
+			name:    "missing projectId",
+			args:    map[string]interface{}{"title": "No project", "creatorId": "1"},
+			errCode: -32602,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, _ := json.Marshal(map[string]interface{}{
+				"name": "create_issue",
+				"arguments": tt.args,
+			})
+			req := &mcp.Request{
+				JSONRPC: "2.0",
+				ID:      json.RawMessage(`1`),
+				Method:  "tools/call",
+				Params:  params,
+			}
+			resp := srv.HandleRequest(req)
+			if resp.Error == nil {
+				t.Fatal("expected error for missing required params")
+			}
+		})
+	}
+}
+
+func TestMCPCreateIssue_DefaultPriority(t *testing.T) {
+	srv, _, agentSvc, _ := setupTest(t)
+
+	agentSvc.Register("coder", models.AgentKindAI, "coder-002", "secret", nil, "", "")
+	proj := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_project",
+		"arguments": map[string]interface{}{"name": "P"},
+	})
+	projectID := proj["id"].(string)
+
+	// Without priority → should default to medium
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"projectId": projectID,
+			"title":     "Default priority",
+			"creatorId": "1",
+		},
+	})
+	if result["id"] == "" {
+		t.Error("expected issue id")
+	}
+}
+
+func TestMCPCreateIssue_InvalidPriority(t *testing.T) {
+	srv, _, agentSvc, _ := setupTest(t)
+
+	agentSvc.Register("coder", models.AgentKindAI, "coder-003", "secret", nil, "", "")
+	proj := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_project",
+		"arguments": map[string]interface{}{"name": "P2"},
+	})
+	projectID := proj["id"].(string)
+
+	// Invalid priority → defaults to medium, not an error
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"projectId": projectID,
+			"title":     "Bad priority",
+			"creatorId": "1",
+			"priority":  "urgent",
+		},
+	})
+	if result["id"] == "" {
+		t.Error("expected issue id even with invalid priority")
+	}
+}
+
+func TestMCPCreateIssue_WithAssignees(t *testing.T) {
+	srv, _, agentSvc, _ := setupTest(t)
+
+	// Register two agents
+	agent1, _ := agentSvc.Register("assignee1", models.AgentKindAI, "ass-001", "secret", nil, "", "")
+	agentSvc.Register("assignee2", models.AgentKindAI, "ass-002", "secret", nil, "", "")
+
+	proj := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_project",
+		"arguments": map[string]interface{}{"name": "P3"},
+	})
+	projectID := proj["id"].(string)
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"projectId":   projectID,
+			"title":       "Assigned issue",
+			"description": "This has assignees",
+			"creatorId":   "1",
+			"priority":    "critical",
+			"assigneeIds": []string{fmt.Sprintf("%d", agent1.ID), "2"},
+		},
+	})
+	if result["id"] == "" {
+		t.Error("expected issue id with assignees")
+	}
+	// assignees are created inside IssueService.Create;
+	// verifying via IssueService.GetByID requires extra preloads
 }
 
 func TestUnknownTool(t *testing.T) {

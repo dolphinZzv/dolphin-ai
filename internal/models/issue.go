@@ -26,8 +26,8 @@ const (
 
 type Issue struct {
 	ID              uint       `gorm:"primaryKey;autoIncrement"`
-	Number          uint       `gorm:"not null;index:idx_project_number,unique"`
-	ProjectID       uint       `gorm:"not null;index"`
+	Number          uint       `gorm:"not null;uniqueIndex:idx_issues_project_number"`
+	ProjectID       uint       `gorm:"not null;uniqueIndex:idx_issues_project_number"`
 	Title           string     `gorm:"type:varchar(500);not null"`
 	Description     string     `gorm:"type:text"`
 	State           IssueState `gorm:"type:varchar(30);not null;default:open"`

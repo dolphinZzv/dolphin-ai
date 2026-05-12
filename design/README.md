@@ -13,6 +13,7 @@
 | [03-workflow.md](03-workflow.md) | Issue 生命周期、Agent 匹配、协作模式、事件驱动 |
 | [04-data-model.md](04-data-model.md) | GORM 模型、数据库设计、驱动策略 |
 | [05-roadmap.md](05-roadmap.md) | 实施路线图、验收标准、测试策略、代码规范 |
+| [06-quality.md](06-quality.md) | 质量保障、工具链强制、权限矩阵、审查清单 |
 
 ## 相关文档
 

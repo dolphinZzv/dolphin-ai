@@ -43,3 +43,13 @@ func (r *ProjectMemberRepo) ListByAgent(agentID uint) ([]models.ProjectMember, e
 		Preload("Project").Find(&list).Error
 	return list, err
 }
+
+func (r *ProjectMemberRepo) GetRole(projectID, agentID uint) (models.ProjectRole, error) {
+	var member models.ProjectMember
+	err := r.db.Where("project_id = ? AND agent_id = ?", projectID, agentID).
+		First(&member).Error
+	if err != nil {
+		return "", err
+	}
+	return member.Role, nil
+}

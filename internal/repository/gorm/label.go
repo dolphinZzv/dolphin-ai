@@ -63,6 +63,10 @@ func (r *MilestoneRepo) Update(id uint, changes map[string]interface{}) error {
 	return r.db.Model(&models.Milestone{}).Where("id = ?", id).Updates(changes).Error
 }
 
+func (r *MilestoneRepo) Delete(id uint) error {
+	return r.db.Delete(&models.Milestone{}, id).Error
+}
+
 type TimelineRepo struct {
 	db *gorm.DB
 }

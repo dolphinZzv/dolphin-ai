@@ -36,6 +36,12 @@ func agentFromModel(a *models.Agent) *Agent {
 	if a.Metadata != nil {
 		agent.Metadata = map[string]any(a.Metadata)
 	}
+	if a.DeviceInfo != "" {
+		agent.DeviceInfo = &a.DeviceInfo
+	}
+	if a.ModelInfo != "" {
+		agent.ModelInfo = &a.ModelInfo
+	}
 	return agent
 }
 
@@ -44,11 +50,12 @@ func projectFromModel(p *models.Project) *Project {
 		return nil
 	}
 	proj := &Project{
-		ID:          formatID(p.ID),
-		Name:        p.Name,
-		Description: strPtr(p.Description),
-		CreatedAt:   p.CreatedAt,
-		UpdatedAt:   p.UpdatedAt,
+		ID:             formatID(p.ID),
+		Name:           p.Name,
+		Description:    strPtr(p.Description),
+		BootstrapToken: strPtr(p.BootstrapToken),
+		CreatedAt:      p.CreatedAt,
+		UpdatedAt:      p.UpdatedAt,
 	}
 	if len(p.Members) > 0 {
 		members := make([]*ProjectMember, len(p.Members))
@@ -61,12 +68,16 @@ func projectFromModel(p *models.Project) *Project {
 }
 
 func projectMemberFromModel(m *models.ProjectMember) *ProjectMember {
-	return &ProjectMember{
+	pm := &ProjectMember{
 		ID:        formatID(m.ID),
 		ProjectID: formatID(m.ProjectID),
 		AgentID:   formatID(m.AgentID),
 		Role:      ProjectRole(m.Role),
 	}
+	if m.Agent.ID != 0 {
+		pm.Agent = agentFromModel(&m.Agent)
+	}
+	return pm
 }
 
 func issueFromModel(i *models.Issue) *Issue {

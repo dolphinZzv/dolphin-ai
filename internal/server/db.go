@@ -32,6 +32,9 @@ func NewDB(cfg *config.Config) (*gorm.DB, error) {
 }
 
 func AutoMigrate(db *gorm.DB) error {
+	// Drop old single-column unique index on issues.number (rename to composite)
+	db.Exec("DROP INDEX IF EXISTS idx_project_number")
+
 	err := db.AutoMigrate(
 		&models.Project{},
 		&models.ProjectMember{},

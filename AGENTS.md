@@ -47,6 +47,21 @@ Handler → Service → Repository → DB
 | JSON 字段 | snake_case |
 | GraphQL | PascalCase 类型, camelCase 字段 |
 
+## 验证原则
+
+所有验证必须代码化（禁止人工检查），验证代码统一放在 `verif/` 目录：
+
+```
+verif/
+  constraints_test.go   # DB 约束验证（唯一索引、外键、非空）
+  preloads_test.go      # GORM 预加载验证
+  verif_test.go         # 门禁验证：编译、测试、代码规范
+```
+
+- 每次 schema 变更后运行 `go test ./verif/ -v`
+- CI 门禁必须包含 `go test ./verif/`
+- 验证失败代表设计或实现有误，不允许合并
+
 ## 修改流程
 
 1. 先读 design/ 理解设计意图

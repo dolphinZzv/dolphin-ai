@@ -10,13 +10,22 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"chick/internal/config"
 	graphql "chick/internal/graphql"
 	"chick/internal/mcp"
+	"chick/internal/models"
 	"chick/internal/server"
 )
+
+// mcpSession stores per-SSE-session state
+type mcpSession struct {
+	agentID uint
+}
 
 func main() {
 	stdioMode := flag.Bool("stdio", false, "Run MCP in STDIO mode")
@@ -60,19 +69,57 @@ func main() {
 		return
 	}
 
-	// SSE mode — HTTP server
-	http.HandleFunc("/mcp", handleSSE(mcpServer))
-	http.Handle("/graphql", graphql.NewHandler(srv.ProjectService, srv.AgentService, srv.IssueService, srv.CommentService, srv.WorkflowService, srv.FeedbackService, srv.EventBus))
+	// --- HTTP mode ---
+
+	// Start offline timeout watcher (每 60 秒检查一次，5 分钟超时)
+	go srv.MatchingEngine.WatchOfflineTimeout(60*time.Second, 5*time.Minute)
+
+	corsMW := server.CORSMiddleware(cfg.AllowedOrigins)
+	authMW := srv.Authenticator.HTTPMiddleware
+
+	// GraphQL handler with auth (except loginAgent/registerAgent) + CORS
+	graphqlHandler := graphql.NewHandler(
+		srv.ProjectService, srv.AgentService, srv.IssueService,
+		srv.CommentService, srv.WorkflowService, srv.FeedbackService, srv.EventBus,
+	)
+	http.Handle("/graphql", corsMW(authMW(graphqlHandler)))
+
+	// MCP SSE handler with sessions
+	mcpSessions := &sync.Map{}
+	mcpHandler := corsMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimSuffix(r.URL.Path, "/")
+		// POST /mcp/session/{id} — session-scoped JSON-RPC
+		if r.Method == http.MethodPost && strings.HasPrefix(path, "/mcp/session/") {
+			sessionID := strings.TrimPrefix(path, "/mcp/session/")
+			handleMCPSessionPost(w, r, mcpServer, mcpSessions, sessionID)
+			return
+		}
+		handleMCP(mcpServer, srv, mcpSessions)(w, r)
+	}))
+	http.Handle("/mcp/", mcpHandler)
+	http.Handle("/mcp", mcpHandler)
+
+	// Health check (no auth)
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
+	// SPA fallback (no auth — login page needs to load)
+	http.Handle("/", corsMW(server.SPAHandler()))
+
 	log.Printf("┌──────────────────────────────────────┐")
 	log.Printf("│  Chick Agent Platform                 │")
-	log.Printf("│  DB: %s                          │", cfg.DBDriver)
+	log.Printf("│  DB: %-32s │", cfg.DBDriver)
 	log.Printf("│  MCP SSE: http://0.0.0.0:%s/mcp     │", cfg.Port)
+	log.Printf("│  Web UI:  http://0.0.0.0:%s         │", cfg.Port)
+	if len(cfg.AllowedOrigins) > 0 {
+		log.Printf("│  CORS: %-30s │", cfg.AllowedOrigins[0])
+	}
 	log.Printf("│  BOOTSTRAP_TOKEN=%s     │", cfg.BootstrapToken)
+	if cfg.DevMode {
+		log.Printf("│  MODE: DEV                                            │")
+	}
 	log.Printf("└──────────────────────────────────────┘")
 
 	// Start HTTP server
@@ -98,7 +145,7 @@ func main() {
 	}
 }
 
-func handleSSE(mcpServer *mcp.Server) http.HandlerFunc {
+func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -110,7 +157,7 @@ func handleSSE(mcpServer *mcp.Server) http.HandlerFunc {
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 
-		// Handle POST with JSON-RPC
+		// Direct POST to /mcp (backward compat, no session)
 		if r.Method == http.MethodPost {
 			var req mcp.Request
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -120,16 +167,64 @@ func handleSSE(mcpServer *mcp.Server) http.HandlerFunc {
 			}
 			resp := mcpServer.HandleRequest(&req)
 			data, _ := json.Marshal(resp)
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(data)
 			return
 		}
 
-		// GET — SSE stream for notifications
+		// GET /mcp — create SSE session
+		sessionID := randomID()
+		bootstrapToken := r.URL.Query().Get("bootstrapToken")
+
+		// Auto-register agent if bootstrap token provided
+		var registeredProjectID uint
+		if bootstrapToken != "" {
+			projectID, ok := srv.ProjectService.ValidateBootstrapToken(bootstrapToken)
+			if ok {
+				registeredProjectID = projectID
+				extID := "mcp-bootstrap-" + bootstrapToken[:8]
+				agent, err := srv.AgentService.GetByExternalID(extID)
+				if err != nil {
+					agent, err = srv.AgentService.Register("mcp-"+fmt.Sprint(projectID), models.AgentKindAI, extID, randomID(), nil, "", "")
+					if err == nil {
+						srv.ProjectService.AddMember(projectID, agent.ID, models.ProjectRoleMember)
+					}
+				}
+				if agent != nil {
+					sessions.Store(sessionID, &mcpSession{agentID: agent.ID})
+				}
+			}
+		}
+
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, "data: %s\n\n", `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+		if registeredProjectID > 0 {
+			fmt.Fprintf(w, "event: project\ndata: {\"projectId\":%d}\n\n", registeredProjectID)
+		}
+		fmt.Fprintf(w, "event: endpoint\ndata: /mcp/session/%s\n\n", sessionID)
 		flusher.Flush()
 
+		// Keep connection open
 		<-r.Context().Done()
+		sessions.Delete(sessionID)
 	}
+}
+
+func handleMCPSessionPost(w http.ResponseWriter, r *http.Request, mcpServer *mcp.Server, sessions *sync.Map, sessionID string) {
+	var req mcp.Request
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		resp := mcp.NewParseError(nil)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	resp := mcpServer.HandleRequest(&req)
+	data, _ := json.Marshal(resp)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func randomID() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
 }

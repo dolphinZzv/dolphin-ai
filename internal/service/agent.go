@@ -26,7 +26,7 @@ func NewAgentService(agentRepo repository.AgentRepository, eventBus *events.Bus,
 	return &AgentService{agentRepo: agentRepo, eventBus: eventBus, tokenGen: tokenGen}
 }
 
-func (s *AgentService) Register(name string, kind models.AgentKind, externalID, secret string, capabilities []string) (*models.Agent, error) {
+func (s *AgentService) Register(name string, kind models.AgentKind, externalID, secret string, capabilities []string, deviceInfo, modelInfo string) (*models.Agent, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(secret), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, fmt.Errorf("hash secret: %w", err)
@@ -44,6 +44,8 @@ func (s *AgentService) Register(name string, kind models.AgentKind, externalID, 
 		ExternalID:   externalID,
 		SecretHash:   string(hash),
 		Capabilities: caps,
+		DeviceInfo:   deviceInfo,
+		ModelInfo:    modelInfo,
 	}
 	if err := s.agentRepo.Create(a); err != nil {
 		return nil, fmt.Errorf("register agent: %w", err)
@@ -81,6 +83,10 @@ func (s *AgentService) Login(externalID, secret string) (*LoginResult, error) {
 
 func (s *AgentService) GetByID(id uint) (*models.Agent, error) {
 	return s.agentRepo.GetByID(id)
+}
+
+func (s *AgentService) GetByExternalID(externalID string) (*models.Agent, error) {
+	return s.agentRepo.GetByExternalID(externalID)
 }
 
 func (s *AgentService) UpdateStatus(id uint, status models.AgentStatus) error {

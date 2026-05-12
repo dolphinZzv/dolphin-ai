@@ -70,7 +70,7 @@ func TestCreateIssue_WithAssignees(t *testing.T) {
 	issueSvc, agentSvc, projectSvc, _ := setupIssueTest(t)
 
 	p, _ := projectSvc.Create("Test", "")
-	agent, _ := agentSvc.Register("coder", models.AgentKindAI, "coder-1", "secret", []string{"CODING"})
+	agent, _ := agentSvc.Register("coder", models.AgentKindAI, "coder-1", "secret", []string{"CODING"}, "", "")
 
 	issue, err := issueSvc.Create(p.ID, 1, "Task", "", models.PriorityHigh, []uint{agent.ID}, nil)
 	if err != nil {
@@ -156,7 +156,7 @@ func TestAddComment(t *testing.T) {
 	commentSvc := service.NewCommentService(commentRepo, timelineRepo, bus)
 
 	p, _ := projectSvc.Create("Test", "")
-	agent, _ := agentSvc.Register("user", models.AgentKindHuman, "user-1", "secret", nil)
+	agent, _ := agentSvc.Register("user", models.AgentKindHuman, "user-1", "secret", nil, "", "")
 	issue, _ := issueSvc.Create(p.ID, agent.ID, "Issue", "", models.PriorityMedium, nil, nil)
 
 	comment, err := commentSvc.Create(issue.ID, agent.ID, "Hello world", models.CommentMarkdown, nil)
@@ -219,7 +219,7 @@ func TestAgentRegisterAndLogin(t *testing.T) {
 	bus := events.NewBus()
 	agentSvc := service.NewAgentService(agentRepo, bus, nil)
 
-	_, err := agentSvc.Register("bot", models.AgentKindAI, "bot-1", "mypass", []string{"CODING"})
+	_, err := agentSvc.Register("bot", models.AgentKindAI, "bot-1", "mypass", []string{"CODING"}, "", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -247,7 +247,7 @@ func TestHeartbeat(t *testing.T) {
 	bus := events.NewBus()
 	agentSvc := service.NewAgentService(agentRepo, bus, nil)
 
-	agent, _ := agentSvc.Register("bot", models.AgentKindAI, "bot-hb", "pass", nil)
+	agent, _ := agentSvc.Register("bot", models.AgentKindAI, "bot-hb", "pass", nil, "", "")
 	if agent.LastSeenAt != nil {
 		t.Logf("last_seen_at after register: %v", agent.LastSeenAt)
 	}

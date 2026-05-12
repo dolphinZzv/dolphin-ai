@@ -13,6 +13,7 @@ import (
 type ProjectRepository interface {
 	Create(project *models.Project) error
 	GetByID(id uint) (*models.Project, error)
+	FindByBootstrapToken(token string) (*models.Project, error)
 	Update(id uint, changes map[string]interface{}) error
 	Delete(id uint) error
 	List() ([]models.Project, error)
@@ -26,6 +27,7 @@ type ProjectMemberRepository interface {
 	Remove(projectID, agentID uint) error
 	ListByProject(projectID uint) ([]models.ProjectMember, error)
 	ListByAgent(agentID uint) ([]models.ProjectMember, error)
+	GetRole(projectID, agentID uint) (models.ProjectRole, error)
 }
 
 // ─── Agent ─────────────────────────────────────────────────
@@ -96,6 +98,7 @@ type MilestoneRepository interface {
 	GetByID(id uint) (*models.Milestone, error)
 	ListByProject(projectID uint) ([]models.Milestone, error)
 	Update(id uint, changes map[string]interface{}) error
+	Delete(id uint) error
 }
 
 // ─── Timeline ──────────────────────────────────────────────

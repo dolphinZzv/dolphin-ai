@@ -50,7 +50,7 @@ func (s *CommentService) Create(issueID, authorID uint, body string, contentType
 		})
 	}
 
-	return c, nil
+	return s.commentRepo.GetByID(c.ID)
 }
 
 func (s *CommentService) GetByID(id uint) (*models.Comment, error) {

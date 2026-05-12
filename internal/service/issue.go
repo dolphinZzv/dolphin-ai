@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"log"
 
 	"chick/internal/events"
 	"chick/internal/models"
@@ -33,13 +34,7 @@ func NewIssueService(
 }
 
 func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs []uint, labelIDs []uint) (*models.Issue, error) {
-	number, err := s.issueRepo.NextNumber(projectID)
-	if err != nil {
-		return nil, fmt.Errorf("next number: %w", err)
-	}
-
 	issue := &models.Issue{
-		Number:      number,
 		ProjectID:   projectID,
 		Title:       title,
 		Description: description,
@@ -77,7 +72,9 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 		EventType: models.EventIssueCreated,
 		Payload:   nil,
 	}
-	_ = s.timelineRepo.Create(event)
+	if err := s.timelineRepo.Create(event); err != nil {
+		log.Printf("[issue] failed to create timeline event: %v", err)
+	}
 
 	// Publish event
 	if s.eventBus != nil {
@@ -123,7 +120,9 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 		EventType: models.EventIssueStateChanged,
 		Payload:   nil,
 	}
-	_ = s.timelineRepo.Create(event)
+	if err := s.timelineRepo.Create(event); err != nil {
+		log.Printf("[issue] failed to create timeline event: %v", err)
+	}
 
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{

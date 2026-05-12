@@ -21,6 +21,8 @@ type Agent {
   status: AgentStatus!
   externalID: String!
   systemPrompt: String
+  deviceInfo: String
+  modelInfo: String
   capabilities: [String!]
   metadata: Map
   lastSeenAt: Time
@@ -31,6 +33,11 @@ type Agent {
 }
 
 type LoginResult {
+  agent: Agent!
+  token: String!
+}
+
+type RegisterResult {
   agent: Agent!
   token: String!
 }
@@ -54,6 +61,7 @@ type Project {
   id: ID!
   name: String!
   description: String
+  bootstrapToken: String
   createdAt: Time!
   updatedAt: Time!
   members: [ProjectMember!]
@@ -235,7 +243,7 @@ type Query {
 }
 
 type Mutation {
-  registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!]): Agent!
+  registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!], bootstrapToken: String, deviceInfo: String, modelInfo: String): RegisterResult!
   loginAgent(externalID: String!, secret: String!): LoginResult!
   updateAgentStatus(id: ID!, status: AgentStatus!): Agent!
 

@@ -21,7 +21,13 @@ func (r *ProjectRepo) Create(project *models.Project) error {
 
 func (r *ProjectRepo) GetByID(id uint) (*models.Project, error) {
 	var p models.Project
-	err := r.db.Preload("Members").First(&p, id).Error
+	err := r.db.Preload("Members.Agent").First(&p, id).Error
+	return &p, err
+}
+
+func (r *ProjectRepo) FindByBootstrapToken(token string) (*models.Project, error) {
+	var p models.Project
+	err := r.db.Where("bootstrap_token = ?", token).First(&p).Error
 	return &p, err
 }
 
@@ -30,7 +36,24 @@ func (r *ProjectRepo) Update(id uint, changes map[string]interface{}) error {
 }
 
 func (r *ProjectRepo) Delete(id uint) error {
-	return r.db.Delete(&models.Project{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("project_id = ?", id).Delete(&models.Issue{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", id).Delete(&models.Label{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", id).Delete(&models.Milestone{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", id).Delete(&models.Skill{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("project_id = ?", id).Delete(&models.ProjectMember{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.Project{}, id).Error
+	})
 }
 
 func (r *ProjectRepo) List() ([]models.Project, error) {

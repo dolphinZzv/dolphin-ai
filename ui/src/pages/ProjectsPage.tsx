@@ -1,0 +1,147 @@
+import { useEffect, useState, useCallback } from "react";
+import { Link } from "react-router-dom";
+import { toast } from "sonner";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ErrorFallback } from "@/components/shared/ErrorFallback";
+import { EmptyState } from "@/components/shared/EmptyState";
+import { Plus } from "lucide-react";
+
+interface ProjectBrief {
+  id: string;
+  name: string;
+  description: string;
+}
+
+export function ProjectsPage() {
+  const [projects, setProjects] = useState<ProjectBrief[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newDesc, setNewDesc] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const fetchProjects = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    fetch("/graphql", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        operationName: "projects",
+        query: `query projects { projects { id name description } }`,
+      }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (json.errors) { setError(json.errors[0].message); return; }
+        setProjects(json.data.projects);
+      })
+      .catch(() => setError("网络错误"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => { fetchProjects(); }, [fetchProjects]);
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <h1 className="text-2xl font-semibold">项目</h1>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-24 w-full" />)}
+        </div>
+      </div>
+    );
+  }
+
+  if (error) return <ErrorFallback message={error} onRetry={fetchProjects} />;
+
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-semibold">项目</h1>
+
+      {/* Create dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>创建项目</DialogTitle></DialogHeader>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            if (!newName.trim()) return;
+            setCreating(true);
+            try {
+              const res = await fetch("/graphql", {
+                method: "POST", headers,
+                body: JSON.stringify({
+                  operationName: "createProject",
+                  query: `mutation createProject($name: String!, $desc: String) {
+                    createProject(name: $name, description: $desc) { id name }
+                  }`,
+                  variables: { name: newName, desc: newDesc || null },
+                }),
+              });
+              const json = await res.json();
+              if (json.errors) { toast.error(json.errors[0].message); return; }
+              toast.success("项目创建成功");
+              setCreateOpen(false);
+              setNewName("");
+              setNewDesc("");
+              fetchProjects();
+            } catch { toast.error("网络错误"); }
+            finally { setCreating(false); }
+          }} className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">项目名称</label>
+              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="输入项目名称" required />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">描述（可选）</label>
+              <Input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="项目描述" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button type="submit" disabled={creating}>{creating ? "创建中..." : "创建"}</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">{projects.length} 个项目</p>
+        <Button size="sm" onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-1 h-4 w-4" />创建项目
+        </Button>
+      </div>
+
+      {projects.length === 0 ? (
+        <EmptyState title="暂无项目" description="创建一个项目开始使用" />
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {projects.map((p) => (
+            <Link
+              key={p.id}
+              to={`/projects/${p.id}`}
+              className="block rounded-lg border bg-card p-4 transition-colors hover:bg-accent"
+            >
+              <h3 className="font-medium">{p.name}</h3>
+              {p.description && (
+                <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{p.description}</p>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}

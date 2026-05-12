@@ -33,7 +33,7 @@ Issue
 `id, name, description` → HasMany: Members, Issues, Labels, Milestones, Skills
 
 ### Agent
-`id, name, kind(ai/human/hybrid), status, external_id, capabilities(jsonb), metadata(jsonb), last_seen_at`
+`id, name, kind(ai/human/hybrid), status, external_id, capabilities(jsonb), device_info, model_info, metadata(jsonb), last_seen_at`
 
 ### Issue
 `id, number(project内自增), project_id, title, description, state, priority, creator_id, parent_id, milestone_id, due_date, structured_output(jsonb)`

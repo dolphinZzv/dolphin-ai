@@ -75,6 +75,8 @@ type Agent struct {
 	SystemPrompt string       `gorm:"type:text"`
 	Capabilities StringSlice  `gorm:"type:jsonb;serializer:json"`
 	Metadata     JSONMap      `gorm:"type:jsonb;serializer:json"`
+	DeviceInfo   string       `gorm:"type:text"`
+	ModelInfo    string       `gorm:"type:varchar(255)"`
 	LastSeenAt   *time.Time   `gorm:"index"`
 	CreatedAt    time.Time    `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time    `gorm:"autoUpdateTime"`
