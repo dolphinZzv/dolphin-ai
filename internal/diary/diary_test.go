@@ -204,6 +204,9 @@ func TestDiarySyncIncrementalSkipsProcessedSessions(t *testing.T) {
 		t.Fatalf("first Sync: %v", err)
 	}
 
+	// Ensure mtime differs from last_sync.json (1s granularity on some filesystems)
+	time.Sleep(time.Second)
+
 	// Add a new session
 	writeTestSessionSummary(sessionDir, "sess2", now, 3, 1, 0, 0, "completed")
 
