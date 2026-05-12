@@ -86,6 +86,7 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"description": StringParam("Issue description in Markdown"),
 			"priority":    StringParam("Priority: critical / high / medium / low"),
 			"assigneeIds": ArrayParam("Agent IDs to assign", "string"),
+			"milestoneId": StringParam("Milestone ID to associate"),
 			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
 		}, []string{"title"}),
 		Handler: h.handleCreateIssue,
@@ -240,6 +241,7 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 		Description string   `json:"description"`
 		Priority    string   `json:"priority"`
 		AssigneeIDs []string `json:"assigneeIds"`
+		MilestoneID string   `json:"milestoneId"`
 		ProjectID   string   `json:"projectId"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -268,7 +270,15 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 		}
 	}
 
-	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil)
+
+		var milestoneID *uint
+		if p.MilestoneID != "" {
+			if mid, err := strconv.ParseUint(p.MilestoneID, 10, 64); err == nil {
+				v := uint(mid)
+				milestoneID = &v
+			}
+		}
+	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil, milestoneID)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}

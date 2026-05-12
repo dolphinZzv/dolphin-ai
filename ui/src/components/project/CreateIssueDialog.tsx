@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,18 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+
+interface Label {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+interface Milestone {
+  id: string;
+  title: string;
+}
 
 const createIssueSchema = z.object({
   title: z.string().min(1, "标题不能为空").max(200, "标题不能超过 200 字"),
@@ -44,6 +56,10 @@ export function CreateIssueDialog({
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [labels, setLabels] = useState<Label[]>([]);
+  const [milestones, setMilestones] = useState<Milestone[]>([]);
+  const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
+  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>("");
 
   const {
     register,
@@ -60,6 +76,39 @@ export function CreateIssueDialog({
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
+  const gql = (query: string, variables: Record<string, unknown>) =>
+    fetch("/graphql", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ query, variables }),
+    }).then((r) => r.json());
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedLabelIds([]);
+    setSelectedMilestoneId("");
+    setError("");
+    Promise.all([
+      gql(
+        `query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`,
+        { projectId }
+      ),
+      gql(
+        `query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title } }`,
+        { projectId }
+      ),
+    ]).then(([lJson, mJson]) => {
+      if (!lJson.errors) setLabels(lJson.data.labels);
+      if (!mJson.errors) setMilestones(mJson.data.milestones);
+    });
+  }, [open, projectId]);
+
+  const toggleLabel = (id: string) => {
+    setSelectedLabelIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
   const onSubmit = async (data: CreateIssueForm) => {
     setSubmitting(true);
     setError("");
@@ -70,14 +119,16 @@ export function CreateIssueDialog({
         headers,
         body: JSON.stringify({
           operationName: "createIssue",
-          query: `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!) {
-            createIssue(projectID: $pid, title: $title, description: $description, priority: $priority) { id number title }
+          query: `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!], $milestoneId: ID) {
+            createIssue(projectID: $pid, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs, milestoneId: $milestoneId) { id number title }
           }`,
           variables: {
             pid: projectId,
             title: data.title,
             description: data.description || null,
             priority: data.priority,
+            labelIDs: selectedLabelIds.length > 0 ? selectedLabelIds : null,
+            milestoneId: selectedMilestoneId || null,
           },
         }),
       });
@@ -152,6 +203,56 @@ export function CreateIssueDialog({
             )}
           </div>
 
+          {/* Labels */}
+          <div className="space-y-2">
+            <Label>标签</Label>
+            <div className="flex flex-wrap gap-1">
+              {labels.length === 0 ? (
+                <p className="text-xs text-muted-foreground">暂无标签</p>
+              ) : (
+                labels.map((l) => (
+                  <Badge
+                    key={l.id}
+                    variant={selectedLabelIds.includes(l.id) ? "default" : "outline"}
+                    className="cursor-pointer text-xs"
+                    style={
+                      selectedLabelIds.includes(l.id)
+                        ? {
+                            backgroundColor: l.color || undefined,
+                            color: "#fff",
+                          }
+                        : {
+                            borderColor: l.color || undefined,
+                            color: l.color || undefined,
+                          }
+                    }
+                    onClick={() => toggleLabel(l.id)}
+                  >
+                    {l.name}
+                  </Badge>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Milestone */}
+          <div className="space-y-2">
+            <Label>里程碑</Label>
+            <Select value={selectedMilestoneId} onValueChange={setSelectedMilestoneId}>
+              <SelectTrigger>
+                <SelectValue placeholder="不关联" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">不关联</SelectItem>
+                {milestones.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="description">描述（可选）</Label>
             <Textarea
@@ -163,7 +264,7 @@ export function CreateIssueDialog({
           </div>
 
           {error && (
-            <p className="text-sm text-destructive" role="alert">
+            <p className="text-xs text-destructive" role="alert">
               {error}
             </p>
           )}

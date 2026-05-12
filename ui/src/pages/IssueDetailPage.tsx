@@ -12,7 +12,14 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Send, MessageSquare, Trash2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Send, MessageSquare, Trash2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -33,6 +40,7 @@ interface IssueDetail {
     state: string;
   }>;
   labels: Array<{ id: string; name: string; color: string | null }>;
+  milestone: { id: string; title: string } | null;
   projectID: string;
 }
 
@@ -49,6 +57,18 @@ interface TimelineEvent {
   createdAt: string;
   actor: { id: string; name: string };
   payload: Record<string, unknown> | null;
+}
+
+interface Label {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+interface Milestone {
+  id: string;
+  title: string;
+  state: string;
 }
 
 const stateLabels: Record<string, string> = {
@@ -166,6 +186,9 @@ export function IssueDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newComment, setNewComment] = useState("");
+  const [projectLabels, setProjectLabels] = useState<Label[]>([]);
+  const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]);
+  const [showLabelPicker, setShowLabelPicker] = useState(false);
 
   const gql = useCallback(
     (operationName: string, query: string, variables: Record<string, unknown>) => {
@@ -195,6 +218,7 @@ export function IssueDetailPage() {
             creator { id name }
             assignees { id agent { id name } state }
             labels { id name color }
+            milestone { id title }
             projectID
           }
         }`,
@@ -222,6 +246,25 @@ export function IssueDetailPage() {
         setIssue(iJson.data.issue);
         setComments(cJson.data.comments);
         setEvents(tJson.data.timeline);
+
+        // Fetch project labels and milestones
+        const pid = iJson.data.issue.projectID;
+        if (pid) {
+          gql(
+            "projectLabels",
+            `query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`,
+            { projectId: pid }
+          ).then((lJson) => {
+            if (!lJson.errors) setProjectLabels(lJson.data.labels);
+          });
+          gql(
+            "projectMilestones",
+            `query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title state } }`,
+            { projectId: pid }
+          ).then((mJson) => {
+            if (!mJson.errors) setProjectMilestones(mJson.data.milestones);
+          });
+        }
       })
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
@@ -256,7 +299,6 @@ export function IssueDetailPage() {
     );
     if (!json.errors) {
       toast.success("Issue 已删除");
-      // Navigate back to project page
       if (issue?.projectID) window.location.href = `/projects/${issue.projectID}`;
     } else {
       toast.error(json.errors[0].message);
@@ -285,6 +327,53 @@ export function IssueDetailPage() {
     }
   };
 
+  const handleAddLabel = async (labelId: string) => {
+    if (!id) return;
+    const json = await gql(
+      "addLabels",
+      `mutation addLabels($issueID: ID!, $labelIDs: [ID!]!) { addLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
+      { issueID: id, labelIDs: [labelId] }
+    );
+    if (!json.errors) {
+      setIssue((prev) => prev ? { ...prev, labels: json.data.addLabels.labels } : prev);
+      toast.success("标签已添加");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleRemoveLabel = async (labelId: string) => {
+    if (!id) return;
+    const json = await gql(
+      "removeLabels",
+      `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
+      { issueID: id, labelIDs: [labelId] }
+    );
+    if (!json.errors) {
+      setIssue((prev) => prev ? { ...prev, labels: json.data.removeLabels.labels } : prev);
+      toast.success("标签已移除");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleChangeMilestone = async (milestoneId: string) => {
+    if (!id) return;
+    const json = await gql(
+      "updateIssue",
+      `mutation updateIssue($id: ID!, $milestoneId: ID) {
+        updateIssue(id: $id, milestoneId: $milestoneId) { id milestone { id title } }
+      }`,
+      { id, milestoneId: milestoneId || null }
+    );
+    if (!json.errors && json.data) {
+      setIssue((prev) => prev ? { ...prev, milestone: json.data.updateIssue.milestone } : prev);
+      toast.success("里程碑已更新");
+    } else {
+      toast.error(json.errors?.[0]?.message || "更新失败");
+    }
+  };
+
   if (loading) return (
     <div className="space-y-4">
       <Skeleton className="h-6 w-48" />
@@ -297,6 +386,10 @@ export function IssueDetailPage() {
   if (!issue) return <EmptyState title="Issue 不存在" />;
 
   const transitions = validTransitions[issue.state] || [];
+  const availableLabels = projectLabels.filter(
+    (pl) => !issue.labels.some((l) => l.id === pl.id)
+  );
+  const currentMilestoneId = issue.milestone?.id || "";
 
   const mainContent = (
     <div className="space-y-6">
@@ -454,26 +547,86 @@ export function IssueDetailPage() {
         </CardContent>
       </Card>
 
-      {/* Labels */}
+      {/* Milestone */}
       <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">标签</CardTitle>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium">里程碑</CardTitle>
         </CardHeader>
         <CardContent>
-          {!issue.labels || issue.labels.length === 0 ? (
+          {projectMilestones.length === 0 ? (
+            <p className="text-sm text-muted-foreground">无</p>
+          ) : (
+            <Select value={currentMilestoneId} onValueChange={handleChangeMilestone}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="不关联" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">不关联</SelectItem>
+                {projectMilestones.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Labels */}
+      <Card>
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm font-medium">标签</CardTitle>
+          {availableLabels.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={() => setShowLabelPicker(!showLabelPicker)}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              添加
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          {(!issue.labels || issue.labels.length === 0) && !showLabelPicker ? (
             <p className="text-sm text-muted-foreground">无</p>
           ) : (
             <div className="flex flex-wrap gap-1">
               {issue.labels.map((l) => (
                 <Badge
                   key={l.id}
-                  className="text-xs"
+                  className="text-xs cursor-pointer hover:opacity-80"
                   style={{
                     backgroundColor: l.color ? `${l.color}20` : undefined,
                     color: l.color || undefined,
                   }}
+                  onClick={() => handleRemoveLabel(l.id)}
+                  title="点击移除"
                 >
-                  {l.name}
+                  {l.name} ✕
+                </Badge>
+              ))}
+            </div>
+          )}
+          {showLabelPicker && availableLabels.length > 0 && (
+            <div className="mt-2 pt-2 border-t flex flex-wrap gap-1">
+              {availableLabels.map((l) => (
+                <Badge
+                  key={l.id}
+                  variant="outline"
+                  className="text-xs cursor-pointer hover:bg-accent"
+                  style={{
+                    borderColor: l.color || undefined,
+                    color: l.color || undefined,
+                  }}
+                  onClick={() => {
+                    handleAddLabel(l.id);
+                    setShowLabelPicker(false);
+                  }}
+                >
+                  + {l.name}
                 </Badge>
               ))}
             </div>

@@ -39,7 +39,7 @@ func NewIssueService(
 	}
 }
 
-func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs []uint, labelIDs []uint) (*models.Issue, error) {
+func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs, labelIDs []uint, milestoneID *uint) (*models.Issue, error) {
 	var issue *models.Issue
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -53,6 +53,7 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 			State:       models.IssueStateOpen,
 			Priority:    priority,
 			CreatorID:   creatorID,
+			MilestoneID: milestoneID,
 		}
 		if err := txIssueRepo.Create(issue); err != nil {
 			return fmt.Errorf("create issue: %w", err)
@@ -235,7 +236,7 @@ func (s *IssueService) UpdateAssigneeState(issueID, agentID uint, state models.A
 	return nil, fmt.Errorf("assignee not found")
 }
 
-func (s *IssueService) Update(id uint, title, description string, priority models.Priority, dueDate *models.UnixNullTime) (*models.Issue, error) {
+func (s *IssueService) Update(id uint, title, description string, priority models.Priority, dueDate *models.UnixNullTime, milestoneID *uint) (*models.Issue, error) {
 	changes := map[string]interface{}{}
 	if title != "" {
 		changes["title"] = title
@@ -248,6 +249,9 @@ func (s *IssueService) Update(id uint, title, description string, priority model
 	}
 	if dueDate != nil && dueDate.Valid {
 		changes["due_date"] = dueDate.Time
+	}
+	if milestoneID != nil {
+		changes["milestone_id"] = *milestoneID
 	}
 	if len(changes) == 0 {
 		return s.issueRepo.GetByID(id)

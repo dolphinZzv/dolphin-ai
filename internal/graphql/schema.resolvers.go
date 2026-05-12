@@ -204,7 +204,7 @@ func (r *mutationResolver) RemoveProjectMember(ctx context.Context, projectID st
 }
 
 // CreateIssue is the resolver for the createIssue field.
-func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, title string, description *string, priority Priority, assigneeIDs []string, labelIDs []string) (*Issue, error) {
+func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, title string, description *string, priority Priority, assigneeIDs []string, labelIDs []string, milestoneId *string) (*Issue, error) {
 	pid := parseID(projectID)
 	agentID, err := r.requireIssueProjectMemberByProject(ctx, pid)
 	if err != nil {
@@ -222,7 +222,12 @@ func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, ti
 	for i, id := range labelIDs {
 		labelUintIDs[i] = parseID(id)
 	}
-	issue, err := r.IssueSvc.Create(pid, agentID, title, desc, models.Priority(priority), assigneeUintIDs, labelUintIDs)
+	var mid *uint
+	if milestoneId != nil && *milestoneId != "" {
+		v := parseID(*milestoneId)
+		mid = &v
+	}
+	issue, err := r.IssueSvc.Create(pid, agentID, title, desc, models.Priority(priority), assigneeUintIDs, labelUintIDs, mid)
 	if err != nil {
 		return nil, fmt.Errorf("create issue: %w", err)
 	}
@@ -230,7 +235,7 @@ func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, ti
 }
 
 // UpdateIssue is the resolver for the updateIssue field.
-func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *string, description *string, priority *Priority, dueDate *time.Time) (*Issue, error) {
+func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *string, description *string, priority *Priority, dueDate *time.Time, milestoneId *string) (*Issue, error) {
 	iid := parseID(id)
 	if _, err := r.requireIssueProjectMember(ctx, iid); err != nil {
 		return nil, err
@@ -251,7 +256,12 @@ func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *st
 	if dueDate != nil {
 		nt = &models.UnixNullTime{Time: *dueDate, Valid: true}
 	}
-	issue, err := r.IssueSvc.Update(iid, t, d, p, nt)
+	var mid *uint
+	if milestoneId != nil && *milestoneId != "" {
+		v := parseID(*milestoneId)
+		mid = &v
+	}
+	issue, err := r.IssueSvc.Update(iid, t, d, p, nt, mid)
 	if err != nil {
 		return nil, fmt.Errorf("update issue: %w", err)
 	}

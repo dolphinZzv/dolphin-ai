@@ -253,8 +253,8 @@ type Mutation {
   updateProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
   removeProjectMember(projectID: ID!, agentID: ID!): Boolean!
 
-  createIssue(projectID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!]): Issue!
-  updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time): Issue!
+  createIssue(projectID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!], milestoneId: ID): Issue!
+  updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time, milestoneId: ID): Issue!
   deleteIssue(id: ID!): Boolean!
   transitionIssue(id: ID!, newState: IssueState!, actorID: ID!): Issue!
 
