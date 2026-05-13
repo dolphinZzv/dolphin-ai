@@ -1,58 +1,72 @@
 # Change Flow
 
-**原则：设计先行，代码随设计走。** 必须先完成设计变更并获评审通过，才能进入代码实现阶段。
+**原则：设计先行，代码随设计走。**
 
-每个变更需通过两级评审方可合并：
-
-```mermaid
-flowchart TD
-    A(["1. Analysis"]) --> V1{"Scope defined?"}
-    V1 -->|no| A
-    V1 -->|yes| B(["2. Design"])
-    B --> V2{"【L1 评审】<br/>Design approved?"}
-    V2 -->|no| B
-    V2 -->|yes| C(["3. Implementation"])
-    C --> V3{"4. Self-Check<br/>go vet + go build"}
-    V3 -->|no| C
-    V3 -->|yes| V4{"Checklist verified?"}
-    V4 -->|no| C
-    V4 -->|yes| D(["5. Testing"])
-    D --> V5{"go test -race ./...?"}
-    V5 -->|no| C
-    V5 -->|yes| E(["6. 【L2 评审】<br/>Code Review"])
-    E --> V6{"Approved?"}
-    V6 -->|no| C
-    V6 -->|yes| F(["7. Merge & Release"])
-    F --> V7{"CI passed?"}
-    V7 -->|no| F
-    V7 -->|yes| G["Done"]
+```text
+┌─────────────────────────────────────────────────┐
+│ 1. 用户提出需求、问题或 Bug                       │
+│    ├─ Bug → 先写入 todo/ 编号归档               │
+│    ├─ Feature → 先写入 feature/ 编号归档        │
+│    ↓                                            │
+│ 2. Agent 自审需求（第一轮）                      │
+│    ├─ 不清晰 → 追问用户澄清                      │
+│    ↓                                            │
+│   Agent 自审需求（第二轮）                      │
+│    ├─ 仍不清晰 → 继续追问                        │
+│    ├─ 通过                                      │
+│    ↓                                            │
+│ 3. 设计 — 输出设计文档到 design/ 或写清楚方案    │
+│    ↑←───────────────┐                          │
+│    ↓                 │                          │
+│ 4. Agent 自审设计（第一轮）                      │
+│    ├─ 有问题 ────────┘ 修改设计                  │
+│    ↓                                            │
+│   Agent 自审设计（第二轮）                      │
+│    ├─ 仍有问题 → 修改设计 → 回第一轮            │
+│    ├─ 通过                                      │
+│    ↓                                            │
+│ 5. 严格按设计写代码                              │
+│    ├─ 按依赖方向：models → repository → service → handler
+│    ├─ 用户反馈 → 同步更新设计文档                │
+│    ↓                                            │
+│ 6. 单元测试 — 所有新代码必须有测试               │
+│    ├─ go test ./internal/... -count=1 100% 通过  │
+│    ├─ 失败 → 回到步骤 5 修代码                   │
+│    ↓                                            │
+│ ► 提交代码（git commit）                         │
+│    ↓                                            │
+│ 7. 验证 — 将端到端/集成验证代码写入 verif/ 目录  │
+│    ├─ go test ./verif/ -v 必须通过               │
+│    ├─ 失败 → 回到步骤 5 修代码                   │
+│    ↓                                            │
+│ 8. Agent 自审代码（第一轮）                      │
+│    ├─ 检查边界情况、错误处理、并发安全            │
+│    ├─ 发现问题 → 回到步骤 5 → 回本轮重审        │
+│    ├─ 发现设计问题 → 回到步骤 3 改设计           │
+│    ↓                                            │
+│   Agent 自审代码（第二轮）                      │
+│    ├─ 仍有问题 → 回步骤 5 修改 → 回第一轮       │
+│    ├─ 通过                                      │
+│    ↓                                            │
+│ 9. Agent 自评变更 — 影响范围、回滚方案、兼容性   │
+│    ↓                                            │
+│ 10. 询问用户是否改进或合并                       │
+│    ├─ 合并 → Agent 创建 PR，请求合并             │
+│    ├─ 改进 → 回到步骤 1，重新走流程              │
+└─────────────────────────────────────────────────┘
 ```
 
-## Two-Level Review
+## Key Rules
 
-| Level | Gate | Scope | Verifier |
-|-------|------|-------|----------|
-| **L1** | Design → Implementation | 设计方案、架构影响、接口定义 | 架构师 / 资深开发者 |
-| **L2** | Testing → Merge | 代码质量、安全性、测试覆盖 | 其他开发者 (≥ 1 人) |
-
-L1 未通过不得进入实现阶段，L2 未通过不得合并。
-
-## Verification Gates
-
-| Gate | Verification | Verifier |
-|------|-------------|----------|
-| Analysis → Design | Scope defined | Self-check |
-| Design → Implementation | **L1 评审**: 设计通过 | 架构师 |
-| Implementation → Self-Check | `go vet ./...` + `go build ./...` | Self-check |
-| Self-Check → Test | Checklist verified | Self-check |
-| Test → Review | `go test -race ./...` | CI |
-| Review → Merge | **L2 评审**: 代码通过 | 其他开发者 |
-| Merge → Release | CI passes | CI |
-
-## Prohibitions
-
-- No direct commits to `main` or `develop`
-- No skipping either level of review
-- **No code changes before L1 design review is approved**
-- No breaking changes without updating design docs
-- No code commits without tests
+| # | Rule |
+|---|------|
+| 1 | Bug → `todo/` 归档，Feature → `feature/` 归档 |
+| 2 | 需求须经两轮 Agent 自审，不清晰则追问 |
+| 3 | 设计必须输出文档到 `design/`，通过两轮自审后方可编码 |
+| 4 | 代码严格按设计实现，依赖方向：`models → repository → service → handler` |
+| 5 | 用户反馈须同步更新设计文档 |
+| 6 | 单元测试 `go test ./internal/... -count=1` 100% 通过 |
+| 7 | 端到端/集成验证写入 `verif/` 目录，`go test ./verif/ -v` 通过 |
+| 8 | 代码须经两轮 Agent 自审（边界情况、错误处理、并发安全） |
+| 9 | 提交前自评变更影响范围、回滚方案、兼容性 |
+| 10 | 最终询问用户：合并或改进 |
