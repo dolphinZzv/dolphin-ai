@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"compress/gzip"
 	"encoding/json"
 	"fmt"
@@ -115,7 +116,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Fprintf(os.Stderr, "\nDownloading %s ...\n", asset.Name)
 
-	tmpFile, err := os.CreateTemp("", "dolphin-*.tar.gz")
+	tmpFile, err := os.CreateTemp("", "dolphin-*"+archiveExt())
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
@@ -260,17 +261,43 @@ func fetchRelease(version string) (*githubRelease, error) {
 }
 
 func archiveNameFor(version string) string {
-	osName := runtime.GOOS
-	if runtime.GOOS == "darwin" {
-		osName = "macOS"
-	}
+	osName := osNameFor(runtime.GOOS)
+	archName := archNameFor(runtime.GOARCH)
+	return fmt.Sprintf("dolphin_%s_%s_%s%s", version, osName, archName, archiveExt())
+}
 
-	archName := runtime.GOARCH
-	if runtime.GOARCH == "amd64" {
-		archName = "x86_64"
+func archiveExt() string {
+	if runtime.GOOS == "windows" {
+		return ".zip"
 	}
+	return ".tar.gz"
+}
 
-	return fmt.Sprintf("dolphin_%s_%s_%s.tar.gz", version, osName, archName)
+func osNameFor(goos string) string {
+	switch goos {
+	case "darwin":
+		return "macOS"
+	case "windows":
+		return "windows"
+	default:
+		return goos
+	}
+}
+
+func archNameFor(goarch string) string {
+	switch goarch {
+	case "amd64":
+		return "x86_64"
+	default:
+		return goarch
+	}
+}
+
+func binaryName() string {
+	if runtime.GOOS == "windows" {
+		return "dolphin.exe"
+	}
+	return "dolphin"
 }
 
 func downloadFile(url string, w io.Writer) error {
@@ -289,6 +316,13 @@ func downloadFile(url string, w io.Writer) error {
 }
 
 func extractBinary(archivePath string) ([]byte, error) {
+	if strings.HasSuffix(archivePath, ".zip") {
+		return extractBinaryFromZip(archivePath)
+	}
+	return extractBinaryFromTarGz(archivePath)
+}
+
+func extractBinaryFromTarGz(archivePath string) ([]byte, error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return nil, err
@@ -301,6 +335,7 @@ func extractBinary(archivePath string) ([]byte, error) {
 	}
 	defer gzr.Close()
 
+	binName := binaryName()
 	tarReader := tar.NewReader(gzr)
 	for {
 		header, err := tarReader.Next()
@@ -311,7 +346,7 @@ func extractBinary(archivePath string) ([]byte, error) {
 			return nil, fmt.Errorf("read tar: %w", err)
 		}
 
-		if header.Typeflag == tar.TypeReg && filepath.Base(header.Name) == "dolphin" {
+		if header.Typeflag == tar.TypeReg && filepath.Base(header.Name) == binName {
 			data, err := io.ReadAll(tarReader)
 			if err != nil {
 				return nil, fmt.Errorf("read %s from archive: %w", header.Name, err)
@@ -320,5 +355,31 @@ func extractBinary(archivePath string) ([]byte, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("dolphin binary not found in archive")
+	return nil, fmt.Errorf("%s not found in archive", binName)
+}
+
+func extractBinaryFromZip(archivePath string) ([]byte, error) {
+	r, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+
+	binName := binaryName()
+	for _, f := range r.File {
+		if filepath.Base(f.Name) == binName {
+			rc, err := f.Open()
+			if err != nil {
+				return nil, fmt.Errorf("open %s in zip: %w", f.Name, err)
+			}
+			data, err := io.ReadAll(rc)
+			rc.Close()
+			if err != nil {
+				return nil, fmt.Errorf("read %s from zip: %w", f.Name, err)
+			}
+			return data, nil
+		}
+	}
+
+	return nil, fmt.Errorf("%s not found in archive", binName)
 }

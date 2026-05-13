@@ -2,7 +2,7 @@
 
 [English](INSTALL.md) | [中文](INSTALL.zh.md)
 
-dolphin runs on **Linux** and **macOS**. Choose the method that works best for you.
+dolphin runs on **Linux**, **macOS**, and **Windows**. Choose the method that works best for you.
 
 ## Prerequisites
 
@@ -19,6 +19,8 @@ Download the archive for your platform from the [latest release](https://github.
 | Linux arm64 | `dolphin_<version>_linux_arm64.tar.gz` |
 | macOS Intel | `dolphin_<version>_macOS_x86_64.tar.gz` |
 | macOS Apple Silicon | `dolphin_<version>_macOS_arm64.tar.gz` |
+| Windows x86_64 | `dolphin_<version>_windows_x86_64.zip` |
+| Windows arm64 | `dolphin_<version>_windows_arm64.zip` |
 
 ```bash
 # Example: install the latest version on Linux x86_64
@@ -37,6 +39,17 @@ tar xzf "dolphin_${VERSION}_macOS_arm64.tar.gz"
 sudo mv dolphin /usr/local/bin/
 rm "dolphin_${VERSION}_macOS_arm64.tar.gz"
 ```
+
+```powershell
+# Windows x86_64 example (PowerShell)
+$VERSION = "v1.0.0"
+Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin_${VERSION}_windows_x86_64.zip" -OutFile "dolphin_${VERSION}_windows_x86_64.zip"
+Expand-Archive -Path "dolphin_${VERSION}_windows_x86_64.zip" -DestinationPath .
+Move-Item .\dolphin.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin.exe"
+Remove-Item "dolphin_${VERSION}_windows_x86_64.zip"
+```
+
+Alternatively, add the download directory to your `PATH` instead of moving the binary.
 
 ## Option 2: Install with `go install`
 
