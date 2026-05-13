@@ -53,4 +53,5 @@ logs
 /diary
 
 /.dolphin/diary
-.dolphinzZdolphinzZ
+# Per-user agent/workspace state
+/.dolphinzZ/
