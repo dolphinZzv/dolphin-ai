@@ -6,7 +6,13 @@ dolphin/
 ├── go.mod / go.sum
 ├── Makefile / Dockerfile
 ├── AGENTS.md / WORKFLOW.md
-├── config.example.yaml
+├── docs/
+│   ├── en/
+│   │   ├── INSTALL.md
+│   │   └── config.example.yaml
+│   └── zh/
+│       ├── INSTALL.zh.md
+│       └── config.example.zh.yaml
 ├── cmd/
 │   ├── root.go                   # 根命令 + runAgent() 启动编排
 │   ├── setup.go                  # 职业引导

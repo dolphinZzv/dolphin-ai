@@ -5,7 +5,7 @@
   <br>
   <strong>分发：</strong> <a href="https://github.com/dolphinZzv/dolphin">GitHub</a> · <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
   <br>
-  <strong>安装：</strong> <a href="INSTALL.zh.md">安装指南</a>
+  <strong>安装：</strong> <a href="docs/zh/INSTALL.zh.md">安装指南</a>
 </p>
 
 一个在你工作的地方随时待命的 AI agent —— 终端、邮件、聊天、SSH。它执行 shell 命令、操控浏览器、调度子 agent 并行工作、按你定义的计划自动运行任务。就像一个能干的队友，无论通过什么渠道都能对接。
@@ -125,13 +125,13 @@ export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 手动初始化：
 
 ```bash
-cp config.example.yaml .dolphin/config.yaml        # 英文
-cp config.example.zh.yaml .dolphin/config.yaml      # 中文
+cp docs/en/config.example.yaml .dolphin/config.yaml      # 英文
+cp docs/zh/config.example.zh.yaml .dolphin/config.yaml   # 中文
 ```
 
 ## 源码编译
 
-dolphin 支持 **Linux**、**macOS** 和 **Windows**（arm64 和 x86_64）。完整安装方式（预编译二进制、go install 等）见 [INSTALL.zh.md](INSTALL.zh.md)。
+dolphin 支持 **Linux**、**macOS** 和 **Windows**（arm64 和 x86_64）。完整安装方式（预编译二进制、go install 等）见 [INSTALL.zh.md](docs/zh/INSTALL.zh.md)。
 
 快速参考：
 

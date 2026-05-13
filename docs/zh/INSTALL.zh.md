@@ -1,6 +1,6 @@
 # 安装 dolphin
 
-[English](INSTALL.md) | [中文](INSTALL.zh.md)
+[English](../en/INSTALL.md) | [中文](INSTALL.zh.md)
 
 dolphin 支持 **Linux**、**macOS** 和 **Windows** 系统。选择最适合你的安装方式。
 

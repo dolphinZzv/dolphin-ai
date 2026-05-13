@@ -1,6 +1,6 @@
 # Install dolphin
 
-[English](INSTALL.md) | [中文](INSTALL.zh.md)
+[English](INSTALL.md) | [中文](../zh/INSTALL.zh.md)
 
 dolphin runs on **Linux**, **macOS**, and **Windows**. Choose the method that works best for you.
 

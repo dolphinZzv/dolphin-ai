@@ -5,7 +5,7 @@
   <br>
   <strong>Distribution:</strong> <a href="https://github.com/dolphinZzv/dolphin">GitHub</a> · <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
   <br>
-  <strong>Install:</strong> <a href="INSTALL.md">Install Guide</a>
+  <strong>Install:</strong> <a href="docs/en/INSTALL.md">Install Guide</a>
 </p>
 
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
@@ -89,7 +89,7 @@ export DZ_LLM_MODEL="gpt-4o"
 
 ## Build from source
 
-dolphin supports **Linux**, **macOS**, and **Windows** (arm64 and x86_64). See [INSTALL.md](INSTALL.md) for all options (pre-built binaries, go install, etc.).
+dolphin supports **Linux**, **macOS**, and **Windows** (arm64 and x86_64). See [INSTALL.md](docs/en/INSTALL.md) for all options (pre-built binaries, go install, etc.).
 
 Quick reference:
 
