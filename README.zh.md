@@ -11,10 +11,10 @@
   </a>
 </p>
 
-| 平台 | 仓库 | 克隆命令 |
-|------|------|----------|
-| GitHub | github.com/dolphinZzv/dolphin | `git clone git@github.com:dolphinZzv/dolphin.git` |
-| Gitee  | gitee.com/dolphinzzv/dolphindolphin | `git clone git@gitee.com:dolphinzzv/dolphindolphin.git` |
+| 平台 | 仓库地址 |
+|------|----------|
+| GitHub | [github.com/dolphinZzv/dolphin](https://github.com/dolphinZzv/dolphin) |
+| Gitee  | [gitee.com/dolphinzzv/dolphindolphin](https://gitee.com/dolphinzzv/dolphindolphin) |
 
 > GitHub 为主要镜像，Gitee 为中国大陆用户镜像。两者通过 `make distribute` 保持同步。
 

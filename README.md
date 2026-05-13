@@ -11,10 +11,10 @@
   </a>
 </p>
 
-| Platform | Repository | Command |
-|----------|-----------|---------|
-| GitHub   | github.com/dolphinZzv/dolphin | `git clone git@github.com:dolphinZzv/dolphin.git` |
-| Gitee    | gitee.com/dolphinzzv/dolphindolphin | `git clone git@gitee.com:dolphinzzv/dolphindolphin.git` |
+| Platform | Repository |
+|----------|-----------|
+| GitHub   | [github.com/dolphinZzv/dolphin](https://github.com/dolphinZzv/dolphin) |
+| Gitee    | [gitee.com/dolphinzzv/dolphindolphin](https://gitee.com/dolphinzzv/dolphindolphin) |
 
 > GitHub is the primary mirror; Gitee is the mirror for mainland China users. Both are kept in sync via `make distribute`.
 
