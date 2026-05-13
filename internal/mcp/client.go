@@ -147,7 +147,8 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 	}
 	raw, err := c.transport.sendRequest(ctx, req)
 	if err != nil {
-		return &ToolResult{Content: err.Error(), IsError: true}, nil
+		zap.S().Warnw("mcp server tool call failed", "server", c.name, "tool", name, "error", err)
+		return &ToolResult{Content: fmt.Sprintf("MCP server %q is unavailable", c.name), IsError: true}, nil
 	}
 
 	var result struct {
@@ -158,7 +159,8 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 		IsError bool `json:"isError"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("parse result: %v", err), IsError: true}, nil
+		zap.S().Warnw("mcp server returned unparseable result", "server", c.name, "tool", name, "error", err)
+		return &ToolResult{Content: fmt.Sprintf("MCP server %q returned invalid data", c.name), IsError: true}, nil
 	}
 
 	var text string

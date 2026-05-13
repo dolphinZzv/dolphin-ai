@@ -103,20 +103,28 @@ func (r *Registry) Register(t Tool) {
 }
 
 // LoadServers starts external MCP servers defined in config and registers their tools.
+// Failures for individual servers are logged as warnings and do not prevent other
+// servers from loading. The caller should still defer CloseServers() to clean up
+// any servers that did start successfully.
 func (r *Registry) LoadServers() error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	var loaded, failed int
 	for name, cfg := range r.cfg.Servers {
 		client, err := NewServerClient(name, cfg)
 		if err != nil {
-			return fmt.Errorf("mcp server %q: %w", name, err)
+			failed++
+			zap.S().Warnw("mcp server skipped — failed to create client", "server", name, "error", err)
+			continue
 		}
 
 		defs, err := client.ListTools()
 		if err != nil {
+			failed++
 			client.Close()
-			return fmt.Errorf("list tools from %q: %w", name, err)
+			zap.S().Warnw("mcp server skipped — failed to list tools", "server", name, "error", err)
+			continue
 		}
 
 		for _, def := range defs {
@@ -125,11 +133,9 @@ func (r *Registry) LoadServers() error {
 				server: client,
 				def:    def,
 			}
-			// Always register with server:name prefix for disambiguation
 			r.tools[name+":"+def.Name] = wrapper
 			r.stats[name+":"+def.Name] = &ToolStats{}
 			zap.S().Debugw("mcp tool registered", "tool", name+":"+def.Name, "server", name)
-			// Also register with bare name if no collision
 			if _, exists := r.tools[def.Name]; !exists {
 				r.tools[def.Name] = wrapper
 				r.stats[def.Name] = &ToolStats{}
@@ -141,8 +147,10 @@ func (r *Registry) LoadServers() error {
 		}
 
 		r.servers = append(r.servers, client)
+		loaded++
 	}
 
+	zap.S().Infow("mcp servers load complete", "loaded", loaded, "failed", failed)
 	return nil
 }
 

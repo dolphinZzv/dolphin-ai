@@ -116,13 +116,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		zap.S().Infow("webhook tool registered")
 	}
 
-	// Load external MCP servers
+	// Load external MCP servers — individual failures are non-fatal.
 	if len(cfg.MCP.Servers) > 0 {
-		if err := toolRegistry.LoadServers(); err != nil {
-			return fmt.Errorf("load mcp servers: %w", err)
-		}
+		toolRegistry.LoadServers()
 		defer toolRegistry.CloseServers()
-		zap.S().Infow("external mcp servers loaded", "count", len(cfg.MCP.Servers))
 	}
 
 	tools := toolRegistry.List()
@@ -424,6 +421,16 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 
 	// MQTT transport
 	if cfg.Transport.MQTT.Enabled {
+		// Start embedded MQTT broker when configured, so no external broker is needed.
+		if cfg.Transport.MQTT.Embedded {
+			broker := transport.NewEmbeddedBroker(cfg.Transport.MQTT.EmbeddedAddr)
+			if err := broker.Start(); err != nil {
+				return fmt.Errorf("embedded mqtt broker: %w", err)
+			}
+			defer broker.Close()
+			cfg.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", broker.ClientAddr())
+		}
+
 		fmt.Fprintf(os.Stderr, "\n=== MQTT transport active ===\n")
 		fmt.Fprintf(os.Stderr, "Broker: %s  Topic: %s  Client: %s\n\n",
 			cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.Topic, cfg.Transport.MQTT.ClientID)

@@ -118,6 +118,8 @@ type MQTTConfig struct {
 	Topic         string `mapstructure:"topic"`
 	ResponseTopic string `mapstructure:"response_topic"`
 	ClientID      string `mapstructure:"client_id"`
+	Embedded      bool   `mapstructure:"embedded"`
+	EmbeddedAddr  string `mapstructure:"embedded_addr"`
 }
 
 type EmailConfig struct {
@@ -362,6 +364,12 @@ func Load(cfgFile string) (*Config, error) {
 	}
 	if v := os.Getenv("DZ_TRANSPORT_MQTT_ENABLED"); v != "" {
 		cfg.Transport.MQTT.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("DZ_MQTT_EMBEDDED"); v != "" {
+		cfg.Transport.MQTT.Embedded = v == "true" || v == "1"
+	}
+	if v := os.Getenv("DZ_MQTT_EMBEDDED_ADDR"); v != "" {
+		cfg.Transport.MQTT.EmbeddedAddr = v
 	}
 
 	// Auto-generate SSH password if empty. Fails closed — if generation fails,
@@ -614,6 +622,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.mqtt.topic", "dolphin/agent/command")
 	v.SetDefault("transport.mqtt.response_topic", "dolphin/agent/response")
 	v.SetDefault("transport.mqtt.client_id", "dolphin-agent")
+	v.SetDefault("transport.mqtt.embedded", true)
+	v.SetDefault("transport.mqtt.embedded_addr", ":1883")
 
 	v.SetDefault("transport.email.enabled", false)
 	v.SetDefault("transport.email.smtp_port", 587)

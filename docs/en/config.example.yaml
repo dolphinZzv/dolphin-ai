@@ -98,6 +98,8 @@ transport:
     topic: dolphin/agent/command
     response_topic: dolphin/agent/response
     client_id: dolphin-agent
+    embedded: true
+    embedded_addr: :1883
   email:
     enabled: false
     smtp_host: ""

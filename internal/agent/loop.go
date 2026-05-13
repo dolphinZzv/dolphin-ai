@@ -48,6 +48,7 @@ type LoopState struct {
 	ErrorCount       int
 	CompressionCount int
 	SummaryGenerated bool
+	SummaryTexts     []string
 }
 
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
@@ -708,6 +709,7 @@ func (a *Agent) compressHistory(ctx context.Context, state *LoopState) {
 			TokensSaved:  report.TokensSaved,
 		})
 		state.CompressionCount++
+		state.SummaryTexts = append(state.SummaryTexts, fmt.Sprintf("[L%d] %s", seg.Level, seg.Content))
 	}
 	zap.S().Debugw("context compressed",
 		"dropped", report.DroppedCount,
@@ -1166,7 +1168,8 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 		stateStr = "transport_error"
 	}
 
-	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr)
+	summaryText := strings.Join(state.SummaryTexts, "\n")
+	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText)
 	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,

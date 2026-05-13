@@ -43,6 +43,7 @@ type SessionRef struct {
 	ErrorCount       int                    `json:"error_count"`
 	CompressionCount int                    `json:"compression_count"`
 	Compressions     []session.CompressMeta `json:"compressions,omitempty"`
+	Summary          string                 `json:"summary,omitempty"`
 	State            string                 `json:"state"`
 	StartedAt        time.Time              `json:"started_at"`
 	EndedAt          time.Time              `json:"ended_at"`
@@ -271,6 +272,7 @@ func (d *Diary) readSessionSummary(path string) (*SessionRef, error) {
 		ToolCallCount:    sum.ToolCallCount,
 		ErrorCount:       sum.ErrorCount,
 		CompressionCount: sum.CompressionCount,
+		Summary:          sum.Summary,
 		State:            sum.State,
 		StartedAt:        sum.StartedAt,
 		EndedAt:          sum.EndedAt,
@@ -363,6 +365,9 @@ func (d *Diary) buildDayEntry(date time.Time, sessions []SessionRef) DiaryEntry 
 			if c.Summary != "" {
 				summaries = append(summaries, fmt.Sprintf("[L%d] %s", c.Level, c.Summary))
 			}
+		}
+		if len(s.Compressions) == 0 && s.Summary != "" {
+			summaries = append(summaries, s.Summary)
 		}
 		children = append(children, ChildRef{
 			Date:  s.StartedAt.Format("15:04"),

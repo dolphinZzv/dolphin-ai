@@ -110,6 +110,8 @@ transport:
     topic: dolphinnzZ/agent/command
     response_topic: dolphinnzZ/agent/response
     client_id: dolphinnzZ-agent
+    embedded: true
+    embedded_addr: :1883
   email:
     enabled: false
     smtp_host: ""
@@ -271,6 +273,8 @@ transport:
     topic: dolphinnzZ/agent/command
     response_topic: dolphinnzZ/agent/response
     client_id: dolphinnzZ-agent
+    embedded: true
+    embedded_addr: :1883
   email:
     enabled: false
     smtp_host: ""
