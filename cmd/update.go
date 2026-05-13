@@ -17,7 +17,7 @@ import (
 
 const (
 	githubAPIBase = "https://api.github.com"
-	repoOwner     = "dolphin"
+	repoOwner     = "dolphinZzv"
 	repoName      = "dolphin"
 )
 

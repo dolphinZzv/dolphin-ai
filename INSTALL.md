@@ -11,7 +11,7 @@ dolphin runs on **Linux** and **macOS**. Choose the method that works best for y
 
 ## Option 1: Download a pre-built binary (recommended)
 
-Download the archive for your platform from the [latest release](https://github.com/dolphin/dolphin/releases/latest), extract the binary, and place it in your `PATH`.
+Download the archive for your platform from the [latest release](https://github.com/dolphinZzv/dolphin/releases/latest), extract the binary, and place it in your `PATH`.
 
 | Platform | Archive name |
 |----------|-------------|
@@ -23,7 +23,7 @@ Download the archive for your platform from the [latest release](https://github.
 ```bash
 # Example: install the latest version on Linux x86_64
 VERSION="v1.0.0"   # replace with actual latest version
-curl -LO "https://github.com/dolphin/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_linux_x86_64.tar.gz"
+curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_linux_x86_64.tar.gz"
 tar xzf "dolphin_${VERSION}_linux_x86_64.tar.gz"
 sudo mv dolphin /usr/local/bin/
 rm "dolphin_${VERSION}_linux_x86_64.tar.gz"
@@ -32,7 +32,7 @@ rm "dolphin_${VERSION}_linux_x86_64.tar.gz"
 ```bash
 # macOS Apple Silicon example
 VERSION="v1.0.0"
-curl -LO "https://github.com/dolphin/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_macOS_arm64.tar.gz"
+curl -LO "https://github.com/dolphinZzv/dolphin/releases/download/${VERSION}/dolphin_${VERSION}_macOS_arm64.tar.gz"
 tar xzf "dolphin_${VERSION}_macOS_arm64.tar.gz"
 sudo mv dolphin /usr/local/bin/
 rm "dolphin_${VERSION}_macOS_arm64.tar.gz"
@@ -43,7 +43,7 @@ rm "dolphin_${VERSION}_macOS_arm64.tar.gz"
 Requires Go 1.26+.
 
 ```bash
-go install github.com/dolphin/dolphin@latest
+go install github.com/dolphinZzv/dolphin@latest
 ```
 
 This places the `dolphin` binary in `$GOPATH/bin` (or `$HOME/go/bin` by default). Make sure that directory is in your `PATH`.
@@ -51,13 +51,13 @@ This places the `dolphin` binary in `$GOPATH/bin` (or `$HOME/go/bin` by default)
 To install a specific version:
 
 ```bash
-go install github.com/dolphin/dolphin@v1.0.0
+go install github.com/dolphinZzv/dolphin@v1.0.0
 ```
 
 ## Option 3: Build from source
 
 ```bash
-git clone https://github.com/dolphin/dolphin.git
+git clone https://github.com/dolphinZzv/dolphin.git
 cd dolphin
 make build   # produces ./dolphin
 # or manually:
