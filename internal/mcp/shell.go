@@ -94,6 +94,12 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		if !s.isAllowed(cmdName) {
 			return &ToolResult{Content: fmt.Sprintf("command not allowed: %s (allowed: %v)", cmdName, allowed), IsError: true}, nil
 		}
+		// Block shell metacharacters in restricted mode (defense-in-depth)
+		for _, arg := range fields[1:] {
+			if containsShellMeta(arg) {
+				return &ToolResult{Content: fmt.Sprintf("shell metacharacters not allowed in arguments: %q", arg), IsError: true}, nil
+			}
+		}
 	}
 
 	timeout := s.cfg.TimeoutSeconds
@@ -104,7 +110,7 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 
-	zap.S().Debugw("executing shell command", "command", params.Command)
+	zap.S().Debugw("executing shell command", "command", truncateCommand(params.Command))
 
 	var cmd *exec.Cmd
 	if len(allowed) > 0 {
@@ -163,4 +169,29 @@ func (s *ShellTool) isAllowed(cmdName string) bool {
 		}
 	}
 	return false
+}
+
+// containsShellMeta checks if a string contains shell metacharacters that could
+// enable injection even in restricted (non-sh) mode.
+func containsShellMeta(s string) bool {
+	metaChars := []string{";", "|", "&", "$", "`"}
+	for _, mc := range metaChars {
+		if strings.Contains(s, mc) {
+			return true
+		}
+	}
+	return false
+}
+
+
+// truncateCommand sanitizes a shell command for logging:
+// truncates to 200 chars and removes newlines.
+func truncateCommand(cmd string) string {
+	const maxLogLen = 200
+	// Replace newlines for single-line logging
+	cleaned := strings.ReplaceAll(cmd, "\n", "\\n")
+	if len(cleaned) > maxLogLen {
+		cleaned = cleaned[:maxLogLen] + "..."
+	}
+	return cleaned
 }

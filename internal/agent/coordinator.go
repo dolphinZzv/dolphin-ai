@@ -32,6 +32,7 @@ type Coordinator struct {
 	basePrompt       string
 	pending          []TaskResult // results collected but not yet in LLM context
 	startupRecommend *config.Recommendation
+	loadedTools      map[string]bool // MCP tools loaded by LLM via load_mcp_tools
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -55,9 +56,19 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		hooks:      agent.hooks,
 		events:     agent.events,
 	}
+	// Core coordinator tools always available; MCP tools loaded on demand.
+	coreTools := []string{"dispatch_task", "create_agent", "get_agent_status",
+		"cancel_task", "delete_agent", "search_skills", "load_skill",
+		"add_cron_task", "remove_cron_task", "list_cron_tasks", "toggle_cron_task",
+		"config", "load_mcp_tools", "search_mcp_tools"}
+	loaded := make(map[string]bool, len(coreTools))
+	for _, name := range coreTools {
+		loaded[name] = true
+	}
 	return &Coordinator{
-		Agent: coordAgent,
-		pool:  pool,
+		Agent:       coordAgent,
+		pool:        pool,
+		loadedTools: loaded,
 	}
 }
 
@@ -188,6 +199,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/crontab":
 			c.printCronTasks(io)
 			continue
+		case line == "/model" || strings.HasPrefix(line, "/model "):
+			c.handleModelCmd(line, io)
+			continue
 		case strings.HasPrefix(line, "/cancel"):
 			c.handleCancelCmd(line, io)
 			continue
@@ -255,7 +269,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		sess.LogMessage("user", userContent)
 
 		// Run agent sub-loop
-		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg); err != nil {
+		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), err))
 		}
@@ -349,7 +363,7 @@ You are a coordinator agent. Your job:
 4. Tasks dispatched to agents run asynchronously — you'll see results in the next turn.
 5. Always synthesize multiple agent results into a coherent response for the user.
 6. You can dispatch multiple tasks concurrently in a single turn.
-7. Available MCP tools are shown as top tools. If you need one not in the list, use search_mcp_tools to find it.`)
+7. MCP tools are not loaded by default. Use search_mcp_tools to discover available tools, then load_mcp_tools to add them to your tool list for subsequent turns.`)
 
 	return strings.Join(parts, "\n\n")
 }
@@ -511,6 +525,49 @@ func (c *Coordinator) registerCoordinatorTools() {
 				"required": []string{"name", "enabled"},
 			},
 			handler: c.handleToggleCronTask,
+		},
+		{
+			name:        "config",
+			description: "Read and modify runtime configuration. Actions: list (show all settings), get (read a path), set (modify a setting), save (persist to disk). Changes to MCP tool settings (shell/cdp/email/webhook) take effect immediately. Changes to LLM settings take effect on the next conversation turn.",
+			schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"enum":        []string{"list", "get", "set", "save"},
+						"description": "Action: list (show all settings), get (read a path), set (modify a path), save (persist to disk)",
+					},
+					"path": map[string]any{
+						"type":        "string",
+						"description": "Config path in dot notation, e.g. mcp.shell.timeout_seconds, llm.temperature. Use list to see all paths.",
+					},
+					"value": map[string]any{
+						"description": "New value for the setting (used with set action). Type depends on the setting.",
+					},
+					"file": map[string]any{
+						"type":        "string",
+						"description": "Target file path for save action (optional, defaults to .dolphin/config.yaml)",
+					},
+				},
+				"required": []string{"action"},
+			},
+			handler: c.handleConfig,
+		},
+		{
+			name:        "load_mcp_tools",
+			description: "Load MCP tools by name so they become available for use as API-level tools. Use search_mcp_tools first to discover available tool names. Loaded tools will appear in the tool list starting from your next turn.",
+			schema: map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"tools": map[string]any{
+						"type":        "array",
+						"items":       map[string]any{"type": "string"},
+						"description": "Names of MCP tools to load. Use search_mcp_tools to find available tools.",
+					},
+				},
+				"required": []string{"tools"},
+			},
+			handler: c.handleLoadMCPTools,
 		},
 	}
 
@@ -704,7 +761,44 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 	return &mcp.ToolResult{Content: sb.String()}, nil
 }
 
+// handleLoadMCPTools loads MCP tools by name into the LLM's active tool set for the next turn.
+func (c *Coordinator) handleLoadMCPTools(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Tools []string `json:"tools"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+	if len(params.Tools) == 0 {
+		return &mcp.ToolResult{Content: "No tool names provided.", IsError: true}, nil
+	}
+
+	var loaded, notFound []string
+	for _, name := range params.Tools {
+		if _, ok := c.toolReg.Get(name); ok {
+			c.loadedTools[name] = true
+			loaded = append(loaded, name)
+		} else {
+			notFound = append(notFound, name)
+		}
+	}
+
+	var sb strings.Builder
+	if len(loaded) > 0 {
+		sb.WriteString(fmt.Sprintf("Loaded %d tool(s): %s\n", len(loaded), strings.Join(loaded, ", ")))
+		sb.WriteString("They will be available in the tool list starting from your next turn.")
+	}
+	if len(notFound) > 0 {
+		if sb.Len() > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(fmt.Sprintf("Tool(s) not found: %s. Use search_mcp_tools to discover available tools.", strings.Join(notFound, ", ")))
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
 // ---- Skill handlers ----
+
 
 func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	if c.skills == nil {
@@ -1029,6 +1123,40 @@ func (c *Coordinator) printCronTasks(io transport.UserIO) {
 		}
 	}
 	io.WriteLine("")
+}
+
+func (c *Coordinator) handleModelCmd(line string, io transport.UserIO) {
+	providers := c.availableProviders
+	if len(providers) == 0 {
+		io.WriteLine("No providers configured")
+		return
+	}
+
+	parts := strings.Fields(line)
+	if len(parts) == 1 {
+		// List providers
+		io.WriteLine("Available providers (type:model):")
+		io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", "NAME", "MODEL", "STATUS"))
+		io.WriteLine("  " + strings.Repeat("-", 55))
+		for i, pc := range providers {
+			status := ""
+			if i == c.providerIndex {
+				status = "← active"
+			}
+			io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", pc.Name, pc.Model, status))
+		}
+		io.WriteLine("")
+		io.WriteLine("Use /model <name> to switch")
+		return
+	}
+
+	// Switch to named provider
+	name := parts[1]
+	if c.switchToProvider(name) {
+		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.provider.Name()))
+	} else {
+		io.WriteLine(fmt.Sprintf("Provider %q not found or unhealthy", name))
+	}
 }
 
 func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {

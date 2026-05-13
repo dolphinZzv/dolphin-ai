@@ -6,3 +6,6 @@ import (
 
 //go:embed PREFACE.md
 var DefaultPreface string
+
+//go:embed BUILTIN_SKILLS.md
+var BuiltinSkills string

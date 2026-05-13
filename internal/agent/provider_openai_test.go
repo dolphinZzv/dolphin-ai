@@ -147,6 +147,146 @@ func TestOpenAIBuildTools(t *testing.T) {
 	}
 }
 
+func TestOpenAIBuildMessagesRawWithThinking(t *testing.T) {
+	cfg := &config.ProviderConfig{APIKey: "test"}
+	p := NewOpenAIProvider(cfg)
+	msgs := p.buildMessagesRaw(ProviderRequest{
+		Messages: []Message{
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{"type":"thinking","thinking":"let me think about this"},
+					{"type":"text","text":"here is my answer"}
+				]`),
+			},
+		},
+	})
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	msg := msgs[0]
+	if msg["role"] != "assistant" {
+		t.Errorf("role = %q", msg["role"])
+	}
+	if msg["content"] != "here is my answer" {
+		t.Errorf("content = %q", msg["content"])
+	}
+	if msg["reasoning_content"] != "let me think about this" {
+		t.Errorf("reasoning_content = %q", msg["reasoning_content"])
+	}
+}
+
+func TestOpenAIBuildMessagesRawNoThinking(t *testing.T) {
+	cfg := &config.ProviderConfig{APIKey: "test"}
+	p := NewOpenAIProvider(cfg)
+	msgs := p.buildMessagesRaw(ProviderRequest{
+		System: "be helpful",
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"hi"`)},
+			{
+				Role:    "assistant",
+				Content: json.RawMessage(`[{"type":"text","text":"hello"}]`),
+			},
+		},
+	})
+	if len(msgs) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(msgs))
+	}
+	if msgs[1]["role"] != "user" {
+		t.Errorf("msg[1] role = %q", msgs[1]["role"])
+	}
+	if msgs[2]["role"] != "assistant" {
+		t.Errorf("msg[2] role = %q", msgs[2]["role"])
+	}
+	if _, ok := msgs[2]["reasoning_content"]; ok {
+		t.Error("unexpected reasoning_content without thinking block")
+	}
+}
+
+func TestOpenAIBuildMessagesRawWithToolCall(t *testing.T) {
+	cfg := &config.ProviderConfig{APIKey: "test"}
+	p := NewOpenAIProvider(cfg)
+	msgs := p.buildMessagesRaw(ProviderRequest{
+		Messages: []Message{
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{"type":"text","text":"let me check"},
+					{"type":"tool_use","id":"tc1","name":"shell","input":{"cmd":"ls"}}
+				]`),
+			},
+			{
+				Role:    "tool",
+				Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"tc1","content":[{"type":"text","text":"files"}]}]`),
+			},
+		},
+	})
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	// Assistant should have tool_calls
+	tcs, ok := msgs[0]["tool_calls"].([]any)
+	if !ok || len(tcs) != 1 {
+		t.Fatalf("expected 1 tool_call, got %v", tcs)
+	}
+	tc := tcs[0].(map[string]any)
+	if tc["id"] != "tc1" {
+		t.Errorf("tool_call id = %q", tc["id"])
+	}
+	if _, ok := msgs[1]["reasoning_content"]; ok {
+		t.Error("tool message should not have reasoning_content")
+	}
+}
+
+func TestOpenAIBuildMessagesRawThinkingWithToolCall(t *testing.T) {
+	cfg := &config.ProviderConfig{APIKey: "test"}
+	p := NewOpenAIProvider(cfg)
+	msgs := p.buildMessagesRaw(ProviderRequest{
+		Messages: []Message{
+			{
+				Role: "assistant",
+				Content: json.RawMessage(`[
+					{"type":"thinking","thinking":"i need to search"},
+					{"type":"text","text":"let me look that up"},
+					{"type":"tool_use","id":"tc1","name":"shell","input":{"cmd":"find"}}
+				]`),
+			},
+		},
+	})
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	msg := msgs[0]
+	if msg["reasoning_content"] != "i need to search" {
+		t.Errorf("reasoning_content = %q", msg["reasoning_content"])
+	}
+	if msg["content"] != "let me look that up" {
+		t.Errorf("content = %q", msg["content"])
+	}
+	tcs := msg["tool_calls"].([]any)
+	if len(tcs) != 1 {
+		t.Fatalf("expected 1 tool_call, got %d", len(tcs))
+	}
+}
+
+func TestOpenAIBuildMessagesRawPlainTextFallback(t *testing.T) {
+	cfg := &config.ProviderConfig{APIKey: "test"}
+	p := NewOpenAIProvider(cfg)
+	// Non-JSON content (plain text) should be passed through as-is
+	msgs := p.buildMessagesRaw(ProviderRequest{
+		Messages: []Message{
+			{Role: "user", Content: json.RawMessage(`"plain text"`)},
+			{Role: "assistant", Content: json.RawMessage(`"direct response"`)},
+		},
+	})
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[1]["content"] != "\"direct response\"" {
+		t.Errorf("content = %q", msgs[1]["content"])
+	}
+}
+
 func TestHandlerToolDefinition(t *testing.T) {
 	def := mcp.ToolDefinition{Name: "test-tool"}
 	tool := &handlerTool{def: def}

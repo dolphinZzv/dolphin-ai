@@ -1,9 +1,14 @@
 package agent
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 
 	"dolphin/internal/config"
 	"dolphin/internal/metrics"
@@ -19,6 +24,15 @@ type OpenAIProvider struct {
 	maxTok int
 	temp   float64
 	name   string
+
+	// httpDoer provides the Do(*http.Request) method we need.
+	// We use the interface rather than *http.Client because go-openai's
+	// config exposes an HTTPDoer interface (which *http.Client satisfies).
+	httpDoer interface {
+		Do(req *http.Request) (*http.Response, error)
+	}
+	baseURL    string
+	apiKey     string
 }
 
 func NewOpenAIProvider(cfg *config.ProviderConfig) *OpenAIProvider {
@@ -34,10 +48,13 @@ func NewOpenAIProvider(cfg *config.ProviderConfig) *OpenAIProvider {
 	)
 
 	return &OpenAIProvider{
-		client: openai.NewClientWithConfig(conf),
-		model:  cfg.Model,
-		maxTok: cfg.MaxTokens,
-		name:   cfg.Name,
+		client:     openai.NewClientWithConfig(conf),
+		model:      cfg.Model,
+		maxTok:     cfg.MaxTokens,
+		name:       cfg.Name,
+		httpDoer: conf.HTTPClient,
+		baseURL:    conf.BaseURL,
+		apiKey:     cfg.APIKey,
 	}
 }
 
@@ -111,59 +128,146 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 	llmRequests.Inc()
 	timer := metrics.StartTimer(llmDuration)
 
-	openAIReq := openai.ChatCompletionRequest{
-		Model:       p.model,
-		MaxTokens:   p.maxTok,
-		Messages:    p.buildMessages(req),
-		Tools:       p.buildTools(req.Tools),
-		Temperature: float32(p.temp),
-		Stream:      true,
+	reqBody := map[string]any{
+		"model":       p.model,
+		"max_tokens":  p.maxTok,
+		"messages":    p.buildMessagesRaw(req),
+		"temperature": p.temp,
+		"stream":      true,
+	}
+	if tools := p.buildTools(req.Tools); len(tools) > 0 {
+		reqBody["tools"] = tools
 	}
 
-	stream, err := p.client.CreateChatCompletionStream(ctx, openAIReq)
+	body, err := json.Marshal(reqBody)
 	if err != nil {
 		timer.Stop()
 		llmErrors.Inc()
-		return nil, fmt.Errorf("openai stream: %w", err)
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		timer.Stop()
+		llmErrors.Inc()
+		return nil, fmt.Errorf("build request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+	if p.baseURL == "https://api.anthropic.com/v1" {
+		httpReq.Header.Set("anthropic-version", "2023-06-01")
+	}
+
+	resp, err := p.httpDoer.Do(httpReq)
+	if err != nil {
+		timer.Stop()
+		llmErrors.Inc()
+		return nil, fmt.Errorf("openai stream request: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		defer resp.Body.Close()
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		timer.Stop()
+		llmErrors.Inc()
+		errMsg := string(bodyBytes)
+		if len(errMsg) > 500 {
+			errMsg = errMsg[:500]
+		}
+		return nil, fmt.Errorf("openai stream: status %d, body: %s", resp.StatusCode, errMsg)
 	}
 
 	ch := make(chan StreamChunk, 100)
 	go func() {
 		defer close(ch)
-		defer stream.Close()
+		defer resp.Body.Close()
 		defer timer.Stop()
 
-		for {
-			chunk, err := stream.Recv()
-			if err != nil {
+		scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 256*1024)
+
+		// sseChunk holds the raw delta fields including provider-specific
+		// extensions like DeepSeek's reasoning_content.
+		type sseDelta struct {
+			Content          string          `json:"content,omitempty"`
+			ReasoningContent string          `json:"reasoning_content,omitempty"`
+			Role             string          `json:"role,omitempty"`
+			ToolCalls        json.RawMessage `json:"tool_calls,omitempty"`
+		}
+		type sseChoice struct {
+			Index int      `json:"index"`
+			Delta sseDelta `json:"delta"`
+		}
+		type sseChunk struct {
+			Choices []sseChoice `json:"choices"`
+		}
+
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			data := strings.TrimPrefix(line, "data: ")
+			if data == "[DONE]" {
 				ch <- StreamChunk{Done: true}
 				return
 			}
 
+			var chunk sseChunk
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				zap.S().Debugw("openai stream: skip unparseable chunk", "error", err)
+				continue
+			}
 			if len(chunk.Choices) == 0 {
 				continue
 			}
 			delta := chunk.Choices[0].Delta
 
 			sc := StreamChunk{}
+
+			// reasoning_content → thinking block (DeepSeek)
+			if delta.ReasoningContent != "" {
+				sc.BlockDelta = delta.ReasoningContent
+				sc.DeltaType = "thinking"
+			}
+
+			// Regular text content
 			if delta.Content != "" {
 				sc.Content = TextContent(delta.Content)
 			}
-			if len(delta.ToolCalls) > 0 {
-				for _, tc := range delta.ToolCalls {
-					if tc.ID != "" {
-						sc.ToolCallBegin = &ToolCallBegin{
-							ID:   tc.ID,
-							Name: tc.Function.Name,
+
+			// Tool calls
+			if delta.ToolCalls != nil {
+				var toolCalls []struct {
+					ID       string `json:"id"`
+					Type     string `json:"type"`
+					Function struct {
+						Name      string `json:"name"`
+						Arguments string `json:"arguments"`
+					} `json:"function"`
+				}
+				if err := json.Unmarshal(delta.ToolCalls, &toolCalls); err == nil {
+					for _, tc := range toolCalls {
+						if tc.ID != "" {
+							sc.ToolCallBegin = &ToolCallBegin{
+								ID:   tc.ID,
+								Name: tc.Function.Name,
+							}
 						}
-					}
-					if tc.Function.Arguments != "" {
-						sc.ToolCallDelta = tc.Function.Arguments
+						if tc.Function.Arguments != "" {
+							sc.ToolCallDelta = tc.Function.Arguments
+						}
 					}
 				}
 			}
+
 			ch <- sc
 		}
+
+		if err := scanner.Err(); err != nil {
+			zap.S().Errorw("openai stream: read error", "error", err)
+		}
+		ch <- StreamChunk{Done: true}
 	}()
 
 	return ch, nil
@@ -192,14 +296,27 @@ func (p *OpenAIProvider) buildMessages(req ProviderRequest) []openai.ChatComplet
 			msg := openai.ChatCompletionMessage{
 				Role: openai.ChatMessageRoleAssistant,
 			}
-			// Parse content blocks for tool calls
+			// Parse content blocks for tool calls and thinking
 			var blocks []map[string]any
 			if err := json.Unmarshal(m.Content, &blocks); err == nil {
+				var textParts []string
 				for _, b := range blocks {
 					switch b["type"] {
 					case "text":
 						if text, ok := b["text"].(string); ok {
-							msg.Content = text
+							textParts = append(textParts, text)
+						}
+					case "thinking":
+						// DeepSeek requires reasoning_content to be included
+						// in assistant messages when reasoning was used.
+						if thinking, ok := b["thinking"].(string); ok {
+							// We include reasoning_content directly in the message
+							// via the structured output, since go-openai doesn't
+							// have a ReasoningContent field on ChatCompletionMessage.
+							if msg.Content != "" {
+								msg.Content += "\n"
+							}
+							msg.Content += thinking
 						}
 					case "tool_use":
 						id, _ := b["id"].(string)
@@ -216,6 +333,9 @@ func (p *OpenAIProvider) buildMessages(req ProviderRequest) []openai.ChatComplet
 						})
 					}
 				}
+				if len(textParts) > 0 {
+					msg.Content = strings.Join(textParts, "\n")
+				}
 			}
 			if msg.Content == "" && len(msg.ToolCalls) > 0 {
 				msg.Content = ""
@@ -229,6 +349,89 @@ func (p *OpenAIProvider) buildMessages(req ProviderRequest) []openai.ChatComplet
 				Role:       openai.ChatMessageRoleTool,
 				ToolCallID: tcID,
 				Content:    content,
+			})
+		}
+	}
+
+	return msgs
+}
+
+func (p *OpenAIProvider) buildMessagesRaw(req ProviderRequest) []map[string]any {
+	var msgs []map[string]any
+
+	if req.System != "" {
+		msgs = append(msgs, map[string]any{
+			"role":    "system",
+			"content": req.System,
+		})
+	}
+
+	for _, m := range req.Messages {
+		switch m.Role {
+		case "user":
+			msgs = append(msgs, map[string]any{
+				"role":    "user",
+				"content": string(m.Content),
+			})
+		case "assistant":
+			msg := map[string]any{
+				"role": "assistant",
+			}
+
+			var blocks []map[string]any
+			if err := json.Unmarshal(m.Content, &blocks); err != nil {
+				msg["content"] = string(m.Content)
+				msgs = append(msgs, msg)
+				continue
+			}
+
+			var textParts []string
+			var reasoningParts []string
+			var toolCalls []any
+			for _, b := range blocks {
+				switch b["type"] {
+				case "text":
+					if text, ok := b["text"].(string); ok {
+						textParts = append(textParts, text)
+					}
+				case "thinking":
+					if thinking, ok := b["thinking"].(string); ok {
+						reasoningParts = append(reasoningParts, thinking)
+					}
+				case "tool_use":
+					id, _ := b["id"].(string)
+					name, _ := b["name"].(string)
+					input := b["input"]
+					inputJSON, _ := json.Marshal(input)
+					toolCalls = append(toolCalls, map[string]any{
+						"id":   id,
+						"type": "function",
+						"function": map[string]any{
+							"name":      name,
+							"arguments": string(inputJSON),
+						},
+					})
+				}
+			}
+
+			if len(textParts) > 0 {
+				msg["content"] = strings.Join(textParts, "\n")
+			}
+			if len(reasoningParts) > 0 {
+				msg["reasoning_content"] = strings.Join(reasoningParts, "\n")
+			}
+			if len(toolCalls) > 0 {
+				msg["tool_calls"] = toolCalls
+			}
+			msgs = append(msgs, msg)
+
+		case "tool":
+			tcID := extractToolCallID(m.Content)
+			content := extractToolResult(m.Content)
+			msgs = append(msgs, map[string]any{
+				"role":         "tool",
+				"tool_call_id": tcID,
+				"content":      content,
 			})
 		}
 	}

@@ -10,6 +10,8 @@ var enMessages = map[string]string{
 	KeySkills:            "Skills",
 	KeyMCP:               "MCP",
 	KeyInstallHint:       "To install, add tools to your skill/MCP repos or config.",
+	KeyConfigRestrictive: "restrictive (recommended for security)",
+	KeyRestrictiveHint:   "Your config has security hardening applied. Change any setting manually and restart.",
 	KeySetupHint:         "You can re-run setup anytime with: dolphin setup",
 	KeyNoMatch:           "No matching option found. Skipping tool recommendation.\nYou can add tools later in ~/.dolphin/config.yaml",
 	KeySystemMDPrompt:    "Auto-generate SYSTEM.md with your system info (OS, shell, CPU count)?",
@@ -27,7 +29,7 @@ var enMessages = map[string]string{
 	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
-	KeyCoordReady:        "dolphin Coordinator Ready\n  /exit, /quit    Quit coordinator\n  /help           Show help\n  /agents         List agents & status\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /mcp            List MCP tools\n",
+	KeyCoordReady:        "dolphin Coordinator Ready\n  /exit, /quit    Quit coordinator\n  /help           Show help\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n",
 	KeyHelpHeader:        "Commands:",
 	KeyHelpExit:          "  /exit, /quit  - Exit",
 	KeyHelpHelp:          "  /help         - This help",

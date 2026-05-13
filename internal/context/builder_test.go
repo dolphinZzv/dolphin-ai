@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testBuilder(projectDir, userDir, systemDir string) *Builder {
@@ -145,8 +146,9 @@ func TestStatCacheInvalidation(t *testing.T) {
 	// Prime cache
 	b.loadCached(path)
 
-	// Overwrite the file
+	// Overwrite and force mtime change (filesystem may have 1s granularity)
 	os.WriteFile(path, []byte("v2"), 0644)
+	os.Chtimes(path, time.Now(), time.Now().Add(time.Hour))
 
 	// Should see new content (mtime changed)
 	content, ok := b.loadCached(path)

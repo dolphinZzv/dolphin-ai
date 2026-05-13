@@ -10,6 +10,8 @@ var zhMessages = map[string]string{
 	KeySkills:            "技能",
 	KeyMCP:               "MCP 工具",
 	KeyInstallHint:       "要安装，请将工具添加到你的 skill/MCP 仓库或配置中。",
+	KeyConfigRestrictive: "限制模式（推荐用于安全场景）",
+	KeyRestrictiveHint:   "配置已应用安全加固。可手动修改后重启。",
 	KeySetupHint:         "你可以随时重新运行设置：dolphin setup",
 	KeyNoMatch:           "没有找到匹配的选项。跳过工具推荐。\n你可以稍后在 ~/.dolphin/config.yaml 中添加工具。",
 	KeySystemMDPrompt:    "是否自动生成 SYSTEM.md？包含系统信息（操作系统、Shell、CPU 数量）",
@@ -27,7 +29,7 @@ var zhMessages = map[string]string{
 	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
-	KeyCoordReady:        "dolphin 协调器已就绪\n  /exit, /quit    退出协调器\n  /help           显示帮助\n  /agents         列出代理及状态\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /mcp            列出 MCP 工具\n",
+	KeyCoordReady:        "dolphin 协调器已就绪\n  /exit, /quit    退出协调器\n  /help           显示帮助\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n",
 	KeyHelpHeader:        "命令：",
 	KeyHelpExit:          "  /exit, /quit  - 退出",
 	KeyHelpHelp:          "  /help         - 显示帮助",

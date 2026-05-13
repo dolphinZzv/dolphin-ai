@@ -752,10 +752,22 @@ func (d *Diary) writeLastSync(ts time.Time) {
 	atomicWrite(d.lastSyncPath(), data)
 }
 
-// atomicWrite writes data to a file atomically via tmp + rename.
+// atomicWrite writes data to a file atomically via temp file + rename.
+// Uses os.CreateTemp to prevent symlink races (CWE-367).
 func atomicWrite(path string, data []byte) error {
-	tmpPath := path + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0600); err != nil {
+	dir := filepath.Dir(path)
+	f, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpPath := f.Name()
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
 		return err
 	}
 	return os.Rename(tmpPath, path)

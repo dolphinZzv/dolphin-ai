@@ -115,18 +115,56 @@ func TestGenerateConfigFileValidYAML(t *testing.T) {
 		t.Fatalf("GenerateConfigFile: %v", err)
 	}
 
+	// Set env var so provider validation passes (template has empty api_key)
+	t.Setenv("DZ_LLM_API_KEY", "sk-test-key")
+
 	// Verify the file is loadable by the existing Load function
 	cfg, err := Load(path)
 	if err != nil {
 		t.Fatalf("Load generated config: %v", err)
 	}
-	if cfg.LLM.Model != "gpt-4o" {
-		t.Errorf("expected model gpt-4o, got %q", cfg.LLM.Model)
+	if cfg.LLM.Model != "claude-sonnet-4-6" {
+		t.Errorf("expected model claude-sonnet-4-6, got %q", cfg.LLM.Model)
 	}
 	if cfg.Pool.MaxConcurrency != 5 {
 		t.Errorf("expected MaxConcurrency 5, got %d", cfg.Pool.MaxConcurrency)
 	}
 	if cfg.Transport.Stdio.Enabled != true {
 		t.Error("expected stdio enabled")
+	}
+}
+
+func TestGenerateRestrictiveConfigFile(t *testing.T) {
+	orig := ProjectConfigDir
+	ProjectConfigDir = t.TempDir()
+	defer func() { ProjectConfigDir = orig }()
+
+	path, err := GenerateRestrictiveConfigFile(i18n.EN)
+	if err != nil {
+		t.Fatalf("GenerateRestrictiveConfigFile: %v", err)
+	}
+
+	// Set env var so provider validation passes (template has empty api_key)
+	t.Setenv("DZ_LLM_API_KEY", "sk-test-key")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load restrictive config: %v", err)
+	}
+
+	if cfg.MCP.Shell.AllowedCommands == nil || len(cfg.MCP.Shell.AllowedCommands) == 0 {
+		t.Error("restrictive: expected non-empty allowed_commands")
+	}
+	if cfg.MCP.CDP.Enabled {
+		t.Error("restrictive: expected CDP disabled")
+	}
+	if cfg.MCP.Webhook.Enabled {
+		t.Error("restrictive: expected webhook disabled")
+	}
+	if cfg.LogLevel != "warn" {
+		t.Errorf("restrictive: expected log_level warn, got %q", cfg.LogLevel)
+	}
+	if cfg.Plugins.Enabled {
+		t.Error("restrictive: expected plugins disabled")
 	}
 }

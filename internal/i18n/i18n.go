@@ -42,6 +42,8 @@ const (
 	KeyConfigNo          = "config_no"
 	KeyConfigSkipped     = "config_skipped"
 	KeyConfigGenerated   = "config_generated"
+	KeyConfigRestrictive = "config_restrictive"
+	KeyRestrictiveHint   = "restrictive_hint"
 
 	// Coordinator interaction
 	KeyCoordReady        = "coord_ready"

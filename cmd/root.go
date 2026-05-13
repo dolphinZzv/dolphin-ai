@@ -60,6 +60,7 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	cmd.AddCommand(NewResetCmd())
 	cmd.AddCommand(NewNewCmd())
 	cmd.AddCommand(NewUpdateCmd())
+	cmd.AddCommand(NewInitCmd())
 
 	return cmd
 }
@@ -138,6 +139,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if cfg.MCP.Email.Enabled && cfg.Transport.Email.Username != "" {
 		toolRegistry.Register(mcp.NewEmailTool(cfg))
 		zap.S().Infow("email tool registered")
+	}
+	if cfg.MCP.Webhook.Enabled {
+		toolRegistry.Register(mcp.NewWebhookTool(cfg))
+		zap.S().Infow("webhook tool registered")
 	}
 
 	// Load external MCP servers

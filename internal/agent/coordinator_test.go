@@ -1271,3 +1271,211 @@ func TestE2ETransportErrorSkipsSummary(t *testing.T) {
 		t.Error("expected no summary for transport_error with 0 activity")
 	}
 }
+
+
+func TestConfigToolList(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{"action": "list"})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "llm.temperature") {
+		t.Error("expected llm.temperature in list output")
+	}
+	if !strings.Contains(result.Content, "mcp.shell.timeout_seconds") {
+		t.Error("expected mcp.shell.timeout_seconds in list output")
+	}
+}
+
+func TestConfigToolGet(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.MaxSubTurns = 7
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{"action": "get", "path": "llm.max_sub_turns"})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "7") {
+		t.Errorf("expected value 7 in output, got: %s", result.Content)
+	}
+}
+
+func TestConfigToolGetInvalidPath(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{"action": "get", "path": "nonexistent.path"})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for invalid path")
+	}
+}
+
+func TestConfigToolSetInt(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Shell.TimeoutSeconds = 30
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+
+	input, _ := json.Marshal(map[string]any{
+		"action": "set",
+		"path":   "mcp.shell.timeout_seconds",
+		"value":  60,
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if cfg.MCP.Shell.TimeoutSeconds != 60 {
+		t.Errorf("expected 60, got %d", cfg.MCP.Shell.TimeoutSeconds)
+	}
+}
+
+func TestConfigToolSetBool(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.CDP.Headless = false
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+
+	input, _ := json.Marshal(map[string]any{
+		"action": "set",
+		"path":   "mcp.cdp.headless",
+		"value":  true,
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !cfg.MCP.CDP.Headless {
+		t.Error("expected Headless to be true")
+	}
+}
+
+func TestConfigToolSetString(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.LLM.CompressMode = "drop"
+	c := &Coordinator{Agent: &Agent{cfg: cfg, compressor: &DropCompressor{}}}
+
+	input, _ := json.Marshal(map[string]any{
+		"action": "set",
+		"path":   "llm.compress_mode",
+		"value":  "summarize",
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if cfg.LLM.CompressMode != "summarize" {
+		t.Errorf("expected summarize, got %q", cfg.LLM.CompressMode)
+	}
+}
+
+func TestConfigToolSetInvalidPath(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]any{
+		"action": "set",
+		"path":   "mcp.nonexistent",
+		"value":  1,
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for invalid path")
+	}
+}
+
+func TestConfigToolSetWrongType(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]any{
+		"action": "set",
+		"path":   "mcp.shell.enabled",
+		"value":  "not_a_boolean",
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for wrong type")
+	}
+}
+
+func TestConfigToolSave(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Shell.TimeoutSeconds = 99
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	// Save to project config path (within allowed config dir)
+	savePath := filepath.Join(config.ProjectConfigDir, "test-"+config.ConfigFileName+".yaml")
+
+	input, _ := json.Marshal(map[string]string{
+		"action": "save",
+		"file":   savePath,
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	defer os.Remove(savePath)
+
+	// Read back and verify
+	data, err := os.ReadFile(savePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "99") {
+		t.Errorf("saved config should contain 99, got: %s", string(data))
+	}
+}
+
+func TestConfigToolUnknownAction(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{"action": "invalid"})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for unknown action")
+	}
+}
+
+func TestConfigToolListShowsAllRegisteredPaths(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{"action": "list"})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range configurablePaths {
+		if !strings.Contains(result.Content, entry.path) {
+			t.Errorf("path %q not found in list output", entry.path)
+		}
+	}
+}

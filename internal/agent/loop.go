@@ -93,6 +93,36 @@ func (a *Agent) switchToNextProvider() bool {
 	return false
 }
 
+// switchToProvider switches to the named provider (by config name).
+// Performs a health check before switching. Returns true on success.
+func (a *Agent) switchToProvider(name string) bool {
+	for i, pc := range a.availableProviders {
+		if pc.Name != name {
+			continue
+		}
+		p := NewProviderFromConfig(&pc)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := p.HealthCheck(ctx)
+		cancel()
+		if err != nil {
+			zap.S().Warnw("switch to provider: health check failed", "name", name, "error", err)
+			return false
+		}
+		a.providerIndex = i
+		a.provider = p
+		a.cfg.LLM.Type = pc.Type
+		a.cfg.LLM.BaseURL = pc.BaseURL
+		a.cfg.LLM.APIKey = pc.APIKey
+		a.cfg.LLM.Model = pc.Model
+		a.cfg.LLM.MaxTokens = pc.MaxTokens
+		a.rebuildCompressor()
+		zap.S().Infow("switched to provider", "name", name, "model", pc.Model)
+		return true
+	}
+	zap.S().Warnw("switch to provider: not found", "name", name)
+	return false
+}
+
 func (a *Agent) rebuildCompressor() {
 	switch a.cfg.LLM.CompressMode {
 	case "segment":
@@ -455,7 +485,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 		}
 
 		// Run agent sub-loop (handles tool call feedback cycles)
-		if err := a.runTurn(ctx, state, systemPrompt, io, a.toolReg); err != nil {
+		if err := a.runTurn(ctx, state, systemPrompt, io, a.toolReg, nil); err != nil {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf("\n[Error: %v]", err))
 			if a.hooks != nil {
@@ -545,7 +575,8 @@ func (a *Agent) handleStatusCommand(state *LoopState, io transport.UserIO) {
 }
 
 // runTurn handles one user input turn with streaming LLM response and tool call feedback cycles.
-func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO, toolReg *mcp.Registry) error {
+// extraTools specifies MCP tool names that should be available to the LLM (beyond the always-available search_mcp_tools).
+func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt string, io transport.UserIO, toolReg *mcp.Registry, extraTools map[string]bool) error {
 	// Emit heartbeat event if configured
 	if a.heartbeatInterval > 0 && state.Turn > 0 && state.Turn%a.heartbeatInterval == 0 && a.events != nil {
 		a.events.Emit(ctx, event.Event{
@@ -605,19 +636,15 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		default:
 		}
 
-		// Get tool definitions — progressive disclosure: top 10 most-used + search tool
-		mcpDefs := toolReg.MostUsedTools(10)
-		// Ensure search_mcp_tools is always available
-		if searchTool, ok := toolReg.Get("search_mcp_tools"); ok {
-			hasSearch := false
-			for _, d := range mcpDefs {
-				if d.Name == "search_mcp_tools" {
-					hasSearch = true
-					break
-				}
-			}
-			if !hasSearch {
-				mcpDefs = append(mcpDefs, searchTool.Definition())
+		// Get tool definitions — only explicitly loaded tools + search_mcp_tools
+		var mcpDefs []mcp.ToolDefinition
+		nameSet := map[string]bool{"search_mcp_tools": true}
+		for name := range extraTools {
+			nameSet[name] = true
+		}
+		for name := range nameSet {
+			if t, ok := toolReg.Get(name); ok {
+				mcpDefs = append(mcpDefs, t.Definition())
 			}
 		}
 		toolDefs := make([]ToolDef, len(mcpDefs))
@@ -1125,7 +1152,7 @@ func (a *Agent) RunTask(ctx context.Context, task string, systemPrompt string, t
 	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent(task)})
 
 	start := time.Now()
-	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task), tools)
+	taskErr := a.runTurn(ctx, state, systemPrompt, NewChannelIO(task), tools, nil)
 
 	result := TaskResult{
 		TaskID:     string(sess.ID),

@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"dolphin/internal/i18n"
+
+	"gopkg.in/yaml.v3"
 )
 
 // configTemplateEN is the default config with English comments.
@@ -15,26 +17,27 @@ const configTemplateEN = `# dolphin configuration
 # This file is auto-generated. Edit and restart to apply changes.
 
 # ── LLM Provider ──────────────────────────────────────────
-# Set multiple providers under providers: for automatic failover.
-# Startup tries each in order and uses the first that responds.
-#   providers:
-#     - name: deepseek
-#       type: openai
-#       api_key: ""
-#       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-flash
-#   providers:
-#     - name: deepseek
-#       type: openai
-#       api_key: ""
-#       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-flash
+# Primary provider + automatic failover. Startup tries each in order
+# and uses the first provider that responds.
 llm:
-  type: openai            # "openai" or "anthropic"
-  base_url: https://api.openai.com/v1
-  model: gpt-4o
+  providers:
+    - name: claude
+      type: anthropic
+      api_key: ""             # set via DZ_LLM_API_KEY env var instead
+      base_url: https://api.anthropic.com/v1
+      model: claude-sonnet-4-6
+    - name: deepseek
+      type: openai
+      api_key: ""
+      base_url: https://api.deepseek.com/v1
+      model: deepseek-v4-flash
+
+  # Legacy single-provider fields (fallback when providers: is not set).
+  type: anthropic
+  base_url: https://api.anthropic.com/v1
+  model: claude-sonnet-4-6
   api_key: ""             # set via DZ_LLM_API_KEY env var instead
-  max_tokens: 4096
+  max_tokens: 8192
   max_context_tokens: 1048576  # trigger context compression above 70% of this
   temperature: 0.7        # 0.0–2.0
   max_sub_turns: 10       # max tool-call feedback loops per user turn
@@ -67,6 +70,14 @@ mcp:
   #                       #   or remote: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
   #                       #   or remote: {type: http-stream, url: "https://..."}
   repos: []               # manifest repos, e.g. ["dolphinv/mcp"]
+  webhook:
+    enabled: true
+    priority: 100
+    # targets:              # named webhook targets, e.g.
+    #   my_bot:             #   name referenced by the webhook tool
+    #     url: "https://hooks.example.com/webhook"
+    #     method: POST
+    #     headers: {Authorization: "Bearer my-token"}
 
 # ── Agent Pool ────────────────────────────────────────────
 agent_pool:
@@ -147,31 +158,57 @@ metrics:
   enabled: false
   addr: ":9090"
 `
+// restrictiveNotes is appended to the standard template to document security
+// hardening applied in restrictive mode. This approach reuses the standard
+// template comments but overrides specific values via yaml overlay below.
+const restrictiveTemplateEN = `# ===== RESTRICTIVE MODE =====
+# This config was generated with 'dolphin init --restrictive'.
+# Security-hardened settings:
+#   - Shell: only allowlisted commands (ls, cat, grep, find, ...)
+#   - CDP browser automation: disabled
+#   - Webhook tool: disabled
+#   - Log level: warn (reduces secret leakage in logs)
+#   - Plugins: disabled
+# =============================
+
+`
+const restrictiveTemplateZH = `# ===== 限制模式 =====
+# 此配置由 'dolphin init --restrictive' 生成。
+# 安全加固设置：
+#   - Shell: 仅允许白名单命令（ls、cat、grep、find 等）
+#   - CDP 浏览器自动化：禁用
+#   - Webhook 工具：禁用
+#   - 日志级别：warn（减少日志中的密钥泄露风险）
+#   - 插件：禁用
+# =======================
+
+`
 
 // configTemplateZH is the default config with Chinese comments.
 const configTemplateZH = `# dolphin 配置文件
 # 此文件由程序自动生成。修改后重启即可生效。
 
 # ── LLM 提供商 ────────────────────────────────────────────
-# 配置多 provider 时启动会逐个检测，自动选择第一个可用的：
-#   providers:
-#     - name: deepseek
-#       type: openai
-#       api_key: ""
-#       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-flash
-#   providers:
-#     - name: deepseek
-#       type: openai
-#       api_key: ""
-#       base_url: https://api.deepseek.com/v1
-#       model: deepseek-v4-flash
+# 主 provider + 自动故障转移。启动时逐个检测，使用第一个可用的。
 llm:
-  type: openai            # "openai" 或 "anthropic"
-  base_url: https://api.openai.com/v1
-  model: gpt-4o
+  providers:
+    - name: claude
+      type: anthropic
+      api_key: ""             # 建议通过环境变量 DZ_LLM_API_KEY 设置
+      base_url: https://api.anthropic.com/v1
+      model: claude-sonnet-4-6
+    - name: deepseek
+      type: openai
+      api_key: ""
+      base_url: https://api.deepseek.com/v1
+      model: deepseek-v4-flash
+
+  # 单 provider 遗留字段（未设置 providers: 时使用）。
+  type: anthropic
+  base_url: https://api.anthropic.com/v1
+  model: claude-sonnet-4-6
   api_key: ""             # 建议通过环境变量 DZ_LLM_API_KEY 设置
-  max_tokens: 4096
+  max_tokens: 8192
   max_context_tokens: 1048576  # 超过 70% 时触发上下文压缩
   temperature: 0.7        # 0.0–2.0
   max_sub_turns: 10       # 每轮用户输入最多工具调用反馈循环次数
@@ -281,6 +318,62 @@ metrics:
   enabled: false
   addr: ":9090"
 `
+func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
+	tmplEN := restrictiveTemplateEN + configTemplateEN
+	tmplZH := restrictiveTemplateZH + configTemplateZH
+	tmpl := tmplEN
+	if lang == i18n.ZH {
+		tmpl = tmplZH
+	}
+
+	path := filepath.Join(ProjectConfigDir, ConfigFileName+".yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return "", fmt.Errorf("create config dir: %w", err)
+	}
+
+	// Override security-hardened values on top of the base template
+	hardened := map[string]any{
+		"mcp": map[string]any{
+			"shell": map[string]any{
+				"allowed_commands": []string{"ls", "cat", "grep", "find", "pwd", "date", "echo", "head", "tail", "wc", "sort", "whoami", "uname"},
+			},
+			"cdp": map[string]any{
+				"enabled": false,
+			},
+			"webhook": map[string]any{
+				"enabled": false,
+			},
+		},
+		"log_level": "warn",
+		"plugins": map[string]any{
+			"enabled": false,
+		},
+	}
+
+	// Parse template as base YAML and merge hardened values
+	base := make(map[string]any)
+	if err := yaml.Unmarshal([]byte(tmpl), &base); err != nil {
+		return "", fmt.Errorf("parse template: %w", err)
+	}
+	deepMerge(base, hardened)
+
+	data, err := yaml.Marshal(base)
+	if err != nil {
+		return "", fmt.Errorf("marshal config: %w", err)
+	}
+
+	// Prepend the restrictive header (YAML strips comments during marshal)
+	header := restrictiveTemplateEN
+	if lang == i18n.ZH {
+		header = restrictiveTemplateZH
+	}
+	output := append([]byte(header), data...)
+
+	if err := os.WriteFile(path, output, 0644); err != nil {
+		return "", fmt.Errorf("write config: %w", err)
+	}
+	return path, nil
+}
 
 // GenerateConfigFile writes a commented default config to .dolphin/config.yaml.
 // Comments adapt to the given language. Returns the file path written.
@@ -301,16 +394,29 @@ func GenerateConfigFile(lang i18n.Lang) (string, error) {
 	return path, nil
 }
 
-// PromptConfigFile asks the user whether to generate a commented default config.
-// Returns true if the file was generated.
-// PromptConfigFile asks the user whether to generate a commented default config.
-// Returns true if the file was generated.
+func deepMerge(dst, src map[string]any) {
+	for k, sv := range src {
+		dv, exists := dst[k]
+		if !exists {
+			dst[k] = sv
+			continue
+		}
+		srcMap, srcIsMap := sv.(map[string]any)
+		dstMap, dstIsMap := dv.(map[string]any)
+		if srcIsMap && dstIsMap {
+			deepMerge(dstMap, srcMap)
+		} else {
+			dst[k] = sv
+		}
+	}
+}
+
 func PromptConfigFile() (bool, error) {
 	lang := i18n.DetectLang()
 	fmt.Fprintf(os.Stderr, "\n%s\n", i18n.T(i18n.KeyConfigPrompt, lang))
 	fmt.Fprintf(os.Stderr, "%s\n", i18n.T(i18n.KeyConfigExplain, lang))
-	fmt.Fprintf(os.Stderr, "  [y] %s  [n] %s\n",
-		i18n.T(i18n.KeyConfigYes, lang), i18n.T(i18n.KeyConfigNo, lang))
+	fmt.Fprintf(os.Stderr, "  [y] %s  [r] %s  [n] %s\n",
+		i18n.T(i18n.KeyConfigYes, lang), i18n.T(i18n.KeyConfigRestrictive, lang), i18n.T(i18n.KeyConfigNo, lang))
 	fmt.Fprintf(os.Stderr, "%s: ", i18n.T(i18n.KeyChoice, lang))
 
 	reader := bufio.NewReader(os.Stdin)
@@ -319,6 +425,16 @@ func PromptConfigFile() (bool, error) {
 		return false, nil
 	}
 	input = strings.TrimSpace(strings.ToLower(input))
+
+	if input == "r" || input == "restrictive" {
+		path, err := GenerateRestrictiveConfigFile(lang)
+		if err != nil {
+			return false, fmt.Errorf("generate restrictive config: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.T(i18n.KeyConfigGenerated, lang), path)
+		fmt.Fprintf(os.Stderr, "  %s\n", i18n.T(i18n.KeyRestrictiveHint, lang))
+		return true, nil
+	}
 
 	if input != "y" && input != "yes" {
 		fmt.Fprintf(os.Stderr, "%s\n", i18n.T(i18n.KeyConfigSkipped, lang))

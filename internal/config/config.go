@@ -141,8 +141,21 @@ type MCPConfig struct {
 	Shell   ShellConfig                `mapstructure:"shell"`
 	CDP     CDPConfig                  `mapstructure:"cdp"`
 	Email   EmailMCPConfig             `mapstructure:"email"`
+	Webhook MCPWebhookConfig           `mapstructure:"webhook"`
 	Servers map[string]MCPServerConfig `mapstructure:"servers"`
 	Repos   []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
+}
+
+type MCPWebhookConfig struct {
+	Enabled  bool                     `mapstructure:"enabled"`
+	Priority int                      `mapstructure:"priority"`
+	Targets  map[string]WebhookTarget `mapstructure:"targets"` // named pre-configured webhook targets
+}
+
+type WebhookTarget struct {
+	URL     string            `mapstructure:"url"`
+	Method  string            `mapstructure:"method"`  // HTTP method, e.g. "POST" (default), "GET"
+	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers
 }
 
 type MCPServerConfig struct {
@@ -291,6 +304,15 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_LLM_API_KEY"); v != "" {
 		cfg.LLM.APIKey = v
 	}
+	// Propagate env var or legacy api_key to providers with empty keys.
+	// This lets users set DZ_LLM_API_KEY once and have it apply to all providers.
+	if cfg.LLM.APIKey != "" {
+		for i := range cfg.LLM.Providers {
+			if cfg.LLM.Providers[i].APIKey == "" {
+				cfg.LLM.Providers[i].APIKey = cfg.LLM.APIKey
+			}
+		}
+	}
 	if v := os.Getenv("DZ_LLM_BASE_URL"); v != "" {
 		cfg.LLM.BaseURL = v
 	}
@@ -302,6 +324,14 @@ func Load(cfgFile string) (*Config, error) {
 	}
 	if v := os.Getenv("DZ_LLM_MAX_TOKENS"); v != "" {
 		fmt.Sscanf(v, "%d", &cfg.LLM.MaxTokens)
+	}
+	// Propagate llm.max_tokens to providers that don't specify their own.
+	if cfg.LLM.MaxTokens > 0 {
+		for i := range cfg.LLM.Providers {
+			if cfg.LLM.Providers[i].MaxTokens <= 0 {
+				cfg.LLM.Providers[i].MaxTokens = cfg.LLM.MaxTokens
+			}
+		}
 	}
 	if v := os.Getenv("DZ_LOG_LEVEL"); v != "" {
 		cfg.LogLevel = v
@@ -591,6 +621,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.cdp.idle_timeout", 300)
 	v.SetDefault("mcp.email.enabled", true)
 	v.SetDefault("mcp.email.priority", 500)
+
+	v.SetDefault("mcp.webhook.enabled", true)
+	v.SetDefault("mcp.webhook.priority", 100)
 
 	v.SetDefault("agent_pool.max_concurrency", 5)
 	v.SetDefault("agent_pool.default_timeout", 300)

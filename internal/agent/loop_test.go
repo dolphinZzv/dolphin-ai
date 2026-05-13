@@ -167,7 +167,7 @@ func TestRunTurnNoToolCalls(t *testing.T) {
 	}
 	io := &mockIO{}
 
-	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg, nil)
 	if err != nil {
 		t.Fatalf("runTurn error: %v", err)
 	}
@@ -215,7 +215,7 @@ func TestRunTurnWithToolCall(t *testing.T) {
 	}
 	io := &mockIO{}
 
-	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg, nil)
 	if err != nil {
 		t.Fatalf("runTurn error: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestRunTurnTruncatesLargeResult(t *testing.T) {
 	}
 	io := &mockIO{}
 
-	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg, nil)
 	if err != nil {
 		t.Fatalf("runTurn error: %v", err)
 	}
@@ -696,7 +696,7 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	io := &mockIO{}
 
 	// Run turn 1
-	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	err := agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg, nil)
 	if err != nil {
 		t.Fatalf("runTurn 1: %v", err)
 	}
@@ -705,7 +705,7 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	state.Messages = append(state.Messages, Message{Role: "user", Content: TextContent("thanks")})
 	state.Turn = 2
 	sess.Turn = 2
-	err = agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg)
+	err = agt.runTurn(context.Background(), state, "system prompt", io, agt.toolReg, nil)
 	if err != nil {
 		t.Fatalf("runTurn 2: %v", err)
 	}
