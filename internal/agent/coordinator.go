@@ -182,7 +182,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 		// Handle commands
 		switch {
-		case line == "/exit" || line == "/quit":
+		case line == "/exit":
 			state.StopReason = "user_exit"
 			return
 		case line == "/help":

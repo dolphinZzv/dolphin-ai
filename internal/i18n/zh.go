@@ -29,9 +29,9 @@ var zhMessages = map[string]string{
 	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
-	KeyCoordReady:        "dolphin 协调器已就绪\n  /exit, /quit    退出协调器\n  /help           显示帮助\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n",
+	KeyCoordReady:        "dolphin 协调器已就绪\n  /exit            退出协调器\n  /help           显示帮助\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n",
 	KeyHelpHeader:        "命令：",
-	KeyHelpExit:          "  /exit, /quit  - 退出",
+	KeyHelpExit:          "  /exit          - 退出",
 	KeyHelpHelp:          "  /help         - 显示帮助",
 	KeyHelpAgents:        "  /agents       - 列出可用代理及其状态",
 	KeyHelpSkills:        "  /skills       - 列出可用技能",

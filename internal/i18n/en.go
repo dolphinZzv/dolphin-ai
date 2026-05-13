@@ -29,9 +29,9 @@ var enMessages = map[string]string{
 	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
-	KeyCoordReady:        "dolphin Coordinator Ready\n  /exit, /quit    Quit coordinator\n  /help           Show help\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n",
+	KeyCoordReady:        "dolphin Coordinator Ready\n  /exit           Quit coordinator\n  /help           Show help\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n",
 	KeyHelpHeader:        "Commands:",
-	KeyHelpExit:          "  /exit, /quit  - Exit",
+	KeyHelpExit:          "  /exit          - Exit",
 	KeyHelpHelp:          "  /help         - This help",
 	KeyHelpAgents:        "  /agents       - List available agents and their status",
 	KeyHelpSkills:        "  /skills       - List available skills",
