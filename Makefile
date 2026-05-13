@@ -2,7 +2,7 @@ VERSION ?= dev
 APP_BUNDLE := panda.app
 PANDA_DIR := app/panda
 
-.PHONY: build run clean test fmt check-fmt init-hooks app app-clean
+.PHONY: build run clean test fmt check-fmt init-hooks app app-clean distribute
 
 build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
@@ -48,3 +48,14 @@ release:
 
 release-snapshot:
 	goreleaser release --snapshot --clean
+
+distribute:
+	@branch=$$(git symbolic-ref --short HEAD); \
+	echo "Pushing $$branch to github, gitee, gitea..."; \
+	git push github "$$branch" && echo "  ✓ github" \
+		|| echo "  ✗ github"; \
+	git push gitee "$$branch" && echo "  ✓ gitee" \
+		|| echo "  ✗ gitee"; \
+	git push gitea "$$branch" && echo "  ✓ gitea" \
+		|| echo "  ✗ gitea"; \
+	echo "Done."

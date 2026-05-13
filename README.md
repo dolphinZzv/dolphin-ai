@@ -2,6 +2,22 @@
 
 [English](README.md) | [中文](README.zh.md)
 
+<p align="center">
+  <a href="https://github.com/dolphinZzv/dolphin" target="_blank">
+    <img src="https://img.shields.io/badge/GitHub-dolphinZzv/dolphin-181717?style=flat&logo=github" alt="GitHub">
+  </a>
+  <a href="https://gitee.com/dolphinzzv/dolphindolphin" target="_blank">
+    <img src="https://img.shields.io/badge/Gitee-dolphinzzv/dolphindolphin-C71D23?style=flat&logo=gitee" alt="Gitee">
+  </a>
+</p>
+
+| Platform | Repository | Command |
+|----------|-----------|---------|
+| GitHub   | github.com/dolphinZzv/dolphin | `git clone git@github.com:dolphinZzv/dolphin.git` |
+| Gitee    | gitee.com/dolphinzzv/dolphindolphin | `git clone git@gitee.com:dolphinzzv/dolphindolphin.git` |
+
+> GitHub is the primary mirror; Gitee is the mirror for mainland China users. Both are kept in sync via `make distribute`.
+
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
 
 ## Why dolphin?
