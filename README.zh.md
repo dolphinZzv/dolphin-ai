@@ -6,8 +6,6 @@
   <a href="https://github.com/dolphinZzv/dolphin">GitHub</a>
   ·
   <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
-  ·
-  <a href="mailto:dolphin@siciv.space">dolphin@siciv.space</a>
 </p>
 
 一个在你工作的地方随时待命的 AI agent —— 终端、邮件、聊天、SSH。它执行 shell 命令、操控浏览器、调度子 agent 并行工作、按你定义的计划自动运行任务。就像一个能干的队友，无论通过什么渠道都能对接。
@@ -159,3 +157,7 @@ dolphin 基于以下信念构建：
 - **本地优先，尊重隐私。** 职业画像、SYSTEM.md、会话文件 —— 全部本地存储。除了你配置的 LLM API 调用，没有任何数据外发。
 - **可恢复设计。** 会话持久化到磁盘。agent 崩溃或关机后可以接着上次继续。日志轮转但不会消失。
 - **可测试、可观测。** 结构化日志、Prometheus 指标、pprof 端点，以及在 CI 中强制执行竞态检测和覆盖率门槛的测试套件。
+
+---
+
+**联系方式：** [dolphin@siciv.space](mailto:dolphin@siciv.space)

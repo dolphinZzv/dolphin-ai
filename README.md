@@ -6,8 +6,6 @@
   <a href="https://github.com/dolphinZzv/dolphin">GitHub</a>
   ·
   <a href="https://gitee.com/dolphinzzv/dolphindolphin">Gitee</a>
-  ·
-  <a href="mailto:dolphin@siciv.space">dolphin@siciv.space</a>
 </p>
 
 An AI agent that lives where you work — terminal, email, chat, or SSH. It runs shell commands, controls a browser, delegates work to sub-agents, and follows schedules you define. Think of it as a capable teammate that connects through whatever channel suits the task.
@@ -116,3 +114,7 @@ dolphin is built around a few beliefs about how AI agents should work:
 - **Local first, privacy respecting.** Career profile, SYSTEM.md, session files — all stored locally. Nothing gets sent anywhere except the LLM API calls you configure.
 - **Recoverable by design.** Sessions persist to disk. If the agent crashes or you shut down, you can resume where you left off. Logs rotate but don't disappear.
 - **Testable and observable.** Structured logging, Prometheus metrics, pprof endpoints, and a test suite that enforces race detection and coverage gates.
+
+---
+
+**Contact:** [dolphin@siciv.space](mailto:dolphin@siciv.space)
