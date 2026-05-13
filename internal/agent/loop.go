@@ -409,7 +409,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			return
 		}
 
-		if line == "/exit" {
+		if line == "/exit" || line == "exit" || line == "quit" {
 			if io.Capabilities().ConfirmExit {
 				io.WriteLine("Are you sure you want to exit? [y/N] ")
 				confirm, err := io.ReadLine()
