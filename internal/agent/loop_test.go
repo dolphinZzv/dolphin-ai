@@ -86,10 +86,11 @@ func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-c
 
 // mockIO implements UserIO for testing.
 type mockIO struct {
-	lines   []string
-	readIdx int
-	writes  strings.Builder
-	readErr error
+	lines       []string
+	readIdx     int
+	writes      strings.Builder
+	readErr     error
+	confirmExit bool
 }
 
 func (m *mockIO) ReadLine() (string, error) {
@@ -110,7 +111,7 @@ func (m *mockIO) WriteString(s string) error {
 }
 func (m *mockIO) Context() string { return "" }
 func (m *mockIO) Capabilities() transport.Capabilities {
-	return transport.Capabilities{Streaming: true, Flushable: false}
+	return transport.Capabilities{Streaming: true, Flushable: false, ConfirmExit: m.confirmExit}
 }
 
 // mockTool implements mcp.Tool for testing.
@@ -767,6 +768,218 @@ func TestE2EAgentRunReadLineErrorSkipsSummary(t *testing.T) {
 		if strings.HasSuffix(e.Name(), "-summary.json") {
 			t.Errorf("expected no summary for transport_error + 0 turns, found: %s", e.Name())
 		}
+	}
+}
+
+// ── Exit confirmation tests ───────────────────────────────────────────
+
+// newTestAgentWithProvider creates a test agent with a given provider for Run() tests.
+func newTestAgentWithProvider(cfg *config.Config, prov Provider) *Agent {
+	sessMgr := session.NewManager(cfg.Session.Dir)
+	toolReg := mcp.NewRegistry(cfg)
+	return &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   prov,
+		ctxBuilder: NewContextBuilder(),
+	}
+}
+
+func TestRunStdioExitConfirmed(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	io := &mockIO{lines: []string{"exit", "y"}, confirmExit: true}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if !strings.Contains(io.writes.String(), "Are you sure you want to exit?") {
+		t.Errorf("expected confirmation prompt, got: %s", io.writes.String())
+	}
+	if strings.Contains(io.writes.String(), "Exit cancelled.") {
+		t.Errorf("unexpected 'Exit cancelled.' when confirmed, got: %s", io.writes.String())
+	}
+}
+
+func TestRunStdioExitConfirmedWithYes(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	io := &mockIO{lines: []string{"exit", "yes"}, confirmExit: true}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if !strings.Contains(io.writes.String(), "Are you sure you want to exit?") {
+		t.Errorf("expected confirmation prompt, got: %s", io.writes.String())
+	}
+}
+
+func TestRunStdioExitCancelled(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	io := &mockIO{lines: []string{"exit", "n"}, confirmExit: true}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if !strings.Contains(io.writes.String(), "Exit cancelled.") {
+		t.Errorf("expected 'Exit cancelled.' message, got: %s", io.writes.String())
+	}
+}
+
+func TestRunStdioExitConfirmError(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	// Only "exit", no second line → confirm ReadLine gets "no more input" error
+	io := &mockIO{lines: []string{"exit"}, confirmExit: true}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if !strings.Contains(io.writes.String(), "Are you sure you want to exit?") {
+		t.Errorf("expected confirmation prompt, got: %s", io.writes.String())
+	}
+}
+
+func TestRunStdioSlashExitConfirmed(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	io := &mockIO{lines: []string{"/exit", "y"}, confirmExit: true}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if !strings.Contains(io.writes.String(), "Are you sure you want to exit?") {
+		t.Errorf("expected confirmation prompt for /exit, got: %s", io.writes.String())
+	}
+}
+
+func TestRunNonStdioExitIsMessage(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("got it"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	// Non-stdio: confirmExit=false → "exit" is treated as a regular message
+	io := &mockIO{lines: []string{"exit"}, confirmExit: false}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	// Should have processed "exit" as a user message (no confirmation prompt)
+	if strings.Contains(io.writes.String(), "Are you sure") {
+		t.Errorf("non-stdio should not show confirmation prompt, got: %s", io.writes.String())
+	}
+}
+
+func TestRunNonStdioSlashExitIsMessage(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("got it"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	// Non-stdio: confirmExit=false → "/exit" is also treated as a regular message
+	io := &mockIO{lines: []string{"/exit"}, confirmExit: false}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if strings.Contains(io.writes.String(), "Are you sure") {
+		t.Errorf("non-stdio should not show confirmation prompt, got: %s", io.writes.String())
+	}
+}
+
+func TestRunNonStdioQuitIsMessage(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("got it"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	io := &mockIO{lines: []string{"quit"}, confirmExit: false}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if strings.Contains(io.writes.String(), "Are you sure") {
+		t.Errorf("non-stdio should not show confirmation prompt, got: %s", io.writes.String())
+	}
+}
+
+func TestRunStdioExitCancelledThenMessage(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Session.MaxLoop = 100
+	cfg.Session.Dir = t.TempDir()
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 1, OutputTokens: 1}, StopReason: "end_turn"},
+		},
+	}
+	agt := newTestAgentWithProvider(cfg, prov)
+	// exit → cancelled → "hello" as normal message → then no more input
+	io := &mockIO{lines: []string{"exit", "n", "hello"}, confirmExit: true}
+
+	ctx := context.Background()
+	agt.Run(ctx, io)
+
+	if !strings.Contains(io.writes.String(), "Exit cancelled.") {
+		t.Errorf("expected 'Exit cancelled.', got: %s", io.writes.String())
 	}
 }
 

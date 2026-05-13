@@ -24,10 +24,11 @@ type UserIO interface {
 	Context() string // transport-specific context injected into system prompt
 }
 
-// Capabilities describes a transport's write semantics.
+// Capabilities describes a transport's write semantics and interaction features.
 // Streaming transports send each write immediately (e.g. WebSocket, stdio).
 // Block transports batch writes and flush periodically (e.g. MQTT, Email).
 type Capabilities struct {
-	Streaming bool
-	Flushable bool
+	Streaming   bool
+	Flushable   bool
+	ConfirmExit bool // if true, require confirmation before exiting the agent
 }

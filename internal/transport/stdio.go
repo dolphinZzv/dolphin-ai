@@ -55,7 +55,7 @@ func (t *StdioTransport) Context() string {
 }
 
 func (t *StdioTransport) Capabilities() Capabilities {
-	return Capabilities{Streaming: true, Flushable: false}
+	return Capabilities{Streaming: true, Flushable: false, ConfirmExit: true}
 }
 
 func (t *StdioTransport) Start(ctx context.Context) error {

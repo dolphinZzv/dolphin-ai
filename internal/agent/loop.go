@@ -373,9 +373,22 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 			return
 		}
 
-		if line == "/exit" || line == "/quit" {
-			state.StopReason = "user_exit"
-			return
+		if line == "/exit" || line == "/quit" || line == "exit" || line == "quit" {
+			if io.Capabilities().ConfirmExit {
+				io.WriteLine("Are you sure you want to exit? [y/N] ")
+				confirm, err := io.ReadLine()
+				if err != nil {
+					zap.S().Debugw("read confirm error", "error", err)
+					state.StopReason = "transport_error"
+					return
+				}
+				if strings.ToLower(strings.TrimSpace(confirm)) != "y" && strings.ToLower(strings.TrimSpace(confirm)) != "yes" {
+					io.WriteLine("Exit cancelled.")
+					continue
+				}
+				state.StopReason = "user_exit"
+				return
+			}
 		}
 		if line == "/mcp" {
 			toolDefs := a.toolReg.List()
