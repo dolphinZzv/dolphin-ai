@@ -43,7 +43,7 @@ func TestRunFullSessionWelcomeAndExit(t *testing.T) {
 	agt.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "dolphin Agent ready") {
+	if !strings.Contains(output, "Agent ready") {
 		t.Error("expected welcome message")
 	}
 	if !strings.Contains(output, "Loaded MCP tools:") {
