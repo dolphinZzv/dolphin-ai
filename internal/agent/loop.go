@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -33,6 +34,8 @@ type Agent struct {
 	heartbeatInterval  int // emit heartbeat event every N turns, 0=off
 	availableProviders []config.ProviderConfig
 	providerIndex      int
+	version            string
+	buildTime          string
 }
 
 // LoopState holds state for a single agent run.
@@ -122,6 +125,9 @@ func (a *Agent) switchToProvider(name string) bool {
 	zap.S().Warnw("switch to provider: not found", "name", name)
 	return false
 }
+
+func (a *Agent) SetVersion(v string)     { a.version = v }
+func (a *Agent) SetBuildTime(t string)  { a.buildTime = t }
 
 func (a *Agent) rebuildCompressor() {
 	switch a.cfg.LLM.CompressMode {
@@ -352,7 +358,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	)
 
 	// Print welcome with MCP tools list
-	io.WriteLine("dolphin Agent ready. Type /exit to quit, /help for help.")
+	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Agent ready. Type /exit to quit, /help for help.", a.version, runtime.GOOS, runtime.Version(), a.buildTime))
 	toolDefs := a.toolReg.List()
 	if len(toolDefs) > 0 {
 		io.WriteString("Loaded MCP tools: ")

@@ -35,8 +35,9 @@ import (
 )
 
 var (
-	cfgFile string
-	Version = "dev"
+	cfgFile   string
+	Version   = "dev"
+	BuildTime = "unknown"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -199,6 +200,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Factory: creates a new coordinator per transport connection
 	newCoordinator := func() *agent.Coordinator {
 		agt := agent.New(cfg, sessMgr, toolRegistry)
+		agt.SetVersion(Version)
+		agt.SetBuildTime(BuildTime)
 		agt.SetHooks(hooks)
 		agt.SetEventBus(bus)
 		agt.SetHeartbeatInterval(cfg.Plugins.HeartbeatTurns)

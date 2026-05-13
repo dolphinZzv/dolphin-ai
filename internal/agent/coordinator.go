@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -55,6 +56,8 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		compressor: comp,
 		hooks:      agent.hooks,
 		events:     agent.events,
+		version:    agent.version,
+		buildTime:  agent.buildTime,
 	}
 	// Core coordinator tools always available; MCP tools loaded on demand.
 	coreTools := []string{"dispatch_task", "create_agent", "get_agent_status",
@@ -146,6 +149,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		go c.processDueTasks(ctx, dueCh, sess.ID)
 	}
 
+	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Coordinator Ready", c.version, runtime.GOOS, runtime.Version(), c.buildTime))
 	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
 
 	// Display async startup recommendation if ready
