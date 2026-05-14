@@ -2,7 +2,7 @@ VERSION ?= dev
 APP_BUNDLE := panda.app
 PANDA_DIR := app/panda
 
-.PHONY: build run clean test fmt check-fmt init-hooks llm-smoke app app-clean distribute
+.PHONY: build run clean test fmt check-fmt init-hooks llm-smoke docs-smoke app app-clean distribute
 
 build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)'" -o dolphin .
@@ -36,6 +36,9 @@ init-hooks:
 
 llm-smoke:
 	@scripts/llm-smoke.sh
+
+docs-smoke:
+	@scripts/docs-smoke.sh
 
 app:
 	$(MAKE) -C $(PANDA_DIR) build VERSION=$(VERSION)
