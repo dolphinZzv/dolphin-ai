@@ -136,3 +136,106 @@ func TestHTTPMiddlewareSkipPaths(t *testing.T) {
 		t.Errorf("expected 200 for skip path, got %d", rec.Code)
 	}
 }
+
+func TestClientIPContext(t *testing.T) {
+	ctx := context.Background()
+	if ip := ClientIPFromContext(ctx); ip != "" {
+		t.Errorf("expected empty IP, got %q", ip)
+	}
+
+	ctx = WithClientIP(ctx, "1.2.3.4")
+	if ip := ClientIPFromContext(ctx); ip != "1.2.3.4" {
+		t.Errorf("expected 1.2.3.4, got %q", ip)
+	}
+}
+
+func TestClientIPFromRequest_XForwardedFor(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-Forwarded-For", "203.0.113.1, 198.51.100.2, 192.0.2.3")
+
+	ip := clientIPFromRequest(r)
+	if ip != "203.0.113.1" {
+		t.Errorf("expected first X-Forwarded-For IP, got %q", ip)
+	}
+}
+
+func TestClientIPFromRequest_XRealIP(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-Real-IP", "10.0.0.1")
+
+	ip := clientIPFromRequest(r)
+	if ip != "10.0.0.1" {
+		t.Errorf("expected X-Real-IP, got %q", ip)
+	}
+}
+
+func TestClientIPFromRequest_XForwardedForTakesPriority(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.Header.Set("X-Forwarded-For", "203.0.113.1")
+	r.Header.Set("X-Real-IP", "10.0.0.1")
+
+	ip := clientIPFromRequest(r)
+	if ip != "203.0.113.1" {
+		t.Errorf("expected X-Forwarded-For to take priority, got %q", ip)
+	}
+}
+
+func TestClientIPFromRequest_RemoteAddr(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "192.168.1.1:34567"
+
+	ip := clientIPFromRequest(r)
+	if ip != "192.168.1.1" {
+		t.Errorf("expected RemoteAddr IP without port, got %q", ip)
+	}
+}
+
+func TestClientIPFromRequest_RemoteAddrNoPort(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.RemoteAddr = "192.168.1.1"
+
+	ip := clientIPFromRequest(r)
+	if ip != "192.168.1.1" {
+		t.Errorf("expected RemoteAddr as-is, got %q", ip)
+	}
+}
+
+func TestHTTPMiddleware_InjectsClientIP(t *testing.T) {
+	a := New("secret")
+
+	handler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := ClientIPFromContext(r.Context())
+		if ip != "10.0.0.1" {
+			t.Errorf("expected IP 10.0.0.1, got %q", ip)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.RemoteAddr = "10.0.0.1:56789"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
+
+func TestHTTPMiddleware_InjectsClientIPOnSkipPath(t *testing.T) {
+	a := New("secret")
+
+	handler := a.HTTPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := ClientIPFromContext(r.Context())
+		if ip != "10.0.0.1" {
+			t.Errorf("expected IP 10.0.0.1 on skip path, got %q", ip)
+		}
+		w.WriteHeader(http.StatusOK)
+	}), "/health")
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req.RemoteAddr = "10.0.0.1:56789"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+}
