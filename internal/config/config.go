@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -37,6 +38,25 @@ type Config struct {
 	LogLevel  string          `mapstructure:"log_level"`
 	LogFile   string          `mapstructure:"log_file"`
 	Plugins   PluginsConfig   `mapstructure:"plugins"`
+}
+
+// Clone deep-copies the Config using JSON round-trip.
+// The returned Config is safe to mutate independently.
+func (c *Config) Clone() *Config {
+	if c == nil {
+		return nil
+	}
+	data, err := json.Marshal(c)
+	if err != nil {
+		zap.S().Errorw("config clone marshal failed", "error", err)
+		return nil
+	}
+	var cloned Config
+	if err := json.Unmarshal(data, &cloned); err != nil {
+		zap.S().Errorw("config clone unmarshal failed", "error", err)
+		return nil
+	}
+	return &cloned
 }
 
 // ProviderConfig defines a single LLM provider endpoint.
@@ -187,7 +207,8 @@ func TimeoutDuration(sec int) time.Duration {
 
 type ShellConfig struct {
 	Enabled          bool     `mapstructure:"enabled"`
-	AllowedCommands  []string `mapstructure:"allowed_commands"`   // empty = allow all
+	AllowedCommands  []string `mapstructure:"allowed_commands"` // empty = allow all when allow_unrestricted is true
+	AllowUnrestricted bool    `mapstructure:"allow_unrestricted"` // opt-in to unrestricted sh -c when no whitelist
 	MaxCommandLength int      `mapstructure:"max_command_length"` // 0 = use default
 	TimeoutSeconds   int      `mapstructure:"timeout_seconds"`
 	Priority         int      `mapstructure:"priority"`

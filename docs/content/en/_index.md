@@ -13,14 +13,17 @@ Dolphin doesn't care which door you knock on — it answers them all. The same a
 ## Quick Start
 
 ```bash
-# Set your API key
+# Set your API key and provider
+export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_BASE_URL="https://api.openai.com/v1"
+export DZ_LLM_MODEL="gpt-4o"
 
 # Run dolphin
 ./dolphin
 ```
 
-On the first run, Dolphin will walk you through a setup wizard — choose your role, optionally generate a config file and a system prompt file.
+On the first run, Dolphin will walk you through a setup wizard — choose your role, optionally generate a config file and a system prompt file. See the [Quick Start guide](docs/quickstart/) for other providers.
 
 ## Key Features
 

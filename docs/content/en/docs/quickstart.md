@@ -35,15 +35,28 @@ See the [full install guide]({{< relref "docs/install" >}}) for more options.
 
 ## 2. Set your API key
 
+Choose your provider and set all required variables:
+
 ```bash
-export DZ_LLM_API_KEY="sk-..."
+# Anthropic
+export DZ_LLM_TYPE="anthropic"
+export DZ_LLM_API_KEY="sk-ant-..."
+export DZ_LLM_BASE_URL="https://api.anthropic.com/v1"
 export DZ_LLM_MODEL="claude-sonnet-4-6"
 ```
 
-Or use any OpenAI-compatible provider:
+```bash
+# OpenAI
+export DZ_LLM_TYPE="openai"
+export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_BASE_URL="https://api.openai.com/v1"
+export DZ_LLM_MODEL="gpt-4o"
+```
 
 ```bash
-export DZ_LLM_API_KEY="your-deepseek-key"
+# DeepSeek
+export DZ_LLM_TYPE="openai"
+export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 export DZ_LLM_MODEL="deepseek-v4-flash"
 ```

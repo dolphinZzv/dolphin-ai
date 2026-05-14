@@ -7,6 +7,19 @@ dolphin
 # Config with API keys
 .dolphin/config.yaml
 .dolphin/testdata/
+.dolphin/sessions/
+.dolphin/skills/
+
+# Hugo build artifacts
+*.hugo_build.lock
+public/
+docs/public/
+
+# Agent workspace state
+internal/agent/.dolphin/
+
+# MCP server config (user-specific)
+.mcp.json
 
 # Claude Code
 .claude/

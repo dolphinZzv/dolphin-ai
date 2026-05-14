@@ -126,7 +126,7 @@ func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent
 		comp = &DropCompressor{}
 	}
 	subAgent := &Agent{
-		cfg:        agent.cfg,
+		cfg:        agent.cfg.Clone(),
 		sessMgr:    agent.sessMgr,
 		toolReg:    filteredTools,
 		provider:   agent.provider,

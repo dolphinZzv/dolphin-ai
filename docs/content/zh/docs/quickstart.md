@@ -35,17 +35,30 @@ Move-Item .\dolphin.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin.exe"
 
 ## 2. 设置 API 密钥
 
+按你的服务商设置全部环境变量：
+
 ```bash
+# DeepSeek
+export DZ_LLM_TYPE="openai"
 export DZ_LLM_API_KEY="sk-..."
-export DZ_LLM_MODEL="claude-sonnet-4-6"
-```
-
-或使用其他兼容的提供商：
-
-```bash
-export DZ_LLM_API_KEY="your-deepseek-key"
 export DZ_LLM_BASE_URL="https://api.deepseek.com/v1"
 export DZ_LLM_MODEL="deepseek-v4-flash"
+```
+
+```bash
+# 通义千问
+export DZ_LLM_TYPE="openai"
+export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_BASE_URL="https://dashscope.aliyuncs.com/compatible-mode/v1"
+export DZ_LLM_MODEL="qwen3.6-max-preview"
+```
+
+```bash
+# 智谱 GLM
+export DZ_LLM_TYPE="openai"
+export DZ_LLM_API_KEY="sk-..."
+export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
+export DZ_LLM_MODEL="glm-5"
 ```
 
 ## 3. 启动小海豚

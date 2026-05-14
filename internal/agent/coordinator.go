@@ -48,7 +48,7 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		comp = &DropCompressor{}
 	}
 	coordAgent := &Agent{
-		cfg:        agent.cfg,
+		cfg:        agent.cfg.Clone(),
 		sessMgr:    agent.sessMgr,
 		toolReg:    coordReg,
 		provider:   agent.provider,

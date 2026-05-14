@@ -30,9 +30,11 @@ type ShellTool struct {
 }
 
 func NewShellTool(cfg *config.Config) *ShellTool {
-	if len(cfg.MCP.Shell.AllowedCommands) == 0 {
-		zap.S().Warnw("shell tool: no command restrictions — all commands are allowed. " +
-			"Set mcp.shell.allowed_commands in config to restrict.")
+	if len(cfg.MCP.Shell.AllowedCommands) == 0 && !cfg.MCP.Shell.AllowUnrestricted {
+		zap.S().Warnw("shell tool: no command whitelist set — direct execution allowed, " +
+			"but shell features (pipes, redirects) are disabled. " +
+			"Set mcp.shell.allowed_commands to restrict to specific commands, " +
+			"or set mcp.shell.allow_unrestricted=true for full shell access.")
 	}
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
@@ -84,15 +86,14 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 	}
 
 	allowed := s.cfg.AllowedCommands
+	fields := strings.Fields(params.Command)
+	if len(fields) == 0 {
+		return &ToolResult{Content: "empty command", IsError: true}, nil
+	}
 	if len(allowed) > 0 {
-		// Restricted mode: parse command name, strict allowlist, no shell
-		fields := strings.Fields(params.Command)
-		if len(fields) == 0 {
-			return &ToolResult{Content: "empty command", IsError: true}, nil
-		}
-		cmdName := fields[0]
-		if !s.isAllowed(cmdName) {
-			return &ToolResult{Content: fmt.Sprintf("command not allowed: %s (allowed: %v)", cmdName, allowed), IsError: true}, nil
+		// Restricted mode: strict allowlist, no shell
+		if !s.isAllowed(fields[0]) {
+			return &ToolResult{Content: fmt.Sprintf("command not allowed: %s (allowed: %v)", fields[0], allowed), IsError: true}, nil
 		}
 		// Block shell metacharacters in restricted mode (defense-in-depth)
 		for _, arg := range fields[1:] {
@@ -112,18 +113,27 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 
 	zap.S().Debugw("executing shell command", "command", truncateCommand(params.Command))
 
+	// Build the command: restricted mode (whitelist) or direct execution.
+	// Shell features (pipes, redirects) are only available when
+	// allow_unrestricted is explicitly opted into.
 	var cmd *exec.Cmd
 	if len(allowed) > 0 {
 		// Restricted: exec.Command with args, no shell
-		fields := strings.Fields(params.Command)
 		if len(fields) > 1 {
 			cmd = exec.CommandContext(ctx, fields[0], fields[1:]...)
 		} else {
 			cmd = exec.CommandContext(ctx, fields[0])
 		}
-	} else {
-		// Unrestricted: sh -c
+	} else if s.cfg.AllowUnrestricted {
+		// Opt-in unrestricted: sh -c
 		cmd = exec.CommandContext(ctx, "sh", "-c", params.Command)
+	} else {
+		// Default safe mode: direct execution without shell
+		if len(fields) > 1 {
+			cmd = exec.CommandContext(ctx, fields[0], fields[1:]...)
+		} else {
+			cmd = exec.CommandContext(ctx, fields[0])
+		}
 	}
 	// Use workspace directory from context if set (for sub-agent workspace isolation)
 	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
