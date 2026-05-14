@@ -3,6 +3,7 @@ package mcp_test
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"chick/internal/config"
@@ -391,5 +392,150 @@ func TestUnknownTool(t *testing.T) {
 	}
 	if resp.Error.Code != -32602 {
 		t.Errorf("expected error code -32602, got %d", resp.Error.Code)
+	}
+}
+
+func TestMCPCreateIssuesBatch_HappyPath(t *testing.T) {
+	srv, _, _, agent, _ := setupTestWithProject(t)
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issues_batch",
+		"arguments": map[string]interface{}{
+			"issues": []map[string]interface{}{
+				{"title": "Batch issue 1", "description": "First batch", "priority": "high"},
+				{"title": "Batch issue 2", "description": "Second batch", "priority": "low"},
+			},
+		},
+	}, agent.ID)
+
+	items, ok := result["items"].([]interface{})
+	if !ok {
+		data, _ := json.Marshal(result["items"])
+		json.Unmarshal(data, &items)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	for i, item := range items {
+		m, _ := item.(map[string]interface{})
+		if m["id"] == "" || fmt.Sprint(m["number"]) == "0" {
+			t.Errorf("items[%d]: expected valid id/number, got %v", i, m)
+		}
+		if m["title"] != fmt.Sprintf("Batch issue %d", i+1) {
+			t.Errorf("items[%d]: expected title 'Batch issue %d', got %v", i, i+1, m["title"])
+		}
+		if m["state"] != "open" {
+			t.Errorf("items[%d]: expected state 'open', got %v", i, m["state"])
+		}
+	}
+	if total, _ := result["total"].(float64); int(total) != 2 {
+		t.Errorf("expected total 2, got %v", result["total"])
+	}
+}
+
+func TestMCPCreateIssuesBatch_EmptyArray(t *testing.T) {
+	srv, _, _, _, _ := setupTestWithProject(t)
+
+	params, _ := json.Marshal(map[string]interface{}{
+		"name": "create_issues_batch",
+		"arguments": map[string]interface{}{
+			"issues": []map[string]interface{}{},
+		},
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/call",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error == nil {
+		t.Fatal("expected error for empty issues array")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("expected error code -32602, got %d", resp.Error.Code)
+	}
+}
+
+func TestMCPCreateIssuesBatch_MissingTitle(t *testing.T) {
+	srv, _, _, agent, _ := setupTestWithProject(t)
+
+	params, _ := json.Marshal(map[string]interface{}{
+		"name": "create_issues_batch",
+		"arguments": map[string]interface{}{
+			"issues": []map[string]interface{}{
+				{"title": "Valid issue"},
+				{"description": "Missing title"},
+			},
+		},
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/call",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, agent.ID, "")
+	if resp.Error == nil {
+		t.Fatal("expected error for missing title")
+	}
+	if !strings.Contains(resp.Error.Message, "issues[1]") {
+		t.Errorf("expected error to reference issues[1], got: %s", resp.Error.Message)
+	}
+}
+
+func TestMCPCreateIssuesBatch_InvalidPriority(t *testing.T) {
+	srv, _, _, agent, _ := setupTestWithProject(t)
+
+	params, _ := json.Marshal(map[string]interface{}{
+		"name": "create_issues_batch",
+		"arguments": map[string]interface{}{
+			"issues": []map[string]interface{}{
+				{"title": "Good issue", "priority": "medium"},
+				{"title": "Bad priority", "priority": "urgent"},
+			},
+		},
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/call",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, agent.ID, "")
+	if resp.Error == nil {
+		t.Fatal("expected error for invalid priority")
+	}
+	if !strings.Contains(resp.Error.Message, "issues[1]") {
+		t.Errorf("expected error to reference issues[1], got: %s", resp.Error.Message)
+	}
+}
+
+func TestMCPCreateIssuesBatch_WithAssignees(t *testing.T) {
+	srv, _, agentSvc, agent, _ := setupTestWithProject(t)
+
+	agent1, _ := agentSvc.Register("batch-assignee-1", models.AgentKindAI, "batch-ass-001", "secret", nil, "", "")
+	agent2, _ := agentSvc.Register("batch-assignee-2", models.AgentKindAI, "batch-ass-002", "secret", nil, "", "")
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issues_batch",
+		"arguments": map[string]interface{}{
+			"issues": []map[string]interface{}{
+				{
+					"title":       "Assigned batch issue",
+					"priority":    "critical",
+					"assigneeIds": []string{fmt.Sprintf("%d", agent1.ID), fmt.Sprintf("%d", agent2.ID)},
+				},
+			},
+		},
+	}, agent.ID)
+
+	items, ok := result["items"].([]interface{})
+	if !ok {
+		data, _ := json.Marshal(result["items"])
+		json.Unmarshal(data, &items)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
 	}
 }
