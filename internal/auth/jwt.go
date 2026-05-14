@@ -14,6 +14,7 @@ type contextKey string
 
 const (
 	ContextKeyAgentID contextKey = "agent_id"
+	ContextKeyClientIP contextKey = "client_ip"
 )
 
 // Claims represents JWT claims.
@@ -84,4 +85,15 @@ func AgentIDFromContext(ctx context.Context) (uint, bool) {
 // WithAgentID embeds agent ID into context.
 func WithAgentID(ctx context.Context, agentID uint) context.Context {
 	return context.WithValue(ctx, ContextKeyAgentID, agentID)
+}
+
+// ClientIPFromContext extracts client IP from context.
+func ClientIPFromContext(ctx context.Context) string {
+	ip, _ := ctx.Value(ContextKeyClientIP).(string)
+	return ip
+}
+
+// WithClientIP embeds client IP into context.
+func WithClientIP(ctx context.Context, ip string) context.Context {
+	return context.WithValue(ctx, ContextKeyClientIP, ip)
 }

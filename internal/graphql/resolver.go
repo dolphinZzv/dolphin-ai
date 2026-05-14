@@ -3,6 +3,7 @@ package graph
 import (
 	"chick/internal/events"
 	"chick/internal/service"
+	"time"
 )
 
 // This file will not be regenerated automatically.
@@ -19,6 +20,7 @@ type Resolver struct {
 	FeedbackSvc           *service.FeedbackService
 	EventBus              *events.Bus
 	HumanReg bool
+	LoginLimiter          *rateLimiter
 }
 
 func NewResolver(
@@ -40,6 +42,7 @@ func NewResolver(
 		FeedbackSvc:  feedbackSvc,
 		EventBus:     eventBus,
 		HumanReg: allowHumanRegistration,
+		LoginLimiter: newRateLimiter(10, 15*time.Minute),
 	}
 }
 

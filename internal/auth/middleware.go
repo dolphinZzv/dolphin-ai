@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"net"
 	"net/http"
 	"strings"
 )
@@ -18,9 +19,12 @@ func (a *Authenticator) HTTPMiddleware(next http.Handler, skipPaths ...string) h
 	}
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Inject client IP into context for rate limiting / audit
+		ctx := WithClientIP(r.Context(), clientIPFromRequest(r))
+
 		// Path-based skip (no token parsing at all)
 		if skip[r.URL.Path] {
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -32,12 +36,30 @@ func (a *Authenticator) HTTPMiddleware(next http.Handler, skipPaths ...string) h
 			tokenStr := strings.TrimPrefix(auth, bearerPrefix)
 			claims, err := a.ValidateToken(tokenStr)
 			if err == nil {
-				ctx := WithAgentID(r.Context(), claims.AgentID)
+				ctx = WithAgentID(ctx, claims.AgentID)
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
 			}
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// clientIPFromRequest extracts the client IP from X-Forwarded-For, X-Real-IP, or RemoteAddr.
+func clientIPFromRequest(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if i := strings.IndexByte(xff, ','); i != -1 {
+			return strings.TrimSpace(xff[:i])
+		}
+		return strings.TrimSpace(xff)
+	}
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return strings.TrimSpace(xri)
+	}
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return ip
 }

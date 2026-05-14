@@ -7,6 +7,7 @@ import (
 	"chick/internal/service"
 
 	gqlhandler "github.com/99designs/gqlgen/graphql/handler"
+	"github.com/99designs/gqlgen/graphql/handler/extension"
 )
 
 func NewHandler(
@@ -22,5 +23,6 @@ func NewHandler(
 	resolver := NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, eventBus, allowHumanRegistration)
 	cfg := Config{Resolvers: resolver}
 	srv := gqlhandler.NewDefaultServer(NewExecutableSchema(cfg))
+	srv.Use(extension.FixedComplexityLimit(1000))
 	return srv
 }
