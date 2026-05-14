@@ -10,6 +10,7 @@ import (
 	gormrepo "chick/internal/repository/gorm"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type IssueService struct {
@@ -126,9 +127,9 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 	var projectID uint
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
-		// Read current state within the transaction to avoid TOCTOU
+		// Lock the row to prevent concurrent transitions
 		var current models.Issue
-		if err := tx.Model(&models.Issue{}).Select("state,project_id,creator_id").First(&current, id).Error; err != nil {
+		if err := tx.Model(&models.Issue{}).Select("state,project_id,creator_id").Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, id).Error; err != nil {
 			return fmt.Errorf("get issue for transition: %w", err)
 		}
 		oldState = current.State
