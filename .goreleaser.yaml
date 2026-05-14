@@ -90,7 +90,7 @@ brews:
       dolphin is an AI agent platform with multi-agent coordination,
       MCP tool integration, skills, cron tasks, and multi-provider LLM support.
     license: MIT
-    skip_upload: auto
+    skip_upload: true
     dependencies:
       - name: git
     caveats: |
