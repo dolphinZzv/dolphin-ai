@@ -25,7 +25,6 @@ import { ChevronDown } from "lucide-react";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
-import { useSubscription } from "@/hooks/useSubscription";
 
 interface Label {
   id: string;

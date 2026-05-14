@@ -22,11 +22,13 @@ export async function gql<T = any>(
   query: string,
   variables?: Record<string, unknown>
 ): Promise<{ data?: T; errors?: Array<{ message: string }> }> {
-  const opName = query.match(/^\s*(?:query|mutation)\s+(\w+)/)?.[1] || "unknown";
+  const opName = query.match(/^\s*(?:query|mutation)\s+(\w+)/)?.[1];
+  const body: Record<string, unknown> = { query, variables };
+  if (opName) body.operationName = opName;
   const res = await fetch("/graphql", {
     method: "POST",
     headers: authHeaders(),
-    body: JSON.stringify({ operationName: opName, query, variables }),
+    body: JSON.stringify(body),
   });
 
   if (res.status === 401) {

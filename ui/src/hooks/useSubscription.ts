@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef } from "react";
 import { getWSClient } from "@/lib/urql";
 
 type SubscriptionHandler<T> = (data: T) => void;
