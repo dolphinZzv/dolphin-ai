@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -144,6 +146,11 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 		c.browserCtx = browserCtx
 		c.browserCancel = browserCancel
 	} else {
+		// Pre-flight: check that a browser executable is available
+		if _, err := findBrowser(); err != nil {
+			return nil, err
+		}
+
 		// Start local browser — use background context so request timeouts don't kill it
 		allocOpts := []chromedp.ExecAllocatorOption{
 			chromedp.Flag("headless", c.cfg.Headless),
@@ -330,4 +337,44 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "..."
+}
+
+// findBrowser locates a Chrome/Chromium executable on the system.
+// Returns the path and a user-friendly error if none is found.
+func findBrowser() (string, error) {
+	candidates := []string{
+		"google-chrome-stable",
+		"google-chrome",
+		"chromium-browser",
+		"chromium",
+		"chrome",
+		"microsoft-edge-stable",
+		"microsoft-edge",
+		"msedge",
+	}
+
+	if runtime.GOOS == "darwin" {
+		candidates = append(candidates,
+			"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+			"/Applications/Chromium.app/Contents/MacOS/Chromium",
+			"/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+		)
+	}
+
+	if runtime.GOOS == "windows" {
+		candidates = append(candidates,
+			`C:\Program Files\Google\Chrome\Application\chrome.exe`,
+			`C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`,
+			`C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe`,
+		)
+	}
+
+	for _, name := range candidates {
+		if path, err := exec.LookPath(name); err == nil {
+			zap.S().Debugw("cdp browser found", "path", path)
+			return path, nil
+		}
+	}
+
+	return "", fmt.Errorf("no Chrome/Chromium browser found — install Chrome or set mcp.cdp.ws_url to a remote browser")
 }
