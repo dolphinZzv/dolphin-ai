@@ -41,6 +41,7 @@ start: check ui-build build
 	fi
 	@echo "=== 启动应用 ==="
 	CHICK_ALLOW_HUMAN_REGISTRATION=true \
+		CHICK_ALLOWED_ORIGINS="*" \
 	CHICK_JWT_SECRET=$${CHICK_JWT_SECRET:-chick-dev-secret-key-2024} ./bin/chick &>/tmp/chick-server.log &
 	@echo "  PID: $$!"
 	@sleep 3

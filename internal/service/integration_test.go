@@ -43,7 +43,7 @@ func setupIntegration(t *testing.T) *integrationFixture {
 
 	// Clean all tables before test
 	t.Cleanup(func() {
-		db.Exec("TRUNCATE TABLE issues, agents, projects, project_members, issue_assignees, comments, labels, timeline_events, milestones, skills, feedbacks RESTART IDENTITY CASCADE")
+		db.Exec("TRUNCATE TABLE issues, agents, projects, project_members, issue_assignees, comments, labels, timeline_events, milestones, feedbacks RESTART IDENTITY CASCADE")
 	})
 
 	projectRepo := gormrepo.NewProjectRepo(db)
