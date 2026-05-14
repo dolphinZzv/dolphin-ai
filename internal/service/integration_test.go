@@ -5,10 +5,12 @@ package service_test
 import (
 	"os"
 	"testing"
+	"time"
 
 	"chick/internal/config"
 	"chick/internal/events"
 	"chick/internal/models"
+	"chick/internal/notifications"
 	gormrepo "chick/internal/repository/gorm"
 	"chick/internal/server"
 	"chick/internal/service"
@@ -27,6 +29,8 @@ type integrationFixture struct {
 	projectSvc  *service.ProjectService
 	commentSvc  *service.CommentService
 	workflowSvc *service.WorkflowService
+	notifSvc    *notifications.Service
+	bus         *events.Bus
 	creatorID   uint
 }
 
@@ -56,6 +60,8 @@ func setupIntegration(t *testing.T) *integrationFixture {
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	bus := events.NewBus()
+	notifSvc := notifications.NewService()
+	notifSvc.Subscribe(bus)
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
@@ -64,7 +70,7 @@ func setupIntegration(t *testing.T) *integrationFixture {
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
 	// Create default creator agent (PostgreSQL enforces FK constraints)
-	creator, err := agentSvc.Register("default-creator", models.AgentKindHuman, "default-creator-1", "pass", nil)
+	creator, err := agentSvc.Register("default-creator", models.AgentKindHuman, "default-creator-1", "pass", nil, "", "")
 	if err != nil {
 		t.Fatalf("create default creator: %v", err)
 	}
@@ -75,6 +81,8 @@ func setupIntegration(t *testing.T) *integrationFixture {
 		projectSvc:  projectSvc,
 		commentSvc:  commentSvc,
 		workflowSvc: workflowSvc,
+		notifSvc:    notifSvc,
+		bus:         bus,
 		creatorID:   creator.ID,
 	}
 }
@@ -154,7 +162,7 @@ func TestIntegration_InvalidTransition(t *testing.T) {
 func TestIntegration_AgentRegisterAndLogin(t *testing.T) {
 	fx := setupIntegration(t)
 
-	_, err := fx.agentSvc.Register("pg-bot", models.AgentKindAI, "pg-bot-1", "password", []string{"CODING"})
+	_, err := fx.agentSvc.Register("pg-bot", models.AgentKindAI, "pg-bot-1", "password", []string{"CODING"}, "", "")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -177,7 +185,7 @@ func TestIntegration_AddComment(t *testing.T) {
 	fx := setupIntegration(t)
 
 	p, _ := fx.projectSvc.Create("Comment Project", "")
-	agent, _ := fx.agentSvc.Register("commenter", models.AgentKindHuman, "commenter-1", "pass", nil)
+	agent, _ := fx.agentSvc.Register("commenter", models.AgentKindHuman, "commenter-1", "pass", nil, "", "")
 	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Commentable", "", models.PriorityLow, nil, nil, nil)
 
 	comment, err := fx.commentSvc.Create(issue.ID, agent.ID, "PG comment body", models.CommentMarkdown, nil)
@@ -198,6 +206,56 @@ func TestIntegration_AddComment(t *testing.T) {
 	}
 	if len(timeline) != 2 { // issue created + comment added
 		t.Errorf("expected 2 timeline events, got %d", len(timeline))
+	}
+}
+
+func TestIntegration_IssueCreationNotifications(t *testing.T) {
+	fx := setupIntegration(t)
+
+	p, _ := fx.projectSvc.Create("Notif Project", "")
+	pid := p.ID
+
+	// Register two assignee agents
+	assignee1, err := fx.agentSvc.Register("assignee1", models.AgentKindHuman, "assignee1", "pass", nil, "", "")
+	if err != nil {
+		t.Fatalf("register assignee1: %v", err)
+	}
+	assignee2, err := fx.agentSvc.Register("assignee2", models.AgentKindHuman, "assignee2", "pass", nil, "", "")
+	if err != nil {
+		t.Fatalf("register assignee2: %v", err)
+	}
+
+	// Must add assignees as project members so foreign key constraint is satisfied
+	fx.projectSvc.AddMember(pid, assignee1.ID, models.ProjectRoleMember)
+	fx.projectSvc.AddMember(pid, assignee2.ID, models.ProjectRoleMember)
+
+	// Create issue with assignees — this triggers EventIssueCreated + EventIssueAssigneeChanged
+	_, err = fx.issueSvc.Create(pid, fx.creatorID, "Notified Issue", "", models.PriorityMedium, []uint{assignee1.ID, assignee2.ID}, nil, nil)
+	if err != nil {
+		t.Fatalf("create issue: %v", err)
+	}
+
+	// Events are published asynchronously, give them time to deliver
+	time.Sleep(100 * time.Millisecond)
+
+	// Each assignee should have a notification from EventIssueAssigneeChanged
+	notifs1 := fx.notifSvc.ListByAgent(assignee1.ID)
+	if len(notifs1) == 0 {
+		t.Errorf("assignee1: expected at least 1 notification, got 0")
+	}
+	if len(notifs1) > 0 && notifs1[0].Type != notifications.NotifIssueAssigned {
+		t.Errorf("assignee1: expected NotifIssueAssigned, got %s", notifs1[0].Type)
+	}
+
+	notifs2 := fx.notifSvc.ListByAgent(assignee2.ID)
+	if len(notifs2) == 0 {
+		t.Errorf("assignee2: expected at least 1 notification, got 0")
+	}
+
+	// Broadcast notification sent to all project members (AgentID=0)
+	notifsAll := fx.notifSvc.ListByAgent(fx.creatorID)
+	if len(notifsAll) == 0 {
+		t.Errorf("creator: expected broadcast notification, got 0")
 	}
 }
 

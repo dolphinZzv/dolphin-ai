@@ -11,13 +11,14 @@ import (
 )
 
 type Handlers struct {
-	projectSvc  *service.ProjectService
-	agentSvc    *service.AgentService
-	issueSvc    *service.IssueService
-	commentSvc  *service.CommentService
-	workflowSvc *service.WorkflowService
-	feedbackSvc *service.FeedbackService
-	notifSvc    *notifications.Service
+	projectSvc                  *service.ProjectService
+	agentSvc                    *service.AgentService
+	issueSvc                    *service.IssueService
+	commentSvc                  *service.CommentService
+	workflowSvc                 *service.WorkflowService
+	feedbackSvc                 *service.FeedbackService
+	notifSvc                    *notifications.Service
+	defaultRequirementProjectID uint
 }
 
 func NewHandlers(
@@ -28,15 +29,17 @@ func NewHandlers(
 	workflowSvc *service.WorkflowService,
 	feedbackSvc *service.FeedbackService,
 	notifSvc *notifications.Service,
+	defaultRequirementProjectID uint,
 ) *Handlers {
 	return &Handlers{
-		projectSvc:  projectSvc,
-		agentSvc:    agentSvc,
-		issueSvc:    issueSvc,
-		commentSvc:  commentSvc,
-		workflowSvc: workflowSvc,
-		feedbackSvc: feedbackSvc,
-		notifSvc:    notifSvc,
+		projectSvc:                  projectSvc,
+		agentSvc:                    agentSvc,
+		issueSvc:                    issueSvc,
+		commentSvc:                  commentSvc,
+		workflowSvc:                 workflowSvc,
+		feedbackSvc:                 feedbackSvc,
+		notifSvc:                    notifSvc,
+		defaultRequirementProjectID: defaultRequirementProjectID,
 	}
 }
 
@@ -114,6 +117,18 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			}, []string{"issues"}),
 			Handler: h.handleCreateIssuesBatch,
 		})
+
+	registry.Register(&ToolDefinition{
+		Name:        "edit_issue",
+		Description: "Edit an existing issue's title, description, or priority",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"issueId":     StringRequiredParam("Issue ID"),
+			"title":       StringParam("New issue title"),
+			"description": StringParam("New issue description in Markdown"),
+			"priority":    StringParam("New priority: critical / high / medium / low"),
+		}, []string{"issueId"}),
+		Handler: h.handleEditIssue,
+	})
 
 	registry.Register(&ToolDefinition{
 		Name:        "add_comment",
@@ -208,6 +223,17 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		}, []string{"targetType", "targetId"}),
 		Handler: h.handleListFeedback,
 	})
+	registry.Register(&ToolDefinition{
+		Name:        "submit_requirement",
+		Description: "Submit a requirement / feature request from an LLM. Creates a requirement record that can be reviewed and turned into issues.",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
+			"title":       StringRequiredParam("Requirement title"),
+			"description": StringRequiredParam("Requirement description / details in Markdown"),
+		}, []string{"title", "description"}),
+		Handler: h.handleSubmitRequirement,
+	})
+
 
 }
 
@@ -256,6 +282,53 @@ func (h *Handlers) handleGetAgentInfo(id json.RawMessage, params json.RawMessage
 		"modelInfo":    agent.ModelInfo,
 		"lastIp":       agent.LastIP,
 		"tokenPreview": maskToken(agent.Token),
+	})
+}
+
+func (h *Handlers) handleEditIssue(id json.RawMessage, params json.RawMessage, actorID uint, remoteAddr string) Response {
+	var p struct {
+		IssueID     string `json:"issueId"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Priority    string `json:"priority"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if actorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
+	}
+
+	// At least one field must be provided for update
+	if p.Title == "" && p.Description == "" && p.Priority == "" {
+		return NewError(id, -32602, "At least one of title, description, or priority must be provided")
+	}
+
+	priority := models.Priority(p.Priority)
+	if p.Priority != "" {
+		switch p.Priority {
+		case "critical", "high", "medium", "low":
+			priority = models.Priority(p.Priority)
+		default:
+			return NewError(id, -32602, "Invalid priority: must be critical/high/medium/low")
+		}
+	}
+
+	issue, err := h.issueSvc.Update(uint(issueID), p.Title, p.Description, priority, nil, nil)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":          fmt.Sprintf("%d", issue.ID),
+		"number":      issue.Number,
+		"title":       issue.Title,
+		"description": issue.Description,
+		"state":       string(issue.State),
+		"priority":    string(issue.Priority),
 	})
 }
 
@@ -708,6 +781,59 @@ func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage
 	}
 	return NewResponse(id, map[string]interface{}{"items": result})
 }
+
+// resolveRequirementProject returns the project ID for submitting requirements.
+// Returns an error if no requirement project is configured or it doesn't exist.
+func (h *Handlers) resolveRequirementProject(agentID uint) (uint, error) {
+	if h.defaultRequirementProjectID == 0 {
+		return 0, fmt.Errorf("requirement submission is not supported (no CHICK_REQUIREMENT_PROJECT_ID configured)")
+	}
+	proj, err := h.projectSvc.GetByID(h.defaultRequirementProjectID)
+	if err != nil {
+		return 0, fmt.Errorf("requirement project %d not found: %w", h.defaultRequirementProjectID, err)
+	}
+	return proj.ID, nil
+}
+
+func (h *Handlers) handleSubmitRequirement(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
+	var p struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	if p.Title == "" {
+		return NewError(id, -32602, "Missing required param: title")
+	}
+	if p.Description == "" {
+		return NewError(id, -32602, "Missing required param: description")
+	}
+
+	// Resolve the requirement project — auto-create if needed
+	projectID, err := h.resolveRequirementProject(authorID)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+
+	issue, err := h.issueSvc.Create(projectID, authorID, p.Title, p.Description, models.PriorityMedium, nil, nil, nil)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+
+	return NewResponse(id, map[string]interface{}{
+		"id":          fmt.Sprintf("%d", issue.ID),
+		"number":      issue.Number,
+		"title":       issue.Title,
+		"description": issue.Description,
+		"state":       string(issue.State),
+		"projectId":   fmt.Sprintf("%d", projectID),
+	})
+}
+
 
 func maskToken(token string) string {
 	if len(token) <= 10 {

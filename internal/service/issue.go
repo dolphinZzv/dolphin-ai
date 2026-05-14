@@ -94,17 +94,31 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 		log.Printf("[issue] failed to create timeline event: %v", err)
 	}
 
-	// Publish event (outside transaction)
+	// Publish events (outside transaction)
 	if s.eventBus != nil {
 		s.eventBus.Publish(events.Event{
 			Type: events.EventIssueCreated,
 			Payload: events.IssueCreatedPayload{
-				IssueID:   issue.ID,
-				ProjectID: projectID,
-				CreatorID: creatorID,
-				LabelIDs:  labelIDs,
+				IssueID:     issue.ID,
+				ProjectID:   projectID,
+				CreatorID:   creatorID,
+				LabelIDs:    labelIDs,
+				AssigneeIDs: assigneeIDs,
 			},
 		})
+
+		// Notify each assignee individually
+		for _, aid := range assigneeIDs {
+			s.eventBus.Publish(events.Event{
+				Type: events.EventIssueAssigneeChanged,
+				Payload: events.IssueAssigneeChangedPayload{
+					IssueID:   issue.ID,
+					ProjectID: projectID,
+					AgentID:   aid,
+					Action:    "assigned",
+				},
+			})
+		}
 	}
 
 	return s.issueRepo.GetByID(issue.ID)

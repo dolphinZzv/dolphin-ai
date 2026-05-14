@@ -61,7 +61,7 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 	// Init MCP
 	notifSvc := notifications.NewService()
 	notifSvc.Subscribe(bus)
-	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, notifSvc)
+	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, notifSvc, 0)
 	mcpServer := mcp.NewServer(handlers)
 
 	return mcpServer, projectSvc, agentSvc, issueSvc
@@ -103,7 +103,40 @@ func call(t *testing.T, srv *mcp.Server, method string, params interface{}, agen
 	}
 	return result
 }
-
+func callRaw(t *testing.T, srv *mcp.Server, method string, params interface{}, agentID uint) (map[string]interface{}, *mcp.ErrorObject) {
+	t.Helper()
+	paramsData, _ := json.Marshal(params)
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  method,
+		Params:  paramsData,
+	}
+	resp := srv.HandleRequest(req, agentID, "")
+	if resp.Error != nil {
+		return nil, resp.Error
+	}
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		data, _ := json.Marshal(resp.Result)
+		json.Unmarshal(data, &result)
+	}
+	if method == "tools/call" {
+		if content, has := result["content"]; has {
+			if items, ok := content.([]interface{}); ok && len(items) > 0 {
+				if item, ok := items[0].(map[string]interface{}); ok {
+					if text, ok := item["text"].(string); ok {
+						var inner map[string]interface{}
+						if err := json.Unmarshal([]byte(text), &inner); err == nil {
+							return inner, nil
+						}
+					}
+				}
+			}
+		}
+	}
+	return result, nil
+}
 func TestInitialize(t *testing.T) {
 	srv, _, _, _ := setupTest(t)
 	req := &mcp.Request{
@@ -217,6 +250,207 @@ func TestTransitionIssue(t *testing.T) {
 		t.Errorf("expected state 'in_progress', got %v", result["state"])
 	}
 }
+func TestEditIssue(t *testing.T) {
+	srv, projectSvc, agentSvc, _ := setupTest(t)
+
+	agent, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-edit", "secret", nil, "", "")
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	proj, _ := projectSvc.Create("EditTest", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	// Create an issue first
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"title":       "Original Title",
+			"description": "Original description",
+			"priority":    "low",
+		},
+	}, agent.ID)
+	issueID := result["id"].(string)
+
+	// Edit title, description, and priority
+	result = call(t, srv, "tools/call", map[string]interface{}{
+		"name": "edit_issue",
+		"arguments": map[string]interface{}{
+			"issueId":     issueID,
+			"title":       "Updated Title",
+			"description": "Updated description",
+			"priority":    "high",
+		},
+	}, agent.ID)
+
+	if result["title"] != "Updated Title" {
+		t.Errorf("expected 'Updated Title', got %v", result["title"])
+	}
+	if result["description"] != "Updated description" {
+		t.Errorf("expected 'Updated description', got %v", result["description"])
+	}
+	if result["priority"] != "high" {
+		t.Errorf("expected 'high', got %v", result["priority"])
+	}
+	if result["state"] != "open" {
+		t.Errorf("expected state 'open', got %v", result["state"])
+	}
+	if id, ok := result["id"].(string); !ok || id == "" {
+		t.Errorf("expected non-empty id, got %v", id)
+	}
+}
+
+func TestEditIssue_NoFields(t *testing.T) {
+	srv, projectSvc, agentSvc, _ := setupTest(t)
+
+	agent, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-edit-nofields", "secret", nil, "", "")
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	proj, _ := projectSvc.Create("EditNoFields", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	// Create an issue
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"title": "Test",
+		},
+	}, agent.ID)
+	issueID := result["id"].(string)
+
+	// Try edit with no editable fields
+	_, callErr := callRaw(t, srv, "tools/call", map[string]interface{}{
+		"name": "edit_issue",
+		"arguments": map[string]interface{}{
+			"issueId": issueID,
+		},
+	}, agent.ID)
+	if callErr == nil {
+		t.Error("expected error for no editable fields")
+	}
+}
+
+func TestEditIssue_InvalidPriority(t *testing.T) {
+	srv, projectSvc, agentSvc, _ := setupTest(t)
+
+	agent, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-edit-pri", "secret", nil, "", "")
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	proj, _ := projectSvc.Create("EditPri", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"title": "Test",
+		},
+	}, agent.ID)
+	issueID := result["id"].(string)
+
+	_, callErr := callRaw(t, srv, "tools/call", map[string]interface{}{
+		"name": "edit_issue",
+		"arguments": map[string]interface{}{
+			"issueId":  issueID,
+			"priority": "invalid_priority",
+		},
+	}, agent.ID)
+	if callErr == nil {
+		t.Error("expected error for invalid priority")
+	}
+}
+
+func TestSubmitRequirement(t *testing.T) {
+	// Build a server with a configured requirement project
+	cfg := &config.Config{
+		DBDriver: "sqlite3",
+		DBDSN:    "file::memory:?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)",
+		Port:     "0",
+	}
+	db, err := server.NewDB(cfg)
+	if err != nil {
+		t.Fatalf("new db: %v", err)
+	}
+	if err := server.AutoMigrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+
+	projectRepo := gormrepo.NewProjectRepo(db)
+	memberRepo := gormrepo.NewProjectMemberRepo(db)
+	agentRepo := gormrepo.NewAgentRepo(db)
+	issueRepo := gormrepo.NewIssueRepo(db)
+	assigneeRepo := gormrepo.NewIssueAssigneeRepo(db)
+	commentRepo := gormrepo.NewCommentRepo(db)
+	timelineRepo := gormrepo.NewTimelineRepo(db)
+	labelRepo := gormrepo.NewLabelRepo(db)
+	milestoneRepo := gormrepo.NewMilestoneRepo(db)
+	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	bus := events.NewBus()
+	notifSvc := notifications.NewService()
+	notifSvc.Subscribe(bus)
+
+	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
+	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
+	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	workflowSvc := service.NewWorkflowService(issueSvc)
+	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
+
+	agent, err := agentSvc.Register("req-agent", models.AgentKindAI, "req-001", "secret", nil, "", "")
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	proj, _ := projectSvc.Create("ReqProject", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, notifSvc, proj.ID)
+	srv := mcp.NewServer(handlers)
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "submit_requirement",
+		"arguments": map[string]interface{}{
+			"title":       "Add user authentication",
+			"description": "We need OAuth2 login for better security",
+		},
+	}, agent.ID)
+
+	if result["title"] != "Add user authentication" {
+		t.Errorf("expected title 'Add user authentication', got %v", result["title"])
+	}
+	if result["description"] != "We need OAuth2 login for better security" {
+		t.Errorf("expected description 'We need OAuth2 login...', got %v", result["description"])
+	}
+	if id, ok := result["id"].(string); !ok || id == "" {
+		t.Errorf("expected non-empty id, got %v", id)
+	}
+}
+
+func TestSubmitRequirement_NoTitle(t *testing.T) {
+	srv, projectSvc, agentSvc, _ := setupTest(t)
+
+	agent, err := agentSvc.Register("req-no-title", models.AgentKindAI, "req-002", "secret", nil, "", "")
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+
+	proj, _ := projectSvc.Create("ReqNoTitle", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	_, callErr := callRaw(t, srv, "tools/call", map[string]interface{}{
+		"name": "submit_requirement",
+		"arguments": map[string]interface{}{
+			"description": "Some description without title",
+		},
+	}, agent.ID)
+	if callErr == nil {
+		t.Error("expected error for missing title")
+	}
+}
+
 
 func TestSearchIssues(t *testing.T) {
 	srv, projectSvc, agentSvc, issueSvc := setupTest(t)

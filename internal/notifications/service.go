@@ -59,9 +59,22 @@ func (s *Service) handleIssueCreated(evt events.Event) {
 		return
 	}
 
+	// Notify each assignee directly
+	for _, aid := range payload.AssigneeIDs {
+		s.add(Notification{
+			ProjectID: payload.ProjectID,
+			AgentID:   aid,
+			Type:      NotifIssueAssigned,
+			IssueID:   payload.IssueID,
+			Message:   fmt.Sprintf("You have been assigned to issue #%d", payload.IssueID),
+			CreatedAt: time.Now(),
+		})
+	}
+
+	// Broadcast to project
 	s.add(Notification{
 		ProjectID: payload.ProjectID,
-		AgentID:   0, // broadcast to project
+		AgentID:   0,
 		Type:      NotifIssueAssigned,
 		IssueID:   payload.IssueID,
 		Message:   fmt.Sprintf("New issue created in project %d", payload.ProjectID),

@@ -3,10 +3,11 @@ package events
 // Payload types for typed event handling
 
 type IssueCreatedPayload struct {
-	IssueID   uint
-	ProjectID uint
-	CreatorID uint
-	LabelIDs  []uint
+	IssueID     uint
+	ProjectID   uint
+	CreatorID   uint
+	LabelIDs    []uint
+	AssigneeIDs []uint
 }
 
 type IssueStateChangedPayload struct {

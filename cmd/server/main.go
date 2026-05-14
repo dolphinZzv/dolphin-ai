@@ -47,6 +47,7 @@ func main() {
 		srv.WorkflowService,
 		srv.FeedbackService,
 		srv.NotifService,
+		cfg.DefaultRequirementProjectID,
 	)
 	mcpServer := mcp.NewServer(mcpHandlers)
 
