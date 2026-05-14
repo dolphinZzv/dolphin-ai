@@ -5,6 +5,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { gql } from "@/lib/graphql";
 import Markdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -146,7 +147,7 @@ function relativeTime(dateStr: string): string {
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="prose prose-sm dark:prose-invert max-w-none">
-      <Markdown rehypePlugins={[rehypeSanitize]}>{content}</Markdown>
+      <Markdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>{content}</Markdown>
     </div>
   );
 }
@@ -197,6 +198,8 @@ export function IssueDetailPage() {
   const [showLabelPicker, setShowLabelPicker] = useState(false);
   const [replyingTo, setReplyingTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState("");
+  const [previewComment, setPreviewComment] = useState(false);
+  const [previewReply, setPreviewReply] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [editingDescription, setEditingDescription] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -735,13 +738,37 @@ export function IssueDetailPage() {
                 </div>
                 {replyingTo === parent.id && (
                   <div className="mt-2 border-t pt-2">
-                    <Textarea
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder={`回复 ${parent.author.name}...`}
-                      rows={2}
-                      className="text-sm"
-                    />
+                    <div className="flex gap-2 mb-2">
+                      <button
+                        className={`text-xs font-medium px-2 py-0.5 rounded ${!previewReply ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        onClick={() => setPreviewReply(false)}
+                      >
+                        编辑
+                      </button>
+                      <button
+                        className={`text-xs font-medium px-2 py-0.5 rounded ${previewReply ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        onClick={() => setPreviewReply(true)}
+                      >
+                        预览
+                      </button>
+                    </div>
+                    {previewReply ? (
+                      <div className="min-h-[60px] rounded-md border bg-background p-2 text-sm">
+                        {replyText.trim() ? (
+                          <MarkdownContent content={replyText} />
+                        ) : (
+                          <p className="text-xs text-muted-foreground">暂无内容</p>
+                        )}
+                      </div>
+                    ) : (
+                      <Textarea
+                        value={replyText}
+                        onChange={(e) => setReplyText(e.target.value)}
+                        placeholder={`回复 ${parent.author.name}...`}
+                        rows={2}
+                        className="text-sm"
+                      />
+                    )}
                     <div className="mt-1 flex justify-end gap-1">
                       <Button size="sm" onClick={() => handleComment(parent.id)} disabled={!replyText.trim()}><Send className="h-3 w-3 mr-1" />发送</Button>
                     </div>
@@ -780,12 +807,36 @@ export function IssueDetailPage() {
         {/* Add comment */}
         <Card>
           <CardContent className="p-4">
-            <Textarea
-              value={newComment}
-              onChange={(e) => setNewComment(e.target.value)}
-              placeholder="输入评论... 支持 Markdown"
-              rows={3}
-            />
+            <div className="flex gap-2 mb-2">
+              <button
+                className={`text-xs font-medium px-2 py-1 rounded ${!previewComment ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setPreviewComment(false)}
+              >
+                编辑
+              </button>
+              <button
+                className={`text-xs font-medium px-2 py-1 rounded ${previewComment ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setPreviewComment(true)}
+              >
+                预览
+              </button>
+            </div>
+            {previewComment ? (
+              <div className="min-h-[80px] rounded-md border bg-background p-3">
+                {newComment.trim() ? (
+                  <MarkdownContent content={newComment} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">暂无内容</p>
+                )}
+              </div>
+            ) : (
+              <Textarea
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="输入评论... 支持 Markdown"
+                rows={3}
+              />
+            )}
             <div className="mt-2 flex justify-end">
               <Button
                 onClick={() => handleComment()}

@@ -571,13 +571,14 @@ export function IssueBoard({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+        <div className="flex gap-3 overflow-x-auto pb-2">
           {grouped.map((col) => (
-            <DroppableColumn
-              key={col.state}
-              column={col}
-              issues={col.items}
-            />
+            <div key={col.state} className="min-w-[260px] w-72 shrink-0">
+              <DroppableColumn
+                column={col}
+                issues={col.items}
+              />
+            </div>
           ))}
         </div>
 
@@ -591,7 +592,7 @@ export function IssueBoard({
   return (
     <div className="flex gap-3 overflow-x-auto pb-2 snap-x snap-mandatory scrollbar-none">
       {grouped.map((col) => (
-        <div key={col.state} className="min-w-[280px] w-[80vw] snap-start shrink-0">
+        <div key={col.state} className="min-w-[300px] w-[85vw] snap-start shrink-0">
           <StaticColumn
             column={col}
             issues={col.items}

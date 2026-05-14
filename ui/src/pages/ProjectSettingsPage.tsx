@@ -86,7 +86,7 @@ const PRESET_COLORS = ["#0366d6", "#28a745", "#d73a49", "#ffd33d", "#6f42c1", "#
 export function ProjectSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"labels" | "milestones" | "agents">("agents");
+  const [tab, setTab] = useState<"basic" | "agents" | "labels" | "milestones">("basic");
   const [labels, setLabels] = useState<Label[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -349,6 +349,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
   };
 
   const tabs = [
+    { key: "basic" as const, label: "基本" },
     { key: "agents" as const, label: "Agent" },
     { key: "labels" as const, label: "标签" },
     { key: "milestones" as const, label: "里程碑" },
@@ -363,31 +364,6 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
         ← 返回项目
       </Link>
       <h1 className="text-2xl font-semibold">项目设置</h1>
-
-      {/* Project name & description */}
-      <div className="rounded-lg border bg-card p-4 space-y-3">
-        <div className="space-y-2">
-          <label className="text-sm font-medium">项目名称</label>
-          <Input
-            value={projectName}
-            onChange={e => setProjectName(e.target.value)}
-            placeholder="项目名称"
-          />
-        </div>
-        <div className="space-y-2">
-          <label className="text-sm font-medium">项目描述</label>
-          <Input
-            value={projectDesc}
-            onChange={e => setProjectDesc(e.target.value)}
-            placeholder="项目描述"
-          />
-        </div>
-        <div className="flex justify-end">
-          <Button onClick={handleSaveProject} disabled={saving}>
-            {saving ? "保存中..." : "保存"}
-          </Button>
-        </div>
-      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b overflow-x-auto">
@@ -405,6 +381,33 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
           </button>
         ))}
       </div>
+
+      {/* Basic info tab */}
+      {tab === "basic" && (
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="space-y-2">
+            <label className="text-sm font-medium">项目名称</label>
+            <Input
+              value={projectName}
+              onChange={e => setProjectName(e.target.value)}
+              placeholder="项目名称"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-sm font-medium">项目描述</label>
+            <Input
+              value={projectDesc}
+              onChange={e => setProjectDesc(e.target.value)}
+              placeholder="项目描述"
+            />
+          </div>
+          <div className="flex justify-end">
+            <Button onClick={handleSaveProject} disabled={saving}>
+              {saving ? "保存中..." : "保存"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Agents tab */}
       {tab === "agents" && (
