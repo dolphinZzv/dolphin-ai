@@ -2,6 +2,7 @@ package mcp_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"chick/internal/mcp"
@@ -40,14 +41,169 @@ func TestResourcesList(t *testing.T) {
 	for _, r := range resources {
 		uris[r.URI] = true
 	}
-	if !uris["project://{id}"] {
-		t.Error("expected project://{id} resource")
+	if !uris["project://"] {
+		t.Error("expected project:// resource")
 	}
-	if !uris["issue://{project}/{number}"] {
-		t.Error("expected issue://{project}/{number} resource")
+	if !uris["issue://"] {
+		t.Error("expected issue:// resource")
 	}
-	if !uris["agent://{id}"] {
-		t.Error("expected agent://{id} resource")
+	if !uris["agent://"] {
+		t.Error("expected agent:// resource")
+	}
+}
+
+func TestResourcesTemplatesList(t *testing.T) {
+	srv, _, _, _ := setupTest(t)
+
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "resources/templates/list",
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %s", resp.Error.Message)
+	}
+
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected result map")
+	}
+	templates, ok := result["resourceTemplates"].([]mcp.ResourceTemplate)
+	if !ok {
+		data, _ := json.Marshal(result["resourceTemplates"])
+		var templatesList []mcp.ResourceTemplate
+		if err := json.Unmarshal(data, &templatesList); err != nil {
+			t.Fatalf("expected resourceTemplates array: %v", err)
+		}
+		templates = templatesList
+	}
+	if len(templates) != 3 {
+		t.Fatalf("expected 3 resource templates, got %d", len(templates))
+	}
+
+	tpls := make(map[string]bool)
+	for _, t := range templates {
+		tpls[t.URITemplate] = true
+	}
+	if !tpls["project://{id}"] {
+		t.Error("expected project://{id} template")
+	}
+	if !tpls["issue://{projectId}/{issueNumber}"] {
+		t.Error("expected issue://{projectId}/{issueNumber} template")
+	}
+	if !tpls["agent://{id}"] {
+		t.Error("expected agent://{id} template")
+	}
+}
+
+func TestPromptsGet_ReviewWorkflow(t *testing.T) {
+	srv, _, _, _ := setupTest(t)
+
+	params, _ := json.Marshal(map[string]interface{}{
+		"name": "review-workflow",
+		"arguments": map[string]string{
+			"issueId": "42",
+		},
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "prompts/get",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %s", resp.Error.Message)
+	}
+
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected result map")
+	}
+	data, _ := json.Marshal(result["messages"])
+	var msgs []map[string]interface{}
+	json.Unmarshal(data, &msgs)
+	if len(msgs) == 0 {
+		t.Fatal("expected messages array")
+	}
+	content, _ := msgs[0]["content"].(map[string]interface{})
+	text, _ := content["text"].(string)
+	if text == "" {
+		t.Error("expected non-empty prompt text")
+	}
+}
+
+func TestPromptsGet_IssueTriage(t *testing.T) {
+	srv, _, _, _ := setupTest(t)
+
+	params, _ := json.Marshal(map[string]interface{}{
+		"name": "issue-triage",
+		"arguments": map[string]string{
+			"issueId": "7",
+		},
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "prompts/get",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error != nil {
+		t.Fatalf("unexpected error: %s", resp.Error.Message)
+	}
+
+	result, ok := resp.Result.(map[string]interface{})
+	if !ok {
+		t.Fatal("expected result map")
+	}
+	data, _ := json.Marshal(result["messages"])
+	var msgs []map[string]interface{}
+	json.Unmarshal(data, &msgs)
+	if len(msgs) == 0 {
+		t.Fatal("expected messages array")
+	}
+	content, _ := msgs[0]["content"].(map[string]interface{})
+	text, _ := content["text"].(string)
+	if text == "" {
+		t.Error("expected non-empty prompt text for issue-triage")
+	}
+	if !strings.Contains(text, "7") {
+		t.Error("expected prompt to contain issue ID")
+	}
+}
+
+func TestPromptsGet_Unknown(t *testing.T) {
+	srv, _, _, _ := setupTest(t)
+
+	params, _ := json.Marshal(map[string]interface{}{
+		"name": "nonexistent",
+		"arguments": map[string]string{},
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "prompts/get",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error == nil {
+		t.Fatal("expected error for unknown prompt")
+	}
+}
+
+func TestNotificationsInitialized(t *testing.T) {
+	srv, _, _, _ := setupTest(t)
+
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "notifications/initialized",
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error != nil {
+		t.Fatalf("unexpected error for notifications/initialized: %s", resp.Error.Message)
 	}
 }
 

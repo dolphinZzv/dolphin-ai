@@ -50,14 +50,15 @@ func NewInternalError(id json.RawMessage, msg string) Response {
 
 // Standard MCP method names
 const (
-	MethodInitialize      = "initialize"
-	MethodToolsList       = "tools/list"
-	MethodToolsCall       = "tools/call"
-	MethodResourcesList   = "resources/list"
-	MethodResourcesRead   = "resources/read"
-	MethodPromptsList     = "prompts/list"
-	MethodPromptsGet      = "prompts/get"
-	MethodPing            = "ping"
+	MethodInitialize              = "initialize"
+	MethodToolsList               = "tools/list"
+	MethodToolsCall               = "tools/call"
+	MethodResourcesList           = "resources/list"
+	MethodResourcesTemplatesList  = "resources/templates/list"
+	MethodResourcesRead           = "resources/read"
+	MethodPromptsList             = "prompts/list"
+	MethodPromptsGet              = "prompts/get"
+	MethodPing                    = "ping"
 	MethodNotificationsInitialized = "notifications/initialized"
 )
 
@@ -74,6 +75,14 @@ type ToolHandler func(id json.RawMessage, params json.RawMessage, agentID uint, 
 // Resource definition
 type ResourceDefinition struct {
 	URI         string `json:"uri"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	MimeType    string `json:"mimeType,omitempty"`
+}
+
+// ResourceTemplate defines a parameterized resource URI pattern (RFC 6570)
+type ResourceTemplate struct {
+	URITemplate string `json:"uriTemplate"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	MimeType    string `json:"mimeType,omitempty"`

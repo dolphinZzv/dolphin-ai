@@ -21,19 +21,19 @@ func NewResources(projectSvc *service.ProjectService, agentSvc *service.AgentSer
 	return &Resources{
 		resources: []ResourceDefinition{
 			{
-				URI:         "project://{id}",
+				URI:         "project://",
 				Name:        "Project",
 				Description: "Project details including members and stats",
 				MimeType:    "application/json",
 			},
 			{
-				URI:         "issue://{project}/{number}",
+				URI:         "issue://",
 				Name:        "Issue",
 				Description: "Issue details by project and number",
 				MimeType:    "application/json",
 			},
 			{
-				URI:         "agent://{id}",
+				URI:         "agent://",
 				Name:        "Agent",
 				Description: "Agent details",
 				MimeType:    "application/json",
@@ -47,6 +47,29 @@ func NewResources(projectSvc *service.ProjectService, agentSvc *service.AgentSer
 
 func (r *Resources) List() []ResourceDefinition {
 	return r.resources
+}
+
+func (r *Resources) Templates() []ResourceTemplate {
+	return []ResourceTemplate{
+		{
+			URITemplate: "project://{id}",
+			Name:        "Project",
+			Description: "Project details including members and stats",
+			MimeType:    "application/json",
+		},
+		{
+			URITemplate: "issue://{projectId}/{issueNumber}",
+			Name:        "Issue",
+			Description: "Issue details by project and number",
+			MimeType:    "application/json",
+		},
+		{
+			URITemplate: "agent://{id}",
+			Name:        "Agent",
+			Description: "Agent details",
+			MimeType:    "application/json",
+		},
+	}
 }
 
 func (r *Resources) Read(uri string) (interface{}, error) {
@@ -173,45 +196,3 @@ func (r *Resources) readAgent(uri string, id uint) (interface{}, error) {
 		"text":     string(data),
 	}, nil
 }
-
-// prompts.go
-type Prompts struct {
-	prompts []PromptDefinition
-}
-
-func NewPrompts() *Prompts {
-	return &Prompts{
-		prompts: []PromptDefinition{
-			{
-				Name:        "review-workflow",
-				Description: "Guide for reviewing and approving issues",
-				Arguments: []PromptArgument{
-					{Name: "issueId", Description: "Issue ID to review", Required: true},
-				},
-			},
-			{
-				Name:        "issue-triage",
-				Description: "Guide for triaging a new issue",
-				Arguments: []PromptArgument{
-					{Name: "issueId", Description: "Issue ID to triage", Required: true},
-				},
-			},
-		},
-	}
-}
-
-func (p *Prompts) List() []PromptDefinition {
-	return p.prompts
-}
-
-func (p *Prompts) Get(name string, args map[string]string) (string, error) {
-	switch name {
-	case "review-workflow":
-		return "You are reviewing issue " + args["issueId"] + ". Check the code, add comments, and approve or reject.", nil
-	default:
-		return "", nil
-	}
-}
-
-// Ensure json import is used
-var _ = json.Marshal

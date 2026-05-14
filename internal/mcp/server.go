@@ -37,12 +37,16 @@ func (s *Server) HandleRequest(req *Request, agentID uint, remoteAddr string) Re
 		return s.handleInitialize(req.ID, req.Params)
 	case MethodPing:
 		return NewResponse(req.ID, map[string]interface{}{"status": "ok"})
+	case MethodNotificationsInitialized:
+		return NewResponse(req.ID, map[string]interface{}{"status": "ok"})
 	case MethodToolsList:
 		return s.handleToolsList(req.ID)
 	case MethodToolsCall:
 		return s.handleToolsCall(req.ID, req.Params, agentID, remoteAddr)
 	case MethodResourcesList:
 		return s.handleResourcesList(req.ID)
+	case MethodResourcesTemplatesList:
+		return s.handleResourcesTemplatesList(req.ID)
 	case MethodResourcesRead:
 		return s.handleResourcesRead(req.ID, req.Params)
 	case MethodPromptsList:
@@ -58,14 +62,23 @@ func (s *Server) handleInitialize(id json.RawMessage, params json.RawMessage) Re
 	return NewResponse(id, map[string]interface{}{
 		"protocolVersion": "2024-11-05",
 		"capabilities": map[string]interface{}{
-			"tools":     map[string]interface{}{},
-			"resources": map[string]interface{}{},
-			"prompts":   map[string]interface{}{},
+			"tools": map[string]interface{}{},
+			"resources": map[string]interface{}{
+				"subscribe": false,
+			},
+			"resourceTemplates": map[string]interface{}{},
+			"prompts": map[string]interface{}{},
 		},
 		"serverInfo": map[string]interface{}{
 			"name":    "chick",
 			"version": "0.1.0",
 		},
+	})
+}
+
+func (s *Server) handleResourcesTemplatesList(id json.RawMessage) Response {
+	return NewResponse(id, map[string]interface{}{
+		"resourceTemplates": s.resources.Templates(),
 	})
 }
 

@@ -37,8 +37,12 @@ func StringParam(description string) map[string]interface{} {
 }
 
 func StringRequiredParam(description string) map[string]interface{} {
+	return StringParam(description)
+}
+
+func NumberParam(description string) map[string]interface{} {
 	return map[string]interface{}{
-		"type":        "string",
+		"type":        "number",
 		"description": description,
 	}
 }

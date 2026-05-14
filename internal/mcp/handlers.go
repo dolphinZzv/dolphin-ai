@@ -129,8 +129,8 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"state":      StringParam("Filter by state"),
 			"search":     StringParam("Full text search"),
 			"assigneeId": StringParam("Filter by assignee agent ID"),
-			"limit":      StringParam("Max results (default 20)"),
-			"offset":     StringParam("Offset for pagination"),
+			"limit":      NumberParam("Max results (default 20)"),
+			"offset":     NumberParam("Offset for pagination"),
 			"projectId":  StringParam("Project ID (filter by project)"),
 		}, nil),
 		Handler: h.handleSearchIssues,
@@ -513,7 +513,9 @@ func (h *Handlers) handleCheckNotifications(id json.RawMessage, params json.RawM
 	var p struct {
 		ProjectID string `json:"projectId"`
 	}
-	json.Unmarshal(params, &p)
+	if err := json.Unmarshal(params, &p); err != nil {
+		// params is optional, ignore unmarshal errors
+	}
 
 	var notifs []notifications.Notification
 	if p.ProjectID != "" {
