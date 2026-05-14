@@ -15,5 +15,8 @@ node_modules/
 package.json
 package-lock.json
 
+# frontend build output
+ui/dist/
+
 # todo notes
 todo/
