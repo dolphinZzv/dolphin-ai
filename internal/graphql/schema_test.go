@@ -5,6 +5,7 @@ package graph
 import (
 	"context"
 	"testing"
+	"time"
 
 	"chick/internal/auth"
 	"chick/internal/config"
@@ -366,5 +367,88 @@ func TestGraphQL_NewHandlerCreatesHTTPHandler(t *testing.T) {
 	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.WorkflowSvc, r.FeedbackSvc, r.EventBus, false)
 	if h == nil {
 		t.Fatal("expected non-nil handler")
+	}
+}
+
+func TestGraphQL_LoginRateLimited(t *testing.T) {
+	r := setupTestResolver(t)
+	// Override with a very strict limiter for testing
+	r.LoginLimiter = newRateLimiter(2, time.Minute)
+
+	ctx := auth.WithClientIP(context.Background(), "10.0.0.1")
+
+	// Register an agent first
+	r.Mutation().RegisterAgent(ctx, "rate-test", AgentKindAi, "rt-ext", "secret", nil, nil, nil)
+
+	// First two logins should succeed
+	_, err := r.Mutation().LoginAgent(ctx, "rt-ext", "secret")
+	if err != nil {
+		t.Fatalf("first login should succeed: %v", err)
+	}
+	_, err = r.Mutation().LoginAgent(ctx, "rt-ext", "secret")
+	if err != nil {
+		t.Fatalf("second login should succeed: %v", err)
+	}
+
+	// Third login from same IP should be rate limited
+	_, err = r.Mutation().LoginAgent(ctx, "rt-ext", "secret")
+	if err == nil {
+		t.Fatal("third login from same IP should be rate limited")
+	}
+}
+
+func TestGraphQL_LoginRateLimitDifferentIPs(t *testing.T) {
+	r := setupTestResolver(t)
+	r.LoginLimiter = newRateLimiter(1, time.Minute)
+
+	ctxA := auth.WithClientIP(context.Background(), "10.0.0.1")
+	ctxB := auth.WithClientIP(context.Background(), "10.0.0.2")
+
+	r.Mutation().RegisterAgent(ctxA, "multi-ip", AgentKindAi, "mi-ext", "secret", nil, nil, nil)
+
+	// Login from IP A succeeds
+	_, err := r.Mutation().LoginAgent(ctxA, "mi-ext", "secret")
+	if err != nil {
+		t.Fatalf("login from IP A should succeed: %v", err)
+	}
+
+	// Login from IP B also succeeds (different IP)
+	_, err = r.Mutation().LoginAgent(ctxB, "mi-ext", "secret")
+	if err != nil {
+		t.Fatalf("login from IP B should succeed: %v", err)
+	}
+
+	// Login from IP A again should be blocked
+	_, err = r.Mutation().LoginAgent(ctxA, "mi-ext", "secret")
+	if err == nil {
+		t.Fatal("second login from IP A should be rate limited")
+	}
+
+	// Login from IP B again should be blocked
+	_, err = r.Mutation().LoginAgent(ctxB, "mi-ext", "secret")
+	if err == nil {
+		t.Fatal("second login from IP B should be rate limited")
+	}
+}
+
+func TestGraphQL_LoginNoIPTracking(t *testing.T) {
+	// Without an IP in context, rate limiter should not block
+	r := setupTestResolver(t)
+	r.LoginLimiter = newRateLimiter(1, time.Minute)
+
+	ctx := context.Background()
+
+	r.Mutation().RegisterAgent(ctx, "noip", AgentKindAi, "noip-ext", "secret", nil, nil, nil)
+
+	// Should succeed even though limit is 1
+	_, err := r.Mutation().LoginAgent(ctx, "noip-ext", "secret")
+	if err != nil {
+		t.Fatalf("first login should succeed: %v", err)
+	}
+
+	// Second login with no IP should also succeed (rate limiter skipped when no IP)
+	_, err = r.Mutation().LoginAgent(ctx, "noip-ext", "secret")
+	if err != nil {
+		t.Fatalf("login without IP should bypass rate limiter: %v", err)
 	}
 }
