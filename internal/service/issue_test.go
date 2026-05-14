@@ -119,10 +119,9 @@ func TestTransitionIssue_Valid(t *testing.T) {
 }
 
 func TestTransitionIssue_Invalid(t *testing.T) {
-	_, _, projectSvc, workflowSvc := setupIssueTest(t)
+	issueSvc, _, projectSvc, workflowSvc := setupIssueTest(t)
 	p, _ := projectSvc.Create("Test", "")
 
-	issueSvc, _, _, _ := setupIssueTest(t)
 	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil, nil)
 
 	// OPEN -> CLOSED (invalid, must go through IN_PROGRESS -> REVIEW)

@@ -86,7 +86,7 @@ func (r *AgentRepo) FindByCapability(capability models.CapabilityType, projectID
 	err := r.db.Joins("JOIN project_members ON project_members.agent_id = agents.id").
 		Where("project_members.project_id = ?", projectID).
 		Where("agents.status = ?", models.AgentStatusOnline).
-		Where("agents.capabilities @> ?", `["`+string(capability)+`"]`).
+		Where("agents.capabilities LIKE ?", `%"`+string(capability)+`"%`).
 		Find(&agents).Error
 	return agents, err
 }
@@ -121,7 +121,7 @@ func (r *AgentRepo) List(filter models.AgentFilter) ([]models.Agent, error) {
 	}
 	if len(filter.Capabilities) > 0 {
 		for _, cap := range filter.Capabilities {
-			q = q.Where("capabilities @> ?", `["`+string(cap)+`"]`)
+			q = q.Where("capabilities LIKE ?", `%"`+string(cap)+`"%`)
 		}
 	}
 	if filter.Limit > 0 {

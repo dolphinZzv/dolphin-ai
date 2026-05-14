@@ -31,6 +31,26 @@ func (r *ProjectRepo) Update(id uint, changes map[string]interface{}) error {
 
 func (r *ProjectRepo) Delete(id uint) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete feedback referencing project issues
+		if err := tx.Where("target_type = 'issue' AND target_id IN (SELECT id FROM issues WHERE project_id = ?)", id).Delete(&models.Feedback{}).Error; err != nil {
+			return err
+		}
+		// Delete timeline events for project issues
+		if err := tx.Where("issue_id IN (SELECT id FROM issues WHERE project_id = ?)", id).Delete(&models.TimelineEvent{}).Error; err != nil {
+			return err
+		}
+		// Delete comments for project issues
+		if err := tx.Where("issue_id IN (SELECT id FROM issues WHERE project_id = ?)", id).Delete(&models.Comment{}).Error; err != nil {
+			return err
+		}
+		// Delete issue_assignees for project issues
+		if err := tx.Where("issue_id IN (SELECT id FROM issues WHERE project_id = ?)", id).Delete(&models.IssueAssignee{}).Error; err != nil {
+			return err
+		}
+		// Delete issue_labels for project issues
+		if err := tx.Exec("DELETE FROM issue_labels WHERE issue_id IN (SELECT id FROM issues WHERE project_id = ?)", id).Error; err != nil {
+			return err
+		}
 		if err := tx.Where("project_id = ?", id).Delete(&models.Issue{}).Error; err != nil {
 			return err
 		}

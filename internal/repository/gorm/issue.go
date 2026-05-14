@@ -72,7 +72,9 @@ func (r *IssueRepo) List(filter models.IssueFilter) ([]models.Issue, int64, erro
 	}
 
 	var total int64
-	q.Count(&total)
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 
 	if filter.OrderBy != "" {
 		dir := "DESC"

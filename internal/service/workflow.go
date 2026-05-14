@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"fmt"
 
 	"chick/internal/models"
 )
@@ -21,34 +20,14 @@ var validTransitions = map[models.IssueState][]models.IssueState{
 	models.IssueStateBlocked:           {models.IssueStateInProgress, models.IssueStateClosedNotPlanned, models.IssueStateLater},
 	models.IssueStateReview:            {models.IssueStateInProgress, models.IssueStateClosedCompleted, models.IssueStateClosedNotPlanned, models.IssueStateClosedRejected, models.IssueStateLater},
 	models.IssueStateLater:             {models.IssueStateOpen, models.IssueStateClosedNotPlanned},
-		models.IssueStateReopen:            {models.IssueStateInProgress, models.IssueStateBlocked, models.IssueStateLater},
+	models.IssueStateReopen:            {models.IssueStateInProgress, models.IssueStateBlocked, models.IssueStateLater},
 	models.IssueStateClosedCompleted:   {models.IssueStateReopen},
-	models.IssueStateClosedNotPlanned: {models.IssueStateReopen},
+	models.IssueStateClosedNotPlanned:  {models.IssueStateReopen},
 	models.IssueStateClosedRejected:    {models.IssueStateReopen},
 }
 
 func (s *WorkflowService) Transition(issueID uint, toState models.IssueState, actorID uint) (*models.Issue, error) {
-	issue, err := s.issueService.GetByID(issueID)
-	if err != nil {
-		return nil, fmt.Errorf("get issue: %w", err)
-	}
-
-	allowed, ok := validTransitions[issue.State]
-	if !ok {
-		return nil, fmt.Errorf("unknown current state: %s", issue.State)
-	}
-
-	valid := false
-	for _, s := range allowed {
-		if s == toState {
-			valid = true
-			break
-		}
-	}
-	if !valid {
-		return nil, fmt.Errorf("transition from %s to %s not allowed", issue.State, toState)
-	}
-
+	// Delegates to IssueService.TransitionState which validates atomically in a transaction
 	return s.issueService.TransitionState(issueID, toState, actorID)
 }
 

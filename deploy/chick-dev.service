@@ -1,0 +1,21 @@
+[Unit]
+Description=Chick Agent Platform (Dev)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/chick
+ExecStart=/root/chick/bin/chick
+Restart=always
+RestartSec=3
+Environment=CHICK_DB_DRIVER=sqlite3
+Environment=CHICK_DB_DSN=file:dev.db?_pragma=journal_mode(WAL)
+Environment=CHICK_PORT=8080
+Environment=CHICK_ALLOW_HUMAN_REGISTRATION=true
+Environment=CHICK_JWT_SECRET=chick-dev-secret-key-2024
+Environment=CHICK_ALLOWED_ORIGINS=*
+StandardOutput=append:/var/log/chick-dev.log
+StandardError=append:/var/log/chick-dev.log
+
+[Install]
+WantedBy=multi-user.target

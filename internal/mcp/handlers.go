@@ -260,7 +260,12 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 	}
 	priority := models.PriorityMedium
 	if p.Priority != "" {
-		priority = models.Priority(p.Priority)
+		switch p.Priority {
+		case "critical", "high", "medium", "low":
+			priority = models.Priority(p.Priority)
+		default:
+			return NewError(id, -32602, "Invalid priority: must be critical/high/medium/low")
+		}
 	}
 
 	var assigneeIDs []uint

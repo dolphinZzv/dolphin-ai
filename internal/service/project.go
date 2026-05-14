@@ -28,6 +28,20 @@ func NewProjectService(
 	}
 }
 
+var defaultLabels = []struct {
+	name  string
+	color string
+}{
+	{"bug", "#d73a4a"},
+	{"enhancement", "#0052cc"},
+	{"feature", "#008672"},
+	{"question", "#fbca04"},
+	{"documentation", "#006b75"},
+	{"duplicate", "#cfd3d7"},
+	{"wontfix", "#cfd3d7"},
+	{"help wanted", "#159818"},
+}
+
 func (s *ProjectService) Create(name, description string) (*models.Project, error) {
 	p := &models.Project{
 		Name:        name,
@@ -35,6 +49,25 @@ func (s *ProjectService) Create(name, description string) (*models.Project, erro
 	}
 	if err := s.projectRepo.Create(p); err != nil {
 		return nil, fmt.Errorf("create project: %w", err)
+	}
+	for _, lb := range defaultLabels {
+		label := &models.Label{
+			ProjectID: p.ID,
+			Name:      lb.name,
+			Color:     lb.color,
+		}
+		if err := s.labelRepo.Create(label); err != nil {
+			return nil, fmt.Errorf("create default label %q: %w", lb.name, err)
+		}
+	}
+	milestone := &models.Milestone{
+		ProjectID:   p.ID,
+		Title:       "v0.0.1",
+		Description: "初始版本",
+		State:       models.MilestoneOpen,
+	}
+	if err := s.milestoneRepo.Create(milestone); err != nil {
+		return nil, fmt.Errorf("create default milestone: %w", err)
 	}
 	return p, nil
 }

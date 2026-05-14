@@ -219,9 +219,9 @@ export function IssueDetailPage() {
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#6366f1");
 
-  const fetchData = useCallback(() => {
+  const fetchData = useCallback((showLoading = true) => {
     if (!id) return;
-    setLoading(true);
+    if (showLoading) setLoading(true);
     setError(null);
 
     Promise.all([
@@ -284,118 +284,143 @@ export function IssueDetailPage() {
 
   const handleTransition = async (toState: string) => {
     if (!id || !agent) return;
-    const json = await gql(
-      `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!) {
-        transitionIssue(id: $id, newState: $newState, actorID: $actorId) { state }
-      }`,
-      { id, newState: toState, actorId: agent.agentId }
-    );
-    if (!json.errors && json.data) {
-      setIssue((prev) => prev ? { ...prev, state: json.data.transitionIssue.state } : prev);
-      toast.success(`状态已变更为 ${stateLabels[toState]}`);
-      fetchData();
-    } else {
-      toast.error(json.errors?.[0]?.message || "状态变更失败");
+    try {
+      const json = await gql(
+        `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!) {
+          transitionIssue(id: $id, newState: $newState, actorID: $actorId) { state }
+        }`,
+        { id, newState: toState, actorId: agent.agentId }
+      );
+      if (!json.errors && json.data) {
+        setIssue((prev) => prev ? { ...prev, state: json.data.transitionIssue.state } : prev);
+        toast.success(`状态已变更为 ${stateLabels[toState]}`);
+        fetchData(false);
+      } else {
+        toast.error(json.errors?.[0]?.message || "状态变更失败");
+      }
+    } catch {
+      toast.error("网络错误，状态变更失败");
     }
   };
 
   const handleDelete = async () => {
     if (!id || !window.confirm("确定删除这个 Issue？此操作不可撤销。")) return;
-    const json = await gql(
-      `mutation deleteIssue($id: ID!) { deleteIssue(id: $id) }`,
-      { id }
-    );
-    if (!json.errors) {
-      toast.success("Issue 已删除");
-      if (issue?.projectID) window.location.href = `/projects/${issue.projectID}`;
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation deleteIssue($id: ID!) { deleteIssue(id: $id) }`,
+        { id }
+      );
+      if (!json.errors) {
+        toast.success("Issue 已删除");
+        if (issue?.projectID) window.location.href = `/projects/${issue.projectID}`;
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，删除失败");
     }
   };
 
   const handleComment = async (parentID?: string) => {
     const text = parentID ? replyText : newComment;
     if (!text.trim() || !id || !agent) return;
-    const json = await gql(
-      `mutation addComment($issueID: ID!, $authorID: ID!, $body: String!, $contentType: CommentContentType!, $parentID: ID) {
-        addComment(issueID: $issueID, authorID: $authorID, body: $body, contentType: $contentType, parentID: $parentID) { id body createdAt author { id name } parentID replies { id body createdAt author { id name } } }
-      }`,
-      {
-        issueID: id,
-        authorID: agent.agentId,
-        body: text,
-        contentType: "markdown",
-        parentID: parentID || null,
-      }
-    );
-    if (json.data) {
-      setComments((prev) => [...prev, json.data.addComment]);
+    try {
+      await gql(
+        `mutation addComment($issueID: ID!, $authorID: ID!, $body: String!, $contentType: CommentContentType!, $parentID: ID) {
+          addComment(issueID: $issueID, authorID: $authorID, body: $body, contentType: $contentType, parentID: $parentID) { id body createdAt author { id name } parentID replies { id body createdAt author { id name } } }
+        }`,
+        {
+          issueID: id,
+          authorID: agent.agentId,
+          body: text,
+          contentType: "markdown",
+          parentID: parentID || null,
+        }
+      );
       if (parentID) { setReplyText(""); setReplyingTo(null); }
       else setNewComment("");
+      fetchData(false);
       toast.success("评论发送成功");
-      fetchData();
+    } catch {
+      toast.error("网络错误，评论发送失败");
     }
   };
 
   const handleAddLabel = async (labelId: string) => {
     if (!id) return;
-    const json = await gql(
-      `mutation addLabels($issueID: ID!, $labelIDs: [ID!]!) { addLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
-      { issueID: id, labelIDs: [labelId] }
-    );
-    if (!json.errors) {
-      setIssue((prev) => prev ? { ...prev, labels: json.data.addLabels.labels } : prev);
-      toast.success("标签已添加");
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation addLabels($issueID: ID!, $labelIDs: [ID!]!) { addLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
+        { issueID: id, labelIDs: [labelId] }
+      );
+      if (!json.errors) {
+        setIssue((prev) => prev ? { ...prev, labels: json.data.addLabels.labels } : prev);
+        toast.success("标签已添加");
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，标签操作失败");
     }
   };
 
   const handleRemoveLabel = async (labelId: string) => {
     if (!id) return;
-    const json = await gql(
-      `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
-      { issueID: id, labelIDs: [labelId] }
-    );
-    if (!json.errors) {
-      setIssue((prev) => prev ? { ...prev, labels: json.data.removeLabels.labels } : prev);
-      toast.success("标签已移除");
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
+        { issueID: id, labelIDs: [labelId] }
+      );
+      if (!json.errors) {
+        setIssue((prev) => prev ? { ...prev, labels: json.data.removeLabels.labels } : prev);
+        toast.success("标签已移除");
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，标签操作失败");
     }
   };
 
   const handleChangeMilestone = async (milestoneId: string) => {
     if (!id) return;
-    const json = await gql(
-      `mutation updateIssue($id: ID!, $milestoneId: ID) {
-        updateIssue(id: $id, milestoneId: $milestoneId) { id milestone { id title } }
-      }`,
-      { id, milestoneId: milestoneId || null }
-    );
-    if (!json.errors && json.data) {
-      setIssue((prev) => prev ? { ...prev, milestone: json.data.updateIssue.milestone } : prev);
-      toast.success("里程碑已更新");
-    } else {
-      toast.error(json.errors?.[0]?.message || "更新失败");
+    try {
+      const json = await gql(
+        `mutation updateIssue($id: ID!, $milestoneId: ID) {
+          updateIssue(id: $id, milestoneId: $milestoneId) { id milestone { id title } }
+        }`,
+        { id, milestoneId: milestoneId || null }
+      );
+      if (!json.errors && json.data) {
+        setIssue((prev) => prev ? { ...prev, milestone: json.data.updateIssue.milestone } : prev);
+        toast.success("里程碑已更新");
+      } else {
+        toast.error(json.errors?.[0]?.message || "更新失败");
+      }
+    } catch {
+      toast.error("网络错误，更新失败");
     }
   };
 
   const handleUpdateIssue = async (fields: Record<string, unknown>) => {
     if (!id) return;
-    const json = await gql(
-      `mutation updateIssue($id: ID!, $title: String, $description: String, $priority: Priority, $milestoneId: ID) {
-        updateIssue(id: $id, title: $title, description: $description, priority: $priority, milestoneId: $milestoneId) {
-          id title description priority milestone { id title }
-        }
-      }`,
-      { id, ...fields }
-    );
-    if (!json.errors && json.data) {
-      setIssue((prev) => prev ? { ...prev, ...json.data.updateIssue } : prev);
-      toast.success("已更新");
-    } else {
-      toast.error(json.errors?.[0]?.message || "更新失败");
+    try {
+      const json = await gql(
+        `mutation updateIssue($id: ID!, $title: String, $description: String, $priority: Priority, $milestoneId: ID) {
+          updateIssue(id: $id, title: $title, description: $description, priority: $priority, milestoneId: $milestoneId) {
+            id title description priority milestone { id title }
+          }
+        }`,
+        { id, ...fields }
+      );
+      if (!json.errors && json.data) {
+        setIssue((prev) => prev ? { ...prev, ...json.data.updateIssue } : prev);
+        toast.success("已更新");
+      } else {
+        toast.error(json.errors?.[0]?.message || "更新失败");
+      }
+    } catch {
+      toast.error("网络错误，更新失败");
     }
   };
 
@@ -417,77 +442,93 @@ export function IssueDetailPage() {
 
   const handleAddAssignee = async (agentId: string) => {
     if (!id) return;
-    const json = await gql(
-      `mutation addAssignee($issueID: ID!, $agentID: ID!) {
-        addAssignee(issueID: $issueID, agentID: $agentID) { id agent { id name } state }
-      }`,
-      { issueID: id, agentID: agentId }
-    );
-    if (!json.errors) {
-      setIssue((prev) => prev ? {
-        ...prev,
-        assignees: [...prev.assignees, json.data.addAssignee]
-      } : prev);
-      toast.success("已添加负责人");
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation addAssignee($issueID: ID!, $agentID: ID!) {
+          addAssignee(issueID: $issueID, agentID: $agentID) { id agent { id name } state }
+        }`,
+        { issueID: id, agentID: agentId }
+      );
+      if (!json.errors) {
+        setIssue((prev) => prev ? {
+          ...prev,
+          assignees: [...prev.assignees, json.data.addAssignee]
+        } : prev);
+        toast.success("已添加负责人");
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，添加负责人失败");
     }
   };
 
   const handleRemoveAssignee = async (agentId: string) => {
     if (!id) return;
-    const json = await gql(
-      `mutation removeAssignee($issueID: ID!, $agentID: ID!) {
-        removeAssignee(issueID: $issueID, agentID: $agentID)
-      }`,
-      { issueID: id, agentID: agentId }
-    );
-    if (!json.errors) {
-      setIssue((prev) => prev ? {
-        ...prev,
-        assignees: prev.assignees.filter((a) => a.agent.id !== agentId)
-      } : prev);
-      toast.success("已移除负责人");
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation removeAssignee($issueID: ID!, $agentID: ID!) {
+          removeAssignee(issueID: $issueID, agentID: $agentID)
+        }`,
+        { issueID: id, agentID: agentId }
+      );
+      if (!json.errors) {
+        setIssue((prev) => prev ? {
+          ...prev,
+          assignees: prev.assignees.filter((a) => a.agent.id !== agentId)
+        } : prev);
+        toast.success("已移除负责人");
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，移除负责人失败");
     }
   };
 
   const handleCreateMilestone = async () => {
     if (!newMilestoneTitle.trim() || !issue) return;
-    const json = await gql(
-      `mutation createMilestone($projectID: ID!, $title: String!) {
-        createMilestone(projectID: $projectID, title: $title) { id title state }
-      }`,
-      { projectID: issue.projectID, title: newMilestoneTitle.trim() }
-    );
-    if (!json.errors) {
-      setProjectMilestones((prev) => [...prev, json.data.createMilestone]);
-      setNewMilestoneTitle("");
-      setShowNewMilestone(false);
-      toast.success("里程碑已创建");
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation createMilestone($projectID: ID!, $title: String!) {
+          createMilestone(projectID: $projectID, title: $title) { id title state }
+        }`,
+        { projectID: issue.projectID, title: newMilestoneTitle.trim() }
+      );
+      if (!json.errors) {
+        setProjectMilestones((prev) => [...prev, json.data.createMilestone]);
+        setNewMilestoneTitle("");
+        setShowNewMilestone(false);
+        toast.success("里程碑已创建");
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，创建里程碑失败");
     }
   };
 
   const handleCreateLabel = async () => {
     if (!newLabelName.trim() || !issue) return;
-    const json = await gql(
-      `mutation createLabel($projectID: ID!, $name: String!, $color: String) {
-        createLabel(projectID: $projectID, name: $name, color: $color) { id name color }
-      }`,
-      { projectID: issue.projectID, name: newLabelName.trim(), color: newLabelColor || null }
-    );
-    if (!json.errors) {
-      const label = json.data.createLabel;
-      setProjectLabels((prev) => [...prev, label]);
-      setNewLabelName("");
-      setShowNewLabel(false);
-      // Auto-assign the newly created label to the issue
-      await handleAddLabel(label.id);
-    } else {
-      toast.error(json.errors[0].message);
+    try {
+      const json = await gql(
+        `mutation createLabel($projectID: ID!, $name: String!, $color: String) {
+          createLabel(projectID: $projectID, name: $name, color: $color) { id name color }
+        }`,
+        { projectID: issue.projectID, name: newLabelName.trim(), color: newLabelColor || null }
+      );
+      if (!json.errors) {
+        const label = json.data.createLabel;
+        setProjectLabels((prev) => [...prev, label]);
+        setNewLabelName("");
+        setShowNewLabel(false);
+        // Auto-assign the newly created label to the issue
+        await handleAddLabel(label.id);
+      } else {
+        toast.error(json.errors[0].message);
+      }
+    } catch {
+      toast.error("网络错误，创建标签失败");
     }
   };
 

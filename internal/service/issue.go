@@ -122,18 +122,39 @@ func (s *IssueService) List(filter models.IssueFilter) ([]models.Issue, int64, e
 }
 
 func (s *IssueService) TransitionState(id uint, newState models.IssueState, actorID uint) (*models.Issue, error) {
-	issue, err := s.issueRepo.GetByID(id)
-	if err != nil {
-		return nil, fmt.Errorf("get issue for transition: %w", err)
-	}
-	oldState := issue.State
+	var oldState models.IssueState
+	var projectID uint
 
-	err = s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		// Read current state within the transaction to avoid TOCTOU
+		var current models.Issue
+		if err := tx.Model(&models.Issue{}).Select("state,project_id").First(&current, id).Error; err != nil {
+			return fmt.Errorf("get issue for transition: %w", err)
+		}
+		oldState = current.State
+		projectID = current.ProjectID
+
+		// Validate transition within the transaction
+		allowed, ok := validTransitions[current.State]
+		if !ok {
+			return fmt.Errorf("unknown current state: %s", current.State)
+		}
+		valid := false
+		for _, s := range allowed {
+			if s == newState {
+				valid = true
+				break
+			}
+		}
+		if !valid {
+			return fmt.Errorf("transition from %s to %s not allowed", current.State, newState)
+		}
+
 		txIssueRepo := gormrepo.NewIssueRepo(tx)
 		return txIssueRepo.UpdateState(id, newState)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("transition state: %w", err)
+		return nil, err
 	}
 
 	// Timeline event (best-effort)
@@ -152,7 +173,7 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 			Type: events.EventIssueStateChanged,
 			Payload: events.IssueStateChangedPayload{
 				IssueID:   id,
-				ProjectID: issue.ProjectID,
+				ProjectID: projectID,
 				From:      string(oldState),
 				To:        string(newState),
 				ActorID:   actorID,

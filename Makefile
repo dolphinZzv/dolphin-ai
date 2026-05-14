@@ -1,5 +1,5 @@
 .PHONY: all build build-prod test test-all test-integration generate coverage coverage-html clean \
-        check ui-build start stop prod dev service
+        check ui-build start stop prod dev prod-service dev-service
 
 # ─── 门禁检查（启动前）────────────────────────────────────
 
@@ -96,29 +96,31 @@ coverage-html:
 	go test -count=1 -coverprofile=coverage.out ./internal/...
 	go tool cover -html=coverage.out
 
-# ─── 生产部署 ──────────────────────────────────────────────
+# ─── systemd 服务 ─────────────────────────────────────
 
-# 创建 systemd 服务（开机自启）
-.PHONY: service
+# 生产服务 (端口 18080)
+.PHONY: prod-service
 
-service:
-	@echo "=== 创建 systemd 服务 ==="
-	@printf '%s\n' '[Unit]' 'Description=Chick Agent Platform (Production)' 'After=network.target postgresql.service' 'Requires=postgresql.service' '' '[Service]' 'Type=simple' 'WorkingDirectory=/opt/chick' 'ExecStart=/opt/chick/chick-server' 'Restart=always' 'RestartSec=3' 'EnvironmentFile=-/etc/default/chick-prod' 'Environment=CHICK_DB_DRIVER=postgres' 'Environment=CHICK_DB_DSN=postgres://chick:chick@localhost:5432/chick?sslmode=disable' 'Environment=CHICK_PORT=18080' 'Environment=CHICK_ALLOWED_ORIGINS=*' 'StandardOutput=append:/var/log/chick-prod.log' 'StandardError=append:/var/log/chick-prod.log' '' '[Install]' 'WantedBy=multi-user.target' | sudo tee /etc/systemd/system/chick-prod.service > /dev/null
-	@if [ ! -f /etc/default/chick-prod ]; then \
-		echo "CHICK_JWT_SECRET=chick-dev-secret-key-2024" | sudo tee /etc/default/chick-prod > /dev/null; \
-		echo "  Created /etc/default/chick-prod with default secret"; \
-	else \
-		echo "  /etc/default/chick-prod already exists, keeping existing"; \
-	fi
-	sudo systemctl daemon-reload
-	sudo systemctl enable chick-prod
-	@echo "=== 服务创建完成: chick-prod ==="
+prod-service:
+	cp deploy/chick-prod.service /etc/systemd/system/chick-prod.service
+	@test -f /etc/default/chick-prod || echo "CHICK_JWT_SECRET=chick-dev-secret-key-2024" > /etc/default/chick-prod
+	systemctl daemon-reload
+	systemctl enable chick-prod
 
-# 生产部署：构建 + 复制到 /opt/chick + 重启 service（PostgreSQL + 端口 18080）
+# 开发服务 (端口 8080)
+.PHONY: dev-service
+
+dev-service:
+	cp deploy/chick-dev.service /etc/systemd/system/chick-dev.service
+	systemctl daemon-reload
+	systemctl enable chick-dev
+	systemctl restart chick-dev 2>/dev/null || true
+
+# 生产部署：构建 → 复制 → 重启 → 健康检查
 .PHONY: prod
 
 # 默认 PostgreSQL DSN，可通过 CHICK_DB_DSN 覆盖
-prod: build-prod ui-build service
+prod: build-prod ui-build prod-service
 	@echo "=== 更新前端资源 ==="
 	sudo install -d /opt/chick/ui/dist
 	sudo install -m 755 bin/chick-prod /opt/chick/chick-server

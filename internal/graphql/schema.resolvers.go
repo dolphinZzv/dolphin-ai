@@ -788,12 +788,11 @@ func (r *subscriptionResolver) IssueUpdated(ctx context.Context, issueID string)
 	cancel := func() {}
 	if r.EventBus != nil {
 		cancel = r.EventBus.Subscribe(events.EventIssueStateChanged, func(evt events.Event) {
-			payload, ok := evt.Payload.(map[string]interface{})
+			payload, ok := evt.Payload.(events.IssueStateChangedPayload)
 			if !ok {
 				return
 			}
-			eid, _ := payload["issueID"].(uint)
-			if eid == id {
+			if payload.IssueID == id {
 				issue, err := r.IssueSvc.GetByID(id)
 				if err == nil {
 					select {
@@ -823,15 +822,13 @@ func (r *subscriptionResolver) AgentNotifications(ctx context.Context, agentID s
 	cancel2 := func() {}
 	if r.EventBus != nil {
 		cancel1 = r.EventBus.Subscribe(events.EventIssueAssigneeChanged, func(evt events.Event) {
-			payload, ok := evt.Payload.(map[string]interface{})
+			payload, ok := evt.Payload.(events.IssueAssigneeChangedPayload)
 			if !ok {
 				return
 			}
-			aid, _ := payload["agentID"].(uint)
-			if aid == id {
+			if payload.AgentID == id {
 				msg := "You have been assigned to an issue"
-				action, _ := payload["action"].(string)
-				if action == "removed" {
+				if payload.Action == "removed" {
 					msg = "You have been unassigned from an issue"
 				}
 				select {
@@ -848,11 +845,10 @@ func (r *subscriptionResolver) AgentNotifications(ctx context.Context, agentID s
 		})
 
 		cancel2 = r.EventBus.Subscribe(events.EventCommentAdded, func(evt events.Event) {
-			payload, ok := evt.Payload.(map[string]interface{})
+			_, ok := evt.Payload.(events.CommentAddedPayload)
 			if !ok {
 				return
 			}
-			_ = payload["commentID"]
 			select {
 			case ch <- &NotificationEvent{
 				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
@@ -883,16 +879,14 @@ func (r *subscriptionResolver) AgentStatusChanged(ctx context.Context) (<-chan *
 	cancel := func() {}
 	if r.EventBus != nil {
 		cancel = r.EventBus.Subscribe(events.EventAgentStatusChanged, func(evt events.Event) {
-			payload, ok := evt.Payload.(map[string]interface{})
+			payload, ok := evt.Payload.(events.AgentStatusChangedPayload)
 			if !ok {
 				return
 			}
-			aid, _ := payload["agentID"].(uint)
-			status, _ := payload["status"].(string)
 			select {
 			case ch <- &AgentStatusEvent{
-				AgentID:   formatID(aid),
-				Status:    AgentStatus(models.AgentStatus(status)),
+				AgentID:   formatID(payload.AgentID),
+				Status:    AgentStatus(models.AgentStatus(payload.Status)),
 				Timestamp: time.Now(),
 			}:
 			default:
