@@ -32,10 +32,10 @@ build:
 
 # 启动前门禁 + 构建前端 + 构建后端 + 启动 + 启动后健康检查
 start: check ui-build build
-	@echo "=== 释放端口 8080 ==="
-	@pid=$$(lsof -ti:8080 2>/dev/null || true); \
+	@echo "=== 释放端口 8082 ==="
+	@pid=$$(lsof -ti:8082 2>/dev/null || true); \
 	if [ -n "$$pid" ]; then \
-		echo "  Port 8080 occupied by PID $$pid, killing..."; \
+		echo "  Port 8082 occupied by PID $$pid, killing..."; \
 		kill $$pid 2>/dev/null || true; \
 		sleep 1; \
 	fi
@@ -46,7 +46,7 @@ start: check ui-build build
 	@echo "  PID: $$!"
 	@sleep 3
 	@echo "=== 启动后检查: 健康端点 ==="
-	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health 2>/dev/null); \
+	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/health 2>/dev/null); \
 	if [ "$$status" = "200" ]; then \
 		echo "  ✅ 健康检查通过 (HTTP $$status)"; \
 	else \
@@ -54,14 +54,14 @@ start: check ui-build build
 		exit 1; \
 	fi
 	@echo "=== 启动后检查: 页面 ==="
-	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/ 2>/dev/null); \
+	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/ 2>/dev/null); \
 	if [ "$$status" = "200" ]; then \
 		echo "  ✅ 页面返回 200"; \
 	else \
 		echo "  ❌ 页面返回 $$status"; \
 		exit 1; \
 	fi
-	@echo "=== 启动完成: http://0.0.0.0:8080 ==="
+	@echo "=== 启动完成: http://0.0.0.0:8082 ==="
 
 stop:
 	@echo "=== 停止开发进程 ==="
@@ -99,7 +99,7 @@ coverage-html:
 
 # ─── systemd 服务 ─────────────────────────────────────
 
-# 生产服务 (端口 18080)
+# 生产服务 (端口 18082)
 .PHONY: prod-service
 
 prod-service:
@@ -108,7 +108,7 @@ prod-service:
 	systemctl daemon-reload
 	systemctl enable chick-prod
 
-# 开发服务 (端口 8080)
+# 开发服务 (端口 8082)
 .PHONY: dev-service
 
 dev-service:
@@ -130,52 +130,52 @@ prod: build-prod ui-build prod-service
 	sudo systemctl restart chick-prod
 	@sleep 2
 	@echo "=== 健康检查 ==="
-	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18080/health 2>/dev/null); \
+	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18082/health 2>/dev/null); \
 	if [ "$$status" = "200" ]; then \
 		echo "  ✅ 生产服务运行正常 (HTTP $$status)"; \
 	else \
 		echo "  ❌ 健康检查失败 (HTTP $$status)，查看日志: journalctl -u chick-prod -n 50"; \
 	fi
-	@echo "=== 部署完成: http://0.0.0.0:18080 ==="
+	@echo "=== 部署完成: http://0.0.0.0:18082 ==="
 
 build-prod:
 	go build -ldflags="-s -w" -o bin/chick-prod ./cmd/server/
 
 # ─── 本地开发 ──────────────────────────────────────────────
 
-# 本地开发：构建 + 启动（SQLite + 端口 8080），不部署到生产
+# 本地开发：构建 + 启动（SQLite + 端口 8082），不部署到生产
 .PHONY: dev
 
 dev: build
-	@echo "=== 释放端口 8080 ==="
+	@echo "=== 释放端口 8082 ==="
 	@for i in 1 2 3; do \
-		pid=$$(lsof -ti:8080 2>/dev/null || true); \
+		pid=$$(lsof -ti:8082 2>/dev/null || true); \
 		if [ -z "$$pid" ]; then break; fi; \
-		echo "  Port 8080 occupied by PID $$pid, killing... (attempt $$i)"; \
+		echo "  Port 8082 occupied by PID $$pid, killing... (attempt $$i)"; \
 		kill $$pid 2>/dev/null || kill -9 $$pid 2>/dev/null || true; \
 		sleep 1; \
 	done; \
-	pid=$$(lsof -ti:8080 2>/dev/null || true); \
+	pid=$$(lsof -ti:8082 2>/dev/null || true); \
 	if [ -n "$$pid" ]; then \
-		echo "  ❌ Port 8080 still occupied by PID $$pid, cannot start"; \
+		echo "  ❌ Port 8082 still occupied by PID $$pid, cannot start"; \
 		exit 1; \
 	fi; \
-	echo "  ✅ Port 8080 available"
+	echo "  ✅ Port 8082 available"
 	@echo "=== 启动开发服务 ==="
 		CHICK_ALLOW_HUMAN_REGISTRATION=true \
 			CHICK_ALLOWED_ORIGINS="*" \
 		CHICK_JWT_SECRET="$${CHICK_JWT_SECRET:-chick-dev-secret-key-2024}" \
-		CHICK_PORT=8080 \
+		CHICK_PORT=8082 \
 		nohup ./bin/chick &>/tmp/chick-dev.log &
 	@sleep 2
 	@echo "=== 健康检查 ==="
-	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health 2>/dev/null); \
+	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8082/health 2>/dev/null); \
 	if [ "$$status" = "200" ]; then \
 		echo "  ✅ 开发服务运行正常 (HTTP $$status)"; \
 	else \
 		echo "  ❌ 健康检查失败 (HTTP $$status)，查看日志: /tmp/chick-dev.log"; \
 	fi
-	@echo "=== 启动完成: http://0.0.0.0:8080 ==="
+	@echo "=== 启动完成: http://0.0.0.0:8082 ==="
 
 # ─── 清理 ──────────────────────────────────────────────────
 
