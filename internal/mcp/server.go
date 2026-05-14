@@ -17,7 +17,7 @@ func NewServer(handlers *Handlers) *Server {
 	s := &Server{
 		registry:  NewToolRegistry(),
 		handlers:  handlers,
-		resources: NewResources(),
+		resources: NewResources(handlers.projectSvc, handlers.agentSvc, handlers.issueSvc),
 		prompts:   NewPrompts(),
 	}
 	handlers.RegisterAll(s.registry)
@@ -122,11 +122,13 @@ func (s *Server) handleResourcesRead(id json.RawMessage, params json.RawMessage)
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
-	content, err := s.resources.Read(p.URI)
+	item, err := s.resources.Read(p.URI)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
-	return NewResponse(id, content)
+	return NewResponse(id, map[string]interface{}{
+		"contents": []interface{}{item},
+	})
 }
 
 func (s *Server) handlePromptsList(id json.RawMessage) Response {
