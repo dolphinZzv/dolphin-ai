@@ -162,6 +162,7 @@ dev: build
 	echo "  ✅ Port 8080 available"
 	@echo "=== 启动开发服务 ==="
 		CHICK_ALLOW_HUMAN_REGISTRATION=true \
+			CHICK_ALLOWED_ORIGINS="*" \
 		CHICK_JWT_SECRET="$${CHICK_JWT_SECRET:-chick-dev-secret-key-2024}" \
 		CHICK_PORT=8080 \
 		nohup ./bin/chick &>/tmp/chick-dev.log &
