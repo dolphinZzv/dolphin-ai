@@ -164,6 +164,12 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 }
 
 func (s *IssueService) AddAssignee(issueID, agentID uint) (*models.IssueAssignee, error) {
+	// Check if already assigned — idempotent
+	existing, err := s.assigneeRepo.GetByIssueAndAgent(issueID, agentID)
+	if err == nil && existing != nil {
+		return existing, nil
+	}
+
 	ia := &models.IssueAssignee{
 		IssueID: issueID,
 		AgentID: agentID,

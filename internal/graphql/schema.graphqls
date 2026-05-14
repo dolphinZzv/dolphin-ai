@@ -26,6 +26,7 @@ type Agent {
   modelInfo: String
   lastIP: String
   capabilities: [String!]
+  allowedCIDRs: [String!]
   metadata: Map
   lastSeenAt: Time
   createdAt: Time!
@@ -77,8 +78,11 @@ enum IssueState {
   in_progress
   blocked
   review
+  later
+  reopen
   closed_completed
   closed_not_planned
+  closed_rejected
 }
 
 enum Priority {
@@ -243,6 +247,7 @@ type Mutation {
   registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
   loginAgent(externalID: String!, secret: String!): LoginResult!
   updateAgentStatus(id: ID!, status: AgentStatus!): Agent!
+  updateAgentAllowedCIDRs(id: ID!, allowedCIDRs: [String!]!): Agent!
 
   createProjectAgent(projectID: ID!, name: String!, kind: AgentKind!, externalID: String, secret: String, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
 

@@ -80,6 +80,7 @@ type Agent struct {
 	DeviceInfo   string       `gorm:"type:text"`
 	ModelInfo    string       `gorm:"type:varchar(255)"`
 		LastIP       string       `gorm:"type:varchar(45)"`
+	AllowedCIDRs StringSlice  `gorm:"type:jsonb;serializer:json"`
 	LastSeenAt   *time.Time   `gorm:"index"`
 	CreatedAt    time.Time    `gorm:"autoCreateTime"`
 	UpdatedAt    time.Time    `gorm:"autoUpdateTime"`

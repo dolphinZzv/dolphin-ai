@@ -24,7 +24,8 @@ import (
 
 // mcpSession stores per-SSE-session state
 type mcpSession struct {
-	agentID uint
+	agentID      uint
+	allowedCIDRs []string
 }
 
 func main() {
@@ -143,9 +144,15 @@ func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) ht
 			return
 		}
 
+		// CIDR restriction check
+		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
+		if !checkIPInCIDRs(ip, agent.AllowedCIDRs) {
+			http.Error(w, "Access denied: IP not allowed", http.StatusForbidden)
+			return
+		}
+
 		// Direct POST to /mcp (Streamable HTTP)
 		if r.Method == http.MethodPost {
-			ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 			var req mcp.Request
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				resp := mcp.NewParseError(nil)
@@ -167,13 +174,12 @@ func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) ht
 		}
 
 		// Update IP on SSE connect
-		if ip := r.RemoteAddr; ip != "" {
-			host, _, _ := net.SplitHostPort(ip)
-			srv.AgentService.UpdateIP(agent.ID, host)
+		if ip != "" {
+			srv.AgentService.UpdateIP(agent.ID, ip)
 		}
 
 		sessionID := randomID()
-		sessions.Store(sessionID, &mcpSession{agentID: agent.ID})
+		sessions.Store(sessionID, &mcpSession{agentID: agent.ID, allowedCIDRs: agent.AllowedCIDRs})
 
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
@@ -197,10 +203,16 @@ func handleMCPSessionPost(w http.ResponseWriter, r *http.Request, mcpServer *mcp
 	}
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 	var agentID uint
+	var cidrs []string
 	if s, ok := sessions.Load(sessionID); ok {
 		if session, ok := s.(*mcpSession); ok {
 			agentID = session.agentID
+			cidrs = session.allowedCIDRs
 		}
+	}
+	if !checkIPInCIDRs(ip, cidrs) {
+		http.Error(w, "Access denied: IP not allowed", http.StatusForbidden)
+		return
 	}
 	resp := mcpServer.HandleRequest(&req, agentID, ip)
 	data, _ := json.Marshal(resp)
@@ -212,4 +224,26 @@ func randomID() string {
 	b := make([]byte, 16)
 	rand.Read(b)
 	return hex.EncodeToString(b)
+}
+
+// checkIPInCIDRs checks if an IP is within any of the allowed CIDR ranges.
+// If allowedCIDRs is empty, no restriction is applied (allow all).
+func checkIPInCIDRs(ip string, allowedCIDRs []string) bool {
+	if len(allowedCIDRs) == 0 {
+		return true
+	}
+	clientIP := net.ParseIP(ip)
+	if clientIP == nil {
+		return false
+	}
+	for _, cidr := range allowedCIDRs {
+		_, subnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if subnet.Contains(clientIP) {
+			return true
+		}
+	}
+	return false
 }

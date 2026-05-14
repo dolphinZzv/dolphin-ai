@@ -19,12 +19,26 @@ import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
 
+interface Label {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+interface Milestone {
+  id: string;
+  title: string;
+}
+
 interface Issue {
   id: string;
   number: number;
   title: string;
   state: string;
   priority: string;
+  assignees: Array<{ agent: { id: string; name: string } }>;
+  labels: Label[];
+  milestone: Milestone | null;
 }
 
 interface Project {
@@ -38,6 +52,8 @@ const columns = [
   { state: "in_progress", label: "进行中" },
   { state: "blocked", label: "阻塞" },
   { state: "review", label: "审查" },
+  { state: "later", label: "稍后处理" },
+  { state: "reopen", label: "重新打开" },
 ];
 
 const priorityLabels: Record<string, string> = {
@@ -59,6 +75,8 @@ export function ProjectDetailPage() {
 
   const [search, setSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [projectLabels, setProjectLabels] = useState<Label[]>([]);
+  const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]);
 
   const fetchData = useCallback(() => {
     if (!id) return;
@@ -68,15 +86,19 @@ export function ProjectDetailPage() {
     Promise.all([
       gql(`query project($id: ID!) { project(id: $id) { id name description } }`, { id }),
       gql(
-        `query issues($projectId: ID!) { issues(projectID: $projectId) { edges { id number title state priority } } }`,
+        `query issues($projectId: ID!) { issues(projectID: $projectId) { edges { id number title state priority assignees { agent { id name } } labels { id name color } milestone { id title } } } }`,
         { projectId: id }
       ),
+      gql(`query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`, { projectId: id }),
+      gql(`query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title } }`, { projectId: id }),
     ])
-      .then(([pJson, iJson]) => {
+      .then(([pJson, iJson, lJson, mJson]) => {
         if (pJson.errors) { setError(pJson.errors[0].message); return; }
         if (iJson.errors) { setError(iJson.errors[0].message); return; }
         setProject(pJson.data.project);
         setIssues(iJson.data.issues.edges);
+        if (!lJson.errors) setProjectLabels(lJson.data.labels);
+        if (!mJson.errors) setProjectMilestones(mJson.data.milestones);
       })
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
@@ -97,6 +119,73 @@ export function ProjectDetailPage() {
     }
     toast.success("状态变更成功");
     fetchData();
+  };
+
+  const handleAddLabel = async (issueId: string, labelId: string) => {
+    const json = await gql(
+      `mutation addLabels($issueID: ID!, $labelIDs: [ID!]!) { addLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
+      { issueID: issueId, labelIDs: [labelId] }
+    );
+    if (!json.errors) {
+      setIssues((prev) => prev.map((i) => i.id === issueId ? { ...i, labels: json.data.addLabels.labels } : i));
+      toast.success("标签已添加");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleRemoveLabel = async (issueId: string, labelId: string) => {
+    const json = await gql(
+      `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
+      { issueID: issueId, labelIDs: [labelId] }
+    );
+    if (!json.errors) {
+      setIssues((prev) => prev.map((i) => i.id === issueId ? { ...i, labels: json.data.removeLabels.labels } : i));
+      toast.success("标签已移除");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleChangeMilestone = async (issueId: string, milestoneId: string) => {
+    const json = await gql(
+      `mutation updateIssue($id: ID!, $milestoneId: ID) { updateIssue(id: $id, milestoneId: $milestoneId) { id milestone { id title } } }`,
+      { id: issueId, milestoneId: milestoneId || null }
+    );
+    if (!json.errors) {
+      setIssues((prev) => prev.map((i) => i.id === issueId ? { ...i, milestone: json.data.updateIssue.milestone } : i));
+      toast.success("里程碑已更新");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleCreateMilestone = async (title: string) => {
+    const json = await gql(
+      `mutation createMilestone($projectID: ID!, $title: String!) { createMilestone(projectID: $projectID, title: $title) { id title } }`,
+      { projectID: id!, title }
+    );
+    if (!json.errors) {
+      setProjectMilestones((prev) => [...prev, json.data.createMilestone]);
+      toast.success("里程碑已创建");
+      return json.data.createMilestone;
+    }
+    toast.error(json.errors[0].message);
+    return null;
+  };
+
+  const handleCreateLabel = async (name: string, color: string) => {
+    const json = await gql(
+      `mutation createLabel($projectID: ID!, $name: String!, $color: String) { createLabel(projectID: $projectID, name: $name, color: $color) { id name color } }`,
+      { projectID: id!, name, color }
+    );
+    if (!json.errors) {
+      setProjectLabels((prev) => [...prev, json.data.createLabel]);
+      toast.success("标签已创建");
+      return json.data.createLabel;
+    }
+    toast.error(json.errors[0].message);
+    return null;
   };
 
   const filteredIssues = issues.filter((issue) => {
@@ -175,6 +264,13 @@ export function ProjectDetailPage() {
         issues={activeIssues}
         isDesktop={isDesktop}
         onTransition={handleTransition}
+        projectLabels={projectLabels}
+        projectMilestones={projectMilestones}
+        onAddLabel={handleAddLabel}
+        onRemoveLabel={handleRemoveLabel}
+        onChangeMilestone={handleChangeMilestone}
+        onCreateLabel={handleCreateLabel}
+        onCreateMilestone={handleCreateMilestone}
       />
 
       {/* Closed issues */}

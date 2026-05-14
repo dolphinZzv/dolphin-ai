@@ -137,6 +137,13 @@ func (s *AgentService) UpdateIP(id uint, ip string) error {
 	return s.agentRepo.UpdateIP(id, ip)
 }
 
+func (s *AgentService) UpdateAllowedCIDRs(id uint, cidrs []string) error {
+	if cidrs == nil {
+		cidrs = []string{}
+	}
+	return s.agentRepo.UpdateAllowedCIDRs(id, cidrs)
+}
+
 func (s *AgentService) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {
 	return s.agentRepo.FindByCapability(capability, projectID)
 }

@@ -29,6 +29,7 @@ func agentFromModel(a *models.Agent) *Agent {
 		Status:       AgentStatus(a.Status),
 		ExternalID:   a.ExternalID,
 		Capabilities: []string(a.Capabilities),
+		AllowedCIDRs: []string(a.AllowedCIDRs),
 		LastSeenAt:   a.LastSeenAt,
 		CreatedAt:    a.CreatedAt,
 		UpdatedAt:    a.UpdatedAt,

@@ -21,6 +21,15 @@ func (r *IssueAssigneeRepo) Create(assignee *models.IssueAssignee) error {
 	return r.db.Create(assignee).Error
 }
 
+func (r *IssueAssigneeRepo) GetByIssueAndAgent(issueID, agentID uint) (*models.IssueAssignee, error) {
+	var ia models.IssueAssignee
+	err := r.db.Where("issue_id = ? AND agent_id = ?", issueID, agentID).First(&ia).Error
+	if err != nil {
+		return nil, err
+	}
+	return &ia, nil
+}
+
 func (r *IssueAssigneeRepo) UpdateState(issueID, agentID uint, state models.AssigneeState) error {
 	updates := map[string]interface{}{"state": state}
 	if state == models.AssigneeStateCompleted {

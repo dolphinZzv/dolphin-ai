@@ -13,6 +13,7 @@ type Config struct {
 	AllowedOrigins          []string
 	DevMode                 bool
 	AllowHumanRegistration  bool
+	MCPAllowedCIDRs         []string
 }
 
 func Load() *Config {
@@ -25,7 +26,22 @@ func Load() *Config {
 		AllowedOrigins: splitOrigins(origins),
 		DevMode:        getEnv("CHICK_DEV_MODE", "") == "true",
 		AllowHumanRegistration: getEnv("CHICK_ALLOW_HUMAN_REGISTRATION", "false") == "true",
+		MCPAllowedCIDRs: splitCIDRs(getEnv("CHICK_MCP_ALLOWED_CIDRS", "")),
 	}
+}
+
+func splitCIDRs(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var result []string
+	for _, c := range strings.Split(s, ",") {
+		c = strings.TrimSpace(c)
+		if c != "" {
+			result = append(result, c)
+		}
+	}
+	return result
 }
 
 func splitOrigins(s string) []string {

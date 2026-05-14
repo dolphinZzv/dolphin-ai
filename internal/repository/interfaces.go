@@ -45,6 +45,7 @@ type AgentRepository interface {
 		NextNumber() (uint, error)
 		UpdateIP(id uint, ip string) error
 		FindByToken(token string) (*models.Agent, error)
+		UpdateAllowedCIDRs(id uint, cidrs []string) error
 	}
 
 // ─── Issue ─────────────────────────────────────────────────
@@ -67,6 +68,7 @@ type IssueRepository interface {
 
 type IssueAssigneeRepository interface {
 	Create(assignee *models.IssueAssignee) error
+	GetByIssueAndAgent(issueID, agentID uint) (*models.IssueAssignee, error)
 	UpdateState(issueID, agentID uint, state models.AssigneeState) error
 	ListByIssue(issueID uint) ([]models.IssueAssignee, error)
 	ListByAgent(agentID uint) ([]models.IssueAssignee, error)

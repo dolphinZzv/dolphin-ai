@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
+import { gql } from "@/lib/graphql";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -72,17 +73,6 @@ export function CreateIssueDialog({
     defaultValues: { title: "", description: "", priority: "medium" },
   });
 
-  const token = localStorage.getItem("token");
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const gql = (query: string, variables: Record<string, unknown>) =>
-    fetch("/graphql", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ query, variables }),
-    }).then((r) => r.json());
-
   useEffect(() => {
     if (!open) return;
     setSelectedLabelIds([]);
@@ -114,25 +104,19 @@ export function CreateIssueDialog({
     setError("");
 
     try {
-      const res = await fetch("/graphql", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          operationName: "createIssue",
-          query: `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!], $milestoneId: ID) {
-            createIssue(projectID: $pid, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs, milestoneId: $milestoneId) { id number title }
-          }`,
-          variables: {
-            pid: projectId,
-            title: data.title,
-            description: data.description || null,
-            priority: data.priority,
-            labelIDs: selectedLabelIds.length > 0 ? selectedLabelIds : null,
-            milestoneId: selectedMilestoneId || null,
-          },
-        }),
-      });
-      const json = await res.json();
+      const json = await gql(
+        `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!], $milestoneId: ID) {
+          createIssue(projectID: $pid, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs, milestoneId: $milestoneId) { id number title }
+        }`,
+        {
+          pid: projectId,
+          title: data.title,
+          description: data.description || null,
+          priority: data.priority,
+          labelIDs: selectedLabelIds.length > 0 ? selectedLabelIds : null,
+          milestoneId: selectedMilestoneId || null,
+        }
+      );
       if (json.errors) {
         setError(json.errors[0].message);
         toast.error(json.errors[0].message);
@@ -179,6 +163,16 @@ export function CreateIssueDialog({
             {errors.title && (
               <p className="text-xs text-destructive">{errors.title.message}</p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="description">描述（可选）</Label>
+            <Textarea
+              id="description"
+              placeholder="支持 Markdown 格式"
+              rows={4}
+              {...register("description")}
+            />
           </div>
 
           <div className="space-y-2">
@@ -238,12 +232,12 @@ export function CreateIssueDialog({
           {/* Milestone */}
           <div className="space-y-2">
             <Label>里程碑</Label>
-            <Select value={selectedMilestoneId} onValueChange={setSelectedMilestoneId}>
+            <Select value={selectedMilestoneId || "_none"} onValueChange={(v) => setSelectedMilestoneId(v === "_none" ? "" : v)}>
               <SelectTrigger>
                 <SelectValue placeholder="不关联" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">不关联</SelectItem>
+                <SelectItem value="_none">不关联</SelectItem>
                 {milestones.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.title}
@@ -251,16 +245,6 @@ export function CreateIssueDialog({
                 ))}
               </SelectContent>
             </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">描述（可选）</Label>
-            <Textarea
-              id="description"
-              placeholder="支持 Markdown 格式"
-              rows={4}
-              {...register("description")}
-            />
           </div>
 
           {error && (

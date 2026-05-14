@@ -225,8 +225,8 @@ func TestSearchIssues(t *testing.T) {
 	proj, _ := projectSvc.Create("SearchTest", "")
 	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
 
-	issueSvc.Create(proj.ID, agent.ID, "Fix login bug", "Users cannot login", models.PriorityHigh, nil, nil)
-	issueSvc.Create(proj.ID, agent.ID, "Add tests", "Need unit tests", models.PriorityMedium, nil, nil)
+	issueSvc.Create(proj.ID, agent.ID, "Fix login bug", "Users cannot login", models.PriorityHigh, nil, nil, nil)
+	issueSvc.Create(proj.ID, agent.ID, "Add tests", "Need unit tests", models.PriorityMedium, nil, nil, nil)
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "search_issues",

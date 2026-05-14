@@ -76,6 +76,11 @@ func (r *AgentRepo) UpdateIP(id uint, ip string) error {
 		Update("last_ip", ip).Error
 }
 
+func (r *AgentRepo) UpdateAllowedCIDRs(id uint, cidrs []string) error {
+	return r.db.Model(&models.Agent{}).Where("id = ?", id).
+		Update("allowed_cidrs", models.StringSlice(cidrs)).Error
+}
+
 func (r *AgentRepo) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {
 	var agents []models.Agent
 	err := r.db.Joins("JOIN project_members ON project_members.agent_id = agents.id").

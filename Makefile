@@ -1,5 +1,5 @@
 .PHONY: all build build-prod test test-all test-integration generate coverage coverage-html clean \
-        check ui-build start stop prod
+        check ui-build start stop prod dev service
 
 # ─── 门禁检查（启动前）────────────────────────────────────
 
@@ -32,7 +32,15 @@ build:
 
 # 启动前门禁 + 构建前端 + 构建后端 + 启动 + 启动后健康检查
 start: check ui-build build
+	@echo "=== 释放端口 8080 ==="
+	@pid=$$(lsof -ti:8080 2>/dev/null || true); \
+	if [ -n "$$pid" ]; then \
+		echo "  Port 8080 occupied by PID $$pid, killing..."; \
+		kill $$pid 2>/dev/null || true; \
+		sleep 1; \
+	fi
 	@echo "=== 启动应用 ==="
+	CHICK_ALLOW_HUMAN_REGISTRATION=true \
 	CHICK_JWT_SECRET=$${CHICK_JWT_SECRET:-chick-dev-secret-key-2024} ./bin/chick &>/tmp/chick-server.log &
 	@echo "  PID: $$!"
 	@sleep 3
@@ -55,8 +63,10 @@ start: check ui-build build
 	@echo "=== 启动完成: http://0.0.0.0:8080 ==="
 
 stop:
-	@echo "=== 停止应用 ==="
+	@echo "=== 停止开发进程 ==="
 	@pkill -f "bin/chick" 2>/dev/null || true
+	@echo "=== 停止生产服务 ==="
+	-sudo systemctl stop chick-prod 2>/dev/null || true
 	@echo "  ✅ 已停止"
 
 # ─── 测试 ──────────────────────────────────────────────────
@@ -88,37 +98,73 @@ coverage-html:
 
 # ─── 生产部署 ──────────────────────────────────────────────
 
-# 生产部署：构建 + 复制到 /opt/chick + 启动（PostgreSQL + 端口 18080）
+# 创建 systemd 服务（开机自启）
+.PHONY: service
+
+service:
+	@echo "=== 创建 systemd 服务 ==="
+	@printf '%s\n' '[Unit]' 'Description=Chick Agent Platform (Production)' 'After=network.target postgresql.service' 'Requires=postgresql.service' '' '[Service]' 'Type=simple' 'WorkingDirectory=/opt/chick' 'ExecStart=/opt/chick/chick-server' 'Restart=always' 'RestartSec=3' 'EnvironmentFile=-/etc/default/chick-prod' 'Environment=CHICK_DB_DRIVER=postgres' 'Environment=CHICK_DB_DSN=postgres://chick:chick@localhost:5432/chick?sslmode=disable' 'Environment=CHICK_PORT=18080' 'Environment=CHICK_ALLOWED_ORIGINS=*' 'StandardOutput=append:/var/log/chick-prod.log' 'StandardError=append:/var/log/chick-prod.log' '' '[Install]' 'WantedBy=multi-user.target' | sudo tee /etc/systemd/system/chick-prod.service > /dev/null
+	@if [ ! -f /etc/default/chick-prod ]; then \
+		echo "CHICK_JWT_SECRET=chick-dev-secret-key-2024" | sudo tee /etc/default/chick-prod > /dev/null; \
+		echo "  Created /etc/default/chick-prod with default secret"; \
+	else \
+		echo "  /etc/default/chick-prod already exists, keeping existing"; \
+	fi
+	sudo systemctl daemon-reload
+	sudo systemctl enable chick-prod
+	@echo "=== 服务创建完成: chick-prod ==="
+
+# 生产部署：构建 + 复制到 /opt/chick + 重启 service（PostgreSQL + 端口 18080）
 .PHONY: prod
 
 # 默认 PostgreSQL DSN，可通过 CHICK_DB_DSN 覆盖
-prod: build-prod ui-build
-	@echo "=== 部署到 /opt/chick ==="
+prod: build-prod ui-build service
+	@echo "=== 更新前端资源 ==="
 	sudo install -d /opt/chick/ui/dist
 	sudo install -m 755 bin/chick-prod /opt/chick/chick-server
 	sudo cp -r ui/dist/* /opt/chick/ui/dist/
-	@echo "=== 停止旧进程 ==="
-	-sudo pkill -f "/opt/chick/chick-server" 2>/dev/null || true
-	@sleep 1
-	@echo "=== 启动生产服务 ==="
-	sudo CHICK_DB_DRIVER=postgres \
-		CHICK_DB_DSN="$${CHICK_DB_DSN:-postgres://chick:chick@localhost:5432/chick?sslmode=disable}" \
-		CHICK_PORT=18080 \
-		CHICK_JWT_SECRET="$${CHICK_JWT_SECRET}" \
-		CHICK_ALLOWED_ORIGINS="$${CHICK_ALLOWED_ORIGINS:-*}" \
-		/bin/sh -c 'cd /opt/chick && nohup ./chick-server &>/tmp/chick-prod.log &'
+	@echo "=== 重启服务 ==="
+	sudo systemctl restart chick-prod
 	@sleep 2
 	@echo "=== 健康检查 ==="
 	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:18080/health 2>/dev/null); \
 	if [ "$$status" = "200" ]; then \
 		echo "  ✅ 生产服务运行正常 (HTTP $$status)"; \
 	else \
-		echo "  ❌ 健康检查失败 (HTTP $$status)，查看日志: /tmp/chick-prod.log"; \
+		echo "  ❌ 健康检查失败 (HTTP $$status)，查看日志: journalctl -u chick-prod -n 50"; \
 	fi
 	@echo "=== 部署完成: http://0.0.0.0:18080 ==="
 
 build-prod:
 	go build -ldflags="-s -w" -o bin/chick-prod ./cmd/server/
+
+# ─── 本地开发 ──────────────────────────────────────────────
+
+# 本地开发：构建 + 启动（SQLite + 端口 8080），不部署到生产
+.PHONY: dev
+
+dev: build
+	@echo "=== 释放端口 8080 ==="
+	@pid=$$(lsof -ti:8080 2>/dev/null || true); \
+	if [ -n "$$pid" ]; then \
+		echo "  Port 8080 occupied by PID $$pid, killing..."; \
+		kill $$pid 2>/dev/null || true; \
+		sleep 1; \
+	fi
+	@echo "=== 启动开发服务 ==="
+		CHICK_ALLOW_HUMAN_REGISTRATION=true \
+		CHICK_JWT_SECRET="$${CHICK_JWT_SECRET:-chick-dev-secret-key-2024}" \
+		CHICK_PORT=8080 \
+		nohup ./bin/chick &>/tmp/chick-dev.log &
+	@sleep 2
+	@echo "=== 健康检查 ==="
+	@status=$$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health 2>/dev/null); \
+	if [ "$$status" = "200" ]; then \
+		echo "  ✅ 开发服务运行正常 (HTTP $$status)"; \
+	else \
+		echo "  ❌ 健康检查失败 (HTTP $$status)，查看日志: /tmp/chick-dev.log"; \
+	fi
+	@echo "=== 启动完成: http://0.0.0.0:8080 ==="
 
 # ─── 清理 ──────────────────────────────────────────────────
 

@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { Bot } from "lucide-react";
+import { gql } from "@/lib/graphql";
 
 interface AgentDetail {
   id: string;
@@ -40,24 +41,14 @@ export function AgentDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
   const fetchAgent = useCallback(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
-    fetch("/graphql", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        operationName: "agent",
-        query: `query agent($id: ID!) { agent(id: $id) { id number name kind status externalID capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
-        variables: { id },
-      }),
-    })
-      .then((r) => r.json())
+    gql(
+      `query agent($id: ID!) { agent(id: $id) { id number name kind status externalID capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
+      { id }
+    )
       .then((json) => {
         if (json.errors) { setError(json.errors[0].message); return; }
         setAgent(json.data.agent);

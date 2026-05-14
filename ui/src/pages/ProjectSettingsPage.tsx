@@ -128,6 +128,9 @@ export function ProjectSettingsPage() {
   const [newAgentDevice, setNewAgentDevice] = useState("");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
+  const [cmdCopied, setCmdCopied] = useState(false);
+  const [installTool, setInstallTool] = useState<"claude" | "opencode">("claude");
+  const [installTab, setInstallTab] = useState<"cli" | "project" | "manual">("cli");
   const [agentCreating, setAgentCreating] = useState(false);
 
   const fetchData = useCallback(() => {
@@ -496,7 +499,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
 
           {/* Token display dialog */}
           <Dialog open={!!createdToken} onOpenChange={(o) => { if (!o) setCreatedToken(null); }}>
-            <DialogContent className="max-w-md">
+            <DialogContent className="max-w-lg">
               <DialogHeader><DialogTitle>Agent 创建成功</DialogTitle></DialogHeader>
               <div className="space-y-4">
                 <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md p-3 text-sm text-amber-800 dark:text-amber-200">
@@ -518,6 +521,96 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                     {tokenCopied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </div>
+
+                {/* One-click install */}
+                <div className="border-t pt-4">
+                  {/* Outer tabs: tool selector */}
+                  <div className="flex gap-0 mb-3">
+                    <button
+                      className={`px-3 py-1.5 text-xs font-medium rounded-l-md border transition-colors ${
+                        installTool === "claude"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                      onClick={() => { setInstallTool("claude"); setInstallTab("cli"); }}
+                    >
+                      Claude Code
+                    </button>
+                    <button
+                      className={`px-3 py-1.5 text-xs font-medium rounded-r-md border border-l-0 transition-colors ${
+                        installTool === "opencode"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                      onClick={() => { setInstallTool("opencode"); setInstallTab("cli"); }}
+                    >
+                      OpenCode
+                    </button>
+                  </div>
+
+                  {/* Inner tabs: install method */}
+                  <div className="flex gap-0 mb-3">
+                    <button
+                      className={`px-2.5 py-1 text-xs font-medium rounded-l-md border transition-colors ${
+                        installTab === "cli"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                      onClick={() => setInstallTab("cli")}
+                    >
+                      全局一键安装
+                    </button>
+                    <button
+                      className={`px-2.5 py-1 text-xs font-medium border border-l-0 transition-colors ${
+                        installTab === "project"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                      onClick={() => setInstallTab("project")}
+                    >
+                      项目级安装
+                    </button>
+                    <button
+                      className={`px-2.5 py-1 text-xs font-medium rounded-r-md border border-l-0 transition-colors ${
+                        installTab === "manual"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                      onClick={() => setInstallTab("manual")}
+                    >
+                      手动配置
+                    </button>
+                  </div>
+
+                  {installTool === "claude" && installTab === "cli" && (
+                    <ClaudeCLICmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
+                  {installTool === "claude" && installTab === "project" && (
+                    <ClaudeProjectCmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
+                  {installTool === "claude" && installTab === "manual" && (
+                    <ClaudeManualCmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
+                  {installTool === "opencode" && installTab === "cli" && (
+                    <OpenCodeCLICmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
+                  {installTool === "opencode" && installTab === "project" && (
+                    <OpenCodeProjectCmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
+                  {installTool === "opencode" && installTab === "manual" && (
+                    <OpenCodeManualCmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
+
+                  <p className="text-xs text-muted-foreground mt-1.5">
+                    {installTool === "claude" && installTab === "cli" && "复制后在 Claude Code 终端运行，注册到当前用户全局配置"}
+                    {installTool === "claude" && installTab === "project" && "复制后在 Claude Code 终端运行，注册到当前项目的 .mcp.json，仅本项目可见"}
+                    {installTool === "claude" && installTab === "manual" && "复制后在终端运行，适用于 Claude Code 和 Claude Desktop"}
+                    {installTool === "opencode" && installTab === "cli" && "复制后在 OpenCode 终端运行，注册 MCP 服务器"}
+                    {installTool === "opencode" && installTab === "project" && "复制后在 OpenCode 终端运行，注册到项目级配置"}
+                    {installTool === "opencode" && installTab === "manual" && "复制后在终端运行，OpenCode 会自动加载配置"}
+                  </p>
+                </div>
+
                 <div className="flex justify-end">
                   <Button onClick={() => setCreatedToken(null)}>关闭</Button>
                 </div>
@@ -781,4 +874,79 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
       </AlertDialog>
     </div>
   );
+}
+
+/* ─── Install command helper components ─── */
+
+interface CmdProps {
+  createdToken: string;
+  cmdCopied: boolean;
+  setCmdCopied: (v: boolean) => void;
+}
+
+function CopyBlock({ cmd, cmdCopied, setCmdCopied }: { cmd: string; cmdCopied: boolean; setCmdCopied: (v: boolean) => void }) {
+  return (
+    <div className="relative">
+      <pre className="rounded-md border bg-muted px-3 py-2.5 text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all select-all leading-relaxed">
+        {cmd}
+      </pre>
+      <Button
+        size="icon"
+        variant="outline"
+        className="absolute top-2 right-2 h-7 w-7"
+        onClick={() => {
+          navigator.clipboard.writeText(cmd);
+          setCmdCopied(true);
+          setTimeout(() => setCmdCopied(false), 2000);
+        }}
+      >
+        {cmdCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+      </Button>
+    </div>
+  );
+}
+
+function ClaudeCLICmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const cmd = `claude mcp add --transport http chick ${url} --header "Authorization: Bearer ${createdToken}"`;
+  return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+function ClaudeManualCmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const config = JSON.stringify({
+    mcpServers: { chick: { type: "url", url, headers: { Authorization: "Bearer " + createdToken } } }
+  }, null, 2);
+  const cmd = `mkdir -p ~/.claude && cat > ~/.claude/settings.json << 'EOF'\n${config}\nEOF`;
+  return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+function OpenCodeCLICmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const cmd = `opencode config set mcpServers.chick '{"type":"url","url":"${url}","headers":{"Authorization":"Bearer ${createdToken}"}}'`;
+  return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+function OpenCodeManualCmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const config = JSON.stringify({
+    mcpServers: { chick: { type: "url", url, headers: { Authorization: "Bearer " + createdToken } } }
+  }, null, 2);
+  const cmd = `mkdir -p ~/.config/opencode && cat > ~/.config/opencode/config.json << 'EOF'\n${config}\nEOF`;
+  return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+function ClaudeProjectCmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const cmd = `claude mcp add --transport http --scope project chick ${url} --header "Authorization: Bearer ${createdToken}"`;
+  return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+function OpenCodeProjectCmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const config = JSON.stringify({
+    mcpServers: { chick: { type: "url", url, headers: { Authorization: "Bearer " + createdToken } } }
+  }, null, 2);
+  const cmd = `echo '${config}' > .mcp.json`;
+  return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
 }

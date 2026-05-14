@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
+import { gql } from "@/lib/graphql";
 import Markdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 
@@ -9,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -19,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Send, MessageSquare, Trash2, Plus } from "lucide-react";
+import { Send, MessageSquare, Trash2, Plus, Pencil, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -49,6 +51,8 @@ interface Comment {
   body: string;
   createdAt: string;
   author: { id: string; name: string };
+  parentID?: string | null;
+  replies?: Comment[];
 }
 
 interface TimelineEvent {
@@ -76,8 +80,11 @@ const stateLabels: Record<string, string> = {
   in_progress: "进行中",
   blocked: "阻塞",
   review: "审查",
+  later: "稍后处理",
   closed_completed: "已完成",
   closed_not_planned: "已关闭",
+  closed_rejected: "已拒绝",
+  reopen: "重新打开",
 };
 
 const stateBadgeColors: Record<string, string> = {
@@ -85,8 +92,11 @@ const stateBadgeColors: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   blocked: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
   review: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  later: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200",
+  reopen: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   closed_completed: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
   closed_not_planned: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400",
+  closed_rejected: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
 };
 
 const priorityLabels: Record<string, string> = {
@@ -116,10 +126,15 @@ const eventIcons: Record<string, string> = {
 };
 
 const validTransitions: Record<string, string[]> = {
-  open: ["in_progress", "blocked"],
-  in_progress: ["review", "blocked"],
-  blocked: ["in_progress", "open"],
-  review: ["closed_completed", "closed_not_planned", "in_progress"],
+  open: ["in_progress", "blocked", "later"],
+  in_progress: ["review", "blocked", "later"],
+  blocked: ["in_progress", "closed_not_planned", "later"],
+  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later"],
+  later: ["open", "closed_not_planned"],
+  reopen: ["in_progress", "blocked", "later"],
+  closed_completed: ["reopen"],
+  closed_not_planned: ["reopen"],
+  closed_rejected: ["reopen"],
 };
 
 function relativeTime(dateStr: string): string {
@@ -189,20 +204,20 @@ export function IssueDetailPage() {
   const [projectLabels, setProjectLabels] = useState<Label[]>([]);
   const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]);
   const [showLabelPicker, setShowLabelPicker] = useState(false);
-
-  const gql = useCallback(
-    (operationName: string, query: string, variables: Record<string, unknown>) => {
-      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-      const headers: Record<string, string> = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      return fetch("/graphql", {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ operationName, query, variables }),
-      }).then((r) => r.json());
-    },
-    []
-  );
+  const [replyingTo, setReplyingTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPriority, setEditPriority] = useState(false);
+  const [projectAgents, setProjectAgents] = useState<Array<{ id: string; name: string }>>([]);
+  const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [showNewMilestone, setShowNewMilestone] = useState(false);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
+  const [showNewLabel, setShowNewLabel] = useState(false);
+  const [newLabelName, setNewLabelName] = useState("");
+  const [newLabelColor, setNewLabelColor] = useState("#6366f1");
 
   const fetchData = useCallback(() => {
     if (!id) return;
@@ -211,7 +226,6 @@ export function IssueDetailPage() {
 
     Promise.all([
       gql(
-        "issue",
         `query issue($id: ID!) {
           issue(id: $id) {
             id number title description state priority dueDate createdAt
@@ -225,14 +239,12 @@ export function IssueDetailPage() {
         { id }
       ),
       gql(
-        "comments",
         `query comments($issueId: ID!) {
-          comments(issueID: $issueId) { id body createdAt author { id name } }
+          comments(issueID: $issueId) { id body createdAt parentID author { id name } replies { id body createdAt author { id name } } }
         }`,
         { issueId: id }
       ),
       gql(
-        "timeline",
         `query timeline($issueId: ID!) {
           timeline(issueID: $issueId) { id eventType createdAt actor { id name } payload }
         }`,
@@ -251,14 +263,12 @@ export function IssueDetailPage() {
         const pid = iJson.data.issue.projectID;
         if (pid) {
           gql(
-            "projectLabels",
             `query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`,
             { projectId: pid }
           ).then((lJson) => {
             if (!lJson.errors) setProjectLabels(lJson.data.labels);
           });
           gql(
-            "projectMilestones",
             `query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title state } }`,
             { projectId: pid }
           ).then((mJson) => {
@@ -268,14 +278,13 @@ export function IssueDetailPage() {
       })
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
-  }, [id, gql]);
+  }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const handleTransition = async (toState: string) => {
     if (!id || !agent) return;
     const json = await gql(
-      "transitionIssue",
       `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!) {
         transitionIssue(id: $id, newState: $newState, actorID: $actorId) { state }
       }`,
@@ -293,7 +302,6 @@ export function IssueDetailPage() {
   const handleDelete = async () => {
     if (!id || !window.confirm("确定删除这个 Issue？此操作不可撤销。")) return;
     const json = await gql(
-      "deleteIssue",
       `mutation deleteIssue($id: ID!) { deleteIssue(id: $id) }`,
       { id }
     );
@@ -305,23 +313,25 @@ export function IssueDetailPage() {
     }
   };
 
-  const handleComment = async () => {
-    if (!newComment.trim() || !id || !agent) return;
+  const handleComment = async (parentID?: string) => {
+    const text = parentID ? replyText : newComment;
+    if (!text.trim() || !id || !agent) return;
     const json = await gql(
-      "addComment",
-      `mutation addComment($issueID: ID!, $authorID: ID!, $body: String!, $contentType: CommentContentType!) {
-        addComment(issueID: $issueID, authorID: $authorID, body: $body, contentType: $contentType) { id body createdAt author { id name } }
+      `mutation addComment($issueID: ID!, $authorID: ID!, $body: String!, $contentType: CommentContentType!, $parentID: ID) {
+        addComment(issueID: $issueID, authorID: $authorID, body: $body, contentType: $contentType, parentID: $parentID) { id body createdAt author { id name } parentID replies { id body createdAt author { id name } } }
       }`,
       {
         issueID: id,
         authorID: agent.agentId,
-        body: newComment,
+        body: text,
         contentType: "markdown",
+        parentID: parentID || null,
       }
     );
     if (json.data) {
       setComments((prev) => [...prev, json.data.addComment]);
-      setNewComment("");
+      if (parentID) { setReplyText(""); setReplyingTo(null); }
+      else setNewComment("");
       toast.success("评论发送成功");
       fetchData();
     }
@@ -330,7 +340,6 @@ export function IssueDetailPage() {
   const handleAddLabel = async (labelId: string) => {
     if (!id) return;
     const json = await gql(
-      "addLabels",
       `mutation addLabels($issueID: ID!, $labelIDs: [ID!]!) { addLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
       { issueID: id, labelIDs: [labelId] }
     );
@@ -345,7 +354,6 @@ export function IssueDetailPage() {
   const handleRemoveLabel = async (labelId: string) => {
     if (!id) return;
     const json = await gql(
-      "removeLabels",
       `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
       { issueID: id, labelIDs: [labelId] }
     );
@@ -360,7 +368,6 @@ export function IssueDetailPage() {
   const handleChangeMilestone = async (milestoneId: string) => {
     if (!id) return;
     const json = await gql(
-      "updateIssue",
       `mutation updateIssue($id: ID!, $milestoneId: ID) {
         updateIssue(id: $id, milestoneId: $milestoneId) { id milestone { id title } }
       }`,
@@ -373,6 +380,127 @@ export function IssueDetailPage() {
       toast.error(json.errors?.[0]?.message || "更新失败");
     }
   };
+
+  const handleUpdateIssue = async (fields: Record<string, unknown>) => {
+    if (!id) return;
+    const json = await gql(
+      `mutation updateIssue($id: ID!, $title: String, $description: String, $priority: Priority, $milestoneId: ID) {
+        updateIssue(id: $id, title: $title, description: $description, priority: $priority, milestoneId: $milestoneId) {
+          id title description priority milestone { id title }
+        }
+      }`,
+      { id, ...fields }
+    );
+    if (!json.errors && json.data) {
+      setIssue((prev) => prev ? { ...prev, ...json.data.updateIssue } : prev);
+      toast.success("已更新");
+    } else {
+      toast.error(json.errors?.[0]?.message || "更新失败");
+    }
+  };
+
+  const handleSaveTitle = async () => {
+    if (!editTitle.trim()) return;
+    await handleUpdateIssue({ title: editTitle.trim() });
+    setEditingTitle(false);
+  };
+
+  const handleSaveDescription = async () => {
+    await handleUpdateIssue({ description: editDescription || null });
+    setEditingDescription(false);
+  };
+
+  const handleSavePriority = async (priority: string) => {
+    await handleUpdateIssue({ priority });
+    setEditPriority(false);
+  };
+
+  const handleAddAssignee = async (agentId: string) => {
+    if (!id) return;
+    const json = await gql(
+      `mutation addAssignee($issueID: ID!, $agentID: ID!) {
+        addAssignee(issueID: $issueID, agentID: $agentID) { id agent { id name } state }
+      }`,
+      { issueID: id, agentID: agentId }
+    );
+    if (!json.errors) {
+      setIssue((prev) => prev ? {
+        ...prev,
+        assignees: [...prev.assignees, json.data.addAssignee]
+      } : prev);
+      toast.success("已添加负责人");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleRemoveAssignee = async (agentId: string) => {
+    if (!id) return;
+    const json = await gql(
+      `mutation removeAssignee($issueID: ID!, $agentID: ID!) {
+        removeAssignee(issueID: $issueID, agentID: $agentID)
+      }`,
+      { issueID: id, agentID: agentId }
+    );
+    if (!json.errors) {
+      setIssue((prev) => prev ? {
+        ...prev,
+        assignees: prev.assignees.filter((a) => a.agent.id !== agentId)
+      } : prev);
+      toast.success("已移除负责人");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleCreateMilestone = async () => {
+    if (!newMilestoneTitle.trim() || !issue) return;
+    const json = await gql(
+      `mutation createMilestone($projectID: ID!, $title: String!) {
+        createMilestone(projectID: $projectID, title: $title) { id title state }
+      }`,
+      { projectID: issue.projectID, title: newMilestoneTitle.trim() }
+    );
+    if (!json.errors) {
+      setProjectMilestones((prev) => [...prev, json.data.createMilestone]);
+      setNewMilestoneTitle("");
+      setShowNewMilestone(false);
+      toast.success("里程碑已创建");
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  const handleCreateLabel = async () => {
+    if (!newLabelName.trim() || !issue) return;
+    const json = await gql(
+      `mutation createLabel($projectID: ID!, $name: String!, $color: String) {
+        createLabel(projectID: $projectID, name: $name, color: $color) { id name color }
+      }`,
+      { projectID: issue.projectID, name: newLabelName.trim(), color: newLabelColor || null }
+    );
+    if (!json.errors) {
+      const label = json.data.createLabel;
+      setProjectLabels((prev) => [...prev, label]);
+      setNewLabelName("");
+      setShowNewLabel(false);
+      // Auto-assign the newly created label to the issue
+      await handleAddLabel(label.id);
+    } else {
+      toast.error(json.errors[0].message);
+    }
+  };
+
+  // Fetch project agents for assignee picker
+  useEffect(() => {
+    if (!issue?.projectID) return;
+    gql(
+      `query agents($projectID: ID!) { agents(projectID: $projectID) { id name } }`,
+      { projectID: issue.projectID }
+    ).then((json) => {
+      if (!json.errors) setProjectAgents(json.data.agents);
+    });
+  }, [issue?.projectID]);
 
   if (loading) return (
     <div className="space-y-4">
@@ -387,7 +515,7 @@ export function IssueDetailPage() {
 
   const transitions = validTransitions[issue.state] || [];
   const availableLabels = projectLabels.filter(
-    (pl) => !issue.labels.some((l) => l.id === pl.id)
+    (pl) => !(issue.labels || []).some((l) => l.id === pl.id)
   );
   const currentMilestoneId = issue.milestone?.id || "";
 
@@ -405,16 +533,50 @@ export function IssueDetailPage() {
             {stateLabels[issue.state]}
           </Badge>
           <span className="text-xs text-muted-foreground">#{issue.number}</span>
-          <Badge variant="outline" className="text-xs">
-            {priorityLabels[issue.priority] || issue.priority}
-          </Badge>
+          {editPriority && agent ? (
+            <Select defaultValue={issue.priority} onValueChange={handleSavePriority} onOpenChange={(open) => { if (!open) setEditPriority(false); }}>
+              <SelectTrigger className="h-5 w-14 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(priorityLabels).map(([v, l]) => (
+                  <SelectItem key={v} value={v}>{l}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => agent && setEditPriority(true)}>
+              {priorityLabels[issue.priority] || issue.priority}
+            </Badge>
+          )}
           {issue.dueDate && (
             <span className="text-xs text-muted-foreground">
               截止: {issue.dueDate.slice(0, 10)}
             </span>
           )}
         </div>
-        <h1 className="mt-2 text-2xl font-semibold">{issue.title}</h1>
+        {editingTitle ? (
+          <div className="mt-2 flex gap-2">
+            <Input
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              className="text-xl font-semibold"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") handleSaveTitle(); if (e.key === "Escape") setEditingTitle(false); }}
+            />
+            <Button size="sm" onClick={handleSaveTitle}><Check className="h-4 w-4" /></Button>
+            <Button size="sm" variant="ghost" onClick={() => setEditingTitle(false)}><X className="h-4 w-4" /></Button>
+          </div>
+        ) : (
+          <div className="mt-2 flex items-center gap-2">
+            <h1 className="text-2xl font-semibold">{issue.title}</h1>
+            {agent && (
+              <Button variant="ghost" size="sm" className="h-6 px-2" onClick={() => { setEditTitle(issue.title); setEditingTitle(true); }}>
+                <Pencil className="h-3 w-3" />
+              </Button>
+            )}
+          </div>
+        )}
         <div className="mt-1 flex items-center gap-2 text-xs text-muted-foreground">
           <span>{issue.creator.name}</span>
           <span>创建于 {relativeTime(issue.createdAt)}</span>
@@ -444,13 +606,42 @@ export function IssueDetailPage() {
       </div>
 
       {/* Description */}
-      {issue.description && (
+      {editingDescription ? (
         <Card>
-          <CardContent className="p-4">
-            <MarkdownContent content={issue.description} />
+          <CardContent className="p-4 space-y-2">
+            <Textarea
+              value={editDescription}
+              onChange={(e) => setEditDescription(e.target.value)}
+              rows={6}
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button size="sm" onClick={handleSaveDescription}><Check className="h-4 w-4 mr-1" />保存</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditingDescription(false)}>取消</Button>
+            </div>
           </CardContent>
         </Card>
-      )}
+      ) : issue.description ? (
+        <Card>
+          <CardContent className="p-4 group relative">
+            <MarkdownContent content={issue.description} />
+            {agent && (
+              <Button variant="ghost" size="sm" className="absolute top-2 right-2 h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={() => { setEditDescription(issue.description || ""); setEditingDescription(true); }}>
+                <Pencil className="h-3 w-3" />
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : agent ? (
+        <Card>
+          <CardContent className="p-4">
+            <Button variant="ghost" size="sm" onClick={() => { setEditDescription(""); setEditingDescription(true); }}>
+              <Plus className="h-4 w-4 mr-1" />添加描述
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Separator />
 
@@ -460,25 +651,74 @@ export function IssueDetailPage() {
           <MessageSquare className="h-4 w-4" />
           评论 ({comments.length})
         </h2>
-        {comments.map((c) => (
-          <Card key={c.id}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2">
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback className="text-xs">
-                    {c.author.name.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <span className="text-sm font-medium">{c.author.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {relativeTime(c.createdAt)}
-                </span>
+        {comments
+          .filter((c) => !c.parentID)
+          .map((parent) => (
+          <div key={parent.id}>
+            <Card>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-6 w-6">
+                    <AvatarFallback className="text-xs">
+                      {parent.author.name.charAt(0)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <span className="text-sm font-medium">{parent.author.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {relativeTime(parent.createdAt)}
+                  </span>
+                  {agent && (
+                    <Button variant="ghost" size="sm" className="h-6 px-2 text-xs ml-auto"
+                      onClick={() => { setReplyingTo(replyingTo === parent.id ? null : parent.id); setReplyText(""); }}>
+                      {replyingTo === parent.id ? "取消回复" : "回复"}
+                    </Button>
+                  )}
+                </div>
+                <div className="mt-2 text-sm">
+                  <MarkdownContent content={parent.body} />
+                </div>
+                {replyingTo === parent.id && (
+                  <div className="mt-2 border-t pt-2">
+                    <Textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder={`回复 ${parent.author.name}...`}
+                      rows={2}
+                      className="text-sm"
+                    />
+                    <div className="mt-1 flex justify-end gap-1">
+                      <Button size="sm" onClick={() => handleComment(parent.id)} disabled={!replyText.trim()}><Send className="h-3 w-3 mr-1" />发送</Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            {/* Replies */}
+            {parent.replies && parent.replies.length > 0 && (
+              <div className="ml-6 mt-1 space-y-1">
+                {parent.replies.map((r) => (
+                  <Card key={r.id} className="border-muted">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2">
+                        <Avatar className="h-5 w-5">
+                          <AvatarFallback className="text-[10px]">
+                            {r.author.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span className="text-xs font-medium">{r.author.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {relativeTime(r.createdAt)}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm">
+                        <MarkdownContent content={r.body} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-              <div className="mt-2 text-sm">
-                <MarkdownContent content={c.body} />
-              </div>
-            </CardContent>
-          </Card>
+            )}
+          </div>
         ))}
 
         {/* Add comment */}
@@ -492,7 +732,7 @@ export function IssueDetailPage() {
             />
             <div className="mt-2 flex justify-end">
               <Button
-                onClick={handleComment}
+                onClick={() => handleComment()}
                 disabled={!newComment.trim()}
               >
                 <Send className="mr-1 h-4 w-4" />
@@ -521,16 +761,21 @@ export function IssueDetailPage() {
     <div className="space-y-4">
       {/* Assignees */}
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium">负责人</CardTitle>
+          {agent && (
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setShowAssigneePicker(!showAssigneePicker)}>
+              <Plus className="h-3 w-3 mr-1" />添加
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          {!issue.assignees || issue.assignees.length === 0 ? (
+          {(!issue.assignees || issue.assignees.length === 0) && !showAssigneePicker ? (
             <p className="text-sm text-muted-foreground">无</p>
           ) : (
             <div className="space-y-2">
               {issue.assignees.map((a) => (
-                <div key={a.id} className="flex items-center gap-2">
+                <div key={a.id} className="flex items-center gap-2 group">
                   <Avatar className="h-6 w-6">
                     <AvatarFallback className="text-xs">
                       {a.agent.name.charAt(0)}
@@ -540,8 +785,33 @@ export function IssueDetailPage() {
                   <Badge variant="outline" className="text-xs ml-auto">
                     {a.state === "accepted" ? "已接受" : a.state === "declined" ? "已拒绝" : "待处理"}
                   </Badge>
+                  {agent && (
+                    <button className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                      onClick={() => handleRemoveAssignee(a.agent.id)}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
                 </div>
               ))}
+            </div>
+          )}
+          {showAssigneePicker && (
+            <div className="mt-2 pt-2 border-t space-y-1">
+              {projectAgents.length === 0 ? (
+                <p className="text-xs text-muted-foreground">暂无可用成员</p>
+              ) : (
+                projectAgents
+                  .filter((ag) => !(issue.assignees || []).some((a) => a.agent.id === ag.id))
+                  .map((ag) => (
+                    <div key={ag.id} className="flex items-center gap-2 py-1 cursor-pointer hover:bg-accent rounded px-1"
+                      onClick={() => { handleAddAssignee(ag.id); setShowAssigneePicker(false); }}>
+                      <Avatar className="h-5 w-5">
+                        <AvatarFallback className="text-[10px]">{ag.name.charAt(0)}</AvatarFallback>
+                      </Avatar>
+                      <span className="text-sm">{ag.name}</span>
+                    </div>
+                  ))
+              )}
             </div>
           )}
         </CardContent>
@@ -551,17 +821,41 @@ export function IssueDetailPage() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium">里程碑</CardTitle>
+          {agent && (
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setShowNewMilestone(!showNewMilestone)}>
+              <Plus className="h-3 w-3 mr-1" />创建
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          {projectMilestones.length === 0 ? (
+          {showNewMilestone ? (
+            <div className="space-y-2">
+              <Input
+                value={newMilestoneTitle}
+                onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                placeholder="里程碑名称"
+                className="h-8 text-sm"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateMilestone(); if (e.key === "Escape") setShowNewMilestone(false); }}
+              />
+              <div className="flex justify-end gap-1">
+                <Button size="sm" className="h-7 text-xs" onClick={handleCreateMilestone} disabled={!newMilestoneTitle.trim()}>
+                  <Check className="h-3 w-3 mr-1" />创建
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowNewMilestone(false); setNewMilestoneTitle(""); }}>
+                  取消
+                </Button>
+              </div>
+            </div>
+          ) : projectMilestones.length === 0 ? (
             <p className="text-sm text-muted-foreground">无</p>
           ) : (
-            <Select value={currentMilestoneId} onValueChange={handleChangeMilestone}>
+            <Select value={currentMilestoneId || "_none"} onValueChange={(v) => handleChangeMilestone(v === "_none" ? "" : v)}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="不关联" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">不关联</SelectItem>
+                <SelectItem value="_none">不关联</SelectItem>
                 {projectMilestones.map((m) => (
                   <SelectItem key={m.id} value={m.id}>
                     {m.title}
@@ -577,19 +871,61 @@ export function IssueDetailPage() {
       <Card>
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium">标签</CardTitle>
-          {availableLabels.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 px-2 text-xs"
-              onClick={() => setShowLabelPicker(!showLabelPicker)}
-            >
-              <Plus className="h-3 w-3 mr-1" />
-              添加
-            </Button>
-          )}
+          <div className="flex gap-1">
+            {agent && (
+              <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={() => setShowNewLabel(!showNewLabel)}>
+                <Plus className="h-3 w-3 mr-1" />创建
+              </Button>
+            )}
+            {availableLabels.length > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-xs"
+                onClick={() => setShowLabelPicker(!showLabelPicker)}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                添加
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
+          {showNewLabel ? (
+            <div className="space-y-2">
+              <Input
+                value={newLabelName}
+                onChange={(e) => setNewLabelName(e.target.value)}
+                placeholder="标签名称"
+                className="h-8 text-sm"
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") handleCreateLabel(); }}
+              />
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={newLabelColor}
+                  onChange={(e) => setNewLabelColor(e.target.value)}
+                  className="h-7 w-10 rounded border cursor-pointer"
+                />
+                <Button size="sm" className="h-7 text-xs" onClick={handleCreateLabel} disabled={!newLabelName.trim()}>
+                  <Check className="h-3 w-3 mr-1" />创建
+                </Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => { setShowNewLabel(false); setNewLabelName(""); }}>
+                  取消
+                </Button>
+                <Badge
+                  className="text-xs ml-auto"
+                  style={{
+                    backgroundColor: `${newLabelColor}20`,
+                    color: newLabelColor,
+                  }}
+                >
+                  {newLabelName || "预览"}
+                </Badge>
+              </div>
+            </div>
+          ) : null}
           {(!issue.labels || issue.labels.length === 0) && !showLabelPicker ? (
             <p className="text-sm text-muted-foreground">无</p>
           ) : (

@@ -66,6 +66,18 @@ func (r *mutationResolver) UpdateAgentStatus(ctx context.Context, id string, sta
 	return agentFromModel(a), nil
 }
 
+// UpdateAgentAllowedCIDRs is the resolver for the updateAgentAllowedCIDRs field.
+func (r *mutationResolver) UpdateAgentAllowedCIDRs(ctx context.Context, id string, allowedCIDRs []string) (*Agent, error) {
+	if err := r.AgentSvc.UpdateAllowedCIDRs(parseID(id), allowedCIDRs); err != nil {
+		return nil, fmt.Errorf("update agent allowed CIDRs: %w", err)
+	}
+	a, err := r.AgentSvc.GetByID(parseID(id))
+	if err != nil {
+		return nil, err
+	}
+	return agentFromModel(a), nil
+}
+
 // CreateProjectAgent is the resolver for the createProjectAgent field.
 func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID string, name string, kind AgentKind, externalID *string, secret *string, capabilities []string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
 	caps := capabilities
@@ -204,7 +216,7 @@ func (r *mutationResolver) RemoveProjectMember(ctx context.Context, projectID st
 }
 
 // CreateIssue is the resolver for the createIssue field.
-func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, title string, description *string, priority Priority, assigneeIDs []string, labelIDs []string, milestoneId *string) (*Issue, error) {
+func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, title string, description *string, priority Priority, assigneeIDs []string, labelIDs []string, milestoneID *string) (*Issue, error) {
 	pid := parseID(projectID)
 	agentID, err := r.requireIssueProjectMemberByProject(ctx, pid)
 	if err != nil {
@@ -223,8 +235,8 @@ func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, ti
 		labelUintIDs[i] = parseID(id)
 	}
 	var mid *uint
-	if milestoneId != nil && *milestoneId != "" {
-		v := parseID(*milestoneId)
+	if milestoneID != nil && *milestoneID != "" {
+		v := parseID(*milestoneID)
 		mid = &v
 	}
 	issue, err := r.IssueSvc.Create(pid, agentID, title, desc, models.Priority(priority), assigneeUintIDs, labelUintIDs, mid)
@@ -235,7 +247,7 @@ func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, ti
 }
 
 // UpdateIssue is the resolver for the updateIssue field.
-func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *string, description *string, priority *Priority, dueDate *time.Time, milestoneId *string) (*Issue, error) {
+func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *string, description *string, priority *Priority, dueDate *time.Time, milestoneID *string) (*Issue, error) {
 	iid := parseID(id)
 	if _, err := r.requireIssueProjectMember(ctx, iid); err != nil {
 		return nil, err
@@ -257,8 +269,8 @@ func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *st
 		nt = &models.UnixNullTime{Time: *dueDate, Valid: true}
 	}
 	var mid *uint
-	if milestoneId != nil && *milestoneId != "" {
-		v := parseID(*milestoneId)
+	if milestoneID != nil && *milestoneID != "" {
+		v := parseID(*milestoneID)
 		mid = &v
 	}
 	issue, err := r.IssueSvc.Update(iid, t, d, p, nt, mid)

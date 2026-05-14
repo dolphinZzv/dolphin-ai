@@ -49,7 +49,7 @@ func TestCreateIssue_AutoNumber(t *testing.T) {
 	p, _ := projectSvc.Create("Test", "")
 	pid := p.ID
 
-	issue1, err := issueSvc.Create(pid, 1, "First", "", models.PriorityMedium, nil, nil)
+	issue1, err := issueSvc.Create(pid, 1, "First", "", models.PriorityMedium, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create first issue: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestCreateIssue_AutoNumber(t *testing.T) {
 		t.Errorf("expected number 1, got %d", issue1.Number)
 	}
 
-	issue2, err := issueSvc.Create(pid, 1, "Second", "", models.PriorityMedium, nil, nil)
+	issue2, err := issueSvc.Create(pid, 1, "Second", "", models.PriorityMedium, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create second issue: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestCreateIssue_WithAssignees(t *testing.T) {
 	p, _ := projectSvc.Create("Test", "")
 	agent, _ := agentSvc.Register("coder", models.AgentKindAI, "coder-1", "secret", []string{"CODING"}, "", "")
 
-	issue, err := issueSvc.Create(p.ID, 1, "Task", "", models.PriorityHigh, []uint{agent.ID}, nil)
+	issue, err := issueSvc.Create(p.ID, 1, "Task", "", models.PriorityHigh, []uint{agent.ID}, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestTransitionIssue_Valid(t *testing.T) {
 	issueSvc, _, projectSvc, workflowSvc := setupIssueTest(t)
 	p, _ := projectSvc.Create("Test", "")
 
-	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil)
+	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil, nil)
 
 	// OPEN -> IN_PROGRESS
 	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, 1)
@@ -123,7 +123,7 @@ func TestTransitionIssue_Invalid(t *testing.T) {
 	p, _ := projectSvc.Create("Test", "")
 
 	issueSvc, _, _, _ := setupIssueTest(t)
-	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil)
+	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil, nil)
 
 	// OPEN -> CLOSED (invalid, must go through IN_PROGRESS -> REVIEW)
 	_, err := workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, 1)
@@ -157,7 +157,7 @@ func TestAddComment(t *testing.T) {
 
 	p, _ := projectSvc.Create("Test", "")
 	agent, _ := agentSvc.Register("user", models.AgentKindHuman, "user-1", "secret", nil, "", "")
-	issue, _ := issueSvc.Create(p.ID, agent.ID, "Issue", "", models.PriorityMedium, nil, nil)
+	issue, _ := issueSvc.Create(p.ID, agent.ID, "Issue", "", models.PriorityMedium, nil, nil, nil)
 
 	comment, err := commentSvc.Create(issue.ID, agent.ID, "Hello world", models.CommentMarkdown, nil)
 	if err != nil {
@@ -184,9 +184,9 @@ func TestListIssues(t *testing.T) {
 	issueSvc, _, projectSvc, _ := setupIssueTest(t)
 	p, _ := projectSvc.Create("Test", "")
 
-	issueSvc.Create(p.ID, 1, "Alpha", "", models.PriorityHigh, nil, nil)
-	issueSvc.Create(p.ID, 1, "Beta", "", models.PriorityMedium, nil, nil)
-	issueSvc.Create(p.ID, 1, "Gamma", "", models.PriorityLow, nil, nil)
+	issueSvc.Create(p.ID, 1, "Alpha", "", models.PriorityHigh, nil, nil, nil)
+	issueSvc.Create(p.ID, 1, "Beta", "", models.PriorityMedium, nil, nil, nil)
+	issueSvc.Create(p.ID, 1, "Gamma", "", models.PriorityLow, nil, nil, nil)
 
 	// List all
 	pid := p.ID

@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { gql } from "@/lib/graphql";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,22 +30,12 @@ export function ProjectsPage() {
   const [newDesc, setNewDesc] = useState("");
   const [creating, setCreating] = useState(false);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
   const fetchProjects = useCallback(() => {
     setLoading(true);
     setError(null);
-    fetch("/graphql", {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        operationName: "projects",
-        query: `query projects { projects { id name description } }`,
-      }),
-    })
-      .then((r) => r.json())
+    gql(
+      `query projects { projects { id name description } }`
+    )
       .then((json) => {
         if (json.errors) { setError(json.errors[0].message); return; }
         setProjects(json.data.projects);
@@ -81,17 +72,12 @@ export function ProjectsPage() {
             if (!newName.trim()) return;
             setCreating(true);
             try {
-              const res = await fetch("/graphql", {
-                method: "POST", headers,
-                body: JSON.stringify({
-                  operationName: "createProject",
-                  query: `mutation createProject($name: String!, $desc: String) {
-                    createProject(name: $name, description: $desc) { id name }
-                  }`,
-                  variables: { name: newName, desc: newDesc || null },
-                }),
-              });
-              const json = await res.json();
+              const json = await gql(
+                `mutation createProject($name: String!, $desc: String) {
+                  createProject(name: $name, description: $desc) { id name }
+                }`,
+                { name: newName, desc: newDesc || null }
+              );
               if (json.errors) { toast.error(json.errors[0].message); return; }
               toast.success("项目创建成功");
               setCreateOpen(false);

@@ -33,7 +33,7 @@ func (r *IssueRepo) Create(issue *models.Issue) error {
 
 func (r *IssueRepo) GetByID(id uint) (*models.Issue, error) {
 	var i models.Issue
-	err := r.db.Preload("Assignees.Agent").Preload("Labels").Preload("Comments").Preload("Comments.Author").Preload("Creator").
+	err := r.db.Preload("Assignees.Agent").Preload("Labels").Preload("Comments").Preload("Comments.Author").Preload("Creator").Preload("Milestone").
 		First(&i, id).Error
 	return &i, err
 }

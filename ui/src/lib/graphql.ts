@@ -1,6 +1,19 @@
+function getToken(): string | null {
+  return localStorage.getItem("token");
+}
+
+function clearToken() {
+  localStorage.removeItem("token");
+}
+
+function redirectToLogin() {
+  clearToken();
+  window.location.href = "/login";
+}
+
 function authHeaders(): Record<string, string> {
   const h: Record<string, string> = { "Content-Type": "application/json" };
-  const token = localStorage.getItem("token");
+  const token = getToken();
   if (token) h["Authorization"] = `Bearer ${token}`;
   return h;
 }
@@ -15,5 +28,18 @@ export async function gql<T = any>(
     headers: authHeaders(),
     body: JSON.stringify({ operationName: opName, query, variables }),
   });
-  return res.json();
+
+  if (res.status === 401) {
+    redirectToLogin();
+    return {};
+  }
+
+  const body = await res.json();
+
+  if (body.errors?.some((e: { message: string }) => e.message === "UNAUTHENTICATED")) {
+    redirectToLogin();
+    return {};
+  }
+
+  return body;
 }
