@@ -266,10 +266,10 @@ func warnNoLLM(cfg *config.Config) {
 	if defaultModel == "" {
 		defaultModel = "gpt-4o"
 	}
-	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnNoLLM))
+	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyWarnNoLLM))
 	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnDefaultModel), defaultModel, cfg.LLM.BaseURL)
-	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnSetAPIKey))
-	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnRunSetup))
+	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyWarnSetAPIKey))
+	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyWarnRunSetup))
 }
 
 func setupLogging(cfg *config.Config) {
