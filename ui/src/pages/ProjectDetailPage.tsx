@@ -89,6 +89,7 @@ export function ProjectDetailPage() {
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [projectLabels, setProjectLabels] = useState<Label[]>([]);
   const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]);
+  const [validTransitions, setValidTransitions] = useState<Record<string, string[]>>({});
 
   // Debounce search input before sending to backend
   useEffect(() => {
@@ -119,14 +120,24 @@ export function ProjectDetailPage() {
       ),
       gql(`query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`, { projectId: id }),
       gql(`query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title } }`, { projectId: id }),
+      ...columns.map((c) =>
+        gql(`query validTransitions($state: IssueState!) { validTransitions(state: $state) }`, { state: c.state })
+      ),
     ])
-      .then(([pJson, iJson, lJson, mJson]) => {
+      .then((results) => {
+        const pJson = results[0]; const iJson = results[1]; const lJson = results[2]; const mJson = results[3];
+        const transitionResults = results.slice(4) as Array<{ data?: { validTransitions: string[] }; errors?: any }>;
         if (pJson.errors) { setError(pJson.errors[0].message); return; }
         if (iJson.errors) { setError(iJson.errors[0].message); return; }
         setProject(pJson.data.project);
         setIssues(iJson.data.issues.edges);
         if (!lJson.errors) setProjectLabels(lJson.data.labels);
         if (!mJson.errors) setProjectMilestones(mJson.data.milestones);
+        const vt: Record<string, string[]> = {};
+        transitionResults.forEach((r, i) => {
+          if (r.data?.validTransitions) vt[columns[i].state] = r.data.validTransitions;
+        });
+        setValidTransitions(vt);
       })
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
@@ -370,6 +381,7 @@ export function ProjectDetailPage() {
         onChangeMilestone={handleChangeMilestone}
         onCreateLabel={handleCreateLabel}
         onCreateMilestone={handleCreateMilestone}
+        validTransitions={validTransitions}
       />
 
       {/* Closed issues */}

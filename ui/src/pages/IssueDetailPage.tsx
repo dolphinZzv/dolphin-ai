@@ -128,19 +128,6 @@ const eventIcons: Record<string, string> = {
   label_added: "🏷",
 };
 
-const validTransitions: Record<string, string[]> = {
-  open: ["in_progress", "blocked", "later", "closed_not_planned"],
-  in_progress: ["review", "blocked", "later"],
-  blocked: ["in_progress", "closed_not_planned", "later"],
-  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later", "pending_confirmation"],
-  pending_confirmation: ["closed_completed", "in_progress", "closed_not_planned", "later"],
-  later: ["open", "closed_not_planned"],
-  reopen: ["in_progress", "blocked", "later"],
-  closed_completed: ["reopen"],
-  closed_not_planned: ["reopen"],
-  closed_rejected: ["reopen"],
-};
-
 function relativeTime(dateStr: string): string {
   const date = new Date(dateStr);
   const now = new Date();
@@ -217,6 +204,7 @@ export function IssueDetailPage() {
   const [editPriority, setEditPriority] = useState(false);
   const [projectAgents, setProjectAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
+  const [transitions, setTransitions] = useState<string[]>([]);
   const [showNewMilestone, setShowNewMilestone] = useState(false);
   const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
   const [showNewLabel, setShowNewLabel] = useState(false);
@@ -262,6 +250,15 @@ export function IssueDetailPage() {
         setIssue(iJson.data.issue);
         setComments(cJson.data.comments);
         setEvents(tJson.data.timeline);
+
+        // Fetch valid transitions for the current state
+        const issueState = iJson.data.issue.state;
+        gql(
+          `query vt($state: IssueState!) { validTransitions(state: $state) }`,
+          { state: issueState }
+        ).then((vJson) => {
+          if (!vJson.errors) setTransitions(vJson.data.validTransitions);
+        });
 
         // Fetch project labels and milestones
         const pid = iJson.data.issue.projectID;
@@ -572,7 +569,7 @@ export function IssueDetailPage() {
   if (error) return <ErrorFallback message={error} onRetry={fetchData} />;
   if (!issue) return <EmptyState title="Issue 不存在" />;
 
-  const transitions = validTransitions[issue.state] || [];
+  const stateTransitions = transitions;
   const availableLabels = projectLabels.filter(
     (pl) => !(issue.labels || []).some((l) => l.id === pl.id)
   );
@@ -645,7 +642,7 @@ export function IssueDetailPage() {
       {/* Transitions */}
       <div className="flex flex-wrap gap-2 justify-between items-center">
         <div className="flex flex-wrap gap-2">
-          {transitions.length > 0 && agent && transitions.map((state) => (
+          {stateTransitions.length > 0 && agent && stateTransitions.map((state) => (
             <Button
               key={state}
               variant="outline"

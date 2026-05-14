@@ -83,19 +83,6 @@ const stateLabels: Record<string, string> = {
   reopen: "重新打开",
 };
 
-const validTransitions: Record<string, string[]> = {
-  open: ["in_progress", "blocked", "later", "closed_not_planned"],
-  in_progress: ["review", "blocked", "later"],
-  blocked: ["in_progress", "closed_not_planned", "later"],
-  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later", "pending_confirmation"],
-  pending_confirmation: ["closed_completed", "in_progress", "closed_not_planned", "later"],
-  later: ["open", "closed_not_planned"],
-  reopen: ["in_progress", "blocked", "later"],
-  closed_completed: ["reopen"],
-  closed_not_planned: ["reopen"],
-  closed_rejected: ["reopen"],
-};
-
 function LabelsDisplay({ labels, onRemove }: { labels: Label[]; onRemove?: (id: string) => void }) {
   if (!labels || labels.length === 0) return null;
   return (
@@ -178,6 +165,7 @@ function SimpleIssueCard({
   onChangeMilestone,
   onCreateLabel,
   onCreateMilestone,
+  validTransitions,
 }: {
   issue: Issue;
   onTransition: (issueId: string, toState: string) => Promise<void>;
@@ -188,6 +176,7 @@ function SimpleIssueCard({
   onChangeMilestone: (issueId: string, milestoneId: string) => Promise<void>;
   onCreateLabel: (name: string, color: string) => Promise<Label | null>;
   onCreateMilestone: (title: string) => Promise<Milestone | null>;
+  validTransitions: Record<string, string[]>;
 }) {
   const [moving, setMoving] = useState(false);
   const [showLabels, setShowLabels] = useState(false);
@@ -444,6 +433,7 @@ function StaticColumn({
   onChangeMilestone,
   onCreateLabel,
   onCreateMilestone,
+  validTransitions,
 }: {
   column: Column;
   issues: Issue[];
@@ -455,6 +445,7 @@ function StaticColumn({
   onChangeMilestone: (issueId: string, milestoneId: string) => Promise<void>;
   onCreateLabel: (name: string, color: string) => Promise<Label | null>;
   onCreateMilestone: (title: string) => Promise<Milestone | null>;
+  validTransitions: Record<string, string[]>;
 }) {
   return (
     <div className="space-y-2 rounded-lg p-2">
@@ -479,6 +470,7 @@ function StaticColumn({
           onChangeMilestone={onChangeMilestone}
           onCreateLabel={onCreateLabel}
           onCreateMilestone={onCreateMilestone}
+          validTransitions={validTransitions}
         />
       ))}
     </div>
@@ -515,6 +507,7 @@ interface IssueBoardProps {
   onChangeMilestone: (issueId: string, milestoneId: string) => Promise<void>;
   onCreateLabel: (name: string, color: string) => Promise<Label | null>;
   onCreateMilestone: (title: string) => Promise<Milestone | null>;
+  validTransitions: Record<string, string[]>;
 }
 
 export function IssueBoard({
@@ -529,6 +522,7 @@ export function IssueBoard({
   onChangeMilestone,
   onCreateLabel,
   onCreateMilestone,
+  validTransitions,
 }: IssueBoardProps) {
   const [activeIssue, setActiveIssue] = useState<Issue | null>(null);
 
@@ -609,6 +603,7 @@ export function IssueBoard({
             onChangeMilestone={onChangeMilestone}
             onCreateLabel={onCreateLabel}
             onCreateMilestone={onCreateMilestone}
+            validTransitions={validTransitions}
           />
         </div>
       ))}
