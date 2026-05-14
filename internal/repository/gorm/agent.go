@@ -95,13 +95,26 @@ func (r *AgentRepo) Delete(id uint) error {
 }
 
 func (r *AgentRepo) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {
+	// First, get all online project members (capabilities filter is done in Go for cross-DB safety)
 	var agents []models.Agent
 	err := r.db.Joins("JOIN project_members ON project_members.agent_id = agents.id").
 		Where("project_members.project_id = ?", projectID).
 		Where("agents.status = ?", models.AgentStatusOnline).
-		Where("agents.capabilities LIKE ?", `%"`+string(capability)+`"%`).
 		Find(&agents).Error
-	return agents, err
+	if err != nil {
+		return nil, err
+	}
+	// Filter in Go: check exact capability match in the JSON array
+	filtered := make([]models.Agent, 0, len(agents))
+	for _, a := range agents {
+		for _, c := range a.Capabilities {
+			if c == string(capability) {
+				filtered = append(filtered, a)
+				break
+			}
+		}
+	}
+	return filtered, nil
 }
 
 func (r *AgentRepo) FindOnlineByProject(projectID uint) ([]models.Agent, error) {
