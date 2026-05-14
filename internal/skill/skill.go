@@ -179,6 +179,29 @@ func (m *Manager) RecordUsage(name string) {
 	}
 }
 
+// NewTemplate creates a new skill file from a template in the primary skills directory.
+func (m *Manager) NewTemplate(name, description string) error {
+	if description == "" {
+		description = name
+	}
+	title := name
+	if description != name {
+		title = description
+	}
+	content := fmt.Sprintf("# %s\n\n"+
+		"Add your skill content here. This content is injected into the LLM context\n"+
+		"when the skill is loaded with load_skill.\n\n"+
+		"## Overview\n\n"+
+		"Briefly describe what this skill covers and when to use it.\n\n"+
+		"## Guidelines\n\n"+
+		"- Keep instructions clear and actionable.\n"+
+		"- Provide concrete examples where possible.\n"+
+		"- Focus on what the agent needs to know to perform the task.\n\n"+
+		"## Examples\n\n"+
+		"Add usage examples or code snippets here.\n", title)
+	return m.Register(name, description, content)
+}
+
 // Register adds or updates a skill at runtime and persists it to the primary
 // skills directory as a markdown file.
 func (m *Manager) Register(name, description, content string) error {

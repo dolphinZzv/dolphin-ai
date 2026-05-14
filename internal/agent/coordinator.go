@@ -194,6 +194,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/agents":
 			c.printAgents(io)
 			continue
+		case strings.HasPrefix(line, "/skills new"):
+			c.handleSkillNew(line, io)
+			continue
 		case line == "/skills":
 			c.printSkills(io)
 			continue
@@ -1041,6 +1044,32 @@ func (c *Coordinator) printSkills(io transport.UserIO) {
 	io.WriteLine("")
 	io.WriteLine(i18n.TL(i18n.KeySkillSearchHint))
 	io.WriteLine("")
+}
+
+func (c *Coordinator) handleSkillNew(line string, io transport.UserIO) {
+	if c.skills == nil {
+		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
+		return
+	}
+
+	// Parse: "/skills new <name>"
+	rest := strings.TrimPrefix(line, "/skills new")
+	rest = strings.TrimSpace(rest)
+
+	if rest == "" {
+		io.WriteLine(i18n.TL(i18n.KeySkillNewUsage))
+		return
+	}
+
+	name := rest
+
+	if err := c.skills.NewTemplate(name, ""); err != nil {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewError), err))
+		return
+	}
+
+	dir := c.skills.Dir()
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewCreated), name, dir))
 }
 
 func (c *Coordinator) printCommands(io transport.UserIO) {
