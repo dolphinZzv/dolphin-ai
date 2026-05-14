@@ -23,16 +23,12 @@ func (r *Resolver) requireProjectMember(ctx context.Context, projectID uint) (ui
 	if err != nil {
 		return 0, err
 	}
-	_, err = r.ProjectSvc.GetMemberRole(projectID, agentID)
-	if err == nil {
-		return agentID, nil
+	role, err := r.ProjectSvc.GetMemberRole(projectID, agentID)
+	if err != nil {
+		return 0, errors.New("无权访问该项目")
 	}
-	// If project has no members at all, allow access (transition)
-	members, listErr := r.ProjectSvc.ListMembers(projectID)
-	if listErr == nil && len(members) == 0 {
-		return agentID, nil
-	}
-	return 0, errors.New("无权访问该项目")
+	_ = role
+	return agentID, nil
 }
 
 // requireProjectOwner returns the agent ID if the caller is an owner of the project.
@@ -42,15 +38,10 @@ func (r *Resolver) requireProjectOwner(ctx context.Context, projectID uint) (uin
 		return 0, err
 	}
 	role, err := r.ProjectSvc.GetMemberRole(projectID, agentID)
-	if err == nil && role == models.ProjectRoleOwner {
-		return agentID, nil
+	if err != nil || role != models.ProjectRoleOwner {
+		return 0, errors.New("需要项目 owner 权限")
 	}
-	// If project has no members at all, allow access (transition)
-	members, listErr := r.ProjectSvc.ListMembers(projectID)
-	if listErr == nil && len(members) == 0 {
-		return agentID, nil
-	}
-	return 0, errors.New("需要项目 owner 权限")
+	return agentID, nil
 }
 
 // requireIssueProjectMember checks that the caller is a member of the project that owns the issue.
