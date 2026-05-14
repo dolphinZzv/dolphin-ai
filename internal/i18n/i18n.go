@@ -83,6 +83,7 @@ const (
 	KeyCancelNotFound    = "cancel_not_found"
 	KeySessionCheckpoint = "session_checkpoint"
 	KeyTurnError         = "turn_error"
+		KeyNoAvailableProvider = "no_available_provider"
 )
 
 var (

@@ -14,6 +14,7 @@ import (
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
+	"dolphin/internal/i18n"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
@@ -248,7 +249,7 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 			}
 		}
 		if !selected {
-			buf.WriteString("→ No available provider\n")
+			buf.WriteString(i18n.TL(i18n.KeyNoAvailableProvider))
 			fmt.Fprint(os.Stderr, buf.String())
 		}
 	}

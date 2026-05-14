@@ -66,4 +66,5 @@ var enMessages = map[string]string{
 	KeyCancelNotFound:    "No running task found with ID: %s",
 	KeySessionCheckpoint: "\n[Session checkpoint: summary saved, continuing...]\n",
 	KeyTurnError:         "\n[Error: %v]",
+		KeyNoAvailableProvider: "→ No available LLM provider — check your config\n  See: https://github.com/dolphinZzv/dolphin/blob/main/docs/en/INSTALL.md\n",
 }

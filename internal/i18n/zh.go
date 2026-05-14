@@ -66,4 +66,5 @@ var zhMessages = map[string]string{
 	KeyCancelNotFound:    "未找到运行中的任务，ID：%s",
 	KeySessionCheckpoint: "\n[会话检查点：摘要已保存，继续运行...]\n",
 	KeyTurnError:         "\n[错误：%v]",
+		KeyNoAvailableProvider: "→ 没有可用的 LLM 提供商 — 请检查配置\n  参考: https://gitee.com/dolphinzzv/dolphindolphin/blob/main/docs/zh/INSTALL.zh.md\n",
 }
