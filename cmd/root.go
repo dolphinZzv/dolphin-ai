@@ -266,10 +266,10 @@ func warnNoLLM(cfg *config.Config) {
 	if defaultModel == "" {
 		defaultModel = "gpt-4o"
 	}
-	fmt.Fprintf(os.Stderr, "\n⚠  LLM not configured — no API key found.\n")
-	fmt.Fprintf(os.Stderr, "   Default model: %s (base_url: %s)\n", defaultModel, cfg.LLM.BaseURL)
-	fmt.Fprintf(os.Stderr, "   Set DZ_LLM_API_KEY environment variable or add api_key to config.\n")
-	fmt.Fprintf(os.Stderr, "   Run:  dolphin setup\n\n")
+	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnNoLLM))
+	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnDefaultModel), defaultModel, cfg.LLM.BaseURL)
+	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnSetAPIKey))
+	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnRunSetup))
 }
 
 func setupLogging(cfg *config.Config) {

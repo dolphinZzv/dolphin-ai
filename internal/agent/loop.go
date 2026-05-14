@@ -216,19 +216,19 @@ func selectProvider(cfg *config.Config) (Provider, int) {
 	// Build banner.
 	{
 		var buf strings.Builder
-		buf.WriteString("\nLLM Providers:\n")
+		buf.WriteString(i18n.TL(i18n.KeyLLMProvidersHeader))
 		for _, r := range results {
 			if r.ok {
-				buf.WriteString(fmt.Sprintf("  ✓ %s (%s) — %dms\n", r.pc.Name, r.pc.Model, r.ms))
+				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMProviderOK), r.pc.Name, r.pc.Model, r.ms))
 			} else {
-				buf.WriteString(fmt.Sprintf("  ✗ %s (%s) — %dms %s\n", r.pc.Name, r.pc.Model, r.ms, r.err))
+				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMProviderFail), r.pc.Name, r.pc.Model, r.ms, r.err))
 			}
 		}
 		// Pick first available in config order.
 		selected := false
 		for _, r := range results {
 			if r.ok {
-				buf.WriteString(fmt.Sprintf("→ Using: %s\n", r.pc.Name))
+				buf.WriteString(fmt.Sprintf(i18n.TL(i18n.KeyLLMUsing), r.pc.Name))
 				selected = true
 				fmt.Fprint(os.Stderr, buf.String())
 

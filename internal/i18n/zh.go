@@ -67,4 +67,16 @@ var zhMessages = map[string]string{
 	KeySessionCheckpoint: "\n[会话检查点：摘要已保存，继续运行...]\n",
 	KeyTurnError:         "\n[错误：%v]",
 		KeyNoAvailableProvider: "→ 没有可用的 LLM 提供商 — 请检查配置\n  参考: https://gitee.com/dolphinzzv/dolphindolphin/blob/main/docs/zh/INSTALL.zh.md\n",
+
+	// LLM 警告
+	KeyWarnNoLLM:        "\n⚠  LLM 未配置 — 未找到 API 密钥。\n",
+	KeyWarnDefaultModel: "   默认模型：%s（接口地址：%s）\n",
+	KeyWarnSetAPIKey:    "   设置 DZ_LLM_API_KEY 环境变量或在配置中添加 api_key。\n",
+	KeyWarnRunSetup:     "   运行：dolphin setup\n\n",
+
+	// 提供商横幅
+	KeyLLMProvidersHeader: "\nLLM 提供商：\n",
+	KeyLLMProviderOK:      "  ✓ %s（%s）— %dms\n",
+	KeyLLMProviderFail:    "  ✗ %s（%s）— %dms %s\n",
+	KeyLLMUsing:           "→ 使用：%s\n",
 }

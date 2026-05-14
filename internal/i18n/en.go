@@ -67,4 +67,16 @@ var enMessages = map[string]string{
 	KeySessionCheckpoint: "\n[Session checkpoint: summary saved, continuing...]\n",
 	KeyTurnError:         "\n[Error: %v]",
 		KeyNoAvailableProvider: "→ No available LLM provider — check your config\n  See: https://github.com/dolphinZzv/dolphin/blob/main/docs/en/INSTALL.md\n",
+
+	// LLM warnings
+	KeyWarnNoLLM:        "\n⚠  LLM not configured — no API key found.\n",
+	KeyWarnDefaultModel: "   Default model: %s (base_url: %s)\n",
+	KeyWarnSetAPIKey:    "   Set DZ_LLM_API_KEY environment variable or add api_key to config.\n",
+	KeyWarnRunSetup:     "   Run:  dolphin setup\n\n",
+
+	// Provider banner
+	KeyLLMProvidersHeader: "\nLLM Providers:\n",
+	KeyLLMProviderOK:      "  ✓ %s (%s) — %dms\n",
+	KeyLLMProviderFail:    "  ✗ %s (%s) — %dms %s\n",
+	KeyLLMUsing:           "→ Using: %s\n",
 }

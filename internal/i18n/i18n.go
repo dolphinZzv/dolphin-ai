@@ -83,7 +83,19 @@ const (
 	KeyCancelNotFound    = "cancel_not_found"
 	KeySessionCheckpoint = "session_checkpoint"
 	KeyTurnError         = "turn_error"
-		KeyNoAvailableProvider = "no_available_provider"
+	KeyNoAvailableProvider = "no_available_provider"
+
+	// LLM warnings (root.go)
+	KeyWarnNoLLM        = "warn_no_llm"
+	KeyWarnDefaultModel = "warn_default_model"
+	KeyWarnSetAPIKey    = "warn_set_api_key"
+	KeyWarnRunSetup     = "warn_run_setup"
+
+	// Provider banner (loop.go)
+	KeyLLMProvidersHeader = "llm_providers_header"
+	KeyLLMProviderOK      = "llm_provider_ok"
+	KeyLLMProviderFail    = "llm_provider_fail"
+	KeyLLMUsing           = "llm_using"
 )
 
 var (
