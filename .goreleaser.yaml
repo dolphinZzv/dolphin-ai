@@ -77,7 +77,7 @@ nfpms:
         recommends:
           - chromium
 
-brews:
+homebrew_casks:
   - name: dolphin
     repository:
       owner: dolphinZzv
@@ -103,7 +103,7 @@ checksum:
   name_template: "checksums.txt"
 
 snapshot:
-  name_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
+  version_template: "{{ .Version }}-SNAPSHOT-{{ .ShortCommit }}"
 
 changelog:
   sort: asc
