@@ -86,7 +86,7 @@ const PRESET_COLORS = ["#0366d6", "#28a745", "#d73a49", "#ffd33d", "#6f42c1", "#
 export function ProjectSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"basic" | "agents" | "labels" | "milestones">("basic");
+  const [tab, setTab] = useState<"basic" | "workflow" | "agents" | "labels" | "milestones">("basic");
   const [labels, setLabels] = useState<Label[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -94,6 +94,8 @@ export function ProjectSettingsPage() {
   const [commonDeviceInfo, setCommonDeviceInfo] = useState<string[]>([]);
   const [projectName, setProjectName] = useState("");
   const [projectDesc, setProjectDesc] = useState("");
+  const [allowCreatorTransition, setAllowCreatorTransition] = useState(true);
+  const [requireCreatorCloseApproval, setRequireCreatorCloseApproval] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -112,9 +114,12 @@ export function ProjectSettingsPage() {
   const [newMsDue, setNewMsDue] = useState("");
   const [msCreating, setMsCreating] = useState(false);
 
-  // delete project
+  // confirmation dialogs
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteLabelTarget, setDeleteLabelTarget] = useState<{ id: string; name: string } | null>(null);
+  const [deleteMsTarget, setDeleteMsTarget] = useState<{ id: string; name: string } | null>(null);
 
   // create agent
   const [agentOpen, setAgentOpen] = useState(false);
@@ -148,6 +153,8 @@ export function ProjectSettingsPage() {
         `query project($id: ID!) {
           project(id: $id) {
             name description
+            allowCreatorTransition
+            requireCreatorCloseApproval
 members { agent { id number name kind status capabilities deviceInfo modelInfo lastIP externalID } role }
           }
         }`,
@@ -167,6 +174,8 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
         setMembers(pJson.data.project.members || []);
         setProjectName(pJson.data.project.name || "");
         setProjectDesc(pJson.data.project.description || "");
+        setAllowCreatorTransition(pJson.data.project.allowCreatorTransition ?? true);
+        setRequireCreatorCloseApproval(pJson.data.project.requireCreatorCloseApproval ?? false);
         setSupportedModels(sJson.data.supportedModels || []);
         setCommonDeviceInfo(dJson.data.commonDeviceInfo || []);
       })
@@ -312,6 +321,25 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
     }
   };
 
+  const handleSaveWorkflowConfig = async () => {
+    if (!id) return;
+    setSaving(true);
+    try {
+      const json = await gql(
+        `mutation updateProjectConfig($id: ID!, $allowCreatorTransition: Boolean, $requireCreatorCloseApproval: Boolean) {
+          updateProjectConfig(id: $id, allowCreatorTransition: $allowCreatorTransition, requireCreatorCloseApproval: $requireCreatorCloseApproval) { id }
+        }`,
+        { id, allowCreatorTransition, requireCreatorCloseApproval }
+      );
+      if (json.errors) { toast.error(json.errors[0].message); return; }
+      toast.success("工作流配置已更新");
+    } catch {
+      toast.error("网络错误");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !newAgentName.trim()) return;
@@ -350,6 +378,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
 
   const tabs = [
     { key: "basic" as const, label: "基本" },
+    { key: "workflow" as const, label: "工作流" },
     { key: "agents" as const, label: "Agent" },
     { key: "labels" as const, label: "标签" },
     { key: "milestones" as const, label: "里程碑" },
@@ -409,6 +438,52 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
         </div>
       )}
 
+      {/* Workflow config tab */}
+      {tab === "workflow" && (
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          <h2 className="text-base font-semibold">工作流配置</h2>
+          <p className="text-sm text-muted-foreground">配置 Issue 的状态流转权限。</p>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <label className="text-sm font-medium">允许创建者自己流转</label>
+              <p className="text-xs text-muted-foreground">启用后，Issue 创建者可以自行变更状态（需为项目拥有者/维护者或被指派人）</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={allowCreatorTransition}
+                onChange={e => setAllowCreatorTransition(e.target.checked)}
+              />
+              <div className="w-10 h-5 bg-muted rounded-full peer peer-checked:bg-primary peer-focus:outline-none after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-card after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+            </label>
+          </div>
+
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex-1">
+              <label className="text-sm font-medium">创建者审批后才能关闭</label>
+              <p className="text-xs text-muted-foreground">启用后，只有 Issue 创建者才能关闭 Issue（转为已关闭状态）</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={requireCreatorCloseApproval}
+                onChange={e => setRequireCreatorCloseApproval(e.target.checked)}
+              />
+              <div className="w-10 h-5 bg-muted rounded-full peer peer-checked:bg-primary peer-focus:outline-none after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-card after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-5" />
+            </label>
+          </div>
+
+          <div className="flex justify-end">
+            <Button onClick={handleSaveWorkflowConfig} disabled={saving}>
+              {saving ? "保存中..." : "保存"}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Agents tab */}
       {tab === "agents" && (
         <div className="space-y-3">
@@ -449,7 +524,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                               onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                handleRemoveMember(a.id);
+                                setRemoveMemberTarget({ id: a.id, name: `#${a.number} ${a.name}` });
                               }}
                               aria-label="移除 Agent"
                             >
@@ -690,7 +765,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                    onClick={() => handleDeleteLabel(label.id)}
+                    onClick={() => setDeleteLabelTarget({ id: label.id, name: label.name })}
                     aria-label="删除标签"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -769,7 +844,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteMilestone(ms.id)}
+                        onClick={() => setDeleteMsTarget({ id: ms.id, name: ms.title })}
                         aria-label="删除里程碑"
                       >
                         <Trash2 className="h-4 w-4" />
@@ -819,6 +894,60 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
           {deleting ? "删除中..." : "删除项目"}
         </Button>
       </div>
+
+      {/* Remove member confirmation */}
+      <AlertDialog open={!!removeMemberTarget} onOpenChange={(o) => { if (!o) setRemoveMemberTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认移除 Agent？</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定将 {removeMemberTarget?.name} 从项目中移除吗？此操作不会删除该 Agent 的账号。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (removeMemberTarget) handleRemoveMember(removeMemberTarget.id); setRemoveMemberTarget(null); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              确认移除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete label confirmation */}
+      <AlertDialog open={!!deleteLabelTarget} onOpenChange={(o) => { if (!o) setDeleteLabelTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除标签？</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定删除标签「{deleteLabelTarget?.name}」吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deleteLabelTarget) handleDeleteLabel(deleteLabelTarget.id); setDeleteLabelTarget(null); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete milestone confirmation */}
+      <AlertDialog open={!!deleteMsTarget} onOpenChange={(o) => { if (!o) setDeleteMsTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除里程碑？</AlertDialogTitle>
+            <AlertDialogDescription>
+              确定删除里程碑「{deleteMsTarget?.name}」吗？此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { if (deleteMsTarget) handleDeleteMilestone(deleteMsTarget.id); setDeleteMsTarget(null); }} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete project confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>

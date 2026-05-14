@@ -168,7 +168,7 @@ function SimpleIssueCard({
   validTransitions,
 }: {
   issue: Issue;
-  onTransition: (issueId: string, toState: string) => Promise<void>;
+  onTransition: (issueId: string, toState: string, note?: string) => Promise<void>;
   projectLabels: Label[];
   projectMilestones: Milestone[];
   onAddLabel: (issueId: string, labelId: string) => Promise<void>;
@@ -190,9 +190,11 @@ function SimpleIssueCard({
   const handleQuickMove = async (e: React.MouseEvent, toState: string) => {
     e.preventDefault();
     e.stopPropagation();
+    const note = window.prompt(`请输入「${stateLabels[toState]}」的备注说明（可选）：`);
+    if (note === null) return; // cancelled
     setMoving(true);
     try {
-      await onTransition(issue.id, toState);
+      await onTransition(issue.id, toState, note);
       toast.success(`已移至 ${stateLabels[toState]}`);
     } catch {
       toast.error("状态变更失败");
@@ -437,7 +439,7 @@ function StaticColumn({
 }: {
   column: Column;
   issues: Issue[];
-  onTransition: (issueId: string, toState: string) => Promise<void>;
+  onTransition: (issueId: string, toState: string, note?: string) => Promise<void>;
   projectLabels: Label[];
   projectMilestones: Milestone[];
   onAddLabel: (issueId: string, labelId: string) => Promise<void>;
@@ -499,7 +501,7 @@ interface IssueBoardProps {
   columns: Column[];
   issues: Issue[];
   isDesktop: boolean;
-  onTransition: (issueId: string, toState: string) => Promise<void>;
+  onTransition: (issueId: string, toState: string, note?: string) => Promise<void>;
   projectLabels: Label[];
   projectMilestones: Milestone[];
   onAddLabel: (issueId: string, labelId: string) => Promise<void>;
@@ -552,8 +554,11 @@ export function IssueBoard({
     const toState = overData.column.state;
     if (fromState === toState) return;
 
+    const note = window.prompt(`请输入拖拽到「${overData.column.label}」的备注说明（可选）：`);
+    if (note === null) return;
+
     try {
-      await onTransition(activeData.issue.id, toState);
+      await onTransition(activeData.issue.id, toState, note);
     } catch {
       toast.error("状态变更失败");
     }

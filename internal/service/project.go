@@ -98,6 +98,23 @@ func (s *ProjectService) Delete(id uint) error {
 	return s.projectRepo.Delete(id)
 }
 
+func (s *ProjectService) UpdateConfig(id uint, allowCreatorTransition, requireCreatorCloseApproval *bool) (*models.Project, error) {
+	changes := map[string]interface{}{}
+	if allowCreatorTransition != nil {
+		changes["allow_creator_transition"] = *allowCreatorTransition
+	}
+	if requireCreatorCloseApproval != nil {
+		changes["require_creator_close_approval"] = *requireCreatorCloseApproval
+	}
+	if len(changes) == 0 {
+		return s.projectRepo.GetByID(id)
+	}
+	if err := s.projectRepo.Update(id, changes); err != nil {
+		return nil, fmt.Errorf("update project config: %w", err)
+	}
+	return s.projectRepo.GetByID(id)
+}
+
 func (s *ProjectService) AddMember(projectID, agentID uint, role models.ProjectRole) (*models.ProjectMember, error) {
 	m := &models.ProjectMember{
 		ProjectID: projectID,

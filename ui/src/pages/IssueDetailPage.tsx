@@ -155,7 +155,20 @@ function MarkdownContent({ content }: { content: string }) {
 function Timeline({ events }: { events: TimelineEvent[] }) {
   return (
     <div className="space-y-0">
-      {events.map((event, idx) => (
+      {events.map((event, idx) => {
+        const note = event.payload && typeof event.payload === "object" && "note" in event.payload
+          ? String(event.payload.note)
+          : null;
+        const fromState = event.payload && typeof event.payload === "object" && "from" in event.payload
+          ? String(event.payload.from)
+          : null;
+        const toState = event.payload && typeof event.payload === "object" && "to" in event.payload
+          ? String(event.payload.to)
+          : null;
+        const transitionDetail = event.eventType === "state_changed" && fromState && toState
+          ? `${stateLabels[fromState] || fromState} → ${stateLabels[toState] || toState}`
+          : null;
+        return (
         <div key={event.id} className="flex gap-3">
           <div className="flex flex-col items-center">
             <div className="mt-1.5 flex h-5 w-5 items-center justify-center rounded-full border bg-card text-[10px] text-muted-foreground">
@@ -175,9 +188,16 @@ function Timeline({ events }: { events: TimelineEvent[] }) {
                 {relativeTime(event.createdAt)}
               </span>
             </div>
+            {transitionDetail && (
+              <p className="text-xs text-muted-foreground mt-0.5">{transitionDetail}</p>
+            )}
+            {note && (
+              <p className="mt-1 text-xs bg-muted/50 rounded px-2 py-1 italic">{note}</p>
+            )}
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -302,12 +322,15 @@ export function IssueDetailPage() {
 
   const handleTransition = async (toState: string) => {
     if (!id || !agent) return;
+    const targetLabel = stateLabels[toState] || toState;
+    const note = window.prompt(`请输入变更为「${targetLabel}」的备注说明（可选）：`);
+    if (note === null) return;
     try {
       const json = await gql(
-        `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!) {
-          transitionIssue(id: $id, newState: $newState, actorID: $actorId) { state }
+        `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!, $note: String) {
+          transitionIssue(id: $id, newState: $newState, actorID: $actorId, note: $note) { state }
         }`,
-        { id, newState: toState, actorId: agent.agentId }
+        { id, newState: toState, actorId: agent.agentId, note: note || null }
       );
       if (!json.errors && json.data) {
         setIssue((prev) => prev ? { ...prev, state: json.data.transitionIssue.state } : prev);
@@ -382,8 +405,9 @@ export function IssueDetailPage() {
     }
   };
 
-  const handleRemoveLabel = async (labelId: string) => {
+  const handleRemoveLabel = async (labelId: string, labelName?: string) => {
     if (!id) return;
+    if (!window.confirm(`确认从 Issue 中移除标签「${labelName || labelId}」？`)) return;
     try {
       const json = await gql(
         `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
@@ -481,8 +505,9 @@ export function IssueDetailPage() {
     }
   };
 
-  const handleRemoveAssignee = async (agentId: string) => {
+  const handleRemoveAssignee = async (agentId: string, agentName?: string) => {
     if (!id) return;
+    if (!window.confirm(`确认将「${agentName || agentId}」从负责人中移除？`)) return;
     try {
       const json = await gql(
         `mutation removeAssignee($issueID: ID!, $agentID: ID!) {
@@ -894,7 +919,7 @@ export function IssueDetailPage() {
                   </Badge>
                   {agent && (
                     <button className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                      onClick={() => handleRemoveAssignee(a.agent.id)}>
+                      onClick={() => handleRemoveAssignee(a.agent.id, a.agent.name)}>
                       <X className="h-3 w-3" />
                     </button>
                   )}
@@ -1045,7 +1070,7 @@ export function IssueDetailPage() {
                     backgroundColor: l.color ? `${l.color}20` : undefined,
                     color: l.color || undefined,
                   }}
-                  onClick={() => handleRemoveLabel(l.id)}
+                  onClick={() => handleRemoveLabel(l.id, l.name)}
                   title="点击移除"
                 >
                   {l.name} ✕

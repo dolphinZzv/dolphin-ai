@@ -218,6 +218,19 @@ func (r *mutationResolver) UpdateProject(ctx context.Context, id string, name *s
 	return projectFromModel(p), nil
 }
 
+// UpdateProjectConfig is the resolver for the updateProjectConfig field.
+func (r *mutationResolver) UpdateProjectConfig(ctx context.Context, id string, allowCreatorTransition *bool, requireCreatorCloseApproval *bool) (*Project, error) {
+	pid := parseID(id)
+	if _, err := r.requireProjectOwner(ctx, pid); err != nil {
+		return nil, err
+	}
+	p, err := r.ProjectSvc.UpdateConfig(pid, allowCreatorTransition, requireCreatorCloseApproval)
+	if err != nil {
+		return nil, fmt.Errorf("update project config: %w", err)
+	}
+	return projectFromModel(p), nil
+}
+
 // DeleteProject is the resolver for the deleteProject field.
 func (r *mutationResolver) DeleteProject(ctx context.Context, id string) (bool, error) {
 	pid := parseID(id)
@@ -351,7 +364,7 @@ func (r *mutationResolver) DeleteIssue(ctx context.Context, id string) (bool, er
 }
 
 // TransitionIssue is the resolver for the transitionIssue field.
-func (r *mutationResolver) TransitionIssue(ctx context.Context, id string, newState IssueState, actorID string) (*Issue, error) {
+func (r *mutationResolver) TransitionIssue(ctx context.Context, id string, newState IssueState, actorID string, note *string) (*Issue, error) {
 	iid := parseID(id)
 	agentID, err := r.requireIssueProjectMember(ctx, iid)
 	if err != nil {
@@ -360,7 +373,7 @@ func (r *mutationResolver) TransitionIssue(ctx context.Context, id string, newSt
 	if parseID(actorID) != agentID {
 		return nil, errors.New("actorID 与认证身份不匹配")
 	}
-	issue, err := r.WorkflowSvc.Transition(iid, models.IssueState(newState), agentID)
+	issue, err := r.WorkflowSvc.Transition(iid, models.IssueState(newState), agentID, note)
 	if err != nil {
 		return nil, fmt.Errorf("transition issue: %w", err)
 	}

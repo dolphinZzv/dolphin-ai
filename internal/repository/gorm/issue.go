@@ -124,7 +124,29 @@ func (r *IssueRepo) Update(id uint, changes map[string]interface{}) error {
 }
 
 func (r *IssueRepo) Delete(id uint) error {
-	return r.db.Delete(&models.Issue{}, id).Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		// Delete dependent records first to avoid FK violations
+		if err := tx.Where("issue_id = ?", id).Delete(&models.IssueAssignee{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Exec("DELETE FROM issue_labels WHERE issue_id = ?", id).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("issue_id = ?", id).Delete(&models.TimelineEvent{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("target_type = 'issue' AND target_id = ?", id).Delete(&models.Feedback{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("issue_id = ?", id).Delete(&models.Comment{}).Error; err != nil {
+			return err
+		}
+		// Detach children before deleting parent
+		if err := tx.Model(&models.Issue{}).Where("parent_id = ?", id).Update("parent_id", nil).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&models.Issue{}, id).Error
+	})
 }
 
 func (r *IssueRepo) NextNumber(projectID uint) (uint, error) {

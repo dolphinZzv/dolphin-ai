@@ -17,6 +17,7 @@ interface AgentDetail {
   status: string;
   disabled: boolean;
   externalID: string;
+  tokenPreview?: string;
   capabilities: string[];
   deviceInfo?: string;
   modelInfo?: string;
@@ -52,7 +53,7 @@ export function AgentDetailPage() {
     setLoading(true);
     setError(null);
     gql(
-      `query agent($id: ID!) { agent(id: $id) { id number name kind status disabled externalID capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
+      `query agent($id: ID!) { agent(id: $id) { id number name kind status disabled externalID tokenPreview capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
       { id }
     )
       .then((json) => {
@@ -65,6 +66,8 @@ export function AgentDetailPage() {
 
   const toggleDisabled = useCallback(() => {
     if (!id || !agent || toggling) return;
+    const action = agent.disabled ? "启用" : "禁用";
+    if (!window.confirm(`确认${action} Agent #${agent.number} ${agent.name}？`)) return;
     setToggling(true);
     const newDisabled = !agent.disabled;
     gql(
@@ -154,6 +157,12 @@ export function AgentDetailPage() {
               <p className="text-muted-foreground mb-0.5">账户</p>
               <p className="font-mono">{agent.externalID}</p>
             </div>
+            {agent.tokenPreview && (
+            <div>
+              <p className="text-muted-foreground mb-0.5">Token</p>
+              <p className="font-mono text-xs tracking-wider">{agent.tokenPreview}</p>
+            </div>
+            )}
             <div>
               <p className="text-muted-foreground mb-0.5">类型</p>
               <p>{kindLabels[agent.kind] || agent.kind}</p>

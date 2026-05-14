@@ -154,12 +154,14 @@ export function ProjectDetailPage() {
     return () => document.removeEventListener("visibilitychange", onVisible);
   }, [fetchData]);
 
-  const handleTransition = async (issueId: string, toState: string) => {
+  const handleTransition = async (issueId: string, toState: string, note?: string) => {
+    const targetLabel = columns.find((c) => c.state === toState)?.label || toState;
+    if (!window.confirm(`确认将该 Issue 状态变更为「${targetLabel}」？`)) return;
     const json = await gql(
-      `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!) {
-        transitionIssue(id: $id, newState: $newState, actorID: $actorId) { state }
+      `mutation transitionIssue($id: ID!, $newState: IssueState!, $actorId: ID!, $note: String) {
+        transitionIssue(id: $id, newState: $newState, actorID: $actorId, note: $note) { state }
       }`,
-      { id: issueId, newState: toState, actorId: agent?.agentId || "" }
+      { id: issueId, newState: toState, actorId: agent?.agentId || "", note: note || null }
     );
     if (json.errors) {
       toast.error(json.errors[0].message);
@@ -183,6 +185,7 @@ export function ProjectDetailPage() {
   };
 
   const handleRemoveLabel = async (issueId: string, labelId: string) => {
+    if (!window.confirm("确认从该 Issue 中移除该标签？")) return;
     const json = await gql(
       `mutation removeLabels($issueID: ID!, $labelIDs: [ID!]!) { removeLabels(issueID: $issueID, labelIDs: $labelIDs) { id labels { id name color } } }`,
       { issueID: issueId, labelIDs: [labelId] }

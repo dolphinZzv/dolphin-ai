@@ -41,6 +41,35 @@ func TestProjectRepo_List(t *testing.T) {
 	}
 }
 
+func TestProjectRepo_UpdateConfig(t *testing.T) {
+	repo := NewProjectRepo(db(t)).(*ProjectRepo)
+
+	p := &models.Project{Name: "Test"}
+	if err := repo.Create(p); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	// Update config fields
+	err := repo.Update(p.ID, map[string]interface{}{
+		"allow_creator_transition":        false,
+		"require_creator_close_approval":  true,
+	})
+	if err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+
+	got, err := repo.GetByID(p.ID)
+	if err != nil {
+		t.Fatalf("get after update: %v", err)
+	}
+	if got.AllowCreatorTransition != false {
+		t.Errorf("expected AllowCreatorTransition=false, got %v", got.AllowCreatorTransition)
+	}
+	if got.RequireCreatorCloseApproval != true {
+		t.Errorf("expected RequireCreatorCloseApproval=true, got %v", got.RequireCreatorCloseApproval)
+	}
+}
+
 func TestProjectRepo_Delete(t *testing.T) {
 	repo := NewProjectRepo(db(t)).(*ProjectRepo)
 

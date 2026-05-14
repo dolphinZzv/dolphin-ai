@@ -50,6 +50,9 @@ func agentFromModel(a *models.Agent) *Agent {
 	if a.LastIP != "" {
 		agent.LastIP = &a.LastIP
 	}
+	if a.Token != "" {
+		agent.TokenPreview = strPtr(maskToken(a.Token))
+	}
 	return agent
 }
 
@@ -58,11 +61,13 @@ func projectFromModel(p *models.Project) *Project {
 		return nil
 	}
 	proj := &Project{
-		ID:             formatID(p.ID),
-		Name:           p.Name,
-		Description:    strPtr(p.Description),
-		CreatedAt:      p.CreatedAt,
-		UpdatedAt:      p.UpdatedAt,
+		ID:                          formatID(p.ID),
+		Name:                        p.Name,
+		Description:                 strPtr(p.Description),
+		AllowCreatorTransition:      p.AllowCreatorTransition,
+		RequireCreatorCloseApproval: p.RequireCreatorCloseApproval,
+		CreatedAt:                   p.CreatedAt,
+		UpdatedAt:                   p.UpdatedAt,
 	}
 	if len(p.Members) > 0 {
 		members := make([]*ProjectMember, len(p.Members))
@@ -190,7 +195,6 @@ func milestoneFromModel(m *models.Milestone) *Milestone {
 	}
 }
 
-
 func commentFromModel(c *models.Comment) *Comment {
 	if c == nil {
 		return nil
@@ -213,7 +217,7 @@ func commentFromModel(c *models.Comment) *Comment {
 }
 
 func timelineFromModel(t *models.TimelineEvent) *TimelineEvent {
-	return &TimelineEvent{
+	te := &TimelineEvent{
 		ID:        formatID(t.ID),
 		IssueID:   formatID(t.IssueID),
 		ActorID:   formatID(t.ActorID),
@@ -221,6 +225,10 @@ func timelineFromModel(t *models.TimelineEvent) *TimelineEvent {
 		CreatedAt: t.CreatedAt,
 		Actor:     agentFromModel(&t.Actor),
 	}
+	if t.Payload != nil {
+		te.Payload = map[string]any(t.Payload)
+	}
+	return te
 }
 
 func feedbackFromModel(f *models.Feedback) *Feedback {
@@ -291,4 +299,11 @@ func randomHex(n int) string {
 		panic("failed to generate random bytes: " + err.Error())
 	}
 	return hex.EncodeToString(b)
+}
+
+func maskToken(token string) string {
+	if len(token) <= 10 {
+		return token
+	}
+	return token[:6] + "…" + token[len(token)-4:]
 }

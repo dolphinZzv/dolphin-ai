@@ -121,14 +121,14 @@ func (s *IssueService) List(filter models.IssueFilter) ([]models.Issue, int64, e
 	return s.issueRepo.List(filter)
 }
 
-func (s *IssueService) TransitionState(id uint, newState models.IssueState, actorID uint) (*models.Issue, error) {
+func (s *IssueService) TransitionState(id uint, newState models.IssueState, actorID uint, note *string) (*models.Issue, error) {
 	var oldState models.IssueState
 	var projectID uint
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Read current state within the transaction to avoid TOCTOU
 		var current models.Issue
-		if err := tx.Model(&models.Issue{}).Select("state,project_id").First(&current, id).Error; err != nil {
+		if err := tx.Model(&models.Issue{}).Select("state,project_id,creator_id").First(&current, id).Error; err != nil {
 			return fmt.Errorf("get issue for transition: %w", err)
 		}
 		oldState = current.State
@@ -150,6 +150,35 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 			return fmt.Errorf("transition from %s to %s not allowed", current.State, newState)
 		}
 
+		// Check project-level transition authorization
+		var project models.Project
+		if err := tx.Model(&models.Project{}).Select("allow_creator_transition,require_creator_close_approval").First(&project, projectID).Error; err != nil {
+			return fmt.Errorf("get project config: %w", err)
+		}
+
+		if !project.AllowCreatorTransition && actorID == current.CreatorID {
+			// Creator is restricted — check if they are an owner/maintainer or assignee
+			var member models.ProjectMember
+			if err := tx.Where("project_id = ? AND agent_id = ?", projectID, actorID).First(&member).Error; err != nil {
+				return fmt.Errorf("check member role: %w", err)
+			}
+			if member.Role != models.ProjectRoleOwner && member.Role != models.ProjectRoleMaintainer {
+				// Check if they're an assignee
+				var assigneeCount int64
+				tx.Model(&models.IssueAssignee{}).Where("issue_id = ? AND agent_id = ?", id, actorID).Count(&assigneeCount)
+				if assigneeCount == 0 {
+					return fmt.Errorf("issue creator is not allowed to transition this issue")
+				}
+			}
+		}
+
+		if project.RequireCreatorCloseApproval && actorID != current.CreatorID {
+			switch newState {
+			case models.IssueStateClosedCompleted, models.IssueStateClosedNotPlanned, models.IssueStateClosedRejected:
+				return fmt.Errorf("only the issue creator can close this issue")
+			}
+		}
+
 		txIssueRepo := gormrepo.NewIssueRepo(tx)
 		return txIssueRepo.UpdateState(id, newState)
 	})
@@ -158,11 +187,15 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 	}
 
 	// Timeline event (best-effort)
+	payload := models.JSONMap{"from": string(oldState), "to": string(newState)}
+	if note != nil && *note != "" {
+		payload["note"] = *note
+	}
 	event := &models.TimelineEvent{
 		IssueID:   id,
 		ActorID:   actorID,
 		EventType: models.EventIssueStateChanged,
-		Payload:   nil,
+		Payload:   payload,
 	}
 	if err := s.timelineRepo.Create(event); err != nil {
 		log.Printf("[issue] failed to create timeline event: %v", err)

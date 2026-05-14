@@ -27,9 +27,8 @@ var validTransitions = map[models.IssueState][]models.IssueState{
 	models.IssueStateClosedRejected:      {models.IssueStateReopen},
 }
 
-func (s *WorkflowService) Transition(issueID uint, toState models.IssueState, actorID uint) (*models.Issue, error) {
-	// Delegates to IssueService.TransitionState which validates atomically in a transaction
-	return s.issueService.TransitionState(issueID, toState, actorID)
+func (s *WorkflowService) Transition(issueID uint, toState models.IssueState, actorID uint, note *string) (*models.Issue, error) {
+	return s.issueService.TransitionState(issueID, toState, actorID, note)
 }
 
 func (s *WorkflowService) ValidTransitions(state models.IssueState) ([]models.IssueState, error) {

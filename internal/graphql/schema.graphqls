@@ -32,6 +32,7 @@ type Agent {
   lastSeenAt: Time
   createdAt: Time!
   updatedAt: Time!
+  tokenPreview: String
   assignedIssues: [IssueAssignee!]
   createdIssues: [Issue!]
 }
@@ -67,6 +68,8 @@ type Project {
   number: Int!
   name: String!
   description: String
+  allowCreatorTransition: Boolean!
+  requireCreatorCloseApproval: Boolean!
   createdAt: Time!
   updatedAt: Time!
   members: [ProjectMember!]
@@ -261,6 +264,7 @@ type Mutation {
 
   createProject(name: String!, description: String): Project!
   updateProject(id: ID!, name: String, description: String): Project!
+  updateProjectConfig(id: ID!, allowCreatorTransition: Boolean, requireCreatorCloseApproval: Boolean): Project!
   deleteProject(id: ID!): Boolean!
   addProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
   updateProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
@@ -269,7 +273,7 @@ type Mutation {
   createIssue(projectID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!], milestoneId: ID): Issue!
   updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time, milestoneId: ID): Issue!
   deleteIssue(id: ID!): Boolean!
-  transitionIssue(id: ID!, newState: IssueState!, actorID: ID!): Issue!
+  transitionIssue(id: ID!, newState: IssueState!, actorID: ID!, note: String): Issue!
 
   addAssignee(issueID: ID!, agentID: ID!): IssueAssignee!
   removeAssignee(issueID: ID!, agentID: ID!): Boolean!

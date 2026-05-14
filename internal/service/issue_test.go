@@ -91,7 +91,7 @@ func TestTransitionIssue_Valid(t *testing.T) {
 	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil, nil)
 
 	// OPEN -> IN_PROGRESS
-	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, 1)
+	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, 1, nil)
 	if err != nil {
 		t.Fatalf("transition to in_progress: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestTransitionIssue_Valid(t *testing.T) {
 	}
 
 	// IN_PROGRESS -> REVIEW
-	issue, err = workflowSvc.Transition(issue.ID, models.IssueStateReview, 1)
+	issue, err = workflowSvc.Transition(issue.ID, models.IssueStateReview, 1, nil)
 	if err != nil {
 		t.Fatalf("transition to review: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestTransitionIssue_Valid(t *testing.T) {
 	}
 
 	// REVIEW -> CLOSED_COMPLETED
-	issue, err = workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, 1)
+	issue, err = workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, 1, nil)
 	if err != nil {
 		t.Fatalf("transition to closed: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestTransitionIssue_Invalid(t *testing.T) {
 	issue, _ := issueSvc.Create(p.ID, 1, "Test", "", models.PriorityMedium, nil, nil, nil)
 
 	// OPEN -> CLOSED (invalid, must go through IN_PROGRESS -> REVIEW)
-	_, err := workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, 1)
+	_, err := workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, 1, nil)
 	if err == nil {
 		t.Fatal("expected error for invalid transition")
 	}
@@ -236,6 +236,131 @@ func TestAgentRegisterAndLogin(t *testing.T) {
 	_, err = agentSvc.Login("bot-1", "wrongpass")
 	if err == nil {
 		t.Fatal("expected error for wrong password")
+	}
+}
+
+// ─── Workflow config tests ───────────────────────────────────────
+
+func TestTransitionIssue_CreatorRestricted(t *testing.T) {
+	issueSvc, agentSvc, projectSvc, workflowSvc := setupIssueTest(t)
+	p, _ := projectSvc.Create("Test", "")
+
+	creator, _ := agentSvc.Register("creator", models.AgentKindHuman, "cr-1", "secret", nil, "", "")
+	projectSvc.AddMember(p.ID, creator.ID, models.ProjectRoleMember)
+
+	ac := false
+	projectSvc.UpdateConfig(p.ID, &ac, nil)
+
+	issue, _ := issueSvc.Create(p.ID, creator.ID, "Test", "", models.PriorityMedium, nil, nil, nil)
+
+	// Creator is a regular member, not owner/maintainer, not an assignee — should be denied
+	_, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, creator.ID, nil)
+	if err == nil {
+		t.Fatal("expected error: creator should not be allowed to transition when AllowCreatorTransition=false")
+	}
+}
+
+func TestTransitionIssue_CreatorRestricted_AsOwner(t *testing.T) {
+	issueSvc, agentSvc, projectSvc, workflowSvc := setupIssueTest(t)
+	p, _ := projectSvc.Create("Test", "")
+
+	creator, _ := agentSvc.Register("creator", models.AgentKindHuman, "co-1", "secret", nil, "", "")
+	projectSvc.AddMember(p.ID, creator.ID, models.ProjectRoleOwner)
+
+	ac := false
+	projectSvc.UpdateConfig(p.ID, &ac, nil)
+
+	issue, _ := issueSvc.Create(p.ID, creator.ID, "Test", "", models.PriorityMedium, nil, nil, nil)
+
+	// Creator is owner — should be allowed
+	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, creator.ID, nil)
+	if err != nil {
+		t.Fatalf("owner should be allowed to transition: %v", err)
+	}
+	if issue.State != models.IssueStateInProgress {
+		t.Errorf("expected in_progress, got %s", issue.State)
+	}
+}
+
+func TestTransitionIssue_CreatorRestricted_AsMaintainer(t *testing.T) {
+	issueSvc, agentSvc, projectSvc, workflowSvc := setupIssueTest(t)
+	p, _ := projectSvc.Create("Test", "")
+
+	creator, _ := agentSvc.Register("creator", models.AgentKindHuman, "cma-1", "secret", nil, "", "")
+	projectSvc.AddMember(p.ID, creator.ID, models.ProjectRoleMaintainer)
+
+	ac := false
+	projectSvc.UpdateConfig(p.ID, &ac, nil)
+
+	issue, _ := issueSvc.Create(p.ID, creator.ID, "Test", "", models.PriorityMedium, nil, nil, nil)
+
+	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, creator.ID, nil)
+	if err != nil {
+		t.Fatalf("maintainer should be allowed to transition: %v", err)
+	}
+	if issue.State != models.IssueStateInProgress {
+		t.Errorf("expected in_progress, got %s", issue.State)
+	}
+}
+
+func TestTransitionIssue_CreatorRestricted_AsAssignee(t *testing.T) {
+	issueSvc, agentSvc, projectSvc, workflowSvc := setupIssueTest(t)
+	p, _ := projectSvc.Create("Test", "")
+
+	creator, _ := agentSvc.Register("creator", models.AgentKindHuman, "ca-1", "secret", nil, "", "")
+	projectSvc.AddMember(p.ID, creator.ID, models.ProjectRoleMember)
+
+	ac := false
+	projectSvc.UpdateConfig(p.ID, &ac, nil)
+
+	// Creator is also an assignee of the issue
+	issue, _ := issueSvc.Create(p.ID, creator.ID, "Test", "", models.PriorityMedium, []uint{creator.ID}, nil, nil)
+
+	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, creator.ID, nil)
+	if err != nil {
+		t.Fatalf("creator who is an assignee should be allowed to transition: %v", err)
+	}
+	if issue.State != models.IssueStateInProgress {
+		t.Errorf("expected in_progress, got %s", issue.State)
+	}
+}
+
+func TestTransitionIssue_RequireCreatorCloseApproval(t *testing.T) {
+	issueSvc, agentSvc, projectSvc, workflowSvc := setupIssueTest(t)
+	p, _ := projectSvc.Create("Test", "")
+
+	creator, _ := agentSvc.Register("creator", models.AgentKindHuman, "ca-close", "secret", nil, "", "")
+	projectSvc.AddMember(p.ID, creator.ID, models.ProjectRoleMember)
+	other, _ := agentSvc.Register("other", models.AgentKindHuman, "other-close", "secret", nil, "", "")
+
+	rc := true
+	projectSvc.UpdateConfig(p.ID, nil, &rc)
+
+	issue, _ := issueSvc.Create(p.ID, creator.ID, "Test", "", models.PriorityMedium, nil, nil, nil)
+
+	// Other agent transitions: open -> in_progress -> review
+	issue, err := workflowSvc.Transition(issue.ID, models.IssueStateInProgress, other.ID, nil)
+	if err != nil {
+		t.Fatalf("other agent should be able to transition to in_progress: %v", err)
+	}
+	issue, err = workflowSvc.Transition(issue.ID, models.IssueStateReview, other.ID, nil)
+	if err != nil {
+		t.Fatalf("other agent should be able to transition to review: %v", err)
+	}
+
+	// Other agent tries to close — should be blocked
+	_, err = workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, other.ID, nil)
+	if err == nil {
+		t.Fatal("expected error: non-creator should not close when RequireCreatorCloseApproval=true")
+	}
+
+	// Creator can still close
+	issue, err = workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, creator.ID, nil)
+	if err != nil {
+		t.Fatalf("creator should be allowed to close: %v", err)
+	}
+	if issue.State != models.IssueStateClosedCompleted {
+		t.Errorf("expected closed_completed, got %s", issue.State)
 	}
 }
 

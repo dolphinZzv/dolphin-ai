@@ -189,6 +189,7 @@ func (r *Resources) readAgent(uri string, id uint) (interface{}, error) {
 		"deviceInfo":   a.DeviceInfo,
 		"modelInfo":    a.ModelInfo,
 		"lastIp":       a.LastIP,
+			"tokenPreview": maskToken(a.Token),
 	})
 	return map[string]interface{}{
 		"uri":      uri,

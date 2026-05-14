@@ -112,7 +112,7 @@ func TestIntegration_IssueTransitions(t *testing.T) {
 	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Transition me", "", models.PriorityMedium, nil, nil, nil)
 
 	// OPEN -> IN_PROGRESS
-	issue, err := fx.workflowSvc.Transition(issue.ID, models.IssueStateInProgress, fx.creatorID)
+	issue, err := fx.workflowSvc.Transition(issue.ID, models.IssueStateInProgress, fx.creatorID, nil)
 	if err != nil {
 		t.Fatalf("to in_progress: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestIntegration_IssueTransitions(t *testing.T) {
 	}
 
 	// IN_PROGRESS -> REVIEW
-	issue, err = fx.workflowSvc.Transition(issue.ID, models.IssueStateReview, fx.creatorID)
+	issue, err = fx.workflowSvc.Transition(issue.ID, models.IssueStateReview, fx.creatorID, nil)
 	if err != nil {
 		t.Fatalf("to review: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestIntegration_IssueTransitions(t *testing.T) {
 	}
 
 	// REVIEW -> CLOSED_COMPLETED
-	issue, err = fx.workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, fx.creatorID)
+	issue, err = fx.workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, fx.creatorID, nil)
 	if err != nil {
 		t.Fatalf("to closed: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestIntegration_InvalidTransition(t *testing.T) {
 	p, _ := fx.projectSvc.Create("Invalid Transitions", "")
 	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Invalid", "", models.PriorityMedium, nil, nil, nil)
 
-	_, err := fx.workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, fx.creatorID)
+	_, err := fx.workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, fx.creatorID, nil)
 	if err == nil {
 		t.Fatal("expected error for invalid transition")
 	}

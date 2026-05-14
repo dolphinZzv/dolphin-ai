@@ -232,6 +232,7 @@ func (h *Handlers) handleGetAgentInfo(id json.RawMessage, params json.RawMessage
 		"deviceInfo":   agent.DeviceInfo,
 		"modelInfo":    agent.ModelInfo,
 		"lastIp":       agent.LastIP,
+		"tokenPreview": maskToken(agent.Token),
 	})
 }
 
@@ -361,7 +362,7 @@ func (h *Handlers) handleTransitionIssue(id json.RawMessage, params json.RawMess
 		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
 	}
 
-	issue, err := h.workflowSvc.Transition(uint(issueID), models.IssueState(p.ToState), actorID)
+	issue, err := h.workflowSvc.Transition(uint(issueID), models.IssueState(p.ToState), actorID, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -613,4 +614,11 @@ func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage
 		}
 	}
 	return NewResponse(id, map[string]interface{}{"items": result})
+}
+
+func maskToken(token string) string {
+	if len(token) <= 10 {
+		return token
+	}
+	return token[:6] + "…" + token[len(token)-4:]
 }

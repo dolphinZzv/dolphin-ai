@@ -236,7 +236,7 @@ func TestGraphQL_TransitionIssue(t *testing.T) {
 	}
 
 	// OPEN -> IN_PROGRESS
-	updated, err := r.Mutation().TransitionIssue(ctx, issue.ID, IssueStateInProgress, formatID(sysID))
+	updated, err := r.Mutation().TransitionIssue(ctx, issue.ID, IssueStateInProgress, formatID(sysID), nil)
 	if err != nil {
 		t.Fatalf("transition: %v", err)
 	}
@@ -245,7 +245,7 @@ func TestGraphQL_TransitionIssue(t *testing.T) {
 	}
 
 	// IN_PROGRESS -> REVIEW
-	updated, err = r.Mutation().TransitionIssue(ctx, issue.ID, IssueStateReview, formatID(sysID))
+	updated, err = r.Mutation().TransitionIssue(ctx, issue.ID, IssueStateReview, formatID(sysID), nil)
 	if err != nil {
 		t.Fatalf("transition: %v", err)
 	}
@@ -333,6 +333,46 @@ func TestGraphQL_ProjectMembers(t *testing.T) {
 	}
 	if !removed {
 		t.Error("expected true for removal")
+	}
+}
+
+func TestGraphQL_UpdateProjectConfig(t *testing.T) {
+	r := setupTestResolver(t)
+	sysID := registerSystemAgent(t, r, "cfg")
+	ctx := authedCtx(sysID)
+
+	project, err := r.Mutation().CreateProject(ctx, "P", nil)
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+
+	// Owner can update config
+	ac := false
+	rc := true
+	updated, err := r.Mutation().UpdateProjectConfig(ctx, project.ID, &ac, &rc)
+	if err != nil {
+		t.Fatalf("update config: %v", err)
+	}
+	if updated.AllowCreatorTransition != false {
+		t.Errorf("expected AllowCreatorTransition=false, got %v", updated.AllowCreatorTransition)
+	}
+	if updated.RequireCreatorCloseApproval != true {
+		t.Errorf("expected RequireCreatorCloseApproval=true, got %v", updated.RequireCreatorCloseApproval)
+	}
+
+	// Non-owner member should be denied
+	memberAgent, err := r.Mutation().RegisterAgent(context.Background(), "member1", AgentKindAi, "m-cfg", "pass", nil, nil, nil)
+	if err != nil {
+		t.Fatalf("register member: %v", err)
+	}
+	_, err = r.Mutation().AddProjectMember(ctx, project.ID, memberAgent.Agent.ID, ProjectRoleMember)
+	if err != nil {
+		t.Fatalf("add member: %v", err)
+	}
+	memberCtx := authedCtx(parseID(memberAgent.Agent.ID))
+	_, err = r.Mutation().UpdateProjectConfig(memberCtx, project.ID, &ac, &rc)
+	if err == nil {
+		t.Fatal("expected error for non-owner member")
 	}
 }
 
