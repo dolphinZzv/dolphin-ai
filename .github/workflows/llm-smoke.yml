@@ -1,0 +1,103 @@
+name: LLM Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  llm-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Build
+        run: go build -o dolphin .
+
+      # ── Test 1: valid key ────────────────────────────────
+      - name: Smoke test — valid LLM key
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+        run: |
+          mkdir -p "${HOME}/.dolphin"
+          touch "${HOME}/.dolphin/first-run"
+
+          # Build config from secrets
+          BASE_URL="${LLM_BASE_URL:-https://api.deepseek.com}"
+          MODEL="${LLM_MODEL:-deepseek-v4-flash}"
+
+          mkdir -p /tmp/dolphin-valid
+          cat > /tmp/dolphin-valid/config.yaml <<YAML
+llm:
+  providers:
+    - name: default
+      type: openai
+      api_key: "$LLM_API_KEY"
+      base_url: $BASE_URL
+      model: $MODEL
+  type: openai
+  base_url: $BASE_URL
+  model: $MODEL
+  api_key: "$LLM_API_KEY"
+  max_tokens: 4096
+transport:
+  stdio:
+    enabled: true
+YAML
+
+          echo "=== Valid key test ==="
+          OUTPUT=$(echo "abc 第一个字是什么？只回答一个字" | timeout 120 ./dolphin --config /tmp/dolphin-valid/config.yaml 2>&1 || true)
+
+          if echo "$OUTPUT" | grep -q "a"; then
+            echo "  ✓ LLM returned 'a'"
+          else
+            echo "FAIL: expected 'a' in response"
+            echo "$OUTPUT" | tail -15
+            exit 1
+          fi
+
+      # ── Test 2: invalid key ──────────────────────────────
+      - name: Smoke test — invalid LLM key
+        run: |
+          echo "=== Invalid key test ==="
+          mkdir -p /tmp/dolphin-badkey
+
+          BASE_URL="${LLM_BASE_URL:-https://api.deepseek.com}"
+          MODEL="${LLM_MODEL:-deepseek-v4-flash}"
+
+          cat > /tmp/dolphin-badkey/config.yaml <<YAML
+llm:
+  providers:
+    - name: test
+      type: openai
+      api_key: "sk-bad-invalid-key"
+      base_url: $BASE_URL
+      model: $MODEL
+  type: openai
+  base_url: $BASE_URL
+  model: $MODEL
+  api_key: "sk-bad-invalid-key"
+  max_tokens: 10
+transport:
+  stdio:
+    enabled: true
+YAML
+
+          OUTPUT=$(echo "hi" | timeout 60 ./dolphin --config /tmp/dolphin-badkey/config.yaml 2>&1 || true)
+
+          if echo "$OUTPUT" | grep -qiE "(unauthorized|401|authentication|invalid api key|auth failed|incorrect api key|forbidden|auth error)"; then
+            echo "  ✓ shows auth error with bad key"
+          else
+            echo "FAIL: expected auth error with bad key"
+            echo "$OUTPUT" | tail -15
+            exit 1
+          fi
