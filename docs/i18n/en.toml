@@ -1,0 +1,26 @@
+[home]
+other = "Home"
+
+[install]
+other = "Install"
+
+[config]
+other = "Configuration"
+
+[docs]
+other = "Docs"
+
+[next]
+other = "Next"
+
+[prev]
+other = "Previous"
+
+[viewOnGitHub]
+other = "View on GitHub"
+
+[editThisPage]
+other = "Edit this page"
+
+[switchLang]
+other = "Language"

@@ -1,0 +1,16 @@
+<nav>
+  <div class="nav-inner">
+    <a href="{{ .Site.Home.RelPermalink }}" class="nav-brand">
+      <span class="dolphin-logo">🐬</span>
+      <span>Dolphin</span>
+    </a>
+    <div class="nav-links">
+      <a href="{{ relLangURL "docs/" }}">{{ i18n "docs" }}</a>
+      {{ if eq .Section "docs" }}
+      {{ range .CurrentSection.Pages.ByWeight }}
+      <a href="{{ .RelPermalink }}"{{ if eq .RelPermalink $.RelPermalink }} style="color:var(--accent);font-weight:600"{{ end }}>{{ .Title }}</a>
+      {{ end }}
+      {{ end }}
+    </div>
+  </div>
+</nav>

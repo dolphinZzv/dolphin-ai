@@ -1,0 +1,26 @@
+[home]
+other = "首页"
+
+[install]
+other = "安装"
+
+[config]
+other = "配置"
+
+[docs]
+other = "文档"
+
+[next]
+other = "下一页"
+
+[prev]
+other = "上一页"
+
+[viewOnGitHub]
+other = "在 GitHub 查看"
+
+[editThisPage]
+other = "编辑此页"
+
+[switchLang]
+other = "语言"

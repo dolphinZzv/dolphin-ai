@@ -1,0 +1,19 @@
+{{ define "main" }}
+<div class="doc-layout">
+  <article class="doc-content">
+    <h1>{{ .Title }}</h1>
+    {{ if .Params.description }}<p class="doc-description">{{ .Params.description }}</p>{{ end }}
+    {{ .Content }}
+    <div class="section-grid">
+      {{ range .Pages.ByWeight }}
+      <a href="{{ .RelPermalink }}" style="text-decoration: none; color: inherit;">
+        <div class="section-card">
+          <h3>{{ .Title }}</h3>
+          {{ with .Params.description }}<p>{{ . }}</p>{{ end }}
+        </div>
+      </a>
+      {{ end }}
+    </div>
+  </article>
+</div>
+{{ end }}

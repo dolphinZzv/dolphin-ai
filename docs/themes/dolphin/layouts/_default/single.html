@@ -1,0 +1,25 @@
+{{ define "main" }}
+<h1>{{ .Title }}</h1>
+
+{{ if .Params.description }}
+<p>{{ .Params.description }}</p>
+{{ end }}
+
+{{ if .TableOfContents }}
+<div class="toc">
+  <p>{{ if eq .Site.Language.Lang "zh" }}目录{{ else }}Table of Contents{{ end }}</p>
+  {{ .TableOfContents }}
+</div>
+{{ end }}
+
+<div class="doc-section">
+  {{ .Content }}
+</div>
+
+{{ if or .NextInSection .PrevInSection }}
+<div class="post-nav">
+  <div>{{ with .PrevInSection }}<a href="{{ .RelPermalink }}">&larr; {{ .Title }}</a>{{ end }}</div>
+  <div>{{ with .NextInSection }}<a href="{{ .RelPermalink }}">{{ .Title }} &rarr;</a>{{ end }}</div>
+</div>
+{{ end }}
+{{ end }}

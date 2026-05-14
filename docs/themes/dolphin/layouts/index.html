@@ -1,0 +1,41 @@
+{{ define "main" }}
+<div class="hero">
+  <span class="hero-logo" style="font-size:96px;line-height:1;display:block">🐬</span>
+  <h1>{{ .Title }}</h1>
+  <p>{{ .Params.description }}</p>
+  <div class="hero-links">
+    <a href="{{ relLangURL "docs/install/" }}" class="btn-primary">{{ i18n "install" }}</a>
+    <a href="{{ relLangURL "docs/config/" }}" class="btn-secondary">{{ i18n "config" }}</a>
+    <a href="https://github.com/dolphinZzv/dolphin" class="btn-secondary">GitHub</a>
+  </div>
+</div>
+
+<div class="features">
+  <div class="feature-card">
+    <h3>{{ if eq .Site.Language.Lang "zh" }}多终端接入{{ else }}Multi-Transport{{ end }}</h3>
+    <p>{{ if eq .Site.Language.Lang "zh" }}终端、SSH、邮件、MQTT — 同一 Agent，任意入口。{{ else }}Terminal, SSH, email, MQTT — one agent through any door.{{ end }}</p>
+  </div>
+  <div class="feature-card">
+    <h3>{{ if eq .Site.Language.Lang "zh" }}工具丰富{{ else }}Rich Toolset{{ end }}</h3>
+    <p>{{ if eq .Site.Language.Lang "zh" }}Shell 命令、浏览器自动化、MCP 工具、Webhook，扩展无限制。{{ else }}Shell commands, browser automation, MCP tools, webhooks — extensible.{{ end }}</p>
+  </div>
+  <div class="feature-card">
+    <h3>{{ if eq .Site.Language.Lang "zh" }}多 Agent 协作{{ else }}Multi-Agent{{ end }}</h3>
+    <p>{{ if eq .Site.Language.Lang "zh" }}调度子 Agent 并行执行任务，代码审查、安全审计一键并发。{{ else }}Dispatch sub-agents in parallel for code review, security audit, and more.{{ end }}</p>
+  </div>
+  <div class="feature-card">
+    <h3>{{ if eq .Site.Language.Lang "zh" }}技能系统{{ else }}Skill System{{ end }}</h3>
+    <p>{{ if eq .Site.Language.Lang "zh" }}Markdown 即技能 — 按需加载，保持 prompt 简洁。{{ else }}Markdown files that teach — load on demand, keep prompt lean.{{ end }}</p>
+  </div>
+  <div class="feature-card">
+    <h3>{{ if eq .Site.Language.Lang "zh" }}定时任务{{ else }}Scheduled Tasks{{ end }}</h3>
+    <p>{{ if eq .Site.Language.Lang "zh" }}CRONTAB.md — 用 cron 语法定义日常维护任务。{{ else }}CRONTAB.md — define recurring tasks in cron syntax.{{ end }}</p>
+  </div>
+  <div class="feature-card">
+    <h3>{{ if eq .Site.Language.Lang "zh" }}会话持久化{{ else }}Session Persistence{{ end }}</h3>
+    <p>{{ if eq .Site.Language.Lang "zh" }}自动检查点、摘要、日志，Agent 状态不丢失。{{ else }}Checkpoints, summaries, diary — agent state never lost.{{ end }}</p>
+  </div>
+</div>
+
+{{ .Content }}
+{{ end }}
