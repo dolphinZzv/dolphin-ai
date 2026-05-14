@@ -15,9 +15,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ChevronDown } from "lucide-react";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { toast } from "sonner";
+import { useSubscription } from "@/hooks/useSubscription";
 
 interface Label {
   id: string;
@@ -52,6 +60,7 @@ const columns = [
   { state: "in_progress", label: "进行中" },
   { state: "blocked", label: "阻塞" },
   { state: "review", label: "审查" },
+  { state: "pending_confirmation", label: "待确认" },
   { state: "later", label: "稍后处理" },
   { state: "reopen", label: "重新打开" },
 ];
@@ -73,21 +82,41 @@ export function ProjectDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [labelFilter, setLabelFilter] = useState<string[]>([]);
+  const [milestoneFilter, setMilestoneFilter] = useState("all");
+  const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [projectLabels, setProjectLabels] = useState<Label[]>([]);
   const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]);
+
+  // Debounce search input before sending to backend
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => clearTimeout(timer);
+  }, [searchInput]);
 
   const fetchData = useCallback(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
 
+    const issueVars: Record<string, unknown> = { projectId: id };
+    if (debouncedSearch) issueVars.search = debouncedSearch;
+    if (priorityFilter !== "all") issueVars.priority = priorityFilter;
+    if (labelFilter.length > 0) issueVars.labelIDs = labelFilter;
+    if (assigneeFilter !== "all") issueVars.assigneeID = assigneeFilter;
+
     Promise.all([
       gql(`query project($id: ID!) { project(id: $id) { id name description } }`, { id }),
       gql(
-        `query issues($projectId: ID!) { issues(projectID: $projectId) { edges { id number title state priority assignees { agent { id name } } labels { id name color } milestone { id title } } } }`,
-        { projectId: id }
+        `query issues($projectId: ID!, $search: String, $priority: Priority, $labelIDs: [ID!], $assigneeID: ID) {
+          issues(projectID: $projectId, search: $search, priority: $priority, labelIDs: $labelIDs, assigneeID: $assigneeID) {
+            edges { id number title state priority assignees { agent { id name } } labels { id name color } milestone { id title } }
+          }
+        }`,
+        issueVars
       ),
       gql(`query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`, { projectId: id }),
       gql(`query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title } }`, { projectId: id }),
@@ -102,9 +131,18 @@ export function ProjectDetailPage() {
       })
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, debouncedSearch, priorityFilter, labelFilter, assigneeFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Auto-refresh when tab becomes visible (covers background updates)
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") fetchData();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [fetchData]);
 
   const handleTransition = async (issueId: string, toState: string) => {
     const json = await gql(
@@ -188,11 +226,21 @@ export function ProjectDetailPage() {
     return null;
   };
 
+  // Milestone filter is applied client-side (backend doesn't support it directly)
   const filteredIssues = issues.filter((issue) => {
-    if (search && !issue.title.toLowerCase().includes(search.toLowerCase())) return false;
-    if (priorityFilter !== "all" && issue.priority !== priorityFilter) return false;
+    if (milestoneFilter !== "all") {
+      if (!issue.milestone || issue.milestone.id !== milestoneFilter) return false;
+    }
     return true;
   });
+
+  // Extract unique assignees from all fetched issues
+  const allAssignees = issues.reduce<Array<{ id: string; name: string }>>((acc, issue) => {
+    (issue.assignees || []).forEach((a) => {
+      if (!acc.some((x) => x.id === a.agent.id)) acc.push(a.agent);
+    });
+    return acc;
+  }, []);
 
   const activeIssues = filteredIssues.filter((i) => !i.state.startsWith("closed"));
   const closed = filteredIssues.filter((i) => i.state.startsWith("closed"));
@@ -241,8 +289,8 @@ export function ProjectDetailPage() {
       <div className="flex flex-wrap items-center gap-2">
         <Input
           placeholder="搜索 Issue..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
           className="h-9 w-full sm:w-60"
         />
         <Select value={priorityFilter} onValueChange={setPriorityFilter}>
@@ -253,6 +301,58 @@ export function ProjectDetailPage() {
             <SelectItem value="all">全部优先级</SelectItem>
             {Object.entries(priorityLabels).map(([v, l]) => (
               <SelectItem key={v} value={v}>{l}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Label filter */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-9 gap-1 text-xs">
+              标签{labelFilter.length > 0 ? ` (${labelFilter.length})` : ""}
+              <ChevronDown className="h-3 w-3 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-48 p-2" align="start">
+            <div className="space-y-1">
+              {projectLabels.length === 0 && <p className="text-xs text-muted-foreground">暂无标签</p>}
+              {projectLabels.map((l) => (
+                <label key={l.id} className="flex items-center gap-2 rounded px-1 py-1 text-xs hover:bg-accent cursor-pointer">
+                  <Checkbox
+                    checked={labelFilter.includes(l.id)}
+                    onCheckedChange={(checked) => {
+                      setLabelFilter(checked ? [...labelFilter, l.id] : labelFilter.filter((id) => id !== l.id));
+                    }}
+                  />
+                  <span className="truncate" style={{ color: l.color || undefined }}>{l.name}</span>
+                </label>
+              ))}
+            </div>
+          </PopoverContent>
+        </Popover>
+
+        {/* Milestone filter */}
+        <Select value={milestoneFilter} onValueChange={setMilestoneFilter}>
+          <SelectTrigger className="h-9 w-36">
+            <SelectValue placeholder="里程碑" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部里程碑</SelectItem>
+            {projectMilestones.map((m) => (
+              <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        {/* Assignee filter */}
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+          <SelectTrigger className="h-9 w-36">
+            <SelectValue placeholder="指派对象" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部成员</SelectItem>
+            {allAssignees.map((a) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>

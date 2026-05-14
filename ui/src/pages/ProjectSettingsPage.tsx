@@ -6,6 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Combobox } from "@/components/ui/combobox";
+import { Autocomplete } from "@/components/ui/autocomplete";
 import {
   Select,
   SelectContent,
@@ -66,11 +68,6 @@ interface Member {
   role: string;
 }
 
-interface AgentBrief {
-  id: string;
-  name: string;
-}
-
 const statusConfig: Record<string, { label: string; dot: string }> = {
   online: { label: "在线", dot: "bg-green-500" },
   busy: { label: "忙碌", dot: "bg-amber-500" },
@@ -89,19 +86,18 @@ const PRESET_COLORS = ["#0366d6", "#28a745", "#d73a49", "#ffd33d", "#6f42c1", "#
 export function ProjectSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"labels" | "milestones" | "members" | "agents">("agents");
+  const [tab, setTab] = useState<"labels" | "milestones" | "agents">("agents");
   const [labels, setLabels] = useState<Label[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [supportedModels, setSupportedModels] = useState<string[]>([]);
+  const [commonDeviceInfo, setCommonDeviceInfo] = useState<string[]>([]);
+  const [projectName, setProjectName] = useState("");
+  const [projectDesc, setProjectDesc] = useState("");
+  const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // add member dialog
-  const [addOpen, setAddOpen] = useState(false);
-  const [allAgents, setAllAgents] = useState<AgentBrief[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState("");
-  const [selectedRole, setSelectedRole] = useState("member");
-  const [adding, setAdding] = useState(false);
 
   // create label
   const [labelOpen, setLabelOpen] = useState(false);
@@ -124,6 +120,7 @@ export function ProjectSettingsPage() {
   const [agentOpen, setAgentOpen] = useState(false);
   const [newAgentName, setNewAgentName] = useState("");
   const [newAgentKind, setNewAgentKind] = useState("ai");
+  const [newAgentRole, setNewAgentRole] = useState("member");
   const [newAgentModel, setNewAgentModel] = useState("");
   const [newAgentDevice, setNewAgentDevice] = useState("");
   const [createdToken, setCreatedToken] = useState<string | null>(null);
@@ -150,51 +147,34 @@ export function ProjectSettingsPage() {
       gql(
         `query project($id: ID!) {
           project(id: $id) {
+            name description
 members { agent { id number name kind status capabilities deviceInfo modelInfo lastIP externalID } role }
           }
         }`,
         { id }
       ),
-      gql("query agents { agents { id name } }"),
+      gql(`query { supportedModels }`),
+      gql(`query { commonDeviceInfo }`),
     ])
-      .then(([lJson, mJson, pJson, aJson]) => {
+      .then(([lJson, mJson, pJson, sJson, dJson]) => {
         if (lJson.errors) { setError(lJson.errors[0].message); return; }
         if (mJson.errors) { setError(mJson.errors[0].message); return; }
         if (pJson.errors) { setError(pJson.errors[0].message); return; }
-        if (aJson.errors) { setError(aJson.errors[0].message); return; }
+        if (sJson.errors) { setError(sJson.errors[0].message); return; }
+        if (dJson.errors) { setError(dJson.errors[0].message); return; }
         setLabels(lJson.data.labels);
         setMilestones(mJson.data.milestones);
         setMembers(pJson.data.project.members || []);
-        setAllAgents(aJson.data.agents || []);
+        setProjectName(pJson.data.project.name || "");
+        setProjectDesc(pJson.data.project.description || "");
+        setSupportedModels(sJson.data.supportedModels || []);
+        setCommonDeviceInfo(dJson.data.commonDeviceInfo || []);
       })
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
   }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  const handleAddMember = async () => {
-    if (!id || !selectedAgentId) return;
-    setAdding(true);
-    try {
-      const json = await gql(
-        `mutation addProjectMember($pid: ID!, $aid: ID!, $role: ProjectRole!) {
-          addProjectMember(projectID: $pid, agentID: $aid, role: $role) { agent { id name } role }
-        }`,
-        { pid: id, aid: selectedAgentId, role: selectedRole }
-      );
-      if (json.errors) { toast.error(json.errors[0].message); return; }
-      toast.success("成员已添加");
-      setAddOpen(false);
-      setSelectedAgentId("");
-      setSelectedRole("member");
-      fetchData();
-    } catch {
-      toast.error("网络错误");
-    } finally {
-      setAdding(false);
-    }
-  };
 
   const handleRemoveMember = async (agentId: string) => {
     if (!id) return;
@@ -313,19 +293,39 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
     }
   };
 
+  const handleSaveProject = async () => {
+    if (!id) return;
+    setSaving(true);
+    try {
+      const json = await gql(
+        `mutation updateProject($id: ID!, $name: String!, $desc: String) {
+          updateProject(id: $id, name: $name, description: $desc) { id name description }
+        }`,
+        { id, name: projectName, desc: projectDesc || null }
+      );
+      if (json.errors) { toast.error(json.errors[0].message); return; }
+      toast.success("项目已更新");
+    } catch {
+      toast.error("网络错误");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateAgent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id || !newAgentName.trim()) return;
     setAgentCreating(true);
     try {
             const json = await gql(
-        `mutation createProjectAgent($pid: ID!, $name: String!, $kind: AgentKind!, $device: String, $model: String) {
-          createProjectAgent(projectID: $pid, name: $name, kind: $kind, deviceInfo: $device, modelInfo: $model) { agent { id name } token }
+        `mutation createProjectAgent($pid: ID!, $name: String!, $kind: AgentKind!, $role: ProjectRole, $device: String, $model: String) {
+          createProjectAgent(projectID: $pid, name: $name, kind: $kind, role: $role, deviceInfo: $device, modelInfo: $model) { agent { id name } token }
         }`,
         {
           pid: id,
           name: newAgentName,
           kind: newAgentKind,
+          role: newAgentRole,
           device: newAgentDevice || null,
           model: newAgentModel || null,
         }
@@ -337,6 +337,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
       setAgentOpen(false);
       setNewAgentName("");
       setNewAgentKind("ai");
+      setNewAgentRole("member");
       setNewAgentModel("");
       setNewAgentDevice("");
       fetchData();
@@ -351,15 +352,10 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
     { key: "agents" as const, label: "Agent" },
     { key: "labels" as const, label: "标签" },
     { key: "milestones" as const, label: "里程碑" },
-    { key: "members" as const, label: "成员" },
   ];
 
   if (loading) return <Skeleton className="h-48 w-full" />;
   if (error) return <ErrorFallback message={error} onRetry={fetchData} />;
-
-  const nonMemberAgents = allAgents.filter(
-    (a) => !members.some((m) => m.agent.id === a.id)
-  );
 
   return (
     <div className="space-y-4">
@@ -367,6 +363,31 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
         ← 返回项目
       </Link>
       <h1 className="text-2xl font-semibold">项目设置</h1>
+
+      {/* Project name & description */}
+      <div className="rounded-lg border bg-card p-4 space-y-3">
+        <div className="space-y-2">
+          <label className="text-sm font-medium">项目名称</label>
+          <Input
+            value={projectName}
+            onChange={e => setProjectName(e.target.value)}
+            placeholder="项目名称"
+          />
+        </div>
+        <div className="space-y-2">
+          <label className="text-sm font-medium">项目描述</label>
+          <Input
+            value={projectDesc}
+            onChange={e => setProjectDesc(e.target.value)}
+            placeholder="项目描述"
+          />
+        </div>
+        <div className="flex justify-end">
+          <Button onClick={handleSaveProject} disabled={saving}>
+            {saving ? "保存中..." : "保存"}
+          </Button>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex gap-2 border-b overflow-x-auto">
@@ -482,12 +503,33 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                   </Select>
                 </div>
                 <div className="space-y-2">
+                  <label className="text-sm font-medium">角色</label>
+                  <Select value={newAgentRole} onValueChange={setNewAgentRole}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="member">成员</SelectItem>
+                      <SelectItem value="owner">拥有者</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <label className="text-sm font-medium">AI 模型</label>
-                  <Input value={newAgentModel} onChange={e => setNewAgentModel(e.target.value)} placeholder="例如: Claude 4 Opus" />
+                  <Combobox
+                    items={supportedModels}
+                    value={newAgentModel}
+                    onChange={setNewAgentModel}
+                    placeholder="选择 AI 模型"
+                    searchPlaceholder="搜索模型..."
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">设备信息</label>
-                  <Input value={newAgentDevice} onChange={e => setNewAgentDevice(e.target.value)} placeholder="例如: Linux / Chrome 120" />
+                  <Autocomplete
+                    items={commonDeviceInfo}
+                    value={newAgentDevice}
+                    onChange={setNewAgentDevice}
+                    placeholder="例如: Linux / Chrome 120"
+                  />
                 </div>
                 <div className="flex justify-end gap-2">
                   <Button type="button" variant="outline" onClick={() => setAgentOpen(false)}>取消</Button>
@@ -758,86 +800,6 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                   <Button type="submit" disabled={msCreating}>{msCreating ? "创建中..." : "创建"}</Button>
                 </div>
               </form>
-            </DialogContent>
-          </Dialog>
-        </div>
-      )}
-
-      {/* Members tab */}
-      {tab === "members" && (
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-muted-foreground">{members.length} 个成员</span>
-            {nonMemberAgents.length > 0 && (
-              <Button size="sm" onClick={() => setAddOpen(true)}>
-                <Plus className="mr-1 h-4 w-4" />添加成员
-              </Button>
-            )}
-          </div>
-
-          {members.length === 0 ? (
-            <EmptyState title="暂无成员" />
-          ) : (
-            <div className="space-y-2">
-              {members.map((m) => (
-                <div key={m.agent.id} className="flex items-center gap-3 rounded-lg border bg-card px-3 py-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-sm font-medium">
-                    {m.agent.name.charAt(0)}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm font-medium">{m.agent.name}</p>
-                  </div>
-                  <Badge variant="secondary">
-                    {m.role === "owner" ? "拥有者" : m.role === "member" ? "成员" : m.role}
-                  </Badge>
-                  {m.role !== "owner" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleRemoveMember(m.agent.id)}
-                      aria-label="移除成员"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          <Dialog open={addOpen} onOpenChange={setAddOpen}>
-            <DialogContent>
-              <DialogHeader><DialogTitle>添加成员</DialogTitle></DialogHeader>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">选择 Agent</label>
-                  <Select value={selectedAgentId} onValueChange={setSelectedAgentId}>
-                    <SelectTrigger><SelectValue placeholder="选择 Agent" /></SelectTrigger>
-                    <SelectContent>
-                      {nonMemberAgents.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">角色</label>
-                  <Select value={selectedRole} onValueChange={setSelectedRole}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="member">成员</SelectItem>
-                      <SelectItem value="owner">拥有者</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setAddOpen(false)}>取消</Button>
-                  <Button onClick={handleAddMember} disabled={adding || !selectedAgentId}>
-                    {adding ? "添加中..." : "添加"}
-                  </Button>
-                </div>
-              </div>
             </DialogContent>
           </Dialog>
         </div>

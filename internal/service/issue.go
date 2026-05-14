@@ -278,7 +278,12 @@ func (s *IssueService) Update(id uint, title, description string, priority model
 		changes["due_date"] = dueDate.Time
 	}
 	if milestoneID != nil {
-		changes["milestone_id"] = *milestoneID
+		if *milestoneID == 0 {
+			// 0 sentinel means "explicitly clear milestone"
+			changes["milestone_id"] = nil
+		} else {
+			changes["milestone_id"] = *milestoneID
+		}
 	}
 	if len(changes) == 0 {
 		return s.issueRepo.GetByID(id)

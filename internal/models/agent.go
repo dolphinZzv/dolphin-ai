@@ -37,6 +37,44 @@ const (
 	CapManagement  CapabilityType = "MANAGEMENT"
 )
 
+// SupportedModels is a predefined list of AI models for agent selection.
+var SupportedModels = []string{
+	"Claude 4 Opus",
+	"Claude 4 Sonnet",
+	"Claude 4 Haiku",
+	"Claude 3.5 Sonnet",
+	"Claude 3.5 Haiku",
+	"GPT-4o",
+	"GPT-4o mini",
+	"GPT-4.1",
+	"GPT-4.1 mini",
+	"GPT-4.1 nano",
+	"Gemini 2.5 Pro",
+	"Gemini 2.5 Flash",
+	"DeepSeek-V3",
+	"DeepSeek-R1",
+	"Qwen-Max",
+	"Qwen-Plus",
+	"Mistral Large",
+	"自定义模型",
+}
+
+// CommonDeviceInfo is a predefined list of common device/OS info for suggestions.
+var CommonDeviceInfo = []string{
+	"VS Code",
+	"Claude Code (CLI)",
+	"Cursor",
+	"Windsurf",
+	"OpenCode (CLI)",
+	"JetBrains IDE",
+	"Linux / Chrome",
+	"macOS / Chrome",
+	"Windows / Chrome",
+	"Linux / Firefox",
+	"macOS / Safari",
+	"API Direct",
+}
+
 type StringSlice []string
 
 func (s StringSlice) Value() (driver.Value, error) {
@@ -79,6 +117,7 @@ type Agent struct {
 	Metadata     JSONMap      `gorm:"type:jsonb;serializer:json"`
 	DeviceInfo   string       `gorm:"type:text"`
 	ModelInfo    string       `gorm:"type:varchar(255)"`
+		Disabled     bool         `gorm:"not null;default:false"`
 		LastIP       string       `gorm:"type:varchar(45)"`
 	AllowedCIDRs StringSlice  `gorm:"type:jsonb;serializer:json"`
 	LastSeenAt   *time.Time   `gorm:"index"`

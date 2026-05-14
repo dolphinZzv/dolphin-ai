@@ -46,6 +46,9 @@ type AgentRepository interface {
 		UpdateIP(id uint, ip string) error
 		FindByToken(token string) (*models.Agent, error)
 		UpdateAllowedCIDRs(id uint, cidrs []string) error
+		UpdateDisabled(id uint, disabled bool) error
+		Update(id uint, changes map[string]interface{}) error
+		Delete(id uint) error
 	}
 
 // ─── Issue ─────────────────────────────────────────────────
@@ -92,6 +95,7 @@ type LabelRepository interface {
 	Create(label *models.Label) error
 	GetByID(id uint) (*models.Label, error)
 	ListByProject(projectID uint, group string) ([]models.Label, error)
+	Update(id uint, changes map[string]interface{}) error
 	Delete(id uint) error
 }
 

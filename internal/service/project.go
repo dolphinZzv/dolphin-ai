@@ -175,6 +175,23 @@ func (s *ProjectService) ListLabels(projectID uint, group string) ([]models.Labe
 	return s.labelRepo.ListByProject(projectID, group)
 }
 
+func (s *ProjectService) UpdateLabel(id uint, name, color string) (*models.Label, error) {
+	changes := map[string]interface{}{}
+	if name != "" {
+		changes["name"] = name
+	}
+	if color != "" {
+		changes["color"] = color
+	}
+	if len(changes) == 0 {
+		return s.labelRepo.GetByID(id)
+	}
+	if err := s.labelRepo.Update(id, changes); err != nil {
+		return nil, fmt.Errorf("update label: %w", err)
+	}
+	return s.labelRepo.GetByID(id)
+}
+
 func (s *ProjectService) DeleteLabel(id uint) error {
 	return s.labelRepo.Delete(id)
 }
@@ -203,6 +220,29 @@ func (s *ProjectService) CreateMilestone(projectID uint, title, description stri
 
 func (s *ProjectService) ListMilestones(projectID uint, state models.MilestoneState) ([]models.Milestone, error) {
 	return s.milestoneRepo.ListByProject(projectID, state)
+}
+
+func (s *ProjectService) UpdateMilestone(id uint, title, description string, dueDate *models.UnixNullTime, state models.MilestoneState) (*models.Milestone, error) {
+	changes := map[string]interface{}{}
+	if title != "" {
+		changes["title"] = title
+	}
+	if description != "" {
+		changes["description"] = description
+	}
+	if dueDate != nil && dueDate.Valid {
+		changes["due_date"] = dueDate.Time
+	}
+	if state != "" {
+		changes["state"] = state
+	}
+	if len(changes) == 0 {
+		return s.milestoneRepo.GetByID(id)
+	}
+	if err := s.milestoneRepo.Update(id, changes); err != nil {
+		return nil, fmt.Errorf("update milestone: %w", err)
+	}
+	return s.milestoneRepo.GetByID(id)
 }
 
 func (s *ProjectService) DeleteMilestone(id uint) error {

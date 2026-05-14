@@ -7,15 +7,16 @@ import (
 type IssueState string
 
 const (
-	IssueStateOpen              IssueState = "open"
-	IssueStateInProgress        IssueState = "in_progress"
-	IssueStateBlocked           IssueState = "blocked"
-	IssueStateReview            IssueState = "review"
-	IssueStateLater             IssueState = "later"
-	IssueStateClosedCompleted   IssueState = "closed_completed"
-	IssueStateClosedNotPlanned  IssueState = "closed_not_planned"
-	IssueStateClosedRejected    IssueState = "closed_rejected"
-	IssueStateReopen            IssueState = "reopen"
+	IssueStateOpen                IssueState = "open"
+	IssueStateInProgress          IssueState = "in_progress"
+	IssueStateBlocked             IssueState = "blocked"
+	IssueStateReview              IssueState = "review"
+	IssueStateLater               IssueState = "later"
+	IssueStateClosedCompleted     IssueState = "closed_completed"
+	IssueStateClosedNotPlanned    IssueState = "closed_not_planned"
+	IssueStateClosedRejected      IssueState = "closed_rejected"
+	IssueStateReopen              IssueState = "reopen"
+	IssueStatePendingConfirmation IssueState = "pending_confirmation"
 )
 
 type Priority string

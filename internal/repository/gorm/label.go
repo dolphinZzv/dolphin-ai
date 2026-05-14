@@ -35,6 +35,10 @@ func (r *LabelRepo) ListByProject(projectID uint, group string) ([]models.Label,
 	return list, err
 }
 
+func (r *LabelRepo) Update(id uint, changes map[string]interface{}) error {
+	return r.db.Model(&models.Label{}).Where("id = ?", id).Updates(changes).Error
+}
+
 func (r *LabelRepo) Delete(id uint) error {
 	return r.db.Delete(&models.Label{}, id).Error
 }

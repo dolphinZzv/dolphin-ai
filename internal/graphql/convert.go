@@ -27,6 +27,7 @@ func agentFromModel(a *models.Agent) *Agent {
 		Name:         a.Name,
 		Kind:         AgentKind(a.Kind),
 		Status:       AgentStatus(a.Status),
+		Disabled:     a.Disabled,
 		ExternalID:   a.ExternalID,
 		Capabilities: []string(a.Capabilities),
 		AllowedCIDRs: []string(a.AllowedCIDRs),

@@ -147,12 +147,19 @@ build-prod:
 
 dev: build
 	@echo "=== 释放端口 8080 ==="
-	@pid=$$(lsof -ti:8080 2>/dev/null || true); \
-	if [ -n "$$pid" ]; then \
-		echo "  Port 8080 occupied by PID $$pid, killing..."; \
-		kill $$pid 2>/dev/null || true; \
+	@for i in 1 2 3; do \
+		pid=$$(lsof -ti:8080 2>/dev/null || true); \
+		if [ -z "$$pid" ]; then break; fi; \
+		echo "  Port 8080 occupied by PID $$pid, killing... (attempt $$i)"; \
+		kill $$pid 2>/dev/null || kill -9 $$pid 2>/dev/null || true; \
 		sleep 1; \
-	fi
+	done; \
+	pid=$$(lsof -ti:8080 2>/dev/null || true); \
+	if [ -n "$$pid" ]; then \
+		echo "  ❌ Port 8080 still occupied by PID $$pid, cannot start"; \
+		exit 1; \
+	fi; \
+	echo "  ✅ Port 8080 available"
 	@echo "=== 启动开发服务 ==="
 		CHICK_ALLOW_HUMAN_REGISTRATION=true \
 		CHICK_JWT_SECRET="$${CHICK_JWT_SECRET:-chick-dev-secret-key-2024}" \

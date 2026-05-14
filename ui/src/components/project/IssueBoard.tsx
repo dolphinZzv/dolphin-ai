@@ -48,6 +48,7 @@ const stateColors: Record<string, string> = {
   in_progress: "border-l-blue-500",
   blocked: "border-l-amber-500",
   review: "border-l-purple-500",
+  pending_confirmation: "border-l-cyan-500",
   later: "border-l-slate-500",
   reopen: "border-l-orange-500",
   closed_completed: "border-l-gray-500",
@@ -74,6 +75,7 @@ const stateLabels: Record<string, string> = {
   in_progress: "进行中",
   blocked: "阻塞",
   review: "审查",
+  pending_confirmation: "待确认",
   later: "稍后处理",
   closed_completed: "已完成",
   closed_not_planned: "已关闭",
@@ -82,10 +84,11 @@ const stateLabels: Record<string, string> = {
 };
 
 const validTransitions: Record<string, string[]> = {
-  open: ["in_progress", "blocked", "later"],
+  open: ["in_progress", "blocked", "later", "closed_not_planned"],
   in_progress: ["review", "blocked", "later"],
   blocked: ["in_progress", "closed_not_planned", "later"],
-  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later"],
+  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later", "pending_confirmation"],
+  pending_confirmation: ["closed_completed", "in_progress", "closed_not_planned", "later"],
   later: ["open", "closed_not_planned"],
   reopen: ["in_progress", "blocked", "later"],
   closed_completed: ["reopen"],
@@ -574,7 +577,7 @@ export function IssueBoard({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-6 gap-3">
+        <div className="grid grid-cols-3 sm:grid-cols-4 xl:grid-cols-7 gap-3">
           {grouped.map((col) => (
             <DroppableColumn
               key={col.state}

@@ -25,6 +25,7 @@ import { Send, MessageSquare, Trash2, Plus, Pencil, X, Check } from "lucide-reac
 import { toast } from "sonner";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
+import { useSubscription } from "@/hooks/useSubscription";
 
 interface IssueDetail {
   id: string;
@@ -80,6 +81,7 @@ const stateLabels: Record<string, string> = {
   in_progress: "进行中",
   blocked: "阻塞",
   review: "审查",
+  pending_confirmation: "待确认",
   later: "稍后处理",
   closed_completed: "已完成",
   closed_not_planned: "已关闭",
@@ -92,6 +94,7 @@ const stateBadgeColors: Record<string, string> = {
   in_progress: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   blocked: "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
   review: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  pending_confirmation: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900 dark:text-cyan-200",
   later: "bg-slate-100 text-slate-800 dark:bg-slate-900 dark:text-slate-200",
   reopen: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   closed_completed: "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200",
@@ -126,10 +129,11 @@ const eventIcons: Record<string, string> = {
 };
 
 const validTransitions: Record<string, string[]> = {
-  open: ["in_progress", "blocked", "later"],
+  open: ["in_progress", "blocked", "later", "closed_not_planned"],
   in_progress: ["review", "blocked", "later"],
   blocked: ["in_progress", "closed_not_planned", "later"],
-  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later"],
+  review: ["closed_completed", "closed_not_planned", "closed_rejected", "in_progress", "later", "pending_confirmation"],
+  pending_confirmation: ["closed_completed", "in_progress", "closed_not_planned", "later"],
   later: ["open", "closed_not_planned"],
   reopen: ["in_progress", "blocked", "later"],
   closed_completed: ["reopen"],
@@ -281,6 +285,20 @@ export function IssueDetailPage() {
   }, [id]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Subscribe to real-time issue updates
+  useSubscription(
+    `subscription issueUpdated($issueID: ID!) {
+      issueUpdated(issueID: $issueID) { id number title description state priority dueDate createdAt closedAt creator { id name } assignees { id agent { id name } state } labels { id name color } milestone { id title } projectID }
+    }`,
+    id ? { issueID: id } : undefined,
+    (data: any) => {
+      if (data?.issueUpdated) {
+        setIssue((prev) => prev ? { ...prev, ...data.issueUpdated } : prev);
+        fetchData(false);
+      }
+    },
+  );
 
   const handleTransition = async (toState: string) => {
     if (!id || !agent) return;

@@ -81,6 +81,19 @@ func (r *AgentRepo) UpdateAllowedCIDRs(id uint, cidrs []string) error {
 		Update("allowed_cidrs", models.StringSlice(cidrs)).Error
 }
 
+func (r *AgentRepo) UpdateDisabled(id uint, disabled bool) error {
+	return r.db.Model(&models.Agent{}).Where("id = ?", id).
+		Update("disabled", disabled).Error
+}
+
+func (r *AgentRepo) Update(id uint, changes map[string]interface{}) error {
+	return r.db.Model(&models.Agent{}).Where("id = ?", id).Updates(changes).Error
+}
+
+func (r *AgentRepo) Delete(id uint) error {
+	return r.db.Delete(&models.Agent{}, id).Error
+}
+
 func (r *AgentRepo) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {
 	var agents []models.Agent
 	err := r.db.Joins("JOIN project_members ON project_members.agent_id = agents.id").

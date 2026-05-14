@@ -66,6 +66,48 @@ func (r *mutationResolver) UpdateAgentStatus(ctx context.Context, id string, sta
 	return agentFromModel(a), nil
 }
 
+// UpdateAgentDisabled is the resolver for the updateAgentDisabled field.
+func (r *mutationResolver) UpdateAgentDisabled(ctx context.Context, id string, disabled bool) (*Agent, error) {
+	if err := r.AgentSvc.SetDisabled(parseID(id), disabled); err != nil {
+		return nil, fmt.Errorf("update agent disabled: %w", err)
+	}
+	a, err := r.AgentSvc.GetByID(parseID(id))
+	if err != nil {
+		return nil, err
+	}
+	return agentFromModel(a), nil
+}
+
+// UpdateAgent is the resolver for the updateAgent field.
+func (r *mutationResolver) UpdateAgent(ctx context.Context, id string, systemPrompt *string) (*Agent, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	sp := ""
+	if systemPrompt != nil {
+		sp = *systemPrompt
+	}
+	if err := r.AgentSvc.Update(parseID(id), sp); err != nil {
+		return nil, fmt.Errorf("update agent: %w", err)
+	}
+	a, err := r.AgentSvc.GetByID(parseID(id))
+	if err != nil {
+		return nil, err
+	}
+	return agentFromModel(a), nil
+}
+
+// DeleteAgent is the resolver for the deleteAgent field.
+func (r *mutationResolver) DeleteAgent(ctx context.Context, id string) (bool, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return false, err
+	}
+	if err := r.AgentSvc.Delete(parseID(id)); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // UpdateAgentAllowedCIDRs is the resolver for the updateAgentAllowedCIDRs field.
 func (r *mutationResolver) UpdateAgentAllowedCIDRs(ctx context.Context, id string, allowedCIDRs []string) (*Agent, error) {
 	if err := r.AgentSvc.UpdateAllowedCIDRs(parseID(id), allowedCIDRs); err != nil {
@@ -79,7 +121,7 @@ func (r *mutationResolver) UpdateAgentAllowedCIDRs(ctx context.Context, id strin
 }
 
 // CreateProjectAgent is the resolver for the createProjectAgent field.
-func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID string, name string, kind AgentKind, externalID *string, secret *string, capabilities []string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
+func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID string, name string, kind AgentKind, role *ProjectRole, externalID *string, secret *string, capabilities []string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
 	caps := capabilities
 	if caps == nil {
 		caps = []string{}
@@ -113,7 +155,11 @@ func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID str
 		return nil, fmt.Errorf("register agent: %w", err)
 	}
 
-	if _, err := r.ProjectSvc.AddMember(parseID(projectID), a.ID, models.ProjectRoleMember); err != nil {
+	projectRole := models.ProjectRoleMember
+	if role != nil {
+		projectRole = models.ProjectRole(*role)
+	}
+	if _, err := r.ProjectSvc.AddMember(parseID(projectID), a.ID, projectRole); err != nil {
 		return nil, fmt.Errorf("add project member: %w", err)
 	}
 
@@ -269,9 +315,14 @@ func (r *mutationResolver) UpdateIssue(ctx context.Context, id string, title *st
 		nt = &models.UnixNullTime{Time: *dueDate, Valid: true}
 	}
 	var mid *uint
-	if milestoneID != nil && *milestoneID != "" {
-		v := parseID(*milestoneID)
-		mid = &v
+	if milestoneID != nil {
+		if *milestoneID != "" {
+			v := parseID(*milestoneID)
+			mid = &v
+		} else {
+			z := uint(0)
+			mid = &z
+		}
 	}
 	issue, err := r.IssueSvc.Update(iid, t, d, p, nt, mid)
 	if err != nil {
@@ -469,6 +520,30 @@ func (r *mutationResolver) CreateLabel(ctx context.Context, projectID string, na
 	return labelFromModel(l), nil
 }
 
+// UpdateLabel is the resolver for the updateLabel field.
+func (r *mutationResolver) UpdateLabel(ctx context.Context, id string, name *string, color *string) (*Label, error) {
+	label, err := r.ProjectSvc.GetLabelByID(parseID(id))
+	if err != nil {
+		return nil, fmt.Errorf("标签不存在")
+	}
+	if _, err := r.requireProjectOwner(ctx, label.ProjectID); err != nil {
+		return nil, err
+	}
+	n := ""
+	if name != nil {
+		n = *name
+	}
+	c := ""
+	if color != nil {
+		c = *color
+	}
+	l, err := r.ProjectSvc.UpdateLabel(parseID(id), n, c)
+	if err != nil {
+		return nil, fmt.Errorf("update label: %w", err)
+	}
+	return labelFromModel(l), nil
+}
+
 // DeleteLabel is the resolver for the deleteLabel field.
 func (r *mutationResolver) DeleteLabel(ctx context.Context, id string) (bool, error) {
 	label, err := r.ProjectSvc.GetLabelByID(parseID(id))
@@ -501,6 +576,38 @@ func (r *mutationResolver) CreateMilestone(ctx context.Context, projectID string
 	m, err := r.ProjectSvc.CreateMilestone(pid, title, d, nt)
 	if err != nil {
 		return nil, fmt.Errorf("create milestone: %w", err)
+	}
+	return milestoneFromModel(m), nil
+}
+
+// UpdateMilestone is the resolver for the updateMilestone field.
+func (r *mutationResolver) UpdateMilestone(ctx context.Context, id string, title *string, description *string, dueDate *time.Time, state *MilestoneState) (*Milestone, error) {
+	milestone, err := r.ProjectSvc.GetMilestoneByID(parseID(id))
+	if err != nil {
+		return nil, fmt.Errorf("里程碑不存在")
+	}
+	if _, err := r.requireProjectOwner(ctx, milestone.ProjectID); err != nil {
+		return nil, err
+	}
+	t := ""
+	if title != nil {
+		t = *title
+	}
+	d := ""
+	if description != nil {
+		d = *description
+	}
+	var nt *models.UnixNullTime
+	if dueDate != nil {
+		nt = &models.UnixNullTime{Time: *dueDate, Valid: true}
+	}
+	s := models.MilestoneState("")
+	if state != nil {
+		s = models.MilestoneState(*state)
+	}
+	m, err := r.ProjectSvc.UpdateMilestone(parseID(id), t, d, nt, s)
+	if err != nil {
+		return nil, fmt.Errorf("update milestone: %w", err)
 	}
 	return milestoneFromModel(m), nil
 }
@@ -538,6 +645,21 @@ func (r *mutationResolver) CreateFeedback(ctx context.Context, targetType Feedba
 		return nil, fmt.Errorf("create feedback: %w", err)
 	}
 	return feedbackFromModel(f), nil
+}
+
+// SupportedModels is the resolver for the supportedModels field.
+func (r *queryResolver) SupportedModels(ctx context.Context) ([]string, error) {
+	return models.SupportedModels, nil
+}
+
+// CommonDeviceInfo is the resolver for the commonDeviceInfo field.
+func (r *queryResolver) CommonDeviceInfo(ctx context.Context) ([]string, error) {
+	return models.CommonDeviceInfo, nil
+}
+
+// AllowHumanRegistration is the resolver for the allowHumanRegistration field.
+func (r *queryResolver) AllowHumanRegistration(ctx context.Context) (bool, error) {
+	return r.HumanReg, nil
 }
 
 // Agents is the resolver for the agents field.
@@ -674,7 +796,7 @@ func (r *queryResolver) Issue(ctx context.Context, id string) (*Issue, error) {
 }
 
 // Issues is the resolver for the issues field.
-func (r *queryResolver) Issues(ctx context.Context, projectID string, state *IssueState, priority *Priority, assigneeID *string, limit *int32, offset *int32) (*IssueConnection, error) {
+func (r *queryResolver) Issues(ctx context.Context, projectID string, state *IssueState, priority *Priority, assigneeID *string, labelIDs []string, search *string, limit *int32, offset *int32) (*IssueConnection, error) {
 	pid := parseID(projectID)
 	if _, err := r.requireProjectMember(ctx, pid); err != nil {
 		return nil, err
@@ -689,6 +811,16 @@ func (r *queryResolver) Issues(ctx context.Context, projectID string, state *Iss
 	}
 	if assigneeID != nil {
 		filter.AssigneeIDs = []uint{parseID(*assigneeID)}
+	}
+	if len(labelIDs) > 0 {
+		ids := make([]uint, len(labelIDs))
+		for i, lid := range labelIDs {
+			ids[i] = parseID(lid)
+		}
+		filter.LabelIDs = ids
+	}
+	if search != nil {
+		filter.Search = *search
 	}
 	if limit != nil {
 		filter.Limit = int(*limit)

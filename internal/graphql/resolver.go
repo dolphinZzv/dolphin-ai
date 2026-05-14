@@ -11,13 +11,14 @@ import (
 // here.
 
 type Resolver struct {
-	ProjectSvc   *service.ProjectService
-	AgentSvc     *service.AgentService
-	IssueSvc     *service.IssueService
-	CommentSvc   *service.CommentService
-	WorkflowSvc  *service.WorkflowService
-	FeedbackSvc  *service.FeedbackService
-	EventBus     *events.Bus
+	ProjectSvc            *service.ProjectService
+	AgentSvc              *service.AgentService
+	IssueSvc              *service.IssueService
+	CommentSvc            *service.CommentService
+	WorkflowSvc           *service.WorkflowService
+	FeedbackSvc           *service.FeedbackService
+	EventBus              *events.Bus
+	HumanReg bool
 }
 
 func NewResolver(
@@ -28,6 +29,7 @@ func NewResolver(
 	workflowSvc *service.WorkflowService,
 	feedbackSvc *service.FeedbackService,
 	eventBus *events.Bus,
+		allowHumanRegistration bool,
 ) *Resolver {
 	return &Resolver{
 		ProjectSvc:   projectSvc,
@@ -37,6 +39,7 @@ func NewResolver(
 		WorkflowSvc:  workflowSvc,
 		FeedbackSvc:  feedbackSvc,
 		EventBus:     eventBus,
+		HumanReg: allowHumanRegistration,
 	}
 }
 

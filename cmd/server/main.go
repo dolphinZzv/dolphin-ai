@@ -60,7 +60,7 @@ func main() {
 	graphqlHandler := graphql.NewHandler(
 		srv.ProjectService, srv.AgentService, srv.IssueService,
 		srv.CommentService, srv.WorkflowService, srv.FeedbackService, srv.EventBus,
-	)
+		cfg.AllowHumanRegistration)
 	http.Handle("/graphql", corsMW(authMW(graphqlHandler)))
 
 	// MCP SSE handler with sessions
@@ -70,7 +70,7 @@ func main() {
 		// POST /mcp/session/{id} — session-scoped JSON-RPC
 		if r.Method == http.MethodPost && strings.HasPrefix(path, "/mcp/session/") {
 			sessionID := strings.TrimPrefix(path, "/mcp/session/")
-			handleMCPSessionPost(w, r, mcpServer, mcpSessions, sessionID)
+			handleMCPSessionPost(w, r, srv, mcpServer, mcpSessions, sessionID)
 			return
 		}
 		handleMCP(mcpServer, srv, mcpSessions)(w, r)
@@ -144,6 +144,12 @@ func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) ht
 			return
 		}
 
+		// Disabled check
+		if agent.Disabled {
+			http.Error(w, "Access denied: agent is disabled", http.StatusForbidden)
+			return
+		}
+
 		// CIDR restriction check
 		ip, _, _ := net.SplitHostPort(r.RemoteAddr)
 		if !checkIPInCIDRs(ip, agent.AllowedCIDRs) {
@@ -194,7 +200,7 @@ func handleMCP(mcpServer *mcp.Server, srv *server.Server, sessions *sync.Map) ht
 	}
 }
 
-func handleMCPSessionPost(w http.ResponseWriter, r *http.Request, mcpServer *mcp.Server, sessions *sync.Map, sessionID string) {
+func handleMCPSessionPost(w http.ResponseWriter, r *http.Request, srv *server.Server, mcpServer *mcp.Server, sessions *sync.Map, sessionID string) {
 	var req mcp.Request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		resp := mcp.NewParseError(nil)
@@ -213,6 +219,14 @@ func handleMCPSessionPost(w http.ResponseWriter, r *http.Request, mcpServer *mcp
 	if !checkIPInCIDRs(ip, cidrs) {
 		http.Error(w, "Access denied: IP not allowed", http.StatusForbidden)
 		return
+	}
+	// Check if agent is disabled
+	if agentID != 0 {
+		a, err := srv.AgentService.GetByID(agentID)
+		if err == nil && a.Disabled {
+			http.Error(w, "Access denied: agent is disabled", http.StatusForbidden)
+			return
+		}
 	}
 	resp := mcpServer.HandleRequest(&req, agentID, ip)
 	data, _ := json.Marshal(resp)

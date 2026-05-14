@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Navigate } from "react-router-dom";
 import { gql } from "@/lib/graphql";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,11 +17,18 @@ export function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [allowRegister, setAllowRegister] = useState(false);
 
   // register fields
   const [regName, setRegName] = useState("");
   const [regExternalId, setRegExternalId] = useState("");
   const [regSecret, setRegSecret] = useState("");
+
+  useEffect(() => {
+    gql(`query { allowHumanRegistration }`).then(json => {
+      if (!json.errors) setAllowRegister(json.data.allowHumanRegistration);
+    });
+  }, []);
 
   if (isAuthenticated) {
     return <Navigate to="/" replace />;
@@ -117,25 +124,27 @@ export function LoginPage() {
               >
                 登录
               </button>
-              <button
-                type="button"
-                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
-                  mode === "register" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
-                }`}
-                onClick={() => { setMode("register"); setError(""); }}
-              >
-                注册
-              </button>
+              {allowRegister && (
+                <button
+                  type="button"
+                  className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-all ${
+                    mode === "register" ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  onClick={() => { setMode("register"); setError(""); }}
+                >
+                  注册
+                </button>
+              )}
             </div>
 
             {mode === "login" ? (
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">外部 ID</label>
+                  <label className="text-sm font-medium">账户</label>
                   <Input
                     value={externalId}
                     onChange={(e) => setExternalId(e.target.value)}
-                    placeholder="输入 externalID"
+                    placeholder="输入账户"
                     required
                     autoFocus
                   />
@@ -172,7 +181,7 @@ export function LoginPage() {
                   {loading ? "登录中..." : "登录"}
                 </Button>
               </form>
-            ) : (
+            ) : allowRegister ? (
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">名称</label>
@@ -185,11 +194,11 @@ export function LoginPage() {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="text-sm font-medium">外部 ID</label>
+                  <label className="text-sm font-medium">账户</label>
                   <Input
                     value={regExternalId}
                     onChange={(e) => setRegExternalId(e.target.value)}
-                    placeholder="登录用的 externalID"
+                    placeholder="注册用的账户"
                     required
                   />
                 </div>
@@ -214,18 +223,21 @@ export function LoginPage() {
                     </button>
                   </div>
                 </div>
-
                 {error && (
                   <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive" role="alert">
                     {error}
                   </div>
                 )}
-
                 <Button type="submit" disabled={loading} className="w-full">
                   {loading ? "注册中..." : "注册"}
                 </Button>
               </form>
-            )}
+            ) : (
+              <div className="rounded-md bg-muted p-3 text-sm text-muted-foreground text-center">
+                注册功能未开启
+              </div>
+            )
+            }
           </div>
         </div>
 

@@ -75,4 +75,4 @@ export const urqlClient = createClient({
   ],
 });
 
-export { setToken, clearToken };
+export { setToken, clearToken, getWSClient };

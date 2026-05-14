@@ -144,6 +144,25 @@ func (s *AgentService) UpdateAllowedCIDRs(id uint, cidrs []string) error {
 	return s.agentRepo.UpdateAllowedCIDRs(id, cidrs)
 }
 
+func (s *AgentService) SetDisabled(id uint, disabled bool) error {
+	return s.agentRepo.UpdateDisabled(id, disabled)
+}
+
+func (s *AgentService) Update(id uint, systemPrompt string) error {
+	changes := map[string]interface{}{}
+	if systemPrompt != "" {
+		changes["system_prompt"] = systemPrompt
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	return s.agentRepo.Update(id, changes)
+}
+
+func (s *AgentService) Delete(id uint) error {
+	return s.agentRepo.Delete(id)
+}
+
 func (s *AgentService) FindByCapability(capability models.CapabilityType, projectID uint) ([]models.Agent, error) {
 	return s.agentRepo.FindByCapability(capability, projectID)
 }

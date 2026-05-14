@@ -333,17 +333,27 @@ func TestMCPCreateIssue_DefaultPriority(t *testing.T) {
 }
 
 func TestMCPCreateIssue_InvalidPriority(t *testing.T) {
-	srv, _, _, agent, _ := setupTestWithProject(t)
+	srv, _, _, _, _ := setupTestWithProject(t)
 
-	result := call(t, srv, "tools/call", map[string]interface{}{
+	params, _ := json.Marshal(map[string]interface{}{
 		"name": "create_issue",
 		"arguments": map[string]interface{}{
 			"title":    "Bad priority",
 			"priority": "urgent",
 		},
-	}, agent.ID)
-	if result["id"] == "" {
-		t.Error("expected issue id even with invalid priority")
+	})
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/call",
+		Params:  params,
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error == nil {
+		t.Fatal("expected error for invalid priority")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("expected error code -32602, got %d", resp.Error.Code)
 	}
 }
 

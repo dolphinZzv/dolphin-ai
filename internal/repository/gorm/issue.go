@@ -67,6 +67,10 @@ func (r *IssueRepo) List(filter models.IssueFilter) ([]models.Issue, int64, erro
 	if filter.CreatorID != nil {
 		q = q.Where("creator_id = ?", *filter.CreatorID)
 	}
+	if len(filter.LabelIDs) > 0 {
+		q = q.Joins("JOIN issue_labels ON issue_labels.issue_id = issues.id").
+			Where("issue_labels.label_id IN ?", filter.LabelIDs)
+	}
 	if filter.Search != "" {
 		q = q.Where("title LIKE ? OR description LIKE ?", "%"+filter.Search+"%", "%"+filter.Search+"%")
 	}

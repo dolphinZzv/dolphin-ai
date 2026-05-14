@@ -15,15 +15,16 @@ func NewWorkflowService(issueService *IssueService) *WorkflowService {
 }
 
 var validTransitions = map[models.IssueState][]models.IssueState{
-	models.IssueStateOpen:              {models.IssueStateInProgress, models.IssueStateBlocked, models.IssueStateLater},
-	models.IssueStateInProgress:        {models.IssueStateBlocked, models.IssueStateReview, models.IssueStateLater},
-	models.IssueStateBlocked:           {models.IssueStateInProgress, models.IssueStateClosedNotPlanned, models.IssueStateLater},
-	models.IssueStateReview:            {models.IssueStateInProgress, models.IssueStateClosedCompleted, models.IssueStateClosedNotPlanned, models.IssueStateClosedRejected, models.IssueStateLater},
-	models.IssueStateLater:             {models.IssueStateOpen, models.IssueStateClosedNotPlanned},
-	models.IssueStateReopen:            {models.IssueStateInProgress, models.IssueStateBlocked, models.IssueStateLater},
-	models.IssueStateClosedCompleted:   {models.IssueStateReopen},
-	models.IssueStateClosedNotPlanned:  {models.IssueStateReopen},
-	models.IssueStateClosedRejected:    {models.IssueStateReopen},
+	models.IssueStateOpen:                {models.IssueStateInProgress, models.IssueStateBlocked, models.IssueStateLater, models.IssueStateClosedNotPlanned},
+	models.IssueStateInProgress:          {models.IssueStateBlocked, models.IssueStateReview, models.IssueStateLater},
+	models.IssueStateBlocked:             {models.IssueStateInProgress, models.IssueStateClosedNotPlanned, models.IssueStateLater},
+	models.IssueStateReview:              {models.IssueStateInProgress, models.IssueStateClosedCompleted, models.IssueStateClosedNotPlanned, models.IssueStateClosedRejected, models.IssueStateLater, models.IssueStatePendingConfirmation},
+	models.IssueStatePendingConfirmation: {models.IssueStateClosedCompleted, models.IssueStateInProgress, models.IssueStateClosedNotPlanned, models.IssueStateLater},
+	models.IssueStateLater:               {models.IssueStateOpen, models.IssueStateClosedNotPlanned},
+	models.IssueStateReopen:              {models.IssueStateInProgress, models.IssueStateBlocked, models.IssueStateLater},
+	models.IssueStateClosedCompleted:     {models.IssueStateReopen},
+	models.IssueStateClosedNotPlanned:    {models.IssueStateReopen},
+	models.IssueStateClosedRejected:      {models.IssueStateReopen},
 }
 
 func (s *WorkflowService) Transition(issueID uint, toState models.IssueState, actorID uint) (*models.Issue, error) {

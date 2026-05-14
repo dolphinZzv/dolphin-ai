@@ -1,11 +1,13 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
-import { Bot } from "lucide-react";
+import { Bot, ToggleLeft, ToggleRight, AlertTriangle } from "lucide-react";
 import { gql } from "@/lib/graphql";
+import { toast } from "sonner";
 
 interface AgentDetail {
   id: string;
@@ -13,6 +15,7 @@ interface AgentDetail {
   name: string;
   kind: string;
   status: string;
+  disabled: boolean;
   externalID: string;
   capabilities: string[];
   deviceInfo?: string;
@@ -37,16 +40,19 @@ const kindLabels: Record<string, string> = {
 
 export function AgentDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const [agent, setAgent] = useState<AgentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchAgent = useCallback(() => {
     if (!id) return;
     setLoading(true);
     setError(null);
     gql(
-      `query agent($id: ID!) { agent(id: $id) { id number name kind status externalID capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
+      `query agent($id: ID!) { agent(id: $id) { id number name kind status disabled externalID capabilities deviceInfo modelInfo lastIP lastSeenAt createdAt } }`,
       { id }
     )
       .then((json) => {
@@ -56,6 +62,36 @@ export function AgentDetailPage() {
       .catch(() => setError("网络错误"))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const toggleDisabled = useCallback(() => {
+    if (!id || !agent || toggling) return;
+    setToggling(true);
+    const newDisabled = !agent.disabled;
+    gql(
+      `mutation updateAgentDisabled($id: ID!, $disabled: Boolean!) { updateAgentDisabled(id: $id, disabled: $disabled) { id disabled } }`,
+      { id, disabled: newDisabled }
+    )
+      .then((json) => {
+        if (json.errors) { return; }
+        setAgent((prev) => prev ? { ...prev, disabled: newDisabled } : prev);
+      })
+      .finally(() => setToggling(false));
+  }, [id, agent, toggling]);
+
+  const handleDelete = useCallback(async () => {
+    if (!id || !window.confirm(`确认删除 Agent #${agent?.number} ${agent?.name}？此操作不可撤销。`)) return;
+    setDeleting(true);
+    try {
+      const json = await gql(`mutation deleteAgent($id: ID!) { deleteAgent(id: $id) }`, { id });
+      if (json.errors) { toast.error(json.errors[0].message); return; }
+      toast.success("Agent 已删除");
+      navigate("/projects", { replace: true });
+    } catch {
+      toast.error("网络错误");
+    } finally {
+      setDeleting(false);
+    }
+  }, [id, agent, navigate]);
 
   useEffect(() => { fetchAgent(); }, [fetchAgent]);
 
@@ -67,9 +103,9 @@ export function AgentDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link to="/agents" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
-        ← 返回列表
-      </Link>
+      <button onClick={() => navigate(-1)} className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        ← 返回
+      </button>
       <Card>
         <CardContent className="p-6">
           <div className="flex items-center gap-4">
@@ -85,6 +121,19 @@ export function AgentDetailPage() {
                 {kindLabels[agent.kind] || agent.kind} · {status.label}
               </p>
             </div>
+            <button
+              onClick={toggleDisabled}
+              disabled={toggling}
+              className={`inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                agent.disabled
+                  ? "bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+                  : "bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+              }`}
+              title={agent.disabled ? "点击启用" : "点击禁用"}
+            >
+              {agent.disabled ? <ToggleLeft className="h-5 w-5" /> : <ToggleRight className="h-5 w-5" />}
+              {agent.disabled ? "已禁用" : "已启用"}
+            </button>
           </div>
         </CardContent>
       </Card>
@@ -102,7 +151,7 @@ export function AgentDetailPage() {
               <p className="font-mono">{agent.id}</p>
             </div>
             <div>
-              <p className="text-muted-foreground mb-0.5">外部 ID</p>
+              <p className="text-muted-foreground mb-0.5">账户</p>
               <p className="font-mono">{agent.externalID}</p>
             </div>
             <div>
@@ -160,6 +209,18 @@ export function AgentDetailPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Danger Zone */}
+      <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
+        <div className="flex items-center gap-2 mb-3">
+          <AlertTriangle className="h-5 w-5 text-destructive" />
+          <h2 className="text-base font-semibold text-destructive">危险区域</h2>
+        </div>
+        <p className="text-sm text-muted-foreground mb-3">删除 Agent 后不可恢复。相关的评论和分配记录将被保留，但 Agent 账户将被永久删除。</p>
+        <Button variant="destructive" size="sm" onClick={handleDelete} disabled={deleting}>
+          {deleting ? "删除中..." : "删除 Agent"}
+        </Button>
+      </div>
     </div>
   );
 }

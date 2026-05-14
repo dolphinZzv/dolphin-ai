@@ -46,13 +46,13 @@ func setupTestResolver(t *testing.T) *Resolver {
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
-	return NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, bus)
+	return NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, bus, false)
 }
 
 // registerSystemAgent registers a human agent via the public registerAgent resolver and returns its parsed ID.
 func registerSystemAgent(t *testing.T, r *Resolver, suffix string) uint {
 	t.Helper()
-	agent, err := r.Mutation().RegisterAgent(context.Background(), "system-"+suffix, AgentKindHuman, "sys-"+suffix, "pass", nil, nil, nil, nil)
+	agent, err := r.Mutation().RegisterAgent(context.Background(), "system-"+suffix, AgentKindHuman, "sys-"+suffix, "pass", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("register system agent: %v", err)
 	}
@@ -108,7 +108,7 @@ func TestGraphQL_RegisterAndLoginAgent(t *testing.T) {
 	r := setupTestResolver(t)
 	ctx := context.Background()
 
-	regResult, err := r.Mutation().RegisterAgent(ctx, "test-bot", AgentKindAi, "ext-1", "secret", []string{"CODING"}, nil, nil, nil)
+	regResult, err := r.Mutation().RegisterAgent(ctx, "test-bot", AgentKindAi, "ext-1", "secret", []string{"CODING"}, nil, nil)
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -136,8 +136,8 @@ func TestGraphQL_QueryAgents(t *testing.T) {
 	sysID := registerSystemAgent(t, r, "qa")
 	ctx := authedCtx(sysID)
 
-	r.Mutation().RegisterAgent(ctx, "bot1", AgentKindAi, "ext-a", "secret", []string{"CODING"}, nil, nil, nil)
-	r.Mutation().RegisterAgent(ctx, "bot2", AgentKindAi, "ext-b", "secret", []string{"TESTING"}, nil, nil, nil)
+	r.Mutation().RegisterAgent(ctx, "bot1", AgentKindAi, "ext-a", "secret", []string{"CODING"}, nil, nil)
+	r.Mutation().RegisterAgent(ctx, "bot2", AgentKindAi, "ext-b", "secret", []string{"TESTING"}, nil, nil)
 
 	agents, err := r.Query().Agents(ctx, nil, nil, nil, nil)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestGraphQL_IssueIntegration(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, formatID(sysID), "Test Issue", strPtr("body"), PriorityMedium, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "Test Issue", strPtr("body"), PriorityMedium, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -191,7 +191,7 @@ func TestGraphQL_IssueIntegration(t *testing.T) {
 	}
 
 	// Issue list
-	conn, err := r.Query().Issues(ctx, project.ID, nil, nil, nil, nil, nil)
+	conn, err := r.Query().Issues(ctx, project.ID, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("issues: %v", err)
 	}
@@ -229,7 +229,7 @@ func TestGraphQL_TransitionIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, formatID(sysID), "Transitions", nil, PriorityLow, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "Transitions", nil, PriorityLow, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -262,7 +262,7 @@ func TestGraphQL_AddComment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, formatID(sysID), "C", nil, PriorityLow, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "C", nil, PriorityLow, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -288,7 +288,7 @@ func TestGraphQL_Timeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, formatID(sysID), "T", nil, PriorityLow, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "T", nil, PriorityLow, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestGraphQL_ProjectMembers(t *testing.T) {
 	}
 
 	// Register a separate member agent
-	memberAgent, err := r.Mutation().RegisterAgent(context.Background(), "member1", AgentKindAi, "m-1", "pass", nil, nil, nil, nil)
+	memberAgent, err := r.Mutation().RegisterAgent(context.Background(), "member1", AgentKindAi, "m-1", "pass", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("register member: %v", err)
 	}
@@ -344,7 +344,7 @@ func TestGraphQL_CommentsQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, formatID(sysID), "C2", nil, PriorityLow, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "C2", nil, PriorityLow, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -363,7 +363,7 @@ func TestGraphQL_CommentsQuery(t *testing.T) {
 
 func TestGraphQL_NewHandlerCreatesHTTPHandler(t *testing.T) {
 	r := setupTestResolver(t)
-	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.WorkflowSvc, r.FeedbackSvc, r.EventBus)
+	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.WorkflowSvc, r.FeedbackSvc, r.EventBus, false)
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}

@@ -20,6 +20,7 @@ type Agent {
   name: String!
   kind: AgentKind!
   status: AgentStatus!
+  disabled: Boolean!
   externalID: String!
   systemPrompt: String
   deviceInfo: String
@@ -80,6 +81,7 @@ enum IssueState {
   review
   later
   reopen
+  pending_confirmation
   closed_completed
   closed_not_planned
   closed_rejected
@@ -229,6 +231,9 @@ type Feedback {
 }
 
 type Query {
+  supportedModels: [String!]!
+  commonDeviceInfo: [String!]!
+  allowHumanRegistration: Boolean!
   agents(kind: AgentKind, status: AgentStatus, capabilities: [String!], projectID: ID): [Agent!]!
   agent(id: ID!): Agent
   projects: [Project!]!
@@ -236,7 +241,7 @@ type Query {
   labels(projectID: ID!, group: String): [Label!]!
   milestones(projectID: ID!, state: MilestoneState): [Milestone!]!
   issue(id: ID!): Issue
-  issues(projectID: ID!, state: IssueState, priority: Priority, assigneeID: ID, limit: Int, offset: Int): IssueConnection!
+  issues(projectID: ID!, state: IssueState, priority: Priority, assigneeID: ID, labelIDs: [ID!], search: String, limit: Int, offset: Int): IssueConnection!
   comments(issueID: ID!): [Comment!]!
   timeline(issueID: ID!): [TimelineEvent!]!
   validTransitions(state: IssueState!): [IssueState!]!
@@ -247,9 +252,12 @@ type Mutation {
   registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
   loginAgent(externalID: String!, secret: String!): LoginResult!
   updateAgentStatus(id: ID!, status: AgentStatus!): Agent!
+  updateAgentDisabled(id: ID!, disabled: Boolean!): Agent!
+  updateAgent(id: ID!, systemPrompt: String): Agent!
+  deleteAgent(id: ID!): Boolean!
   updateAgentAllowedCIDRs(id: ID!, allowedCIDRs: [String!]!): Agent!
 
-  createProjectAgent(projectID: ID!, name: String!, kind: AgentKind!, externalID: String, secret: String, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
+  createProjectAgent(projectID: ID!, name: String!, kind: AgentKind!, role: ProjectRole, externalID: String, secret: String, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
 
   createProject(name: String!, description: String): Project!
   updateProject(id: ID!, name: String, description: String): Project!
@@ -274,9 +282,11 @@ type Mutation {
   addLabels(issueID: ID!, labelIDs: [ID!]!): Issue!
   removeLabels(issueID: ID!, labelIDs: [ID!]!): Issue!
   createLabel(projectID: ID!, name: String!, color: String, capability: String, group: String): Label!
+  updateLabel(id: ID!, name: String, color: String): Label!
   deleteLabel(id: ID!): Boolean!
 
   createMilestone(projectID: ID!, title: String!, description: String, dueDate: Time): Milestone!
+  updateMilestone(id: ID!, title: String, description: String, dueDate: Time, state: MilestoneState): Milestone!
   deleteMilestone(id: ID!): Boolean!
 
   createFeedback(targetType: FeedbackTargetType!, targetID: ID!, authorID: ID!, rating: FeedbackRating!, body: String): Feedback!

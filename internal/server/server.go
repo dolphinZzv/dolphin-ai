@@ -90,5 +90,9 @@ func New(cfg *config.Config) (*Server, error) {
 
 	log.Println("[server] initialized")
 
+	if err := SeedData(db); err != nil {
+		log.Printf("[server] seed data: %v", err)
+	}
+
 	return srv, nil
 }
