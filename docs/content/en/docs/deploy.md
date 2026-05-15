@@ -73,6 +73,8 @@ Create `~/Library/LaunchAgents/com.dolphin.agent.plist`:
         <string>sk-...</string>
         <key>DZ_LLM_MODEL</key>
         <string>claude-sonnet-4-6</string>
+        <key>DZ_LLM_BASE_URL</key>
+        <string></string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -131,7 +133,7 @@ sc delete dolphin
 # Install nssm: choco install nssm / winget install nssm
 nssm install dolphin "C:\path\to\dolphin.exe"
 nssm start dolphin
-nssm status dolphin
+sc query dolphin
 nssm stop dolphin
 ```
 
@@ -190,6 +192,6 @@ nssm start dolphin
 | systemd | `journalctl -u dolphin -f` |
 | launchd | `/usr/local/var/log/dolphin.log` |
 | brew services | `$(brew --prefix)/var/log/dolphin.log` |
-| nssm | `%NSSM_HOME%\logs\dolphin.log` |
+| nssm | `nssm dump dolphin` 查看日志配置 |
 | nohup | wherever stdout was redirected |
 | Dolphin session logs | `~/.dolphin/logs/agent.log` |

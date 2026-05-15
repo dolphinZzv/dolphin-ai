@@ -17,6 +17,8 @@
         <string></string>
         <key>DZ_LLM_MODEL</key>
         <string></string>
+        <key>DZ_LLM_BASE_URL</key>
+        <string></string>
     </dict>
 
     <key>RunAtLoad</key>

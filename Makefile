@@ -52,7 +52,7 @@ install-systemd: build
 	mkdir -p /usr/local/bin /etc/dolphin /var/lib/dolphin/.dolphin/logs
 	cp dolphin /usr/local/bin/dolphin
 	cp deploy/dolphin.service /etc/systemd/system/dolphin.service
-	systemctl daemon-reload
+	sudo systemctl daemon-reload
 	@echo "dolphin installed. Edit /etc/dolphin/config.yaml, then:"
 	@echo "  sudo systemctl enable --now dolphin"
 	@echo "  journalctl -u dolphin -f"

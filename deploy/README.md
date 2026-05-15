@@ -118,7 +118,7 @@ sc delete dolphin
 # Install nssm: choco install nssm or winget install nssm
 nssm install dolphin "C:\path\to\dolphin.exe"
 nssm start dolphin
-nssm status dolphin
+sc query dolphin
 nssm stop dolphin
 ```
 
@@ -156,7 +156,7 @@ sudo systemctl stop dolphin && sudo cp dolphin /usr/local/bin/dolphin && sudo sy
 # macOS launchd
 launchctl stop com.dolphin.agent && cp dolphin /usr/local/bin/dolphin && launchctl start com.dolphin.agent
 # Windows (nssm)
-nssm stop dolphin && copy dolphin.exe C:\dolphin\ && nssm start dolphin
+nssm stop dolphin && copy dolphin.exe C:\dolphin\dolphin.exe && nssm start dolphin
 ```
 
 ## Logs
@@ -166,6 +166,6 @@ nssm stop dolphin && copy dolphin.exe C:\dolphin\ && nssm start dolphin
 | systemd | `journalctl -u dolphin -f` |
 | launchd | `/usr/local/var/log/dolphin.log` |
 | brew services | `$(brew --prefix)/var/log/dolphin.log` |
-| Windows nssm | `%NSSM_HOME%\logs\dolphin.log` |
+| Windows nssm | `nssm dump dolphin` 查看日志配置 |
 | nohup | wherever stdout was redirected |
 | Dolphin session | `~/.dolphin/logs/agent.log` |

@@ -73,6 +73,8 @@ sudo systemctl daemon-reload && sudo systemctl restart dolphin
         <string>sk-...</string>
         <key>DZ_LLM_MODEL</key>
         <string>claude-sonnet-4-6</string>
+        <key>DZ_LLM_BASE_URL</key>
+        <string></string>
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -131,7 +133,7 @@ sc delete dolphin
 # 安装 nssm：choco install nssm / winget install nssm
 nssm install dolphin "C:\path\to\dolphin.exe"
 nssm start dolphin
-nssm status dolphin
+sc query dolphin
 nssm stop dolphin
 ```
 
@@ -190,6 +192,6 @@ nssm start dolphin
 | systemd | `journalctl -u dolphin -f` |
 | launchd | `/usr/local/var/log/dolphin.log` |
 | brew services | `$(brew --prefix)/var/log/dolphin.log` |
-| nssm | `%NSSM_HOME%\logs\dolphin.log` |
+| nssm | `nssm dump dolphin` 查看日志配置 |
 | nohup | 重定向的 stdout 位置 |
 | Dolphin 会话日志 | `~/.dolphin/logs/agent.log` |
