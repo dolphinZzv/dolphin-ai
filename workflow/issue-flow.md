@@ -65,6 +65,7 @@ open → in_progress → review → closed_completed ←─┐
 | 5 | Blocked 状态必须附带阻塞原因和期望的解除条件 |
 | 6 | 同一次对话中批量发现的关联问题，应在各 issue 评论中互相引用 |
 | 7 | `closed_completed` 的问题复发 → 重新 `Chick_transition_issue` 为 `open`，不能开新 issue |
+| 8 | Issue 标题和描述使用**中文**，commit message 使用**英文**。涉及文档的 issue 必须标注 `[zh]`/`[en]`/`[zh/en]` |
 
 ## 状态定义
 
@@ -115,6 +116,29 @@ issue → closed_completed ←──────  (merge → close)
 | `blocked` | 任意步骤 | 等待外部输入 |
 | `closed_completed` | 9（合并） | 用户确认合并 |
 | `closed_not_planned` | — | 确认不修复 |
+
+## 多语言规范
+
+项目文档支持**中文**和**英文**。Issue 及相关评论应遵循以下规则：
+
+| 场景 | 语言 | 说明 |
+|------|------|------|
+| Issue 标题 | **中文** | 优先用中文描述问题，除非该 issue 仅涉及英文文档 |
+| Issue 描述 | **中文** | 用中文详细描述，便于团队快速理解 |
+| 评论 | **与 issue 标题一致** | 中文 issue 全程用中文，英文 issue 全程用英文 |
+| 涉及文档的 issue | **标注语言** | 在标题或描述开头标注 `[zh]` / `[en]` / `[zh/en]` |
+| commit message | **英文** | 遵循 git 惯例，使用英文：`fix(#168): msg` |
+| 设计文档 | **中文** | 技术设计文档用中文书写 |
+
+示例：
+
+```
+# 标题（仅涉及英文文档）
+[en] Quickstart: Dolphin > prompt mismatch with actual Coordinator mode
+
+# 标题（涉及中英文双语文档）
+[zh/en] Quickstart 文档与实际行为不一致：Dolphin > vs 协调器模式
+```
 
 ## 通知处理
 
