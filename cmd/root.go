@@ -27,6 +27,7 @@ import (
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
 	"dolphin/internal/transport"
+	"dolphin/internal/update"
 
 	"github.com/oklog/run"
 	"github.com/spf13/cobra"
@@ -393,6 +394,27 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 			cancel()
 		})
 		actorCount++
+	}
+
+	// Update checker actor
+	if cfg.Update.Enabled {
+		interval, err := time.ParseDuration(cfg.Update.CheckInterval)
+		if err != nil {
+			zap.S().Warnw("invalid update.check_interval, update checker disabled", "value", cfg.Update.CheckInterval, "error", err)
+		} else {
+			ctx, cancel := context.WithCancel(context.Background())
+			g.Add(func() error {
+				return update.StartChecker(ctx, update.CheckerConfig{
+					Enabled:       cfg.Update.Enabled,
+					CheckInterval: interval,
+					Channel:       cfg.Update.Channel,
+					AutoInstall:   cfg.Update.AutoInstall,
+				}, Version)
+			}, func(err error) {
+				cancel()
+			})
+			actorCount++
+		}
 	}
 
 	// SSH transport

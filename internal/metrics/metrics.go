@@ -19,11 +19,11 @@ const (
 
 // Registry holds all registered metrics and can render them in Prometheus format.
 type Registry struct {
-	mu               sync.RWMutex
-	counters         map[string]*Counter
-	gauges           map[string]*Gauge
-	histograms       map[string]*Histogram
-	labeledCounters  map[string]*LabeledCounter
+	mu                sync.RWMutex
+	counters          map[string]*Counter
+	gauges            map[string]*Gauge
+	histograms        map[string]*Histogram
+	labeledCounters   map[string]*LabeledCounter
 	labeledHistograms map[string]*LabeledHistogram
 }
 
@@ -224,14 +224,14 @@ func (r *Registry) NewLabeledCounter(name, help, labelName string, labels map[st
 
 // LabeledHistogram provides per-label-value histogram instances.
 type LabeledHistogram struct {
-	registry    *Registry
-	name        string
-	help        string
-	labelName   string
-	baseLabels  map[string]string
-	bounds      []float64
-	mu          sync.RWMutex
-	histograms  map[string]*Histogram
+	registry   *Registry
+	name       string
+	help       string
+	labelName  string
+	baseLabels map[string]string
+	bounds     []float64
+	mu         sync.RWMutex
+	histograms map[string]*Histogram
 }
 
 // With returns the Histogram for the given label value, creating it lazily.

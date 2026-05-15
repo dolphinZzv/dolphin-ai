@@ -36,6 +36,7 @@ type Config struct {
 	Metrics   MetricsConfig   `mapstructure:"metrics"`
 	Health    HealthConfig    `mapstructure:"health"`
 	Diary     DiaryConfig     `mapstructure:"diary"`
+	Update    UpdateConfig    `mapstructure:"update"`
 	LogLevel  string          `mapstructure:"log_level"`
 	LogFile   string          `mapstructure:"log_file"`
 	Plugins   PluginsConfig   `mapstructure:"plugins"`
@@ -274,6 +275,13 @@ type HealthConfig struct {
 	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9091"
 }
 
+type UpdateConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	CheckInterval string `mapstructure:"check_interval"` // e.g. "24h", "12h", "1h"
+	Channel       string `mapstructure:"channel"`        // "stable" or "pre-release"
+	AutoInstall   bool   `mapstructure:"auto_install"`
+}
+
 type PluginsConfig struct {
 	Enabled        bool     `mapstructure:"enabled"`
 	Dir            string   `mapstructure:"dir"`             // script plugins directory
@@ -420,6 +428,19 @@ func Load(cfgFile string) (*Config, error) {
 		} else {
 			cfg.Transport.MQTT.EmbeddedAccounts[0].Password = v
 		}
+	}
+
+	if v := os.Getenv("DZ_UPDATE_ENABLED"); v != "" {
+		cfg.Update.Enabled = v == "true" || v == "1"
+	}
+	if v := os.Getenv("DZ_UPDATE_CHECK_INTERVAL"); v != "" {
+		cfg.Update.CheckInterval = v
+	}
+	if v := os.Getenv("DZ_UPDATE_CHANNEL"); v != "" {
+		cfg.Update.Channel = v
+	}
+	if v := os.Getenv("DZ_UPDATE_AUTO_INSTALL"); v != "" {
+		cfg.Update.AutoInstall = v == "true" || v == "1"
 	}
 
 	// Auto-generate MQTT broker account if embedded broker is enabled and no accounts configured.
@@ -654,6 +675,14 @@ func (c *Config) Validate() error {
 	if c.MCP.Shell.TimeoutSeconds <= 0 {
 		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0")
 	}
+	if c.Update.Channel != "" && c.Update.Channel != "stable" && c.Update.Channel != "pre-release" {
+		return fmt.Errorf("update.channel must be \"stable\" or \"pre-release\", got %q", c.Update.Channel)
+	}
+	if c.Update.Enabled && c.Update.CheckInterval != "" {
+		if _, err := time.ParseDuration(c.Update.CheckInterval); err != nil {
+			return fmt.Errorf("update.check_interval: invalid duration %q: %w", c.Update.CheckInterval, err)
+		}
+	}
 	return nil
 }
 
@@ -737,6 +766,11 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("health.enabled", false)
 	v.SetDefault("health.addr", "127.0.0.1:9091")
+
+	v.SetDefault("update.enabled", true)
+	v.SetDefault("update.check_interval", "24h")
+	v.SetDefault("update.channel", "stable")
+	v.SetDefault("update.auto_install", false)
 
 	v.SetDefault("log_level", "info")
 	v.SetDefault("log_file", ".dolphin/logs/agent.log")

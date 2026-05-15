@@ -11,8 +11,8 @@ import (
 type Status string
 
 const (
-	StatusOK      Status = "ok"
-	StatusError   Status = "error"
+	StatusOK       Status = "ok"
+	StatusError    Status = "error"
 	StatusDegraded Status = "degraded"
 )
 

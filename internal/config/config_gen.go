@@ -147,6 +147,13 @@ diary:
 log_level: info
 log_file: .dolphin/logs/agent.log
 
+# ── Silent Update ──────────────────────────────────────────
+update:
+  enabled: true             # periodically check for new versions
+  check_interval: 24h       # how often to check (e.g. "24h", "12h", "1h")
+  channel: stable           # "stable" (releases only) or "pre-release"
+  auto_install: false       # automatically install updates (false = notify only in logs)
+
 # Hook (sync): intercept agent loop at session:start, user:input, llm:*, tool:*
 # Event (async): subscribe to notifications via webhook or JSONL log
 # Place script plugins in ~/.dolphin/plugins/ to register handlers
@@ -314,6 +321,13 @@ diary:
 # ── 可观测性 ──────────────────────────────────────────────
 log_level: info
 log_file: .dolphin/logs/agent.log
+
+# ── 静默更新 ──────────────────────────────────────────────
+update:
+  enabled: true             # 定期检查新版本
+  check_interval: 24h       # 检查间隔（如 "24h"、"12h"、"1h"）
+  channel: stable           # "stable"（仅正式版）或 "pre-release"（含预发布版）
+  auto_install: false       # 自动安装更新（false = 仅日志通知）
 
 # Hook (sync): intercept agent loop at session:start, user:input, llm:*, tool:*
 # Event (async): subscribe to notifications via webhook or JSONL log
