@@ -5,8 +5,8 @@
 ```text
 ┌─────────────────────────────────────────────────┐
 │ 1. 用户提出需求、问题或 Bug                       │
-│    ├─ Bug → 先写入 todo/ 编号归档               │
-│    ├─ Feature → 先写入 feature/ 编号归档        │
+│    ├─ 先创建 Chick issue 分类定级                │
+│    ├─ 再将编号写入 todo/ 或 feature/ 归档        │
 │    ↓                                            │
 │ 2. Agent 自审需求（第一轮）                      │
 │    ├─ 不清晰 → 追问用户澄清                      │
@@ -56,7 +56,7 @@
 
 | # | Rule |
 |---|------|
-| 1 | Bug → `todo/<编号>-<描述>.md` 归档，Feature → `feature/<编号>-<描述>.md` 归档 |
+| 1 | Bug/Feature/Docs → 先创建 Chick issue 分类定级，再写入 `todo/` 或 `feature/` 归档。参见 `workflow/issue-flow.md` |
 | 2 | 需求须经两轮 Agent 自审，不清晰则追问 |
 | 3 | 设计必须输出文档到 `design/`，通过两轮自审后方可编码 |
 | 4 | 按功能创建 feature/bugfix 分支，代码严格按设计实现 |
