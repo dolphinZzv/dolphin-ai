@@ -37,6 +37,8 @@ import (
 
 var (
 	cfgFile   string
+	verbose   bool
+	quiet     bool
 	Version   = "dev"
 	BuildTime = "unknown"
 )
@@ -56,6 +58,8 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	}
 
 	cmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "path to config file (searches .dolphin/, ~/.dolphin/, /etc/dolphin/ by default)")
+	cmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug-level logging")
+	cmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress non-error output")
 	cmd.SetVersionTemplate("dolphin {{.Version}}\n")
 
 	cmd.AddCommand(NewSetupCmd())
@@ -69,6 +73,7 @@ Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
 	cmd.AddCommand(NewConfigCmd())
 	cmd.AddCommand(NewDoctorCmd())
 	cmd.AddCommand(NewCompletionCmd())
+	cmd.AddCommand(NewSkillsCmd())
 
 	return cmd
 }
@@ -78,6 +83,14 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+
+	// Apply --verbose/--quiet log level override
+	switch {
+	case verbose:
+		cfg.LogLevel = "debug"
+	case quiet:
+		cfg.LogLevel = "error"
 	}
 
 	// Setup logging
