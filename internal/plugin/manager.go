@@ -44,6 +44,7 @@ func (m *Manager) LoadScripts(dir string) error {
 // the hook registry and event bus. Call once after all Register/LoadScripts calls.
 func (m *Manager) Activate() {
 	if len(m.plugins) == 0 {
+		zap.S().Debugw("plugin: no plugins loaded")
 		return
 	}
 
