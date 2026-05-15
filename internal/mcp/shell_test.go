@@ -105,6 +105,33 @@ func TestShellExecuteTimeout(t *testing.T) {
 	}
 }
 
+func TestShellExecutePipeCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Shell.AllowedCommands = nil
+	tool := NewShellTool(cfg)
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | wc -c"}`))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+}
+
+func TestShellExecuteRedirectCommand(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.MCP.Shell.AllowedCommands = nil
+	tool := NewShellTool(cfg)
+	// Use a pipe to test shell features: echo piped to cat with redirect target
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | tee /dev/null"}`))
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+}
+
 func TestShellExecuteRestrictedMode(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = []string{"echo", "ls"}

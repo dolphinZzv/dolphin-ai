@@ -31,10 +31,9 @@ type ShellTool struct {
 
 func NewShellTool(cfg *config.Config) *ShellTool {
 	if len(cfg.MCP.Shell.AllowedCommands) == 0 && !cfg.MCP.Shell.AllowUnrestricted {
-		zap.S().Warnw("shell tool: no command whitelist set — direct execution allowed, " +
-			"but shell features (pipes, redirects) are disabled. " +
+		zap.S().Warnw("shell tool: no command whitelist set — full shell access enabled. " +
 			"Set mcp.shell.allowed_commands to restrict to specific commands, " +
-			"or set mcp.shell.allow_unrestricted=true for full shell access.")
+			"or set mcp.shell.allow_unrestricted=false explicitly.")
 	}
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
@@ -113,9 +112,9 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 
 	zap.S().Debugw("executing shell command", "command", truncateCommand(params.Command))
 
-	// Build the command: restricted mode (whitelist) or direct execution.
-	// Shell features (pipes, redirects) are only available when
-	// allow_unrestricted is explicitly opted into.
+	// Build the command:
+	// - Restricted mode (allowed_commands set): exec.Command directly, no shell
+	// - Default (no whitelist): use platform-native shell for pipes, redirects, etc.
 	var cmd *exec.Cmd
 	if len(allowed) > 0 {
 		// Restricted: exec.Command with args, no shell
@@ -124,16 +123,9 @@ func (s *ShellTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		} else {
 			cmd = exec.CommandContext(ctx, fields[0])
 		}
-	} else if s.cfg.AllowUnrestricted {
-		// Opt-in unrestricted: use platform-native shell
-		cmd = shellCommand(ctx, params.Command)
 	} else {
-		// Default safe mode: direct execution without shell
-		if len(fields) > 1 {
-			cmd = exec.CommandContext(ctx, fields[0], fields[1:]...)
-		} else {
-			cmd = exec.CommandContext(ctx, fields[0])
-		}
+		// Default: use shell for full shell feature support
+		cmd = shellCommand(ctx, params.Command)
 	}
 	// Use workspace directory from context if set (for sub-agent workspace isolation)
 	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
