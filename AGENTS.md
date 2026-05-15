@@ -1,50 +1,50 @@
-# AGENTS.md — dolphin Development Guidelines
+# AGENTS.md — Dolphin Development Guidelines
 
-> **所有变更必须严格遵循 `workflow/change-flow.md` 定义的 9 步流程。任何跳过步骤的行为均被禁止。**
+> **All changes MUST strictly follow the 9-step process defined in `workflow/change-flow.md`. Skipping any step is prohibited.**
 
-## Change Flow (概要)
+## Change Flow (Summary)
 
 ```
-1. 需求/Bug → todo/ 或 feature/ 编号归档
-2. Agent 两轮自审需求（不清晰则追问）
-3. 输出设计文档到 design/ 或写清方案
-4. Agent 两轮自审设计（有问题则回退修改）
-5. 创建 feature/bugfix 分支，严格按设计写代码
-6. 单元测试 go test -race ./internal/... -count=1 100% 通过
-7. Agent 两轮自审代码（逐条核对需求 + 边界情况 + 并发安全）
-8. 提交代码 → 自评影响范围、回滚方案、兼容性
-9. 询问用户：合并或改进
+1. Requirement/Bug → archive in todo/ or feature/ with issue number
+2. Agent self-review requirements (round 1) — ask if unclear
+3. Output design doc to design/ or write a clear solution
+4. Agent self-review design (round 2) — revise if problematic
+5. Create feature/bugfix branch, code strictly per design
+6. Unit tests: go test -race ./internal/... -count=1 100% pass
+7. Agent self-review code (round 2) — verify requirements + edge cases + concurrency safety
+8. Commit code → self-evaluate impact scope, rollback plan, compatibility
+9. Ask user: merge or improve
 ```
 
 ## Project Scope
 
-dolphin 是一个跨终端/邮件/聊天/SSH 的 AI Agent，运行 shell 命令、控制浏览器、委派子 Agent、遵循定时任务。
+Dolphin is a cross-terminal/email/chat/SSH AI agent that runs shell commands, controls browsers, dispatches sub-agents, and follows scheduled tasks.
 
-## 核心约束
+## Core Constraints
 
-- 所有配置通过 `config.yaml` 或环境变量，不硬编码
-- 使用 zap 结构化日志，关键路径 INFO 级别
-- 代码必须稳定、可恢复、可观测、可测试
-- 测试覆盖：整体 60%+，关键路径 80%+
-- 测试带 race 检测：`go test -race ./...`
+- All configuration via `config.yaml` or environment variables, no hardcoding
+- Use zap structured logging, INFO level for critical paths
+- Code must be stable, recoverable, observable, and testable
+- Test coverage: 60%+ overall, 80%+ for critical paths
+- Tests with race detection: `go test -race ./...`
 
-## 设计文档
+## Design Docs
 
-- 架构设计见 `design/` 目录
-- 新功能/跨组件变更必须先更新设计文档，再进入编码
-- 设计文档路径：`design/modules/<模块名>.md`
+- Architecture design in `design/` directory
+- New features/cross-component changes must update design docs first, then code
+- Design doc path: `design/modules/<module-name>.md`
 
-## 安全
+## Security
 
-- 不硬编码凭据、密钥，使用环境变量或 `config.yaml` 的 secret 引用
-- Shell 工具需显式白名单危险命令
-- 所有外部输入需验证，记录拒绝原因
+- No hardcoded credentials or keys; use environment variables or `config.yaml` secret references
+- Shell tool requires explicit allowlist for dangerous commands
+- All external input must be validated; log rejection reasons
 
-## 参考
+## References
 
 - Change Flow: `workflow/change-flow.md`
-- Issue 处理流程: `workflow/issue-flow.md`
-- Git 分支策略: `workflow/git-branching.md`
+- Issue Flow: `workflow/issue-flow.md`
+- Git Branching: `workflow/git-branching.md`
 - CI/CD: `workflow/ci-cd.md`
-- 架构设计: `design/README.md`
-- panda 客户端: `./app/panda/AGENTS.md`
+- Architecture: `design/README.md`
+- Panda client: `./app/panda/AGENTS.md`

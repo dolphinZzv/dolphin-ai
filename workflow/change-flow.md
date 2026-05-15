@@ -1,54 +1,57 @@
 # Change Flow
 
-**原则：设计先行，代码随设计走。**
+**Principle: Design first, code follows design.**
 
 ```text
 ┌─────────────────────────────────────────────────┐
-│ 1. 用户提出需求、问题或 Bug                       │
-│    ├─ 先创建 Chick issue 分类定级                │
-│    ├─ 再将编号写入 todo/ 或 feature/ 归档        │
+│ 1. User submits requirement, issue, or bug       │
+│    ├─ First create a Chick issue for triage      │
+│    ├─ Then archive the number in todo/ or feature/│
 │    ↓                                            │
-│ 2. Agent 自审需求（第一轮）                      │
-│    ├─ 不清晰 → 追问用户澄清                      │
+│ 2. Agent self-review requirements (round 1)     │
+│    ├─ Unclear → ask user for clarification       │
 │    ↓                                            │
-│   Agent 自审需求（第二轮）                      │
-│    ├─ 仍不清晰 → 继续追问                        │
-│    ├─ 通过                                      │
+│   Agent self-review requirements (round 2)      │
+│    ├─ Still unclear → continue asking            │
+│    ├─ Pass                                       │
 │    ↓                                            │
-│ 3. 设计 — 输出设计文档到 design/ 或写清楚方案    │
+│ 3. Design — output design doc to design/ or      │
+│    write a clear solution                        │
 │    ↑←───────────────┐                          │
 │    ↓                 │                          │
-│ 4. Agent 自审设计（第一轮）                      │
-│    ├─ 有问题 ────────┘ 修改设计                  │
+│ 4. Agent self-review design (round 1)            │
+│    ├─ Issues → ──────┘ revise design             │
 │    ↓                                            │
-│   Agent 自审设计（第二轮）                      │
-│    ├─ 仍有问题 → 修改设计 → 回第一轮            │
-│    ├─ 通过                                      │
+│   Agent self-review design (round 2)            │
+│    ├─ Still issues → revise design → back to r1 │
+│    ├─ Pass                                       │
 │    ↓                                            │
-│ 5. 按功能创建 feature/bugfix 分支，严格按设计写代码      │
-│    ├─ 用户反馈 → 同步更新设计文档                │
+│ 5. Create feature/bugfix branch per function,     │
+│    code strictly per design                      │
+│    ├─ User feedback → sync update design doc     │
 │    ↓                                            │
-│ 6. 单元测试 — 所有新代码必须有测试               │
-│    ├─ go test -race ./internal/... -count=1 100% 通过  │
-│    ├─ 失败 → 回到步骤 5 修代码                   │
+│ 6. Unit tests — all new code must have tests     │
+│    ├─ go test -race ./internal/... -count=1 100% │
+│    ├─ Fail → back to step 5 to fix code          │
 │    ↓                                            │
-│ 7. Agent 自审代码（第一轮）                      │
-│    ├─ 检测是否有未完成的需求，逐条核对            │
-│    ├─ 检查边界情况、错误处理、并发安全            │
-│    ├─ 发现问题 → 回到步骤 5 → 回本轮重审        │
-│    ├─ 发现设计问题 → 回到步骤 3 改设计           │
+│ 7. Agent self-review code (round 1)              │
+│    ├─ Check incomplete requirements line by line │
+│    ├─ Check edge cases, error handling, concurrency│
+│    ├─ Issues → back to step 5 → re-review        │
+│    ├─ Design issues → back to step 3 to fix      │
 │    ↓                                            │
-│   Agent 自审代码（第二轮）                      │
-│    ├─ 仍有问题 → 回步骤 5 修改 → 回第一轮       │
-│    ├─ 通过                                      │
+│   Agent self-review code (round 2)               │
+│    ├─ Still issues → back to step 5 → round 1   │
+│    ├─ Pass                                       │
 │    ↓                                            │
-│ ► 提交代码（git commit）                         │
+│ ► Commit code (git commit)                       │
 │    ↓                                            │
-│ 8. Agent 自评变更 — 影响范围、回滚方案、兼容性   │
+│ 8. Agent self-evaluate — impact scope, rollback, │
+│    compatibility                                 │
 │    ↓                                            │
-│ 9. 询问用户是否改进或合并                       │
-│    ├─ 合并 → Agent 创建 PR，请求合并             │
-│    ├─ 改进 → 回到步骤 1，重新走流程              │
+│ 9. Ask user: improve or merge                   │
+│    ├─ Merge → Agent creates PR, requests merge    │
+│    ├─ Improve → back to step 1, restart flow     │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -56,12 +59,12 @@
 
 | # | Rule |
 |---|------|
-| 1 | Bug/Feature/Docs → 先创建 Chick issue 分类定级，再写入 `todo/` 或 `feature/` 归档。参见 `workflow/issue-flow.md` |
-| 2 | 需求须经两轮 Agent 自审，不清晰则追问 |
-| 3 | 设计必须输出文档到 `design/`，通过两轮自审后方可编码 |
-| 4 | 按功能创建 feature/bugfix 分支，代码严格按设计实现 |
-| 5 | 用户反馈须同步更新设计文档 |
-| 6 | 单元测试 `go test -race ./internal/... -count=1` 100% 通过 |
-| 7 | 代码须经两轮 Agent 自审：逐条核对未完成需求 + 边界情况、错误处理、并发安全 |
-| 8 | 提交前自评变更影响范围、回滚方案、兼容性 |
-| 9 | 最终询问用户：合并或改进 |
+| 1 | Bug/Feature/Docs → first create Chick issue for triage, then archive in `todo/` or `feature/`. See `workflow/issue-flow.md` |
+| 2 | Requirements must pass two rounds of agent self-review; ask if unclear |
+| 3 | Design must output a doc to `design/`; coding only after two rounds of self-review |
+| 4 | Create feature/bugfix branch per function; code strictly follows design |
+| 5 | User feedback must sync-update the design doc |
+| 6 | Unit tests `go test -race ./internal/... -count=1` must pass 100% |
+| 7 | Code must pass two rounds of agent self-review: verify incomplete requirements + edge cases, error handling, concurrency safety |
+| 8 | Self-evaluate impact scope, rollback plan, and compatibility before commit |
+| 9 | Finally ask user: merge or improve |
