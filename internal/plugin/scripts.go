@@ -38,6 +38,7 @@ func LoadScripts(dir string) ([]Plugin, error) {
 	entries, err := os.ReadDir(expanded)
 	if err != nil {
 		if os.IsNotExist(err) {
+				zap.S().Debugw("plugin: directory not found, skipping", "dir", expanded)
 			return nil, nil
 		}
 		return nil, fmt.Errorf("read plugins dir: %w", err)

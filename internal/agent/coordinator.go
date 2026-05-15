@@ -14,6 +14,7 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
+	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
@@ -115,6 +116,13 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	}
 
 	defer func() {
+		// Fire session:end hook
+		if c.hooks != nil {
+			c.hooks.Fire(context.Background(), hook.PointSessionEnd, &hook.Context{
+				SessionID: string(sess.ID),
+				Turn:      state.Turn,
+			})
+		}
 		c.generateSummary(sess, state)
 		sess.Close()
 		c.sessMgr.Remove(sess.ID)
@@ -138,6 +146,15 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 	// Link pool to coordinator session for sub-agent session tracing
 	c.pool.SetParentSessionID(sess.ID)
+
+	// Fire session:start hook
+	if c.hooks != nil {
+		c.hooks.Fire(ctx, hook.PointSessionStart, &hook.Context{
+			SessionID: string(sess.ID),
+			Turn:      0,
+			Values:    make(map[string]any),
+		})
+	}
 
 	zap.S().Debugw("coordinator session started",
 		"session_id", sess.ID,
@@ -180,6 +197,21 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			zap.S().Debugw("read line error", "error", err)
 			state.StopReason = "transport_error"
 			return
+		}
+
+		// Fire user:input hook (can rewrite or reject input)
+		if c.hooks != nil {
+			hc := &hook.Context{
+				SessionID: string(sess.ID),
+				Turn:      state.Turn + 1,
+				UserInput: line,
+				Values:    make(map[string]any),
+			}
+			if err := c.hooks.Fire(ctx, hook.PointUserInput, hc); err != nil {
+				io.WriteLine(fmt.Sprintf("[Rejected: %v]", err))
+				continue
+			}
+			line = hc.UserInput
 		}
 
 		// Handle commands
