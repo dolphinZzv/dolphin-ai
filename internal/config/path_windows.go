@@ -16,5 +16,8 @@ func defaultSystemConfigDir() string {
 	if programData == "" {
 		programData = os.Getenv("ALLUSERSPROFILE")
 	}
+	if programData == "" {
+		programData = `C:\ProgramData`
+	}
 	return filepath.Join(programData, "dolphin")
 }
