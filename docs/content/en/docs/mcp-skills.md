@@ -41,14 +41,14 @@ mcp:
       args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
 ```
 
-**sse** — connect to a remote SSE stream (used by [chick](https://github.com/dolphinv/chick) and other servers):
+**sse** — connect to a remote SSE stream:
 
 ```yaml
 mcp:
   servers:
-    chick:
+    issue-tracker:
       type: sse
-      url: "https://chick.example.com/mcp"
+      url: "https://tracker.example.com/mcp"
       headers:
         Authorization: "Bearer your-token"
       timeout: 30
@@ -69,7 +69,7 @@ mcp:
 When Dolphin starts:
 
 1. Each configured server is connected and initialized via the MCP handshake (`initialize` → `notifications/initialized`).
-2. Tools are discovered via `tools/list` and registered with the server name as prefix (e.g. `chick:search_issues`).
+2. Tools are discovered via `tools/list` and registered with the server name as prefix (e.g. `issue-tracker:search_issues`).
 3. If a server fails to start, it is skipped with a warning — other servers still load.
 4. Tool definitions (name, description, input schema) are injected into the LLM context each turn.
 
@@ -208,6 +208,6 @@ MCP tools and skills work together:
 
 Example workflow:
 
-1. Configure a chick MCP server to track issues.
+1. Configure an MCP server to track issues.
 2. Create a skill with your team's issue triage conventions.
-3. The agent loads the skill, learns your triage rules, then calls `chick:search_issues` and `chick:transition_issue` using those rules.
+3. The agent loads the skill, learns your triage rules, then calls `issue-tracker:search_issues` and `issue-tracker:transition_issue` using those rules.

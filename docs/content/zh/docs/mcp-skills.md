@@ -41,14 +41,14 @@ mcp:
       args: ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/allowed/dir"]
 ```
 
-**sse** — 连接到远程 SSE 流（[chick](https://github.com/dolphinv/chick) 等服务器使用此方式）：
+**sse** — 连接到远程 SSE 流：
 
 ```yaml
 mcp:
   servers:
-    chick:
+    issue-tracker:
       type: sse
-      url: "https://chick.example.com/mcp"
+      url: "https://tracker.example.com/mcp"
       headers:
         Authorization: "Bearer your-token"
       timeout: 30
@@ -69,7 +69,7 @@ mcp:
 Dolphin 启动时：
 
 1. 逐个连接已配置的服务器，进行 MCP 握手（`initialize` → `notifications/initialized`）。
-2. 通过 `tools/list` 发现工具，以服务器名作为前缀注册（如 `chick:search_issues`）。
+2. 通过 `tools/list` 发现工具，以服务器名作为前缀注册（如 `issue-tracker:search_issues`）。
 3. 如果某个服务器启动失败，会输出警告并跳过——不影响其他服务器的加载。
 4. 工具定义（名称、描述、输入 schema）会在每轮对话时注入 LLM 上下文。
 
@@ -208,6 +208,6 @@ MCP 工具和 Skills 协同工作：
 
 示例工作流：
 
-1. 配置 chick MCP 服务器用于跟踪 issues。
+1. 配置 MCP 服务器用于跟踪 issues。
 2. 创建一个包含团队 issue 分类规范的技能文件。
-3. Agent 加载技能、学习你的分类规则，然后用 `chick:search_issues` 和 `chick:transition_issue` 按规则处理 issue。
+3. Agent 加载技能、学习你的分类规则，然后用 `issue-tracker:search_issues` 和 `issue-tracker:transition_issue` 按规则处理 issue。
