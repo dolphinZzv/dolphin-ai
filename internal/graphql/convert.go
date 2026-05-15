@@ -106,7 +106,12 @@ func issueFromModel(i *models.Issue) *Issue {
 		Priority:    Priority(i.Priority),
 		CreatorID:   formatID(i.CreatorID),
 		DueDate:     i.DueDate,
+		Environment: i.Environment,
+		Branch:      i.Branch,
+		Link:        i.Link,
 		ClosedAt:    i.ClosedAt,
+		StartedAt:   i.StartedAt,
+		CompletedAt: i.CompletedAt,
 		CreatedAt:   i.CreatedAt,
 		UpdatedAt:   i.UpdatedAt,
 		Creator:     agentFromModel(&i.Creator),
@@ -141,6 +146,10 @@ func issueFromModel(i *models.Issue) *Issue {
 	}
 	if i.StructuredOutput != nil {
 		issue.StructuredOutput = map[string]any(i.StructuredOutput)
+	}
+	if i.Difficulty != nil {
+		d := int32(*i.Difficulty)
+		issue.Difficulty = &d
 	}
 	return issue
 }

@@ -61,8 +61,9 @@ func New(cfg *config.Config) (*Server, error) {
 	matchingEngine := matching.NewEngine(agentRepo, gormrepo.NewLabelRepo(db), assigneeRepo, issueRepo)
 	matchingEngine.Subscribe(bus)
 
-	// Init notification service
-	notifSvc := notifications.NewService()
+	// Init Redis and notification service
+	rdb := NewRedis(cfg)
+	notifSvc := notifications.NewService(rdb)
 	notifSvc.Subscribe(bus)
 
 	// Init services

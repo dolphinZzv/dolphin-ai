@@ -40,8 +40,14 @@ type Issue struct {
 	ParentID        *uint      `gorm:"index"`
 	MilestoneID     *uint      `gorm:"index"`
 	DueDate         *time.Time
+	Environment     *string   `gorm:"type:varchar(100)"`
+	Branch          *string   `gorm:"type:varchar(255)"`
+	Link            *string   `gorm:"type:text"`
 	StructuredOutput JSONMap  `gorm:"type:jsonb;serializer:json"`
 	ClosedAt        *time.Time
+	StartedAt       *time.Time `gorm:"type:timestamptz;index"`
+	CompletedAt     *time.Time `gorm:"type:timestamptz;index"`
+	Difficulty      *int       `gorm:"type:smallint"`
 	CreatedAt       time.Time  `gorm:"autoCreateTime"`
 	UpdatedAt       time.Time  `gorm:"autoUpdateTime"`
 

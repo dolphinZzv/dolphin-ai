@@ -3,6 +3,7 @@ package service
 import (
 	"fmt"
 	"log"
+	"time"
 
 	"chick/internal/events"
 	"chick/internal/models"
@@ -40,7 +41,7 @@ func NewIssueService(
 	}
 }
 
-func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs, labelIDs []uint, milestoneID *uint) (*models.Issue, error) {
+func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs, labelIDs []uint, milestoneID *uint, environment, branch, link *string) (*models.Issue, error) {
 	var issue *models.Issue
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -55,6 +56,9 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 			Priority:    priority,
 			CreatorID:   creatorID,
 			MilestoneID: milestoneID,
+			Environment: environment,
+			Branch:      branch,
+			Link:        link,
 		}
 		if err := txIssueRepo.Create(issue); err != nil {
 			return fmt.Errorf("create issue: %w", err)
@@ -143,7 +147,7 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 	err := s.db.Transaction(func(tx *gorm.DB) error {
 		// Lock the row to prevent concurrent transitions
 		var current models.Issue
-		if err := tx.Model(&models.Issue{}).Select("state,project_id,creator_id").Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, id).Error; err != nil {
+		if err := tx.Model(&models.Issue{}).Select("state,project_id,creator_id,started_at,completed_at").Clauses(clause.Locking{Strength: "UPDATE"}).First(&current, id).Error; err != nil {
 			return fmt.Errorf("get issue for transition: %w", err)
 		}
 		oldState = current.State
@@ -195,7 +199,26 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 		}
 
 		txIssueRepo := gormrepo.NewIssueRepo(tx)
-		return txIssueRepo.UpdateState(id, newState)
+		if err := txIssueRepo.UpdateState(id, newState); err != nil {
+			return err
+		}
+
+		// Auto-set started_at when transitioning to in_progress (if not already set)
+		now := time.Now()
+		if newState == models.IssueStateInProgress && current.StartedAt == nil {
+			if err := tx.Model(&models.Issue{}).Where("id = ?", id).Update("started_at", now).Error; err != nil {
+				return fmt.Errorf("set started_at: %w", err)
+			}
+		}
+
+		// Auto-set completed_at when transitioning to closed_completed (if not already set)
+		if newState == models.IssueStateClosedCompleted && current.CompletedAt == nil {
+			if err := tx.Model(&models.Issue{}).Where("id = ?", id).Update("completed_at", now).Error; err != nil {
+				return fmt.Errorf("set completed_at: %w", err)
+			}
+		}
+
+		return nil
 	})
 	if err != nil {
 		return nil, err
@@ -311,7 +334,7 @@ func (s *IssueService) UpdateAssigneeState(issueID, agentID uint, state models.A
 	return nil, fmt.Errorf("assignee not found")
 }
 
-func (s *IssueService) Update(id uint, title, description string, priority models.Priority, dueDate *models.UnixNullTime, milestoneID *uint) (*models.Issue, error) {
+func (s *IssueService) Update(id uint, title, description string, priority models.Priority, dueDate *models.UnixNullTime, milestoneID *uint, environment, branch, link *string, startedAt, completedAt *time.Time, difficulty *int) (*models.Issue, error) {
 	changes := map[string]interface{}{}
 	if title != "" {
 		changes["title"] = title
@@ -332,6 +355,36 @@ func (s *IssueService) Update(id uint, title, description string, priority model
 		} else {
 			changes["milestone_id"] = *milestoneID
 		}
+	}
+	if environment != nil {
+		if *environment == "" {
+			changes["environment"] = nil
+		} else {
+			changes["environment"] = *environment
+		}
+	}
+	if branch != nil {
+		if *branch == "" {
+			changes["branch"] = nil
+		} else {
+			changes["branch"] = *branch
+		}
+	}
+	if link != nil {
+		if *link == "" {
+			changes["link"] = nil
+		} else {
+			changes["link"] = *link
+		}
+	}
+	if startedAt != nil {
+		changes["started_at"] = *startedAt
+	}
+	if completedAt != nil {
+		changes["completed_at"] = *completedAt
+	}
+	if difficulty != nil {
+		changes["difficulty"] = *difficulty
 	}
 	if len(changes) == 0 {
 		return s.issueRepo.GetByID(id)

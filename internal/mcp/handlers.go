@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"chick/internal/models"
 	"chick/internal/notifications"
@@ -90,6 +91,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"priority":    StringParam("Priority: critical / high / medium / low"),
 			"assigneeIds": ArrayParam("Agent IDs to assign", "string"),
 			"milestoneId": StringParam("Milestone ID to associate"),
+			"environment": StringParam("Environment name, e.g. staging, production"),
+			"branch":      StringParam("Branch name"),
+			"link":        StringParam("Related links (one per line for multiple)"),
 			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
 		}, []string{"title"}),
 		Handler: h.handleCreateIssue,
@@ -110,6 +114,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 							"description": StringParam("Issue description in Markdown"),
 							"priority":    StringParam("Priority: critical / high / medium / low"),
 							"assigneeIds": ArrayParam("Agent IDs to assign", "string"),
+							"environment": StringParam("Environment name, e.g. staging, production"),
+							"branch":      StringParam("Branch name"),
+							"link":        StringParam("Related links (one per line for multiple)"),
 						},
 						"required": []string{"title"},
 					},
@@ -126,6 +133,12 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"title":       StringParam("New issue title"),
 			"description": StringParam("New issue description in Markdown"),
 			"priority":    StringParam("New priority: critical / high / medium / low"),
+			"environment": StringParam("Environment name, e.g. staging, production"),
+			"branch":      StringParam("Branch name"),
+			"link":        StringParam("Related links (one per line for multiple)"),
+				"difficulty":  NumberParam("Implementation difficulty (1-5)"),
+				"startedAt":   StringParam("Start processing time (RFC3339)"),
+				"completedAt": StringParam("End processing time (RFC3339)"),
 		}, []string{"issueId"}),
 		Handler: h.handleEditIssue,
 	})
@@ -291,6 +304,12 @@ func (h *Handlers) handleEditIssue(id json.RawMessage, params json.RawMessage, a
 		Title       string `json:"title"`
 		Description string `json:"description"`
 		Priority    string `json:"priority"`
+		Environment string `json:"environment"`
+		Branch      string `json:"branch"`
+		Link        string `json:"link"`
+		Difficulty  int    `json:"difficulty"`
+		StartedAt   string `json:"startedAt"`
+		CompletedAt string `json:"completedAt"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
@@ -304,8 +323,8 @@ func (h *Handlers) handleEditIssue(id json.RawMessage, params json.RawMessage, a
 	}
 
 	// At least one field must be provided for update
-	if p.Title == "" && p.Description == "" && p.Priority == "" {
-		return NewError(id, -32602, "At least one of title, description, or priority must be provided")
+	if p.Title == "" && p.Description == "" && p.Priority == "" && p.Difficulty == 0 && p.StartedAt == "" && p.CompletedAt == "" {
+		return NewError(id, -32602, "At least one field must be provided for update")
 	}
 
 	priority := models.Priority(p.Priority)
@@ -318,7 +337,32 @@ func (h *Handlers) handleEditIssue(id json.RawMessage, params json.RawMessage, a
 		}
 	}
 
-	issue, err := h.issueSvc.Update(uint(issueID), p.Title, p.Description, priority, nil, nil)
+	var diff *int
+	if p.Difficulty != 0 {
+		if p.Difficulty < 1 || p.Difficulty > 5 {
+			return NewError(id, -32602, "Invalid difficulty: must be 1-5")
+		}
+		d := p.Difficulty
+		diff = &d
+	}
+
+	var startedAt, completedAt *time.Time
+	if p.StartedAt != "" {
+		t, err := time.Parse(time.RFC3339, p.StartedAt)
+		if err != nil {
+			return NewError(id, -32602, "Invalid startedAt: must be RFC3339 format")
+		}
+		startedAt = &t
+	}
+	if p.CompletedAt != "" {
+		t, err := time.Parse(time.RFC3339, p.CompletedAt)
+		if err != nil {
+			return NewError(id, -32602, "Invalid completedAt: must be RFC3339 format")
+		}
+		completedAt = &t
+	}
+
+	issue, err := h.issueSvc.Update(uint(issueID), p.Title, p.Description, priority, nil, nil, strPtr(p.Environment), strPtr(p.Branch), strPtr(p.Link), startedAt, completedAt, diff)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -329,6 +373,9 @@ func (h *Handlers) handleEditIssue(id json.RawMessage, params json.RawMessage, a
 		"description": issue.Description,
 		"state":       string(issue.State),
 		"priority":    string(issue.Priority),
+		"environment": nilStr(issue.Environment),
+		"branch":      nilStr(issue.Branch),
+		"link":        nilStr(issue.Link),
 	})
 }
 
@@ -339,6 +386,12 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 		Priority    string   `json:"priority"`
 		AssigneeIDs []string `json:"assigneeIds"`
 		MilestoneID string   `json:"milestoneId"`
+		Environment string   `json:"environment"`
+		Branch      string   `json:"branch"`
+		Link        string   `json:"link"`
+		Difficulty  int    `json:"difficulty"`
+		StartedAt   string `json:"startedAt"`
+		CompletedAt string `json:"completedAt"`
 		ProjectID   string   `json:"projectId"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -380,15 +433,19 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 				milestoneID = &v
 			}
 		}
-	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil, milestoneID)
+	env, branch, link := strPtr(p.Environment), strPtr(p.Branch), strPtr(p.Link)
+	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil, milestoneID, env, branch, link)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
 	return NewResponse(id, map[string]interface{}{
-		"id":     fmt.Sprintf("%d", issue.ID),
-		"number": issue.Number,
-		"title":  issue.Title,
-		"state":  string(issue.State),
+		"id":          fmt.Sprintf("%d", issue.ID),
+		"number":      issue.Number,
+		"title":       issue.Title,
+		"state":       string(issue.State),
+		"environment": nilStr(issue.Environment),
+		"branch":      nilStr(issue.Branch),
+		"link":        nilStr(issue.Link),
 	})
 }
 
@@ -419,6 +476,9 @@ func (h *Handlers) handleCreateIssuesBatch(id json.RawMessage, params json.RawMe
 			Description string   `json:"description"`
 			Priority    string   `json:"priority"`
 			AssigneeIDs []string `json:"assigneeIds"`
+			Environment string   `json:"environment"`
+			Branch      string   `json:"branch"`
+			Link        string   `json:"link"`
 		}
 		if err := json.Unmarshal(raw, &issue); err != nil {
 			return NewError(id, -32602, fmt.Sprintf("issues[%d]: invalid params: %s", i, err))
@@ -444,7 +504,7 @@ func (h *Handlers) handleCreateIssuesBatch(id json.RawMessage, params json.RawMe
 			}
 		}
 
-		created, err := h.issueSvc.Create(projectID, creatorID, issue.Title, issue.Description, priority, assigneeIDs, nil, nil)
+		created, err := h.issueSvc.Create(projectID, creatorID, issue.Title, issue.Description, priority, assigneeIDs, nil, nil, strPtr(issue.Environment), strPtr(issue.Branch), strPtr(issue.Link))
 		if err != nil {
 			return NewInternalError(id, fmt.Sprintf("issues[%d]: %s", i, err.Error()))
 		}
@@ -819,7 +879,7 @@ func (h *Handlers) handleSubmitRequirement(id json.RawMessage, params json.RawMe
 		return NewInternalError(id, err.Error())
 	}
 
-	issue, err := h.issueSvc.Create(projectID, authorID, p.Title, p.Description, models.PriorityMedium, nil, nil, nil)
+	issue, err := h.issueSvc.Create(projectID, authorID, p.Title, p.Description, models.PriorityMedium, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -834,6 +894,35 @@ func (h *Handlers) handleSubmitRequirement(id json.RawMessage, params json.RawMe
 	})
 }
 
+
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+
+func nilStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func nilInt(i *int) int {
+	if i == nil {
+		return 0
+	}
+	return *i
+}
+
+func nilTimeStr(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
 
 func maskToken(token string) string {
 	if len(token) <= 10 {

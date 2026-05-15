@@ -9,7 +9,7 @@ import (
 
 func TestSubscribeAndNotify(t *testing.T) {
 	bus := events.NewBus()
-	svc := notifications.NewService()
+	svc := notifications.NewService(nil)
 	svc.Subscribe(bus)
 
 	// Publish an assignee changed event
@@ -46,7 +46,7 @@ func TestSubscribeAndNotify(t *testing.T) {
 }
 
 func TestListByAgent_FiltersCorrectly(t *testing.T) {
-	svc := notifications.NewService()
+	svc := notifications.NewService(nil)
 
 	// Create some notifications directly
 	bus := events.NewBus()
@@ -84,7 +84,7 @@ func TestListByAgent_FiltersCorrectly(t *testing.T) {
 }
 
 func TestMarkRead(t *testing.T) {
-	svc := notifications.NewService()
+	svc := notifications.NewService(nil)
 
 	bus := events.NewBus()
 	svc.Subscribe(bus)

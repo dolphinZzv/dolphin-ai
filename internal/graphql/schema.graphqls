@@ -153,7 +153,13 @@ type Issue {
   creatorID: ID!
   parentID: ID
   dueDate: Time
+  environment: String
+  branch: String
+  link: String
   closedAt: Time
+  startedAt: Time
+  completedAt: Time
+  difficulty: Int
   createdAt: Time!
   updatedAt: Time!
   creator: Agent!
@@ -270,8 +276,8 @@ type Mutation {
   updateProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
   removeProjectMember(projectID: ID!, agentID: ID!): Boolean!
 
-  createIssue(projectID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!], milestoneId: ID): Issue!
-  updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time, milestoneId: ID): Issue!
+  createIssue(projectID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!], milestoneId: ID, environment: String, branch: String, link: String): Issue!
+  updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time, milestoneId: ID, environment: String, branch: String, link: String, startedAt: Time, completedAt: Time, difficulty: Int): Issue!
   deleteIssue(id: ID!): Boolean!
   transitionIssue(id: ID!, newState: IssueState!, actorID: ID!, note: String): Issue!
 

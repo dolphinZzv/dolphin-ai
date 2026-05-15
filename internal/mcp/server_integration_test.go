@@ -60,7 +60,7 @@ func setupMCPIntegration(t *testing.T) (*mcp.Server, *service.ProjectService, *s
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
-	notifSvc := notifications.NewService()
+	notifSvc := notifications.NewService(nil)
 	notifSvc.Subscribe(bus)
 	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, notifSvc, 0)
 	mcpServer := mcp.NewServer(handlers)
