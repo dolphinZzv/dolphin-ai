@@ -105,7 +105,7 @@ func TestAgentDefLoadSkipsDirWithoutYAML(t *testing.T) {
 
 func TestAgentDir(t *testing.T) {
 	path := AgentDir("/base/dir", "my-agent")
-	if path != "/base/dir/my-agent" {
+	if path != filepath.Join("/base/dir", "my-agent") {
 		t.Errorf("got %q", path)
 	}
 }
@@ -113,7 +113,7 @@ func TestAgentDir(t *testing.T) {
 func TestAgentWorkspace(t *testing.T) {
 	cfg := &config.PoolConfig{WorkspaceDir: "/workspaces"}
 	path := AgentWorkspace(cfg, "my-agent")
-	if path != "/workspaces/my-agent" {
+	if path != filepath.Join("/workspaces", "my-agent") {
 		t.Errorf("got %q", path)
 	}
 }
@@ -121,7 +121,7 @@ func TestAgentWorkspace(t *testing.T) {
 func TestTempAgentWorkspace(t *testing.T) {
 	cfg := &config.PoolConfig{WorkspaceDir: "/workspaces"}
 	path := TempAgentWorkspace(cfg, "my-agent")
-	if path != "/workspaces/temp-my-agent" {
+	if path != filepath.Join("/workspaces", "temp-my-agent") {
 		t.Errorf("got %q", path)
 	}
 }

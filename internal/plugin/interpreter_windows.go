@@ -3,7 +3,10 @@
 package plugin
 
 import (
+	"context"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -26,4 +29,17 @@ func shellInterpreter() string {
 		detectedInterpreter = detectInterpreter()
 	})
 	return detectedInterpreter
+}
+
+func shellCommand(ctx context.Context, scriptPath string) *exec.Cmd {
+	interp := shellInterpreter()
+	name := strings.ToLower(filepath.Base(interp))
+	switch {
+	case strings.Contains(name, "powershell") || strings.Contains(name, "pwsh"):
+		return exec.CommandContext(ctx, interp, "-NoProfile", "-File", scriptPath)
+	case strings.Contains(name, "cmd"):
+		return exec.CommandContext(ctx, interp, "/C", scriptPath)
+	default:
+		return exec.CommandContext(ctx, interp, scriptPath)
+	}
 }

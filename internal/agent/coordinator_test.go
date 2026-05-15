@@ -1189,6 +1189,7 @@ func TestE2EParentChildSummaryChain(t *testing.T) {
 
 	// Create parent session
 	parentSess, _ := agt.sessMgr.NewSession(50)
+	defer parentSess.Close()
 
 	// Run a child task linked to parent
 	result, err := agt.RunTask(
@@ -1255,6 +1256,7 @@ func TestE2ETransportErrorSkipsSummary(t *testing.T) {
 
 	agt := newTestAgent(cfg, &mockProvider{})
 	sess, _ := agt.sessMgr.NewSession(50)
+	defer sess.Close()
 
 	// Simulate: transport disconnected before any activity
 	state := &LoopState{

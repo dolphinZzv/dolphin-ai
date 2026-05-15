@@ -1,13 +1,14 @@
 package mcp
 
 import (
+	"context"
 	"testing"
 
 	"dolphin/internal/config"
 )
 
 func TestNewServerClientEmptyCommand(t *testing.T) {
-	_, err := NewServerClient("test", config.MCPServerConfig{
+	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type: "stdio",
 	})
 	if err == nil {
@@ -16,7 +17,7 @@ func TestNewServerClientEmptyCommand(t *testing.T) {
 }
 
 func TestNewServerClientUnsupportedType(t *testing.T) {
-	_, err := NewServerClient("test", config.MCPServerConfig{
+	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type: "http",
 		URL:  "http://example.com",
 	})
@@ -26,7 +27,7 @@ func TestNewServerClientUnsupportedType(t *testing.T) {
 }
 
 func TestNewServerClientProcessNotFound(t *testing.T) {
-	_, err := NewServerClient("test", config.MCPServerConfig{
+	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type:    "stdio",
 		Command: "nonexistent-binary-xyz",
 	})
@@ -37,7 +38,7 @@ func TestNewServerClientProcessNotFound(t *testing.T) {
 
 func TestRegistryLoadServersEmpty(t *testing.T) {
 	r := NewRegistry(config.DefaultConfig())
-	if err := r.LoadServers(); err != nil {
+	if err := r.LoadServers(context.Background()); err != nil {
 		t.Fatalf("LoadServers with empty config: %v", err)
 	}
 }

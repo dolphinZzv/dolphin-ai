@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,6 +21,7 @@ func TestManagerCreateAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession error: %v", err)
 	}
+	defer sess.Close()
 	if sess.ID == "" {
 		t.Error("session ID should not be empty")
 	}
@@ -471,6 +473,7 @@ func TestGenerateSummary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer sess.Close()
 	sess.Turn = 5
 	time.Sleep(time.Millisecond) // ensure EndedAt > StartedAt
 
@@ -522,6 +525,7 @@ func TestGenerateSummaryZeroTurns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer sess.Close()
 	// Turn stays 0 — simulates user connecting then immediately quitting
 
 	err = sess.GenerateSummary(dir, 0, 0, 0, "user_exit", "")
@@ -565,6 +569,7 @@ func TestGenerateSummaryStates(t *testing.T) {
 		if err != nil {
 			t.Fatalf("NewSession: %v", err)
 		}
+		defer sess.Close()
 		err = sess.GenerateSummary(dir, 0, 0, 0, state, "")
 		if err != nil {
 			t.Fatalf("GenerateSummary(%q): %v", state, err)
@@ -595,6 +600,7 @@ func TestGenerateSummaryFileContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
 	}
+	defer sess.Close()
 	sess.Turn = 3
 
 	err = sess.GenerateSummary(dir, 7, 1, 0, "completed", "")
@@ -625,13 +631,15 @@ func TestGenerateSummaryFileContent(t *testing.T) {
 		t.Error("expected state field")
 	}
 
-	// Verify file permissions
+	// Verify file permissions (Windows only supports writable vs read-only)
 	info, err := os.Stat(path)
 	if err != nil {
 		t.Fatalf("Stat: %v", err)
 	}
-	if info.Mode().Perm() != 0600 {
-		t.Errorf("file mode = %o, want 0600", info.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		if info.Mode().Perm() != 0600 {
+			t.Errorf("file mode = %o, want 0600", info.Mode().Perm())
+		}
 	}
 }
 

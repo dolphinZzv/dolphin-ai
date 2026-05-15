@@ -202,7 +202,7 @@ func (f *RepoFetcher) cacheHit(repoName string) (*ToolManifest, bool) {
 	if err != nil {
 		return nil, false
 	}
-	if time.Since(info.ModTime()) > f.ttl {
+	if time.Since(info.ModTime()) >= f.ttl {
 		return nil, false
 	}
 

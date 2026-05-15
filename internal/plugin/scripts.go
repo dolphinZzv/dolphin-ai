@@ -212,7 +212,7 @@ func runHookScript(ctx context.Context, scriptPath string, point hook.Point, hc 
 
 	stdin, _ := json.Marshal(input)
 
-	cmd := exec.CommandContext(ctx, shellInterpreter(), scriptPath)
+	cmd := shellCommand(ctx, scriptPath)
 	cmd.Stdin = strings.NewReader(string(stdin))
 	cmd.Env = append(os.Environ(),
 		"DOLPHIN_SESSION_ID="+hc.SessionID,
@@ -250,7 +250,7 @@ func runEventScript(ctx context.Context, scriptPath string, evtType event.Type, 
 
 	data, _ := json.Marshal(evt)
 
-	cmd := exec.CommandContext(ctx, shellInterpreter(), scriptPath)
+	cmd := shellCommand(ctx, scriptPath)
 	cmd.Stdin = strings.NewReader(string(data))
 	cmd.Env = append(os.Environ(),
 		"DOLPHIN_SESSION_ID="+evt.SessionID,

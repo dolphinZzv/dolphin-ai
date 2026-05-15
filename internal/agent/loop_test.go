@@ -159,6 +159,7 @@ func TestRunTurnNoToolCalls(t *testing.T) {
 	agt := newTestAgent(cfg, prov)
 
 	sess, _ := agt.sessMgr.NewSession(10)
+	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
 		Messages: []Message{
@@ -207,6 +208,7 @@ func TestRunTurnWithToolCall(t *testing.T) {
 	agt := newTestAgent(cfg, prov)
 
 	sess, _ := agt.sessMgr.NewSession(10)
+	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
 		Messages: []Message{
@@ -253,6 +255,7 @@ func TestRunTurnTruncatesLargeResult(t *testing.T) {
 	agt.toolReg.Register(&mockToolLargeResult{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
+	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
 		Messages: []Message{
@@ -514,6 +517,7 @@ func TestGenerateSummaryDisabled(t *testing.T) {
 	agt := newTestAgent(cfg, &mockProvider{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
+	defer sess.Close()
 	state := &LoopState{
 		Sess:       sess,
 		Turn:       5,
@@ -537,6 +541,7 @@ func TestGenerateSummaryEnabled(t *testing.T) {
 	agt := newTestAgent(cfg, &mockProvider{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
+	defer sess.Close()
 	sess.Turn = 3
 	state := &LoopState{
 		Sess:          sess,
@@ -595,6 +600,7 @@ func TestGenerateSummaryStopReasons(t *testing.T) {
 			agt := newTestAgent(cfg, &mockProvider{})
 
 			sess, _ := agt.sessMgr.NewSession(10)
+			defer sess.Close()
 			state := &LoopState{
 				Sess:       sess,
 				StopReason: tt.stopReason,
@@ -627,6 +633,7 @@ func TestGenerateSummaryTransportErrorWithActivity(t *testing.T) {
 	agt := newTestAgent(cfg, &mockProvider{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
+	defer sess.Close()
 	sess.Turn = 3
 	state := &LoopState{
 		Sess:          sess,
@@ -687,6 +694,7 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	agt := newTestAgent(cfg, prov)
 
 	sess, _ := agt.sessMgr.NewSession(50)
+	defer sess.Close()
 	state := &LoopState{
 		Sess: sess,
 		Messages: []Message{

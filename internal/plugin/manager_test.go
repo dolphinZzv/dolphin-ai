@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -171,6 +172,9 @@ func TestLoadScriptsSkipsWithoutYAML(t *testing.T) {
 }
 
 func TestRunHookScriptExitZero(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Unix shell script test on Windows")
+	}
 	// Write a simple script that always passes
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "pass.sh")
@@ -187,6 +191,9 @@ func TestRunHookScriptExitZero(t *testing.T) {
 }
 
 func TestRunHookScriptExitNonZero(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Unix shell script test on Windows")
+	}
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "fail.sh")
 	script := `#!/bin/sh
@@ -208,6 +215,9 @@ exit 1
 }
 
 func TestRunHookScriptOutputToValues(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping Unix shell script test on Windows")
+	}
 	dir := t.TempDir()
 	scriptPath := filepath.Join(dir, "echo.sh")
 	os.WriteFile(scriptPath, []byte("#!/bin/sh\necho '{\"sanitized\": true}'\n"), 0755)
