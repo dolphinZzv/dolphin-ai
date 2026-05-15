@@ -27,6 +27,7 @@ type ProjectMemberRepository interface {
 	ListByProject(projectID uint) ([]models.ProjectMember, error)
 	ListByAgent(agentID uint) ([]models.ProjectMember, error)
 	GetRole(projectID, agentID uint) (models.ProjectRole, error)
+	CheckSharedProject(agentID1, agentID2 uint) (bool, error)
 }
 
 // ─── Agent ─────────────────────────────────────────────────

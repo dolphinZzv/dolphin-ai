@@ -30,6 +30,8 @@ func (r *CommentRepo) ListByIssue(issueID uint) ([]models.Comment, error) {
 	err := r.db.Where("issue_id = ?", issueID).
 		Order("created_at ASC").
 		Preload("Author").
+		Preload("Replies").
+		Preload("Replies.Author").
 		Find(&list).Error
 	return list, err
 }

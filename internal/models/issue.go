@@ -45,8 +45,8 @@ type Issue struct {
 	Link            *string   `gorm:"type:text"`
 	StructuredOutput JSONMap  `gorm:"type:jsonb;serializer:json"`
 	ClosedAt        *time.Time
-	StartedAt       *time.Time `gorm:"type:timestamptz;index"`
-	CompletedAt     *time.Time `gorm:"type:timestamptz;index"`
+	StartedAt       *time.Time `gorm:"index"`
+	CompletedAt     *time.Time `gorm:"index"`
 	Difficulty      *int       `gorm:"type:smallint"`
 	CreatedAt       time.Time  `gorm:"autoCreateTime"`
 	UpdatedAt       time.Time  `gorm:"autoUpdateTime"`

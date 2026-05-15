@@ -222,6 +222,16 @@ func commentFromModel(c *models.Comment) *Comment {
 		pid := formatID(*c.ParentID)
 		comment.ParentID = &pid
 	}
+	if c.Parent != nil {
+		comment.Parent = commentFromModel(c.Parent)
+	}
+	if len(c.Replies) > 0 {
+		replies := make([]*Comment, len(c.Replies))
+		for i, r := range c.Replies {
+			replies[i] = commentFromModel(&r)
+		}
+		comment.Replies = replies
+	}
 	return comment
 }
 

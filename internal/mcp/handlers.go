@@ -94,6 +94,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"environment": StringParam("Environment name, e.g. staging, production"),
 			"branch":      StringParam("Branch name"),
 			"link":        StringParam("Related links (one per line for multiple)"),
+				"difficulty":  NumberParam("Implementation difficulty (1-5)"),
+				"startedAt":   StringParam("Start processing time (RFC3339)"),
+				"completedAt": StringParam("End processing time (RFC3339)"),
 			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
 		}, []string{"title"}),
 		Handler: h.handleCreateIssue,
@@ -261,21 +264,39 @@ func (h *Handlers) handleGetAgentInfo(id json.RawMessage, params json.RawMessage
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
 
-	var agent *models.Agent
-	var err error
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
 
+	var targetID uint
 	if p.AgentID != "" {
 		aid, err := strconv.ParseUint(p.AgentID, 10, 64)
 		if err != nil {
 			return NewError(id, -32602, "Invalid agentId: "+p.AgentID)
 		}
-		agent, err = h.agentSvc.GetByID(uint(aid))
+		targetID = uint(aid)
 	} else if p.ExternalID != "" {
-		agent, err = h.agentSvc.GetByExternalID(p.ExternalID)
+		agent, err := h.agentSvc.GetByExternalID(p.ExternalID)
+		if err != nil {
+			return NewInternalError(id, err.Error())
+		}
+		if agent == nil {
+			return NewError(id, -32602, "Agent not found")
+		}
+		targetID = agent.ID
 	} else {
 		return NewError(id, -32602, "Provide agentId or externalId")
 	}
 
+	// Agents can always view themselves; otherwise they must share a project
+	if agentID != targetID {
+		ok, err := h.projectSvc.CheckSharedProject(agentID, targetID)
+		if err != nil || !ok {
+			return NewError(id, -32602, "Access denied: agent not found or not in same project")
+		}
+	}
+
+	agent, err := h.agentSvc.GetByID(targetID)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -320,6 +341,15 @@ func (h *Handlers) handleEditIssue(id json.RawMessage, params json.RawMessage, a
 	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
 	if err != nil {
 		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
+	}
+
+	// Verify caller is a member of the issue's project
+	existing, err := h.issueSvc.GetByID(uint(issueID))
+	if err != nil {
+		return NewError(id, -32602, "Issue not found")
+	}
+	if _, err := h.projectSvc.GetMemberRole(existing.ProjectID, actorID); err != nil {
+		return NewError(id, -32602, "Access denied: not a member of this project")
 	}
 
 	// At least one field must be provided for update
@@ -433,8 +463,32 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 				milestoneID = &v
 			}
 		}
+	var diff *int
+	if p.Difficulty != 0 {
+		if p.Difficulty < 1 || p.Difficulty > 5 {
+			return NewError(id, -32602, "Invalid difficulty: must be 1-5")
+		}
+		d := p.Difficulty
+		diff = &d
+	}
+
+	var startedAt, completedAt *time.Time
+	if p.StartedAt != "" {
+		t, err := time.Parse(time.RFC3339, p.StartedAt)
+		if err != nil {
+			return NewError(id, -32602, "Invalid startedAt: must be RFC3339 format")
+		}
+		startedAt = &t
+	}
+	if p.CompletedAt != "" {
+		t, err := time.Parse(time.RFC3339, p.CompletedAt)
+		if err != nil {
+			return NewError(id, -32602, "Invalid completedAt: must be RFC3339 format")
+		}
+		completedAt = &t
+	}
 	env, branch, link := strPtr(p.Environment), strPtr(p.Branch), strPtr(p.Link)
-	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil, milestoneID, env, branch, link)
+	issue, err := h.issueSvc.Create(projectID, creatorID, p.Title, p.Description, priority, assigneeIDs, nil, milestoneID, env, branch, link, diff, startedAt, completedAt)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
@@ -504,7 +558,7 @@ func (h *Handlers) handleCreateIssuesBatch(id json.RawMessage, params json.RawMe
 			}
 		}
 
-		created, err := h.issueSvc.Create(projectID, creatorID, issue.Title, issue.Description, priority, assigneeIDs, nil, nil, strPtr(issue.Environment), strPtr(issue.Branch), strPtr(issue.Link))
+		created, err := h.issueSvc.Create(projectID, creatorID, issue.Title, issue.Description, priority, assigneeIDs, nil, nil, strPtr(issue.Environment), strPtr(issue.Branch), strPtr(issue.Link), nil, nil, nil)
 		if err != nil {
 			return NewInternalError(id, fmt.Sprintf("issues[%d]: %s", i, err.Error()))
 		}
@@ -538,6 +592,15 @@ func (h *Handlers) handleAddComment(id json.RawMessage, params json.RawMessage, 
 		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
 	}
 
+	// Verify caller is a member of the issue's project
+	issue, err := h.issueSvc.GetByID(uint(issueID))
+	if err != nil {
+		return NewError(id, -32602, "Issue not found")
+	}
+	if _, err := h.projectSvc.GetMemberRole(issue.ProjectID, authorID); err != nil {
+		return NewError(id, -32602, "Access denied: not a member of this project")
+	}
+
 	comment, err := h.commentSvc.Create(uint(issueID), authorID, p.Body, models.CommentMarkdown, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
@@ -556,6 +619,9 @@ func (h *Handlers) handleAssignIssue(id json.RawMessage, params json.RawMessage,
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
 	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
 	if err != nil {
 		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
@@ -563,6 +629,15 @@ func (h *Handlers) handleAssignIssue(id json.RawMessage, params json.RawMessage,
 	assignAgentID, err := strconv.ParseUint(p.AgentID, 10, 64)
 	if err != nil {
 		return NewError(id, -32602, "Invalid agentId: "+p.AgentID)
+	}
+
+	// Verify caller is a member of the issue's project
+	issue, err := h.issueSvc.GetByID(uint(issueID))
+	if err != nil {
+		return NewError(id, -32602, "Issue not found")
+	}
+	if _, err := h.projectSvc.GetMemberRole(issue.ProjectID, agentID); err != nil {
+		return NewError(id, -32602, "Access denied: not a member of this project")
 	}
 
 	_, err = h.issueSvc.AddAssignee(uint(issueID), uint(assignAgentID))
@@ -588,13 +663,22 @@ func (h *Handlers) handleTransitionIssue(id json.RawMessage, params json.RawMess
 		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
 	}
 
-	issue, err := h.workflowSvc.Transition(uint(issueID), models.IssueState(p.ToState), actorID, nil)
+	// Verify caller is a member of the issue's project
+	issue, err := h.issueSvc.GetByID(uint(issueID))
+	if err != nil {
+		return NewError(id, -32602, "Issue not found")
+	}
+	if _, err := h.projectSvc.GetMemberRole(issue.ProjectID, actorID); err != nil {
+		return NewError(id, -32602, "Access denied: not a member of this project")
+	}
+
+	updated, err := h.workflowSvc.Transition(uint(issueID), models.IssueState(p.ToState), actorID, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}
 	return NewResponse(id, map[string]interface{}{
-		"id":    fmt.Sprintf("%d", issue.ID),
-		"state": string(issue.State),
+		"id":    fmt.Sprintf("%d", updated.ID),
+		"state": string(updated.State),
 	})
 }
 
@@ -609,6 +693,10 @@ func (h *Handlers) handleSearchIssues(id json.RawMessage, params json.RawMessage
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
 	}
 
 	filter := models.IssueFilter{
@@ -628,8 +716,12 @@ func (h *Handlers) handleSearchIssues(id json.RawMessage, params json.RawMessage
 			return NewError(id, -32602, "Invalid projectId: "+p.ProjectID)
 		}
 		v := uint(pid)
+		// Verify caller is a member of the specified project
+		if _, err := h.projectSvc.GetMemberRole(v, agentID); err != nil {
+			return NewError(id, -32602, "Access denied: not a member of this project")
+		}
 		filter.ProjectID = &v
-	} else if agentID > 0 {
+	} else {
 		projects, err := h.projectSvc.ListByAgent(agentID)
 		if err == nil && len(projects) == 1 {
 			v := projects[0].ID
@@ -819,10 +911,32 @@ func (h *Handlers) handleListFeedback(id json.RawMessage, params json.RawMessage
 	if err := json.Unmarshal(params, &p); err != nil {
 		return NewError(id, -32602, "Invalid params: "+err.Error())
 	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
 
 	targetID, err := strconv.ParseUint(p.TargetID, 10, 64)
 	if err != nil {
 		return NewError(id, -32602, "Invalid targetId: "+p.TargetID)
+	}
+
+	// Verify caller has access to the target
+	switch models.FeedbackTargetType(p.TargetType) {
+	case models.FeedbackTargetIssue:
+		issue, err := h.issueSvc.GetByID(uint(targetID))
+		if err != nil {
+			return NewError(id, -32602, "Issue not found")
+		}
+		if _, err := h.projectSvc.GetMemberRole(issue.ProjectID, agentID); err != nil {
+			return NewError(id, -32602, "Access denied: not a member of this project")
+		}
+	case models.FeedbackTargetAgent:
+		if agentID != uint(targetID) {
+			ok, err := h.projectSvc.CheckSharedProject(agentID, uint(targetID))
+			if err != nil || !ok {
+				return NewError(id, -32602, "Access denied: agent not found or not in same project")
+			}
+		}
 	}
 
 	items, err := h.feedbackSvc.ListByTarget(models.FeedbackTargetType(p.TargetType), uint(targetID))
@@ -879,7 +993,7 @@ func (h *Handlers) handleSubmitRequirement(id json.RawMessage, params json.RawMe
 		return NewInternalError(id, err.Error())
 	}
 
-	issue, err := h.issueSvc.Create(projectID, authorID, p.Title, p.Description, models.PriorityMedium, nil, nil, nil, nil, nil, nil)
+	issue, err := h.issueSvc.Create(projectID, authorID, p.Title, p.Description, models.PriorityMedium, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		return NewInternalError(id, err.Error())
 	}

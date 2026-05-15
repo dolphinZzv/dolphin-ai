@@ -46,6 +46,8 @@ interface Issue {
   assignees: Array<{ agent: { id: string; name: string } }>;
   labels: Label[];
   milestone: Milestone | null;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 interface Project {
@@ -113,7 +115,7 @@ export function ProjectDetailPage() {
       gql(
         `query issues($projectId: ID!, $search: String, $priority: Priority, $labelIDs: [ID!], $assigneeID: ID) {
           issues(projectID: $projectId, search: $search, priority: $priority, labelIDs: $labelIDs, assigneeID: $assigneeID) {
-            edges { id number title state priority assignees { agent { id name } } labels { id name color } milestone { id title } }
+            edges { id number title state priority startedAt completedAt assignees { agent { id name } } labels { id name color } milestone { id title } }
           }
         }`,
         issueVars

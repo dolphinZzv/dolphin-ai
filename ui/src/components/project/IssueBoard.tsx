@@ -36,6 +36,8 @@ interface Issue {
   assignees: Array<{ agent: { id: string; name: string } }>;
   labels: Label[];
   milestone: Milestone | null;
+  startedAt: string | null;
+  completedAt: string | null;
 }
 
 interface Column {
@@ -150,6 +152,12 @@ function DraggableIssue({
       <LabelsDisplay labels={issue.labels} />
       {issue.milestone && (
         <p className="mt-1 text-[10px] text-muted-foreground truncate">⛳ {issue.milestone.title}</p>
+      )}
+      {issue.startedAt && (
+        <p className="mt-1 text-[10px] text-muted-foreground">开始 {new Date(issue.startedAt).toLocaleDateString()}</p>
+      )}
+      {issue.completedAt && (
+        <p className="mt-1 text-[10px] text-muted-foreground">完成 {new Date(issue.completedAt).toLocaleDateString()}</p>
       )}
     </Link>
   );
@@ -367,6 +375,16 @@ function SimpleIssueCard({
           </div>
         )}
       </div>
+      {issue.startedAt && (
+        <div className="px-3 pb-1">
+          <p className="text-[10px] text-muted-foreground">开始 {new Date(issue.startedAt).toLocaleDateString()}</p>
+        </div>
+      )}
+      {issue.completedAt && (
+        <div className="px-3 pb-1">
+          <p className="text-[10px] text-muted-foreground">完成 {new Date(issue.completedAt).toLocaleDateString()}</p>
+        </div>
+      )}
       {transitions.length > 0 && (
         <div
           className="flex gap-1 border-t px-3 py-1.5 overflow-x-auto scrollbar-none"

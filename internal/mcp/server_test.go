@@ -460,8 +460,8 @@ func TestSearchIssues(t *testing.T) {
 	proj, _ := projectSvc.Create("SearchTest", "")
 	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
 
-	issueSvc.Create(proj.ID, agent.ID, "Fix login bug", "Users cannot login", models.PriorityHigh, nil, nil, nil)
-	issueSvc.Create(proj.ID, agent.ID, "Add tests", "Need unit tests", models.PriorityMedium, nil, nil, nil)
+	issueSvc.Create(proj.ID, agent.ID, "Fix login bug", "Users cannot login", models.PriorityHigh, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	issueSvc.Create(proj.ID, agent.ID, "Add tests", "Need unit tests", models.PriorityMedium, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
 		"name": "search_issues",
@@ -589,6 +589,95 @@ func TestMCPCreateIssue_InvalidPriority(t *testing.T) {
 	}
 	if resp.Error.Code != -32602 {
 		t.Errorf("expected error code -32602, got %d", resp.Error.Code)
+	}
+}
+
+func TestMCPCreateIssue_WithExtraFields(t *testing.T) {
+	srv, _, _, agent, _ := setupTestWithProject(t)
+
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"title":       "Extra fields issue",
+			"description": "Test",
+			"priority":    "high",
+			"environment": "staging",
+			"branch":      "feature/test",
+			"link":        "http://example.com",
+			"difficulty":  3,
+		},
+	}, agent.ID)
+	if result["id"] == "" {
+		t.Error("expected issue id")
+	}
+	if result["environment"] != "staging" {
+		t.Errorf("expected environment 'staging', got %v", result["environment"])
+	}
+	if result["branch"] != "feature/test" {
+		t.Errorf("expected branch 'feature/test', got %v", result["branch"])
+	}
+	if result["link"] != "http://example.com" {
+		t.Errorf("expected link 'http://example.com', got %v", result["link"])
+	}
+}
+
+func TestMCPCreateIssue_WithExtraFields_InvalidDifficulty(t *testing.T) {
+	srv, _, _, _, _ := setupTestWithProject(t)
+
+	req := &mcp.Request{
+		JSONRPC: "2.0",
+		ID:      json.RawMessage(`1`),
+		Method:  "tools/call",
+		Params:  json.RawMessage(`{"name":"create_issue","arguments":{"title":"T","difficulty":6}}`),
+	}
+	resp := srv.HandleRequest(req, 0, "")
+	if resp.Error == nil {
+		t.Fatal("expected error for invalid difficulty")
+	}
+	if resp.Error.Code != -32602 {
+		t.Errorf("expected error code -32602, got %d", resp.Error.Code)
+	}
+}
+
+func TestMCPEditIssue_WithExtraFields(t *testing.T) {
+	srv, projectSvc, agentSvc, _ := setupTest(t)
+
+	agent, err := agentSvc.Register("test-agent", models.AgentKindAI, "test-edit-extra", "secret", nil, "", "")
+	if err != nil {
+		t.Fatalf("register agent: %v", err)
+	}
+	proj, _ := projectSvc.Create("EditExtra", "")
+	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
+
+	// Create an issue first
+	result := call(t, srv, "tools/call", map[string]interface{}{
+		"name": "create_issue",
+		"arguments": map[string]interface{}{
+			"title": "Extra Edit Test",
+		},
+	}, agent.ID)
+	issueID := result["id"].(string)
+
+	// Edit with extra fields
+	result = call(t, srv, "tools/call", map[string]interface{}{
+		"name": "edit_issue",
+		"arguments": map[string]interface{}{
+			"issueId":     issueID,
+			"environment": "production",
+			"branch":      "main",
+			"link":        "https://example.com/pr/1",
+			"difficulty":  4,
+		},
+	}, agent.ID)
+
+	if result["environment"] != "production" {
+		t.Errorf("expected environment 'production', got %v", result["environment"])
+	}
+	if result["branch"] != "main" {
+		t.Errorf("expected branch 'main', got %v", result["branch"])
+	}
+	if result["link"] != "https://example.com/pr/1" {
+		t.Errorf("expected link 'https://example.com/pr/1', got %v", result["link"])
 	}
 }
 

@@ -44,6 +44,19 @@ func (r *ProjectMemberRepo) ListByAgent(agentID uint) ([]models.ProjectMember, e
 	return list, err
 }
 
+func (r *ProjectMemberRepo) CheckSharedProject(agentID1, agentID2 uint) (bool, error) {
+	var count int64
+	err := r.db.Model(&models.ProjectMember{}).
+		Where("agent_id IN ? AND project_id IN (SELECT project_id FROM project_members WHERE agent_id = ?)", []uint{agentID1, agentID2}, agentID1).
+		Group("project_id").
+		Having("COUNT(DISTINCT agent_id) = 2").
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (r *ProjectMemberRepo) GetRole(projectID, agentID uint) (models.ProjectRole, error) {
 	var member models.ProjectMember
 	err := r.db.Where("project_id = ? AND agent_id = ?", projectID, agentID).

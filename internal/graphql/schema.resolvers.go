@@ -63,6 +63,9 @@ func (r *mutationResolver) LoginAgent(ctx context.Context, externalID string, se
 
 // UpdateAgentStatus is the resolver for the updateAgentStatus field.
 func (r *mutationResolver) UpdateAgentStatus(ctx context.Context, id string, status AgentStatus) (*Agent, error) {
+	if _, err := requireSelfAccess(ctx, parseID(id)); err != nil {
+		return nil, err
+	}
 	if err := r.AgentSvc.UpdateStatus(parseID(id), models.AgentStatus(status)); err != nil {
 		return nil, fmt.Errorf("update agent status: %w", err)
 	}
@@ -75,6 +78,9 @@ func (r *mutationResolver) UpdateAgentStatus(ctx context.Context, id string, sta
 
 // UpdateAgentDisabled is the resolver for the updateAgentDisabled field.
 func (r *mutationResolver) UpdateAgentDisabled(ctx context.Context, id string, disabled bool) (*Agent, error) {
+	if _, err := requireSelfAccess(ctx, parseID(id)); err != nil {
+		return nil, err
+	}
 	if err := r.AgentSvc.SetDisabled(parseID(id), disabled); err != nil {
 		return nil, fmt.Errorf("update agent disabled: %w", err)
 	}
@@ -87,7 +93,7 @@ func (r *mutationResolver) UpdateAgentDisabled(ctx context.Context, id string, d
 
 // UpdateAgent is the resolver for the updateAgent field.
 func (r *mutationResolver) UpdateAgent(ctx context.Context, id string, systemPrompt *string) (*Agent, error) {
-	if _, err := requireAuth(ctx); err != nil {
+	if _, err := requireSelfAccess(ctx, parseID(id)); err != nil {
 		return nil, err
 	}
 	sp := ""
@@ -106,7 +112,7 @@ func (r *mutationResolver) UpdateAgent(ctx context.Context, id string, systemPro
 
 // DeleteAgent is the resolver for the deleteAgent field.
 func (r *mutationResolver) DeleteAgent(ctx context.Context, id string) (bool, error) {
-	if _, err := requireAuth(ctx); err != nil {
+	if _, err := requireSelfAccess(ctx, parseID(id)); err != nil {
 		return false, err
 	}
 	if err := r.AgentSvc.Delete(parseID(id)); err != nil {
@@ -117,6 +123,9 @@ func (r *mutationResolver) DeleteAgent(ctx context.Context, id string) (bool, er
 
 // UpdateAgentAllowedCIDRs is the resolver for the updateAgentAllowedCIDRs field.
 func (r *mutationResolver) UpdateAgentAllowedCIDRs(ctx context.Context, id string, allowedCIDRs []string) (*Agent, error) {
+	if _, err := requireSelfAccess(ctx, parseID(id)); err != nil {
+		return nil, err
+	}
 	if err := r.AgentSvc.UpdateAllowedCIDRs(parseID(id), allowedCIDRs); err != nil {
 		return nil, fmt.Errorf("update agent allowed CIDRs: %w", err)
 	}
@@ -129,6 +138,10 @@ func (r *mutationResolver) UpdateAgentAllowedCIDRs(ctx context.Context, id strin
 
 // CreateProjectAgent is the resolver for the createProjectAgent field.
 func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID string, name string, kind AgentKind, role *ProjectRole, externalID *string, secret *string, capabilities []string, deviceInfo *string, modelInfo *string) (*RegisterResult, error) {
+	pid := parseID(projectID)
+	if _, err := r.requireProjectOwner(ctx, pid); err != nil {
+		return nil, err
+	}
 	caps := capabilities
 	if caps == nil {
 		caps = []string{}
@@ -166,7 +179,7 @@ func (r *mutationResolver) CreateProjectAgent(ctx context.Context, projectID str
 	if role != nil {
 		projectRole = models.ProjectRole(*role)
 	}
-	if _, err := r.ProjectSvc.AddMember(parseID(projectID), a.ID, projectRole); err != nil {
+	if _, err := r.ProjectSvc.AddMember(pid, a.ID, projectRole); err != nil {
 		return nil, fmt.Errorf("add project member: %w", err)
 	}
 
@@ -305,7 +318,7 @@ func (r *mutationResolver) CreateIssue(ctx context.Context, projectID string, ti
 		v := parseID(*milestoneID)
 		mid = &v
 	}
-	issue, err := r.IssueSvc.Create(pid, agentID, title, desc, models.Priority(priority), assigneeUintIDs, labelUintIDs, mid, environment, branch, link)
+	issue, err := r.IssueSvc.Create(pid, agentID, title, desc, models.Priority(priority), assigneeUintIDs, labelUintIDs, mid, environment, branch, link, nil, nil, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create issue: %w", err)
 	}
@@ -725,7 +738,7 @@ func (r *queryResolver) Agents(ctx context.Context, kind *AgentKind, status *Age
 
 // Agent is the resolver for the agent field.
 func (r *queryResolver) Agent(ctx context.Context, id string) (*Agent, error) {
-	if _, err := requireAuth(ctx); err != nil {
+	if _, err := r.requireAgentAccess(ctx, parseID(id)); err != nil {
 		return nil, err
 	}
 	a, err := r.AgentSvc.GetByID(parseID(id))
@@ -917,10 +930,35 @@ func (r *queryResolver) ValidTransitions(ctx context.Context, state IssueState) 
 
 // Feedback is the resolver for the feedback field.
 func (r *queryResolver) Feedback(ctx context.Context, targetType FeedbackTargetType, targetID string) ([]*Feedback, error) {
-	if _, err := requireAuth(ctx); err != nil {
+	agentID, err := requireAuth(ctx)
+	if err != nil {
 		return nil, err
 	}
-	list, err := r.FeedbackSvc.ListByTarget(models.FeedbackTargetType(targetType), parseID(targetID))
+	tid := parseID(targetID)
+	switch targetType {
+	case FeedbackTargetTypeIssue:
+		if _, err := r.requireIssueProjectMember(ctx, tid); err != nil {
+			return nil, err
+		}
+	case FeedbackTargetTypeAgent:
+		if _, err := r.requireAgentAccess(ctx, tid); err != nil {
+			return nil, err
+		}
+	case FeedbackTargetTypeAssignment:
+		// Only the assigned agent can view assignment feedback
+		if agentID != tid {
+			return nil, errors.New("无权访问该 feedback")
+		}
+	case FeedbackTargetTypeComment:
+		comment, err := r.CommentSvc.GetByID(tid)
+		if err != nil {
+			return nil, fmt.Errorf("comment not found")
+		}
+		if _, err := r.requireIssueProjectMember(ctx, comment.IssueID); err != nil {
+			return nil, err
+		}
+	}
+	list, err := r.FeedbackSvc.ListByTarget(models.FeedbackTargetType(targetType), tid)
 	if err != nil {
 		return nil, fmt.Errorf("list feedback: %w", err)
 	}
@@ -933,8 +971,13 @@ func (r *queryResolver) Feedback(ctx context.Context, targetType FeedbackTargetT
 
 // IssueUpdated is the resolver for the issueUpdated field.
 func (r *subscriptionResolver) IssueUpdated(ctx context.Context, issueID string) (<-chan *Issue, error) {
-	ch := make(chan *Issue, 1)
 	id := parseID(issueID)
+	// Verify caller has access to this issue's project
+	if _, err := r.requireIssueProjectMember(ctx, id); err != nil {
+		return nil, err
+	}
+
+	ch := make(chan *Issue, 1)
 
 	// Publish initial state
 	issue, err := r.IssueSvc.GetByID(id)
@@ -972,8 +1015,13 @@ func (r *subscriptionResolver) IssueUpdated(ctx context.Context, issueID string)
 
 // AgentNotifications is the resolver for the agentNotifications field.
 func (r *subscriptionResolver) AgentNotifications(ctx context.Context, agentID string) (<-chan *NotificationEvent, error) {
-	ch := make(chan *NotificationEvent, 5)
 	id := parseID(agentID)
+	// Verify the caller is requesting their own notifications
+	if _, err := requireSelfAccess(ctx, id); err != nil {
+		return nil, err
+	}
+
+	ch := make(chan *NotificationEvent, 5)
 
 	cancel1 := func() {}
 	cancel2 := func() {}

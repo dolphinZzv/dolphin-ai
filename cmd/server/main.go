@@ -9,7 +9,7 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/http/pprof"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -86,16 +86,7 @@ func main() {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// pprof profiling (default: enabled)
-	if cfg.PprofEnabled {
-		http.HandleFunc("/debug/pprof/", pprof.Index)
-		http.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-		http.HandleFunc("/debug/pprof/profile", pprof.Profile)
-		http.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-		http.HandleFunc("/debug/pprof/trace", pprof.Trace)
-	}
-
-	// MCP OAuth discovery — not supported, return empty so inspector falls back to Bearer Token
+// MCP OAuth discovery — not supported, return empty so inspector falls back to Bearer Token
 	http.Handle("/.well-known/", corsMW(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(`{"error":"oauth not supported"}`))

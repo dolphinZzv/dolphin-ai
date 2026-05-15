@@ -41,7 +41,7 @@ func NewIssueService(
 	}
 }
 
-func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs, labelIDs []uint, milestoneID *uint, environment, branch, link *string) (*models.Issue, error) {
+func (s *IssueService) Create(projectID, creatorID uint, title, description string, priority models.Priority, assigneeIDs, labelIDs []uint, milestoneID *uint, environment, branch, link *string, difficulty *int, startedAt, completedAt *time.Time) (*models.Issue, error) {
 	var issue *models.Issue
 
 	err := s.db.Transaction(func(tx *gorm.DB) error {
@@ -59,6 +59,9 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 			Environment: environment,
 			Branch:      branch,
 			Link:        link,
+			Difficulty:  difficulty,
+			StartedAt:   startedAt,
+			CompletedAt: completedAt,
 		}
 		if err := txIssueRepo.Create(issue); err != nil {
 			return fmt.Errorf("create issue: %w", err)

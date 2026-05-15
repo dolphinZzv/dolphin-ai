@@ -171,7 +171,7 @@ func TestGraphQL_IssueIntegration(t *testing.T) {
 		t.Fatalf("create project: %v", err)
 	}
 
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "Test Issue", strPtr("body"), PriorityMedium, nil, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "Test Issue", strPtr("body"), PriorityMedium, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestGraphQL_TransitionIssue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "Transitions", nil, PriorityLow, nil, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "Transitions", nil, PriorityLow, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -263,7 +263,7 @@ func TestGraphQL_AddComment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "C", nil, PriorityLow, nil, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "C", nil, PriorityLow, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestGraphQL_Timeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "T", nil, PriorityLow, nil, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "T", nil, PriorityLow, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}
@@ -385,7 +385,7 @@ func TestGraphQL_CommentsQuery(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create project: %v", err)
 	}
-	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "C2", nil, PriorityLow, nil, nil, nil)
+	issue, err := r.Mutation().CreateIssue(ctx, project.ID, "C2", nil, PriorityLow, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create issue: %v", err)
 	}

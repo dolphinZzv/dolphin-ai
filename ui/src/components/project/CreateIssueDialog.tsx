@@ -41,6 +41,9 @@ const createIssueSchema = z.object({
   title: z.string().min(1, "标题不能为空").max(200, "标题不能超过 200 字"),
   description: z.string().optional(),
   priority: z.string().min(1, "请选择优先级"),
+  environment: z.string().optional(),
+  branch: z.string().optional(),
+  link: z.string().optional(),
 });
 
 type CreateIssueForm = z.infer<typeof createIssueSchema>;
@@ -70,7 +73,7 @@ export function CreateIssueDialog({
     formState: { errors },
   } = useForm<CreateIssueForm>({
     resolver: zodResolver(createIssueSchema),
-    defaultValues: { title: "", description: "", priority: "medium" },
+    defaultValues: { title: "", description: "", priority: "medium", environment: "", branch: "", link: "" },
   });
 
   useEffect(() => {
@@ -105,8 +108,8 @@ export function CreateIssueDialog({
 
     try {
       const json = await gql(
-        `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!], $milestoneId: ID) {
-          createIssue(projectID: $pid, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs, milestoneId: $milestoneId) { id number title }
+        `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!], $milestoneId: ID, $environment: String, $branch: String, $link: String) {
+          createIssue(projectID: $pid, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs, milestoneId: $milestoneId, environment: $environment, branch: $branch, link: $link) { id number title }
         }`,
         {
           pid: projectId,
@@ -115,6 +118,9 @@ export function CreateIssueDialog({
           priority: data.priority,
           labelIDs: selectedLabelIds.length > 0 ? selectedLabelIds : null,
           milestoneId: selectedMilestoneId || null,
+          environment: data.environment || null,
+          branch: data.branch || null,
+          link: data.link || null,
         }
       );
       if (json.errors) {
@@ -245,6 +251,20 @@ export function CreateIssueDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Environment / Branch / Link */}
+          <div className="space-y-2">
+            <Label>环境（可选）</Label>
+            <Input placeholder="例如: staging, production" {...register("environment")} />
+          </div>
+          <div className="space-y-2">
+            <Label>分支（可选）</Label>
+            <Input placeholder="分支名称" {...register("branch")} />
+          </div>
+          <div className="space-y-2">
+            <Label>链接（可选）</Label>
+            <Input placeholder="相关链接" {...register("link")} />
           </div>
 
           {error && (

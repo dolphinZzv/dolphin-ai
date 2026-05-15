@@ -60,3 +60,36 @@ func (r *Resolver) requireIssueProjectMember(ctx context.Context, issueID uint) 
 func (r *Resolver) requireIssueProjectMemberByProject(ctx context.Context, projectID uint) (uint, error) {
 	return r.requireProjectMember(ctx, projectID)
 }
+
+// requireAgentAccess checks that the caller can access the target agent's data.
+// Access is granted if the caller is the target agent themselves, or if they share
+// at least one project with the target agent.
+func (r *Resolver) requireAgentAccess(ctx context.Context, targetAgentID uint) (uint, error) {
+	callerID, err := requireAuth(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if callerID == targetAgentID {
+		return callerID, nil
+	}
+	ok, err := r.ProjectSvc.CheckSharedProject(callerID, targetAgentID)
+	if err != nil {
+		return 0, errors.New("无权访问该 agent")
+	}
+	if !ok {
+		return 0, errors.New("无权访问该 agent")
+	}
+	return callerID, nil
+}
+
+// requireSelfAccess checks that the caller is the target agent themselves.
+func requireSelfAccess(ctx context.Context, targetAgentID uint) (uint, error) {
+	callerID, err := requireAuth(ctx)
+	if err != nil {
+		return 0, err
+	}
+	if callerID != targetAgentID {
+		return 0, errors.New("只能修改自己的资源")
+	}
+	return callerID, nil
+}

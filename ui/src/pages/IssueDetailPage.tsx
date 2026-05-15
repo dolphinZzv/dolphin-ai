@@ -36,6 +36,12 @@ interface IssueDetail {
   state: string;
   priority: string;
   dueDate: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  difficulty: number | null;
+  environment: string | null;
+  branch: string | null;
+  link: string | null;
   createdAt: string;
   creator: { id: string; name: string };
   assignees: Array<{
@@ -225,6 +231,14 @@ export function IssueDetailPage() {
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState(false);
+  const [editDifficulty, setEditDifficulty] = useState(false);
+  const [showTimeFields, setShowTimeFields] = useState(false);
+  const [editStartedAt, setEditStartedAt] = useState("");
+  const [editCompletedAt, setEditCompletedAt] = useState("");
+  const [editingEnv, setEditingEnv] = useState(false);
+  const [editEnv, setEditEnv] = useState("");
+  const [editingBranch, setEditingBranch] = useState(false);
+  const [editBranch, setEditBranch] = useState("");
   const [projectAgents, setProjectAgents] = useState<Array<{ id: string; name: string }>>([]);
   const [showAssigneePicker, setShowAssigneePicker] = useState(false);
   const [transitions, setTransitions] = useState<string[]>([]);
@@ -243,7 +257,9 @@ export function IssueDetailPage() {
       gql(
         `query issue($id: ID!) {
           issue(id: $id) {
-            id number title description state priority dueDate createdAt
+            id number title description state priority dueDate
+            startedAt completedAt difficulty environment branch link
+            createdAt
             creator { id name }
             assignees { id agent { id name } state }
             labels { id name color }
@@ -309,7 +325,7 @@ export function IssueDetailPage() {
   // Subscribe to real-time issue updates
   useSubscription(
     `subscription issueUpdated($issueID: ID!) {
-      issueUpdated(issueID: $issueID) { id number title description state priority dueDate createdAt closedAt creator { id name } assignees { id agent { id name } state } labels { id name color } milestone { id title } projectID }
+      issueUpdated(issueID: $issueID) { id number title description state priority dueDate startedAt completedAt difficulty environment branch link createdAt closedAt creator { id name } assignees { id agent { id name } state } labels { id name color } milestone { id title } projectID }
     }`,
     id ? { issueID: id } : undefined,
     (data: any) => {
@@ -448,8 +464,8 @@ export function IssueDetailPage() {
     if (!id) return;
     try {
       const json = await gql(
-        `mutation updateIssue($id: ID!, $title: String, $description: String, $priority: Priority, $milestoneId: ID) {
-          updateIssue(id: $id, title: $title, description: $description, priority: $priority, milestoneId: $milestoneId) {
+        `mutation updateIssue($id: ID!, $title: String, $description: String, $priority: Priority, $milestoneId: ID, $difficulty: Int, $startedAt: Time, $completedAt: Time, $environment: String, $branch: String, $link: String) {
+          updateIssue(id: $id, title: $title, description: $description, priority: $priority, milestoneId: $milestoneId, difficulty: $difficulty, startedAt: $startedAt, completedAt: $completedAt, environment: $environment, branch: $branch, link: $link) {
             id title description priority milestone { id title }
           }
         }`,
@@ -481,6 +497,30 @@ export function IssueDetailPage() {
     await handleUpdateIssue({ priority });
     setEditPriority(false);
   };
+
+  const handleSaveDifficulty = async (difficulty: number) => {
+    await handleUpdateIssue({ difficulty });
+    setEditDifficulty(false);
+  };
+
+  const handleSaveTimeFields = async () => {
+    await handleUpdateIssue({
+      startedAt: editStartedAt || null,
+      completedAt: editCompletedAt || null,
+    });
+    setShowTimeFields(false);
+  };
+
+  const handleSaveEnv = async () => {
+    await handleUpdateIssue({ environment: editEnv || null });
+    setEditingEnv(false);
+  };
+
+  const handleSaveBranch = async () => {
+    await handleUpdateIssue({ branch: editBranch || null });
+    setEditingBranch(false);
+  };
+
 
   const handleAddAssignee = async (agentId: string) => {
     if (!id) return;
@@ -633,10 +673,36 @@ export function IssueDetailPage() {
               {priorityLabels[issue.priority] || issue.priority}
             </Badge>
           )}
+          {/* Difficulty */}
+          {editDifficulty && agent ? (
+            <Select defaultValue={String(issue.difficulty || 1)} onValueChange={(v) => handleSaveDifficulty(Number(v))} onOpenChange={(open) => { if (!open) setEditDifficulty(false); }}>
+              <SelectTrigger className="h-5 w-16 text-xs">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[1,2,3,4,5].map((v) => (
+                  <SelectItem key={v} value={String(v)}>{'⭐'.repeat(v)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : issue.difficulty ? (
+            <Badge variant="outline" className="text-xs cursor-pointer" onClick={() => agent && setEditDifficulty(true)} title="点击修改难度">
+              {'⭐'.repeat(issue.difficulty)}
+            </Badge>
+          ) : agent ? (
+            <Badge variant="outline" className="text-xs cursor-pointer text-muted-foreground" onClick={() => setEditDifficulty(true)}>
+              +难度
+            </Badge>
+          ) : null}
+          {/* Times */}
+          {issue.startedAt && (
+            <span className="text-xs text-muted-foreground">开始: {new Date(issue.startedAt).toLocaleString()}</span>
+          )}
+          {issue.completedAt && (
+            <span className="text-xs text-muted-foreground">完成: {new Date(issue.completedAt).toLocaleString()}</span>
+          )}
           {issue.dueDate && (
-            <span className="text-xs text-muted-foreground">
-              截止: {issue.dueDate.slice(0, 10)}
-            </span>
+            <span className="text-xs text-muted-foreground">截止: {issue.dueDate.slice(0, 10)}</span>
           )}
         </div>
         {editingTitle ? (
@@ -1099,6 +1165,87 @@ export function IssueDetailPage() {
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Environment / Branch / Link */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium">环境 / 分支 / 链接</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {showTimeFields ? (
+            <div className="space-y-2 border-b pb-2 mb-2">
+              <div>
+                <span className="text-xs text-muted-foreground">开始时间</span>
+                <Input
+                  type="datetime-local"
+                  value={editStartedAt ? new Date(editStartedAt).toISOString().slice(0, 16) : ""}
+                  onChange={(e) => setEditStartedAt(e.target.value ? new Date(e.target.value).toISOString() : "")}
+                  className="h-8 text-sm mt-1"
+                />
+              </div>
+              <div>
+                <span className="text-xs text-muted-foreground">完成时间</span>
+                <Input
+                  type="datetime-local"
+                  value={editCompletedAt ? new Date(editCompletedAt).toISOString().slice(0, 16) : ""}
+                  onChange={(e) => setEditCompletedAt(e.target.value ? new Date(e.target.value).toISOString() : "")}
+                  className="h-8 text-sm mt-1"
+                />
+              </div>
+              <div className="flex justify-end gap-1">
+                <Button size="sm" className="h-7 text-xs" onClick={handleSaveTimeFields}>保存</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowTimeFields(false)}>取消</Button>
+              </div>
+            </div>
+          ) : agent ? (
+            <button className="text-xs text-primary hover:underline w-full text-left" onClick={() => {
+              setEditStartedAt(issue.startedAt || "");
+              setEditCompletedAt(issue.completedAt || "");
+              setShowTimeFields(true);
+            }}>
+              编辑时间
+            </button>
+          ) : null}
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-12">环境</span>
+              {editingEnv ? (
+                <div className="flex-1 flex gap-1">
+                  <Input value={editEnv} onChange={(e) => setEditEnv(e.target.value)} className="h-7 text-xs flex-1"
+                    autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleSaveEnv(); if (e.key === "Escape") setEditingEnv(false); }} />
+                  <Button size="sm" className="h-7 text-xs" onClick={handleSaveEnv}>确定</Button>
+                </div>
+              ) : (
+                <span className="text-xs flex-1 truncate cursor-pointer hover:text-primary"
+                  onClick={() => { setEditEnv(issue.environment || ""); setEditingEnv(true); }}>
+                  {issue.environment || <span className="text-muted-foreground">未设置</span>}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-12">分支</span>
+              {editingBranch ? (
+                <div className="flex-1 flex gap-1">
+                  <Input value={editBranch} onChange={(e) => setEditBranch(e.target.value)} className="h-7 text-xs flex-1"
+                    autoFocus onKeyDown={(e) => { if (e.key === "Enter") handleSaveBranch(); if (e.key === "Escape") setEditingBranch(false); }} />
+                  <Button size="sm" className="h-7 text-xs" onClick={handleSaveBranch}>确定</Button>
+                </div>
+              ) : (
+                <span className="text-xs flex-1 truncate cursor-pointer hover:text-primary"
+                  onClick={() => { setEditBranch(issue.branch || ""); setEditingBranch(true); }}>
+                  {issue.branch || <span className="text-muted-foreground">未设置</span>}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground w-12">链接</span>
+              <span className="text-xs flex-1 truncate">
+                {issue.link ? <a href={issue.link} target="_blank" rel="noreferrer" className="text-primary underline">打开链接</a> : <span className="text-muted-foreground">未设置</span>}
+              </span>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

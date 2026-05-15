@@ -93,7 +93,7 @@ func TestIntegration_CreateIssue(t *testing.T) {
 	p, _ := fx.projectSvc.Create("PG Project", "Integration test")
 	pid := p.ID
 
-	issue1, err := fx.issueSvc.Create(pid, fx.creatorID, "First PG issue", "", models.PriorityMedium, nil, nil, nil)
+	issue1, err := fx.issueSvc.Create(pid, fx.creatorID, "First PG issue", "", models.PriorityMedium, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create first: %v", err)
 	}
@@ -104,7 +104,7 @@ func TestIntegration_CreateIssue(t *testing.T) {
 		t.Errorf("expected project %d, got %d", pid, issue1.ProjectID)
 	}
 
-	issue2, err := fx.issueSvc.Create(pid, fx.creatorID, "Second PG issue", "", models.PriorityHigh, nil, nil, nil)
+	issue2, err := fx.issueSvc.Create(pid, fx.creatorID, "Second PG issue", "", models.PriorityHigh, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("create second: %v", err)
 	}
@@ -117,7 +117,7 @@ func TestIntegration_IssueTransitions(t *testing.T) {
 	fx := setupIntegration(t)
 
 	p, _ := fx.projectSvc.Create("Workflow Project", "")
-	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Transition me", "", models.PriorityMedium, nil, nil, nil)
+	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Transition me", "", models.PriorityMedium, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	// OPEN -> IN_PROGRESS
 	issue, err := fx.workflowSvc.Transition(issue.ID, models.IssueStateInProgress, fx.creatorID, nil)
@@ -151,7 +151,7 @@ func TestIntegration_InvalidTransition(t *testing.T) {
 	fx := setupIntegration(t)
 
 	p, _ := fx.projectSvc.Create("Invalid Transitions", "")
-	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Invalid", "", models.PriorityMedium, nil, nil, nil)
+	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Invalid", "", models.PriorityMedium, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	_, err := fx.workflowSvc.Transition(issue.ID, models.IssueStateClosedCompleted, fx.creatorID, nil)
 	if err == nil {
@@ -186,7 +186,7 @@ func TestIntegration_AddComment(t *testing.T) {
 
 	p, _ := fx.projectSvc.Create("Comment Project", "")
 	agent, _ := fx.agentSvc.Register("commenter", models.AgentKindHuman, "commenter-1", "pass", nil, "", "")
-	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Commentable", "", models.PriorityLow, nil, nil, nil)
+	issue, _ := fx.issueSvc.Create(p.ID, fx.creatorID, "Commentable", "", models.PriorityLow, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	comment, err := fx.commentSvc.Create(issue.ID, agent.ID, "PG comment body", models.CommentMarkdown, nil)
 	if err != nil {
@@ -265,9 +265,9 @@ func TestIntegration_ListIssues(t *testing.T) {
 	p, _ := fx.projectSvc.Create("List Project", "")
 	pid := p.ID
 
-	fx.issueSvc.Create(pid, fx.creatorID, "Alpha", "", models.PriorityHigh, nil, nil, nil)
-	fx.issueSvc.Create(pid, fx.creatorID, "Beta", "", models.PriorityMedium, nil, nil, nil)
-	fx.issueSvc.Create(pid, fx.creatorID, "Gamma", "", models.PriorityLow, nil, nil, nil)
+	fx.issueSvc.Create(pid, fx.creatorID, "Alpha", "", models.PriorityHigh, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	fx.issueSvc.Create(pid, fx.creatorID, "Beta", "", models.PriorityMedium, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	fx.issueSvc.Create(pid, fx.creatorID, "Gamma", "", models.PriorityLow, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 
 	issues, total, err := fx.issueSvc.List(models.IssueFilter{ProjectID: &pid})
 	if err != nil {

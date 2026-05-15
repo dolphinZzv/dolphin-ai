@@ -156,6 +156,11 @@ func (s *ProjectService) GetMemberRole(projectID, agentID uint) (models.ProjectR
 	return s.memberRepo.GetRole(projectID, agentID)
 }
 
+// CheckSharedProject returns true if the two agents are members of at least one common project.
+func (s *ProjectService) CheckSharedProject(agentID1, agentID2 uint) (bool, error) {
+	return s.memberRepo.CheckSharedProject(agentID1, agentID2)
+}
+
 // ListByAgent returns all projects the given agent is a member of.
 func (s *ProjectService) ListByAgent(agentID uint) ([]models.Project, error) {
 	members, err := s.memberRepo.ListByAgent(agentID)
