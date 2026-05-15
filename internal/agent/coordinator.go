@@ -120,7 +120,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	defer func() {
 		// Fire session:end hook
 		if c.hooks != nil {
-			c.hooks.Fire(context.Background(), hook.PointSessionEnd, &hook.Context{
+			c.hooks.Fire(ctx, hook.PointSessionEnd, &hook.Context{
 				SessionID: string(sess.ID),
 				Turn:      state.Turn,
 			})

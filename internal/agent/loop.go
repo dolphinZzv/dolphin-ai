@@ -562,7 +562,7 @@ func (a *Agent) handleProviderCommand(line string, io transport.UserIO) {
 					return
 				}
 				p := NewProviderFromConfig(&pc)
-				checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				checkCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 				err := p.HealthCheck(checkCtx)
 				cancel()
 				if err != nil {
