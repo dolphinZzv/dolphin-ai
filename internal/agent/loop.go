@@ -1041,7 +1041,7 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 			"is_error", err != nil || (result != nil && result.IsError),
 			"result_len", len(resultContent),
 		)
-		if a.cfg.LogLevel == "debug" && caps.Streaming && resultContent != "" {
+		if a.cfg.LogLevel == "debug" && caps.ShowToolDetails && resultContent != "" {
 			argsCompact := compactJSON(tc.Arguments, 200)
 			io.WriteLine(fmt.Sprintf("[Calling tool: %s] %s", tc.Name, argsCompact))
 		}

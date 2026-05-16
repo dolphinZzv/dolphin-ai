@@ -396,7 +396,7 @@ func (s *SSHSession) Context() string {
 }
 
 func (s *SSHSession) Capabilities() Capabilities {
-	return Capabilities{Streaming: true, Flushable: false}
+	return Capabilities{Streaming: true, Flushable: false, ShowToolDetails: true}
 }
 
 func (s *SSHSession) WriteLine(text string) error {

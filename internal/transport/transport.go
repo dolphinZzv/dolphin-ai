@@ -29,7 +29,8 @@ type UserIO interface {
 // Streaming transports send each write immediately (e.g. WebSocket, stdio).
 // Block transports batch writes and flush periodically (e.g. MQTT, Email).
 type Capabilities struct {
-	Streaming   bool
-	Flushable   bool
-	ConfirmExit bool // if true, require confirmation before exiting the agent
+	Streaming       bool
+	Flushable       bool
+	ConfirmExit     bool // if true, require confirmation before exiting the agent
+	ShowToolDetails bool // if true, show tool call arguments/outputs to the user
 }
