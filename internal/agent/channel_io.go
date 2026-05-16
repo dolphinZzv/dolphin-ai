@@ -31,6 +31,7 @@ func (c *ChannelIO) ReadLine() (string, error) {
 func (c *ChannelIO) WriteLine(string) error   { return nil }
 func (c *ChannelIO) WriteString(string) error { return nil }
 
+func (c *ChannelIO) Name() string    { return "channel" }
 func (c *ChannelIO) Context() string { return "" }
 
 func (c *ChannelIO) Capabilities() transport.Capabilities {

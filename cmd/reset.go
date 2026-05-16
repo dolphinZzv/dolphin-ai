@@ -27,6 +27,7 @@ Runtime data removed:
   - SYSTEM.md (system prompt)
   - /etc/dolphin/ system-level config and data
   - First-run marker (setup wizard will show on next start)
+  - Email-configured marker (startup email sent again on next email session)
 
 Config files (config.yaml) are preserved.`,
 		RunE: runReset,
@@ -82,6 +83,8 @@ func cleanupTargets() []string {
 
 	return []string{
 		config.FirstRunMarker(),
+		config.EmailConfiguredMarker(),
+		config.DolphinIDFile(),
 		filepath.Join(userDolphinDir, "ssh_password"),
 		filepath.Join(userDolphinDir, "SYSTEM.md"),
 		filepath.Join(userDolphinDir, "cache"),

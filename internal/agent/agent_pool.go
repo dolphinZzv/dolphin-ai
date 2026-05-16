@@ -252,6 +252,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	}()
 
 	// Build system prompt for this agent
+	inst.agent.ctxBuilder.SetRenderData(inst.agent.cfg)
 	systemPrompt, err := inst.agent.ctxBuilder.BuildForAgent(inst.Def.Name)
 	if err != nil {
 		zap.S().Errorw("build agent context failed", "agent", inst.Def.Name, "error", err)

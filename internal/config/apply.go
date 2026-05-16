@@ -12,15 +12,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// ApplyTools installs matched skills and MCP servers from repo manifests.
-// Skills are downloaded as .md files to ~/.dolphin/skills/.
-// MCP servers are added to mcp.servers in config.yaml without duplicates.
-func ApplyTools(skills, mcpServers []ToolEntry) error {
+// resolveConfigDir returns the config base directory, preferring the project-local
+// .dolphin/ when it exists, falling back to ~/.dolphin/.
+func resolveConfigDir() (string, error) {
+	if _, err := os.Stat(ProjectConfigDir); err == nil {
+		return ProjectConfigDir, nil
+	}
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return fmt.Errorf("home dir: %w", err)
+		return "", fmt.Errorf("home dir: %w", err)
 	}
-	skillsDir := filepath.Join(homeDir, UserConfigDir, "skills")
+	return filepath.Join(homeDir, UserConfigDir), nil
+}
+
+// ApplyTools installs matched skills and MCP servers from repo manifests.
+// Skills are downloaded as .md files to <config>/skills/.
+// MCP servers are merged into <config>/config.yaml mcp.servers without duplicates.
+// Config dir priority: .dolphin/ (project-local) > ~/.dolphin/ (user-wide).
+func ApplyTools(skills, mcpServers []ToolEntry) error {
+	baseDir, err := resolveConfigDir()
+	if err != nil {
+		return err
+	}
+	skillsDir := filepath.Join(baseDir, "skills")
 
 	// Apply skills
 	if len(skills) > 0 {
@@ -31,7 +45,7 @@ func ApplyTools(skills, mcpServers []ToolEntry) error {
 
 	// Apply MCP servers
 	if len(mcpServers) > 0 {
-		if err := applyMCPServers(mcpServers, homeDir); err != nil {
+		if err := applyMCPServers(mcpServers, baseDir); err != nil {
 			return fmt.Errorf("apply mcp servers: %w", err)
 		}
 	}
@@ -40,17 +54,15 @@ func ApplyTools(skills, mcpServers []ToolEntry) error {
 }
 
 // applySkills downloads skill markdown files to the skills directory.
+// Each skill is stored as <skillsDir>/<name>/SKILL.md.
 // If a download URL is available and reachable (2s timeout), the content is fetched;
 // otherwise a minimal template is created locally.
 func applySkills(skills []ToolEntry, skillsDir string) error {
-	if err := os.MkdirAll(skillsDir, 0700); err != nil {
-		return err
-	}
-
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for _, s := range skills {
-		dst := filepath.Join(skillsDir, s.Name+".md")
+		skillDir := filepath.Join(skillsDir, s.Name)
+		dst := filepath.Join(skillDir, "SKILL.md")
 
 		// Skip if already installed
 		if _, err := os.Stat(dst); err == nil {
@@ -64,6 +76,9 @@ func applySkills(skills []ToolEntry, skillsDir string) error {
 			}
 		}
 
+		if err := os.MkdirAll(skillDir, 0700); err != nil {
+			return fmt.Errorf("mkdir %s: %w", skillDir, err)
+		}
 		if err := os.WriteFile(dst, []byte(content), 0600); err != nil {
 			return fmt.Errorf("write %s: %w", dst, err)
 		}
@@ -72,8 +87,8 @@ func applySkills(skills []ToolEntry, skillsDir string) error {
 }
 
 // applyMCPServers merges new MCP servers into config.yaml without duplicates.
-func applyMCPServers(servers []ToolEntry, homeDir string) error {
-	configPath := filepath.Join(homeDir, UserConfigDir, ConfigFileName+".yaml")
+func applyMCPServers(servers []ToolEntry, baseDir string) error {
+	configPath := filepath.Join(baseDir, ConfigFileName+".yaml")
 
 	// Read existing full config as map
 	full := make(map[string]any)

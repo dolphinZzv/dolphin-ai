@@ -268,6 +268,7 @@ func firstRunSetup(cfg *config.Config) {
 			Description: "Demo (integration test)",
 		}
 		cfg.Skills.Repos = append([]string{"dolphinZzv/demo_skills"}, cfg.Skills.Repos...)
+		cfg.MCP.Repos = append([]string{"dolphinv/mcp"}, cfg.MCP.Repos...)
 		fmt.Fprintf(os.Stderr, "\n[dev] Auto-loading demo career profile\n")
 	} else {
 		profile, err = config.RunFirstRunPrompt()
@@ -284,14 +285,56 @@ func firstRunSetup(cfg *config.Config) {
 	fmt.Fprintf(os.Stderr, "\n=== %s: %s ===\n", i18n.TL(i18n.KeyRecommendedTools), profile.Description)
 	extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
 
-	// Display matched tools
-	skillNames := profile.Skills
-	for _, s := range extraSkills {
-		skillNames = append(skillNames, s.Name)
+	// Apply matched tools: download skills, add MCP servers to config
+	if err := config.ApplyTools(extraSkills, extraMCP); err != nil {
+		zap.S().Warnw("apply tools failed", "error", err)
 	}
-	mcpNames := profile.MCP
+	// Merge into in-memory config so MCP servers take effect immediately
+	if cfg.MCP.Servers == nil {
+		cfg.MCP.Servers = make(map[string]config.MCPServerConfig)
+	}
 	for _, m := range extraMCP {
-		mcpNames = append(mcpNames, m.Name)
+		if m.Command == "" {
+			continue
+		}
+		if _, exists := cfg.MCP.Servers[m.Name]; exists {
+			continue
+		}
+		cfg.MCP.Servers[m.Name] = config.MCPServerConfig{
+			Type:    "stdio",
+			Command: m.Command,
+			Args:    m.Args,
+		}
+	}
+
+	// Display deduplicated matched tools
+	seenSkills := make(map[string]bool)
+	var skillNames []string
+	for _, s := range profile.Skills {
+		if !seenSkills[s] {
+			seenSkills[s] = true
+			skillNames = append(skillNames, s)
+		}
+	}
+	for _, s := range extraSkills {
+		if !seenSkills[s.Name] {
+			seenSkills[s.Name] = true
+			skillNames = append(skillNames, s.Name)
+		}
+	}
+	seenMCP := make(map[string]bool)
+	var mcpNames []string
+	for _, m := range profile.MCP {
+		if !seenMCP[m] {
+			seenMCP[m] = true
+			mcpNames = append(mcpNames, m)
+		}
+	}
+	for _, m := range extraMCP {
+		if !seenMCP[m.Name] {
+			seenMCP[m.Name] = true
+			mcpNames = append(mcpNames, m.Name)
+		}
 	}
 
 	if len(skillNames) > 0 {
@@ -300,13 +343,8 @@ func firstRunSetup(cfg *config.Config) {
 	if len(mcpNames) > 0 {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(mcpNames, ", "))
 	}
-
-	// Apply matched tools: download skills, add MCP servers to config
-	if len(extraSkills) > 0 || len(extraMCP) > 0 {
-		fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyInstallHint))
-	}
-	if err := config.ApplyTools(extraSkills, extraMCP); err != nil {
-		zap.S().Warnw("apply tools failed", "error", err)
+	if len(skillNames) > 0 || len(mcpNames) > 0 {
+		fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyToolsInstalled))
 	}
 
 	config.PromptSystemMD()

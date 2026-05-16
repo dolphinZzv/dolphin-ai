@@ -25,6 +25,8 @@ var (
 )
 
 type Config struct {
+	Name      string          `mapstructure:"name"`
+	ID        string          `mapstructure:"id"`
 	LLM       LLMConfig       `mapstructure:"llm"`
 	Session   SessionConfig   `mapstructure:"session"`
 	Transport TransportConfig `mapstructure:"transport"`
@@ -502,6 +504,9 @@ func DefaultConfig() *Config {
 		zap.S().Errorw("unmarshal default config", "error", err)
 	}
 	cfg.Session.Dir = defaultSessionDir()
+	if cfg.ID == "" {
+		cfg.ID = LoadOrCreateDolphinID()
+	}
 	return &cfg
 }
 
@@ -679,6 +684,8 @@ func (c *Config) Validate() error {
 }
 
 func setDefaults(v *viper.Viper) {
+	v.SetDefault("name", "dolphin")
+
 	v.SetDefault("llm.type", "openai")
 	v.SetDefault("llm.base_url", "https://api.openai.com/v1")
 	v.SetDefault("llm.model", "gpt-4o")

@@ -1506,7 +1506,7 @@ func TestCoordinatorHandleSkillNewCreatesFile(t *testing.T) {
 		t.Error("expected skill dir path in output, got:", output)
 	}
 
-	content, err := os.ReadFile(filepath.Join(skillDir, "custom-review.md"))
+	content, err := os.ReadFile(filepath.Join(skillDir, "custom-review", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("file was not created: %v", err)
 	}
@@ -1558,7 +1558,7 @@ func TestCoordinatorSkillNewViaRun(t *testing.T) {
 		t.Error("expected skill name in output, got:", output)
 	}
 
-	if _, err := os.Stat(filepath.Join(skillDir, "my-test-skill.md")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(skillDir, "my-test-skill", "SKILL.md")); os.IsNotExist(err) {
 		t.Error("skill file was not created")
 	}
 }

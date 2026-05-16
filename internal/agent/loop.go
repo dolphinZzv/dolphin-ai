@@ -342,6 +342,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	}()
 
 	// Build system prompt
+	a.ctxBuilder.SetRenderData(a.cfg)
 	systemPrompt, err := a.ctxBuilder.Build()
 	if err != nil {
 		zap.S().Errorw("build context failed", "error", err)

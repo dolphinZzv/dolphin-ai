@@ -1,6 +1,9 @@
 package agent
 
-import ctx "dolphin/internal/context"
+import (
+	"dolphin/internal/config"
+	ctx "dolphin/internal/context"
+)
 
 // ContextBuilder builds the system prompt from context files.
 // Delegates to internal/context package.
@@ -18,4 +21,9 @@ func (b *ContextBuilder) Build() (string, error) {
 
 func (b *ContextBuilder) BuildForAgent(agentName string) (string, error) {
 	return b.b.BuildForAgent(agentName)
+}
+
+// SetRenderData configures template variable injection from the application config.
+func (b *ContextBuilder) SetRenderData(cfg *config.Config) {
+	b.b.SetRenderData(ctx.NewRenderData(cfg))
 }

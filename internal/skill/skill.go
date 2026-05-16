@@ -79,18 +79,30 @@ func (m *Manager) Load() error {
 			return fmt.Errorf("read skills dir %q: %w", dir, err)
 		}
 		for _, entry := range entries {
-			if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".md") {
-				continue
-			}
-			path := filepath.Join(dir, entry.Name())
-			data, err := os.ReadFile(path)
-			if err != nil {
-				continue
-			}
-			skill := parseSkillFile(data, entry.Name())
-			if skill != nil {
-				skill.Source = dir
-				m.skills[skill.Name] = skill // later dir overrides earlier
+			name := entry.Name()
+			if entry.IsDir() {
+				// New structure: <name>/SKILL.md
+				skillPath := filepath.Join(dir, name, "SKILL.md")
+				data, err := os.ReadFile(skillPath)
+				if err != nil {
+					continue
+				}
+				skill := parseSkillFile(data, name+".md")
+				if skill != nil {
+					skill.Source = dir
+					m.skills[skill.Name] = skill
+				}
+			} else if strings.HasSuffix(name, ".md") {
+				// Backward compat: flat .md files at top level
+				data, err := os.ReadFile(filepath.Join(dir, name))
+				if err != nil {
+					continue
+				}
+				skill := parseSkillFile(data, name)
+				if skill != nil {
+					skill.Source = dir
+					m.skills[skill.Name] = skill
+				}
 			}
 		}
 	}
@@ -220,8 +232,9 @@ func (m *Manager) Register(name, description, content string) error {
 
 	// Persist to disk
 	dir := m.dirs[0]
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("create skills dir: %w", err)
+	skillDir := filepath.Join(dir, name)
+	if err := os.MkdirAll(skillDir, 0700); err != nil {
+		return fmt.Errorf("create skill dir: %w", err)
 	}
 
 	var sb strings.Builder
@@ -230,7 +243,7 @@ func (m *Manager) Register(name, description, content string) error {
 	}
 	sb.WriteString(content)
 
-	return os.WriteFile(filepath.Join(dir, name+".md"), []byte(sb.String()), 0600)
+	return os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(sb.String()), 0600)
 }
 
 // Unregister removes a skill from memory and deletes its file from the
@@ -241,8 +254,8 @@ func (m *Manager) Unregister(name string) error {
 
 	delete(m.skills, name)
 
-	path := filepath.Join(m.dirs[0], name+".md")
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+	skillDir := filepath.Join(m.dirs[0], name)
+	if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	return nil

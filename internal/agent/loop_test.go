@@ -86,6 +86,7 @@ func (m *mockProvider) CompleteStream(_ context.Context, _ ProviderRequest) (<-c
 
 // mockIO implements UserIO for testing.
 type mockIO struct {
+	name        string
 	lines       []string
 	readIdx     int
 	writes      strings.Builder
@@ -108,6 +109,12 @@ func (m *mockIO) WriteLine(s string) error {
 func (m *mockIO) WriteString(s string) error {
 	m.writes.WriteString(s)
 	return nil
+}
+func (m *mockIO) Name() string {
+	if m.name == "" {
+		return "mock"
+	}
+	return m.name
 }
 func (m *mockIO) Context() string { return "" }
 func (m *mockIO) Capabilities() transport.Capabilities {

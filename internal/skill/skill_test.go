@@ -275,7 +275,7 @@ func TestManager_NewTemplate(t *testing.T) {
 	}
 
 	// Verify file was created on disk
-	content, err := os.ReadFile(filepath.Join(dir, "my-skill.md"))
+	content, err := os.ReadFile(filepath.Join(dir, "my-skill", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestManager_NewTemplateEmptyDescription(t *testing.T) {
 		t.Fatalf("NewTemplate: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, "my-skill.md"))
+	content, err := os.ReadFile(filepath.Join(dir, "my-skill", "SKILL.md"))
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	}
@@ -374,7 +374,7 @@ func TestManager_Unregister(t *testing.T) {
 	}
 
 	// File should exist
-	if _, err := os.Stat(filepath.Join(dir, "test-skill.md")); os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(dir, "test-skill", "SKILL.md")); os.IsNotExist(err) {
 		t.Fatal("file should exist after Register")
 	}
 
@@ -382,8 +382,8 @@ func TestManager_Unregister(t *testing.T) {
 		t.Fatalf("Unregister: %v", err)
 	}
 
-	// File should be removed
-	if _, err := os.Stat(filepath.Join(dir, "test-skill.md")); !os.IsNotExist(err) {
-		t.Error("file should be removed after Unregister")
+	// Directory should be removed
+	if _, err := os.Stat(filepath.Join(dir, "test-skill")); !os.IsNotExist(err) {
+		t.Error("dir should be removed after Unregister")
 	}
 }

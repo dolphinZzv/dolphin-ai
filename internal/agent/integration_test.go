@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -435,6 +436,98 @@ func TestRunTurnWithThinking(t *testing.T) {
 	output := io.writes.String()
 	if !strings.Contains(output, "final answer") {
 		t.Error("expected final answer in output, got:", output)
+	}
+}
+
+func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
+	// Isolate HOME so the email-configured marker doesn't leak.
+	origHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	cfg := config.DefaultConfig()
+	cfg.Session.Dir = t.TempDir()
+	cfg.Session.MaxLoop = 20
+	cfg.LLM.MaxContextTokens = 100000
+
+	prov := &mockProvider{
+		responses: []*ProviderResponse{
+			{Content: TextContent("ok"), Usage: &Usage{InputTokens: 5, OutputTokens: 2}},
+		},
+	}
+
+	// First run with email transport — should print welcome and create marker.
+	{
+		sessMgr := session.NewManager(cfg.Session.Dir)
+		sessMgr.EnsureDir()
+		toolReg := mcp.NewRegistry(cfg)
+		toolReg.Register(&mockTool{name: "email_tool"})
+
+		agt := &Agent{
+			cfg:        cfg,
+			sessMgr:    sessMgr,
+			toolReg:    toolReg,
+			provider:   prov,
+			ctxBuilder: NewContextBuilder(),
+		}
+		io := &mockIO{name: "email", lines: []string{"hi", "/exit"}}
+		agt.Run(context.Background(), io)
+
+		output := io.writes.String()
+		if !strings.Contains(output, "Agent ready") {
+			t.Error("first email run: expected welcome message, got:", output)
+		}
+		if !strings.Contains(output, "email_tool") {
+			t.Error("first email run: expected tools in welcome, got:", output)
+		}
+		if !config.IsEmailConfigured() {
+			t.Error("expected IsEmailConfigured = true after first email run")
+		}
+	}
+
+	// Second run with email transport — should skip welcome (marker exists).
+	{
+		sessMgr := session.NewManager(cfg.Session.Dir)
+		sessMgr.EnsureDir()
+		toolReg := mcp.NewRegistry(cfg)
+
+		agt := &Agent{
+			cfg:        cfg,
+			sessMgr:    sessMgr,
+			toolReg:    toolReg,
+			provider:   prov,
+			ctxBuilder: NewContextBuilder(),
+		}
+		io := &mockIO{name: "email", lines: []string{"hi again", "/exit"}}
+		agt.Run(context.Background(), io)
+
+		output := io.writes.String()
+		if strings.Contains(output, "Agent ready") {
+			t.Error("second email run: expected NO welcome message, but got one")
+		}
+	}
+
+	// Stdio run — should always print welcome (not email transport).
+	{
+		sessMgr := session.NewManager(cfg.Session.Dir)
+		sessMgr.EnsureDir()
+		toolReg := mcp.NewRegistry(cfg)
+
+		agt := &Agent{
+			cfg:        cfg,
+			sessMgr:    sessMgr,
+			toolReg:    toolReg,
+			provider:   prov,
+			ctxBuilder: NewContextBuilder(),
+		}
+		io := &mockIO{name: "stdio", lines: []string{"hi", "/exit"}}
+		agt.Run(context.Background(), io)
+
+		output := io.writes.String()
+		if !strings.Contains(output, "Agent ready") {
+			t.Error("stdio run: expected welcome message always, got:", output)
+		}
 	}
 }
 

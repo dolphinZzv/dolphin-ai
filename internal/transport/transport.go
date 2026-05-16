@@ -22,6 +22,7 @@ type UserIO interface {
 	WriteString(string) error
 	Capabilities() Capabilities
 	Context() string // transport-specific context injected into system prompt
+	Name() string    // transport name ("stdio", "email", "ssh")
 }
 
 // Capabilities describes a transport's write semantics and interaction features.

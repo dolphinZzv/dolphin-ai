@@ -11,6 +11,9 @@ import (
 	"time"
 
 	"dolphin/internal/i18n"
+
+	"github.com/rs/xid"
+	"go.uber.org/zap"
 )
 
 // CareerProfile maps a career name to recommended skills and MCP tools.
@@ -141,6 +144,36 @@ func CreateFirstRunMarker() error {
 		return err
 	}
 	return os.WriteFile(path, []byte{}, 0600)
+}
+
+// DolphinIDFile returns the path to the dolphin instance ID file.
+func DolphinIDFile() string {
+	hd, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(hd, UserConfigDir, "id")
+}
+
+// LoadOrCreateDolphinID reads the persisted instance ID, or generates a new one
+// via xid and persists it. Returns empty string only when home dir is unavailable.
+func LoadOrCreateDolphinID() string {
+	path := DolphinIDFile()
+	if path == "" {
+		return xid.New().String()
+	}
+	data, err := os.ReadFile(path)
+	if err == nil && len(data) > 0 {
+		return string(data)
+	}
+	id := xid.New().String()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		return id
+	}
+	if err := os.WriteFile(path, []byte(id), 0600); err != nil {
+		zap.S().Warnw("failed to persist dolphin id", "error", err)
+	}
+	return id
 }
 
 // EmailConfiguredMarker returns the path to the email-configured marker file.

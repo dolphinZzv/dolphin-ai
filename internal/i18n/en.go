@@ -10,6 +10,7 @@ var enMessages = map[string]string{
 	KeySkills:            "Skills",
 	KeyMCP:               "MCP",
 	KeyInstallHint:       "To install, add tools to your skill/MCP repos or config.",
+	KeyToolsInstalled:    "Tools installed. Skills and MCP servers are available immediately.",
 	KeyConfigRestrictive: "restrictive (recommended for security)",
 	KeyRestrictiveHint:   "Your config has security hardening applied. Change any setting manually and restart.",
 	KeySetupHint:         "You can re-run setup anytime with: dolphin setup",

@@ -21,6 +21,7 @@ type Builder struct {
 	userDir    string
 	systemDir  string
 	statCache  map[string]cachedFile
+	rdata      *RenderData
 }
 
 func NewBuilder() *Builder {
@@ -34,6 +35,11 @@ func NewBuilder() *Builder {
 		systemDir:  "/etc/dolphin",
 		statCache:  make(map[string]cachedFile),
 	}
+}
+
+// SetRenderData sets the template render data for variable injection in context files.
+func (b *Builder) SetRenderData(rdata *RenderData) {
+	b.rdata = rdata
 }
 
 // Build builds the system prompt for the default (coordinator) agent.
@@ -128,6 +134,7 @@ func (b *Builder) loadFileFallback(agentDir, name string) string {
 // loadCached reads a file with stat-based caching. Returns (content, true) on
 // success, or ("", false) if the file doesn't exist. Permission or IO errors
 // are logged at Warn level and also return ("", false).
+// Template expansion via text/template is applied when render data is set.
 func (b *Builder) loadCached(path string) (string, bool) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -148,8 +155,13 @@ func (b *Builder) loadCached(path string) (string, bool) {
 		return "", false
 	}
 
+	content := string(data)
+	if b.rdata != nil {
+		content = expandTemplate(path, content, b.rdata)
+	}
+
 	b.statCache[path] = cachedFile{
-		content: string(data),
+		content: content,
 		modTime: info.ModTime(),
 	}
 	return b.statCache[path].content, true

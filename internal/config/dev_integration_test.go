@@ -144,11 +144,12 @@ func TestDevModeDemoSkillsDownload(t *testing.T) {
 		t.Fatalf("ApplyTools: %v", err)
 	}
 
-	// Verify demo-skill.md was created in skills dir
+	// Verify demo-skill/SKILL.md was created in skills dir
 	skillsDir := filepath.Join(homeDir, UserConfigDir, "skills")
-	data, err := os.ReadFile(filepath.Join(skillsDir, "demo-skill.md"))
+	skillPath := filepath.Join(skillsDir, "demo-skill", "SKILL.md")
+	data, err := os.ReadFile(skillPath)
 	if err != nil {
-		t.Fatalf("demo-skill.md not created: %v", err)
+		t.Fatalf("demo-skill/SKILL.md not created: %v", err)
 	}
 	if !strings.Contains(string(data), "Demo Skill") {
 		t.Errorf("skill content does not contain expected text, got: %s", string(data)[:200])

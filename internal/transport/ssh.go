@@ -389,6 +389,8 @@ func (s *SSHSession) ReadLine() (string, error) {
 	}
 }
 
+func (s *SSHSession) Name() string { return "ssh" }
+
 func (s *SSHSession) Context() string {
 	return fmt.Sprintf("Connected via SSH from %s as user %s.", s.remote, s.user)
 }

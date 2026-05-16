@@ -36,14 +36,15 @@ mcp:
 	return path
 }
 
-// writeTestSkill creates a skill .md file for testing.
+// writeTestSkill creates a skill SKILL.md file in a <name> subdirectory for testing.
 func writeTestSkill(t *testing.T, dir, name, desc, content string) {
 	t.Helper()
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	skillDir := filepath.Join(dir, name)
+	if err := os.MkdirAll(skillDir, 0700); err != nil {
 		t.Fatal(err)
 	}
 	data := "---\nname: " + name + "\ndescription: " + desc + "\n---\n\n" + content
-	path := filepath.Join(dir, name+".md")
+	path := filepath.Join(skillDir, "SKILL.md")
 	if err := os.WriteFile(path, []byte(data), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -192,7 +193,7 @@ func TestSkillsInstall(t *testing.T) {
 	}
 
 	// File is created in the user-skills dir (m.dirs[0]), which is ~/.dolphin/skills.
-	skillPath := filepath.Join(userSkillsDir, "my-new-skill.md")
+	skillPath := filepath.Join(userSkillsDir, "my-new-skill", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	} else {
@@ -225,7 +226,7 @@ func TestSkillsInstall_DefaultDescription(t *testing.T) {
 	}
 
 	// File is created in the user-skills dir (m.dirs[0]), which is ~/.dolphin/skills.
-	skillPath := filepath.Join(userSkillsDir, "no-desc.md")
+	skillPath := filepath.Join(userSkillsDir, "no-desc", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	}
@@ -249,7 +250,7 @@ func TestSkillsInstall_FailsWithNoSkillDir(t *testing.T) {
 	}
 
 	// File is created in user-skills dir (~/.dolphin/skills) which gets auto-created.
-	skillPath := filepath.Join(dir, ".dolphin", "skills", "auto-create.md")
+	skillPath := filepath.Join(dir, ".dolphin", "skills", "auto-create", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Errorf("skill file not created at %s", skillPath)
 	}
@@ -261,7 +262,7 @@ func TestSkillsDisable(t *testing.T) {
 	writeTestSkill(t, userSkillsDir, "to-remove", "Will be removed", "content")
 
 	// Verify it exists before
-	skillPath := filepath.Join(userSkillsDir, "to-remove.md")
+	skillPath := filepath.Join(userSkillsDir, "to-remove", "SKILL.md")
 	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
 		t.Fatal("skill file should exist before disable")
 	}

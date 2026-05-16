@@ -27,6 +27,7 @@ const (
 	KeySkills            = "skills"
 	KeyMCP               = "mcp"
 	KeyInstallHint       = "install_hint"
+	KeyToolsInstalled    = "tools_installed"
 	KeySetupHint         = "setup_hint"
 	KeyNoMatch           = "no_match"
 	KeySystemMDPrompt    = "system_md_prompt"

@@ -132,6 +132,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	}()
 
 	// Build base system prompt
+	c.ctxBuilder.SetRenderData(c.cfg)
 	c.basePrompt, err = c.ctxBuilder.Build()
 	if err != nil {
 		zap.S().Errorw("build context failed", "error", err)

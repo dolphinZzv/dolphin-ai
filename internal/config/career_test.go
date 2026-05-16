@@ -58,6 +58,82 @@ func TestFirstRunMarker(t *testing.T) {
 	}
 }
 
+func TestEmailConfiguredMarker(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	path := EmailConfiguredMarker()
+	if path == "" {
+		t.Fatal("EmailConfiguredMarker returned empty path")
+	}
+
+	if IsEmailConfigured() {
+		t.Error("expected IsEmailConfigured = false when marker does not exist")
+	}
+
+	if err := MarkEmailConfigured(); err != nil {
+		t.Fatalf("MarkEmailConfigured: %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("marker file should exist after MarkEmailConfigured")
+	}
+
+	if !IsEmailConfigured() {
+		t.Error("expected IsEmailConfigured = true after marker created")
+	}
+
+	// Verify it's cleaned up by the home/tmp isolation
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove email-configured marker: %v", err)
+	}
+	if IsEmailConfigured() {
+		t.Error("expected IsEmailConfigured = false after manual removal")
+	}
+}
+
+func TestDolphinID(t *testing.T) {
+	origHome := os.Getenv("HOME")
+	tmpDir := t.TempDir()
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", origHome)
+
+	path := DolphinIDFile()
+	if path == "" {
+		t.Fatal("DolphinIDFile returned empty path")
+	}
+
+	// First call — generates a new ID and persists it.
+	id1 := LoadOrCreateDolphinID()
+	if id1 == "" {
+		t.Fatal("LoadOrCreateDolphinID returned empty")
+	}
+	if len(id1) != 20 {
+		t.Errorf("expected xid length 20, got %d: %s", len(id1), id1)
+	}
+
+	// Second call — reads persisted ID, should match.
+	id2 := LoadOrCreateDolphinID()
+	if id2 != id1 {
+		t.Errorf("expected same ID across calls, got %s / %s", id1, id2)
+	}
+
+	// Verify file exists with the correct content.
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read id file: %v", err)
+	}
+	if string(data) != id1 {
+		t.Errorf("id file content %q != %q", string(data), id1)
+	}
+
+	// Verify it's a valid xid (12 bytes base32hex → 20 chars).
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("id file should exist: %v", err)
+	}
+}
+
 func TestCareerProfileSelection(t *testing.T) {
 	// Verify all careers have valid names for keyword matching
 	names := make(map[string]bool)

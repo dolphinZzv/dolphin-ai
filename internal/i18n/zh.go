@@ -10,6 +10,7 @@ var zhMessages = map[string]string{
 	KeySkills:            "技能",
 	KeyMCP:               "MCP 工具",
 	KeyInstallHint:       "要安装，请将工具添加到你的 skill/MCP 仓库或配置中。",
+	KeyToolsInstalled:    "工具已安装。技能和 MCP 服务器立即可用。",
 	KeyConfigRestrictive: "限制模式（推荐用于安全场景）",
 	KeyRestrictiveHint:   "配置已应用安全加固。可手动修改后重启。",
 	KeySetupHint:         "你可以随时重新运行设置：dolphin setup",
