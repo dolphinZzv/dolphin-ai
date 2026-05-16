@@ -345,14 +345,6 @@ func TestTryLocalFallback(t *testing.T) {
 	}
 }
 
-func TestTryLocalFallbackNoDir(t *testing.T) {
-	fetcher := NewRepoFetcher(t.TempDir())
-	_, ok := fetcher.tryLocalFallback("dolphinv/mcp")
-	if ok {
-		t.Error("expected fallback to fail when localDir is not set")
-	}
-}
-
 func TestTryLocalFallbackMissingFile(t *testing.T) {
 	fetcher := NewRepoFetcher(t.TempDir())
 	fetcher.SetLocalDir(t.TempDir())
@@ -469,11 +461,17 @@ func TestFetchManifestNoFallbackWithoutLocalDir(t *testing.T) {
 		Get("/dolphinv/mcp/main/manifest.json").
 		ReplyError(errors.New("no such host"))
 
+	// Run from a temp dir that has no mcp.json so CWD walk won't find it
+	tmpDir := t.TempDir()
+	origDir, _ := os.Getwd()
+	os.Chdir(tmpDir)
+	defer os.Chdir(origDir)
+
 	fetcher := NewRepoFetcher(t.TempDir())
 
 	_, err := fetcher.FetchManifest(context.Background(), "dolphinv/mcp")
 	if err == nil {
-		t.Fatal("expected error when network fails and no local dir is set")
+		t.Fatal("expected error when network fails and no local file exists")
 	}
 }
 

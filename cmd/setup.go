@@ -55,17 +55,21 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	// Augment with repo tools
 	extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
-	allSkills := append([]string{}, profile.Skills...)
-	allSkills = append(allSkills, extraSkills...)
-	allMCP := append([]string{}, profile.MCP...)
-	allMCP = append(allMCP, extraMCP...)
+	skillNames := profile.Skills
+	for _, s := range extraSkills {
+		skillNames = append(skillNames, s.Name)
+	}
+	mcpNames := profile.MCP
+	for _, m := range extraMCP {
+		mcpNames = append(mcpNames, m.Name)
+	}
 
 	fmt.Fprintf(os.Stderr, "\n=== Recommended tools for %s ===\n", profile.Description)
-	if len(allSkills) > 0 {
-		fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(allSkills, ", "))
+	if len(skillNames) > 0 {
+		fmt.Fprintf(os.Stderr, "Skills: %s\n", strings.Join(skillNames, ", "))
 	}
-	if len(allMCP) > 0 {
-		fmt.Fprintf(os.Stderr, "MCP:    %s\n", strings.Join(allMCP, ", "))
+	if len(mcpNames) > 0 {
+		fmt.Fprintf(os.Stderr, "MCP:    %s\n", strings.Join(mcpNames, ", "))
 	}
 
 	// Ask where to save
@@ -79,8 +83,8 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	switch {
 	case choice == "p":
 		sel := &config.ToolSelection{
-			Skills: allSkills,
-			MCP:    allMCP,
+			Skills: skillNames,
+			MCP:    mcpNames,
 		}
 		if err := config.SaveToolSelection(sel, "project"); err != nil {
 			return fmt.Errorf("save to project config: %w", err)
@@ -89,8 +93,8 @@ func runSetup(cmd *cobra.Command, args []string) error {
 
 	case choice == "a":
 		sel := &config.ToolSelection{
-			Skills: allSkills,
-			MCP:    allMCP,
+			Skills: skillNames,
+			MCP:    mcpNames,
 		}
 		if err := config.SaveToolSelection(sel, "user"); err != nil {
 			return fmt.Errorf("save to user config: %w", err)
@@ -106,8 +110,8 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "=== Setup Complete ===")
 	fmt.Fprintf(os.Stderr, "  Profile: %s\n", profile.Description)
-	fmt.Fprintf(os.Stderr, "  Skills:  %d\n", len(allSkills))
-	fmt.Fprintf(os.Stderr, "  MCP:     %d\n", len(allMCP))
+	fmt.Fprintf(os.Stderr, "  Skills:  %d\n", len(skillNames))
+	fmt.Fprintf(os.Stderr, "  MCP:     %d\n", len(mcpNames))
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr, "Next steps:")
 	fmt.Fprintln(os.Stderr, "  1. Set your LLM API key: export DZ_LLM_API_KEY=sk-...")

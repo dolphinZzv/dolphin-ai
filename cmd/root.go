@@ -245,15 +245,35 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, newCoordinator)
 }
 
+// isDevMode returns true when DZ_DEV=true (integration test mode).
+func isDevMode() bool {
+	return os.Getenv("DZ_DEV") == "true"
+}
+
 // firstRunSetup runs the first-run career-guided tool loading wizard.
+// In dev mode (DZ_DEV=true), skips the interactive prompt and auto-loads a demo career.
 func firstRunSetup(cfg *config.Config) {
 	if !config.IsFirstRun() || !cfg.Transport.Stdio.Enabled {
 		return
 	}
-	profile, err := config.RunFirstRunPrompt()
-	if err != nil {
-		zap.S().Warnw("first-run prompt failed", "error", err)
-		return
+
+	var profile *config.CareerProfile
+	var err error
+
+	if isDevMode() {
+		profile = &config.CareerProfile{
+			Name:        "demo",
+			Skills:      []string{"frontend-expert", "backend-golang"},
+			MCP:         []string{"browser-preview", "filesystem"},
+			Description: "Demo (integration test)",
+		}
+		fmt.Fprintf(os.Stderr, "\n[dev] Auto-loading demo career profile\n")
+	} else {
+		profile, err = config.RunFirstRunPrompt()
+		if err != nil {
+			zap.S().Warnw("first-run prompt failed", "error", err)
+			return
+		}
 	}
 	if profile == nil {
 		config.CreateFirstRunMarker()
@@ -262,19 +282,31 @@ func firstRunSetup(cfg *config.Config) {
 
 	fmt.Fprintf(os.Stderr, "\n=== %s: %s ===\n", i18n.TL(i18n.KeyRecommendedTools), profile.Description)
 	extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
-	allSkills := append([]string{}, profile.Skills...)
-	allSkills = append(allSkills, extraSkills...)
-	allMCP := append([]string{}, profile.MCP...)
-	allMCP = append(allMCP, extraMCP...)
 
-	if len(allSkills) > 0 {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeySkills), strings.Join(allSkills, ", "))
+	// Display matched tools
+	skillNames := profile.Skills
+	for _, s := range extraSkills {
+		skillNames = append(skillNames, s.Name)
 	}
-	if len(allMCP) > 0 {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(allMCP, ", "))
+	mcpNames := profile.MCP
+	for _, m := range extraMCP {
+		mcpNames = append(mcpNames, m.Name)
 	}
-	fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyInstallHint))
-	fmt.Fprintf(os.Stderr, "%s\n\n", i18n.TL(i18n.KeySetupHint))
+
+	if len(skillNames) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeySkills), strings.Join(skillNames, ", "))
+	}
+	if len(mcpNames) > 0 {
+		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(mcpNames, ", "))
+	}
+
+	// Apply matched tools: download skills, add MCP servers to config
+	if len(extraSkills) > 0 || len(extraMCP) > 0 {
+		fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyInstallHint))
+	}
+	if err := config.ApplyTools(extraSkills, extraMCP); err != nil {
+		zap.S().Warnw("apply tools failed", "error", err)
+	}
 
 	config.PromptSystemMD()
 	config.PromptConfigFile()

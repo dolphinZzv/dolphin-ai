@@ -191,10 +191,10 @@ var careerKeywords = map[string][]string{
 }
 
 // AugmentWithRepos fetches tool manifests from configured repos and finds tools
-// matching the career profile keywords. Returns additional skill and MCP tool names.
+// matching the career profile keywords. Returns matched skill and MCP ToolEntry values.
 // This is best-effort: network errors are silent, and results supplement the
 // hardcoded CareerTools mapping.
-func AugmentWithRepos(profile *CareerProfile, skillRepos, mcpRepos []string) (extraSkills, extraMCP []string) {
+func AugmentWithRepos(profile *CareerProfile, skillRepos, mcpRepos []string) (extraSkills, extraMCP []ToolEntry) {
 	if profile == nil {
 		return nil, nil
 	}
@@ -206,6 +206,9 @@ func AugmentWithRepos(profile *CareerProfile, skillRepos, mcpRepos []string) (ex
 			keywords = append(keywords, kw...)
 		}
 	}
+	// Also search by the profile's built-in tool names directly
+	keywords = append(keywords, profile.Skills...)
+	keywords = append(keywords, profile.MCP...)
 	if len(keywords) == 0 {
 		keywords = careerKeywords["general"]
 	}
@@ -226,20 +229,12 @@ func AugmentWithRepos(profile *CareerProfile, skillRepos, mcpRepos []string) (ex
 
 	if len(skillRepos) > 0 {
 		manifests := fetcher.FetchAll(ctx, skillRepos)
-		if matches := fetcher.SearchTools(manifests, keywords); len(matches) > 0 {
-			for _, m := range matches {
-				extraSkills = append(extraSkills, m.Name)
-			}
-		}
+		extraSkills = fetcher.SearchTools(manifests, keywords)
 	}
 
 	if len(mcpRepos) > 0 {
 		manifests := fetcher.FetchAll(ctx, mcpRepos)
-		if matches := fetcher.SearchTools(manifests, keywords); len(matches) > 0 {
-			for _, m := range matches {
-				extraMCP = append(extraMCP, m.Name)
-			}
-		}
+		extraMCP = fetcher.SearchTools(manifests, keywords)
 	}
 
 	return extraSkills, extraMCP

@@ -21,9 +21,11 @@ type ToolManifest struct {
 
 // ToolEntry is a single tool entry in a manifest.
 type ToolEntry struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	URL         string `json:"url"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	URL         string   `json:"url,omitempty"`
+	Command     string   `json:"command,omitempty"`
+	Args        []string `json:"args,omitempty"`
 }
 
 // Conflict describes a tool that exists in multiple repos.
@@ -269,26 +271,93 @@ func localManifestName(repoName string) string {
 	return short + ".json"
 }
 
-// tryLocalFallback attempts to read a manifest from the local offline directory.
+// tryLocalFallback attempts to read a manifest from local directories.
+// Searches the configured local dir, then the current working directory.
+// Supports both the standard {"tools": [...]} format and the mcp.json {"servers": [...]} variant.
 func (f *RepoFetcher) tryLocalFallback(repoName string) (*ToolManifest, bool) {
 	f.mu.RLock()
 	dir := f.localDir
 	f.mu.RUnlock()
-	if dir == "" {
+
+	name := localManifestName(repoName)
+	searchDirs := []string{}
+	if dir != "" {
+		searchDirs = append(searchDirs, dir)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		searchDirs = append(searchDirs, cwd)
+	}
+
+	var data []byte
+	var foundPath string
+	for _, d := range searchDirs {
+		dir := d
+		for {
+			b, err := os.ReadFile(filepath.Join(dir, name))
+			if err == nil {
+				data = b
+				foundPath = dir
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+			dir = parent
+		}
+		if data != nil {
+			break
+		}
+	}
+	if data == nil {
 		return nil, false
 	}
-	path := filepath.Join(dir, localManifestName(repoName))
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, false
+
+	// Cache found directory so subsequent fallbacks skip the walk
+	f.mu.Lock()
+	if f.localDir == "" {
+		f.localDir = foundPath
 	}
+	f.mu.Unlock()
+
+	// Try standard tools format first
 	var m ToolManifest
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, false
+	if err := json.Unmarshal(data, &m); err == nil && len(m.Tools) > 0 {
+		if m.Name == "" {
+			m.Name = repoName
+		}
+		f.writeCache(repoName, &m)
+		return &m, true
 	}
-	if m.Name == "" {
-		m.Name = repoName
+
+	// Try servers format (mcp.json variant)
+	var srvManifest struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Servers     []struct {
+			Name        string   `json:"name"`
+			Description string   `json:"description"`
+			Command     string   `json:"command"`
+			Args        []string `json:"args"`
+		} `json:"servers"`
 	}
-	f.writeCache(repoName, &m)
-	return &m, true
+	if err := json.Unmarshal(data, &srvManifest); err == nil && len(srvManifest.Servers) > 0 {
+		m.Name = srvManifest.Name
+		m.Description = srvManifest.Description
+		if m.Name == "" {
+			m.Name = repoName
+		}
+		for _, s := range srvManifest.Servers {
+			m.Tools = append(m.Tools, ToolEntry{
+				Name:        s.Name,
+				Description: s.Description,
+				Command:     s.Command,
+				Args:        s.Args,
+			})
+		}
+		f.writeCache(repoName, &m)
+		return &m, true
+	}
+
+	return nil, false
 }
