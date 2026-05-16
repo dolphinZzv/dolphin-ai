@@ -1421,20 +1421,25 @@ func parseCommandName(line string) string {
 	return strings.TrimPrefix(parts[0], "/")
 }
 
-// tryResumeSession checks for a previous session. For interactive transports (stdio, SSH)
-// it prompts the user to confirm. For non-interactive transports (email, DingTalk, MQTT)
-// it auto-resumes without prompting when resume is enabled.
+// tryResumeSession checks for a previous session.
+// Interactive transports (stdio, SSH): respect resume config + prompt user.
+// Non-interactive transports (email, DingTalk, MQTT): always auto-resume
+// to maintain continuous memory. Only /new starts a fresh session.
 func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO) (*session.Session, *LoopState) {
-	if !c.cfg.Session.Resume {
-		return nil, nil
+	caps := io.Capabilities()
+	if caps.ShowToolDetails {
+		// Interactive: require resume config + user confirmation
+		if !c.cfg.Session.Resume {
+			return nil, nil
+		}
 	}
+	// Non-interactive: always auto-resume
 
 	id, path, turns, err := c.sessMgr.LatestSession()
 	if err != nil || id == "" {
 		return nil, nil
 	}
 
-	caps := io.Capabilities()
 	if caps.ShowToolDetails {
 		// Interactive transport: prompt the user
 		age := "unknown"
