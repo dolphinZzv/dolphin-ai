@@ -1,9 +1,3 @@
 [submodule "app/panda"]
 	path = app/panda
 	url = git@github.com:dolphinZzv/panda.git
-[submodule "deps/skills"]
-	path = deps/skills
-	url = https://github.com/dolphinZzv/skills
-[submodule "deps/mcp"]
-	path = deps/mcp
-	url = https://github.com/dolphinZzv/mcp

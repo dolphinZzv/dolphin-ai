@@ -216,10 +216,12 @@ func AugmentWithRepos(profile *CareerProfile, skillRepos, mcpRepos []string) (ex
 	}
 	cacheDir := filepath.Join(homeDir, UserConfigDir, "cache")
 	fetcher := NewRepoFetcher(cacheDir)
-	// Short timeout for first-run — don't block for long
 	fetcher.SetTTL(1 * time.Hour)
+	if ex, err := os.Executable(); err == nil {
+		fetcher.SetLocalDir(filepath.Dir(ex))
+	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
 	if len(skillRepos) > 0 {

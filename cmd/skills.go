@@ -139,8 +139,11 @@ func runSkillsSearch(cmd *cobra.Command, args []string) error {
 			cacheDir = filepath.Join(homeDir, config.UserConfigDir, "cache")
 		}
 		fetcher := config.NewRepoFetcher(cacheDir)
+		if ex, err := os.Executable(); err == nil {
+			fetcher.SetLocalDir(filepath.Dir(ex))
+		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		manifests := fetcher.FetchAll(ctx, cfg.Skills.Repos)
 		cancel()
 

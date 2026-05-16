@@ -3,12 +3,15 @@ package config
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/h2non/gock"
 )
 
 func TestRepoFetcherFetchManifest(t *testing.T) {
@@ -308,6 +311,67 @@ func TestConflictSorting(t *testing.T) {
 	}
 }
 
+func TestLocalManifestName(t *testing.T) {
+	tests := []struct{ repo, want string }{
+		{"dolphinv/mcp", "mcp.json"},
+		{"dolphinv/skills", "skills.json"},
+		{"some-org/my-tools", "my-tools.json"},
+		{"bare", "bare.json"},
+	}
+	for _, tt := range tests {
+		got := localManifestName(tt.repo)
+		if got != tt.want {
+			t.Errorf("localManifestName(%q) = %q, want %q", tt.repo, got, tt.want)
+		}
+	}
+}
+
+func TestTryLocalFallback(t *testing.T) {
+	localDir := t.TempDir()
+	writeJSON(t, filepath.Join(localDir, "mcp.json"), `{"name":"mcp","tools":[{"name":"test-tool","description":"from local"}]}`)
+
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(localDir)
+
+	m, ok := fetcher.tryLocalFallback("dolphinv/mcp")
+	if !ok {
+		t.Fatal("expected fallback to succeed")
+	}
+	if m.Name != "mcp" {
+		t.Errorf("name = %q, want mcp", m.Name)
+	}
+	if len(m.Tools) != 1 || m.Tools[0].Name != "test-tool" {
+		t.Errorf("tools mismatch: %+v", m.Tools)
+	}
+}
+
+func TestTryLocalFallbackNoDir(t *testing.T) {
+	fetcher := NewRepoFetcher(t.TempDir())
+	_, ok := fetcher.tryLocalFallback("dolphinv/mcp")
+	if ok {
+		t.Error("expected fallback to fail when localDir is not set")
+	}
+}
+
+func TestTryLocalFallbackMissingFile(t *testing.T) {
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(t.TempDir())
+	_, ok := fetcher.tryLocalFallback("dolphinv/nonexistent")
+	if ok {
+		t.Error("expected fallback to fail for missing file")
+	}
+}
+
+func writeJSON(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWriteCacheCreatesDir(t *testing.T) {
 	cacheDir := filepath.Join(t.TempDir(), "nested", "cache")
 	fetcher := NewRepoFetcher(cacheDir)
@@ -326,5 +390,137 @@ func TestWriteCacheCreatesDir(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("cache file was not created: %v", err)
+	}
+}
+
+// --- gock-based integration tests for offline fallback ---
+
+func TestFetchManifestFallbackOnNetworkError(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://raw.githubusercontent.com").
+		Get("/dolphinv/mcp/main/manifest.json").
+		ReplyError(errors.New("connection refused"))
+
+	localDir := t.TempDir()
+	writeJSON(t, filepath.Join(localDir, "mcp.json"), `{"name":"mcp","tools":[{"name":"local-tool","description":"offline fallback"}]}`)
+
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(localDir)
+
+	m, err := fetcher.FetchManifest(context.Background(), "dolphinv/mcp")
+	if err != nil {
+		t.Fatalf("expected fallback to succeed on network error, got: %v", err)
+	}
+	if m.Name != "mcp" {
+		t.Errorf("name = %q, want mcp", m.Name)
+	}
+	if len(m.Tools) != 1 || m.Tools[0].Name != "local-tool" {
+		t.Errorf("tools mismatch: %+v, want offline fallback data", m.Tools)
+	}
+}
+
+func TestFetchManifestFallbackOnHTTP500(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://raw.githubusercontent.com").
+		Get("/dolphinv/mcp/main/manifest.json").
+		Reply(500).
+		BodyString("internal server error")
+
+	localDir := t.TempDir()
+	writeJSON(t, filepath.Join(localDir, "mcp.json"), `{"name":"mcp","tools":[{"name":"offline-tool","description":"from 500 fallback"}]}`)
+
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(localDir)
+
+	m, err := fetcher.FetchManifest(context.Background(), "dolphinv/mcp")
+	if err != nil {
+		t.Fatalf("expected fallback to succeed on HTTP 500, got: %v", err)
+	}
+	if m.Name != "mcp" {
+		t.Errorf("name = %q, want mcp", m.Name)
+	}
+}
+
+func TestFetchManifestFallbackOnHTTP404(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://raw.githubusercontent.com").
+		Get("/dolphinv/skills/main/manifest.json").
+		Reply(404).
+		BodyString("not found")
+
+	localDir := t.TempDir()
+	writeJSON(t, filepath.Join(localDir, "skills.json"), `{"name":"skills","tools":[{"name":"offline-skill","description":"from 404 fallback"}]}`)
+
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(localDir)
+
+	m, err := fetcher.FetchManifest(context.Background(), "dolphinv/skills")
+	if err != nil {
+		t.Fatalf("expected fallback to succeed on HTTP 404, got: %v", err)
+	}
+	if m.Name != "skills" {
+		t.Errorf("name = %q, want skills", m.Name)
+	}
+}
+
+func TestFetchManifestNoFallbackWithoutLocalDir(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://raw.githubusercontent.com").
+		Get("/dolphinv/mcp/main/manifest.json").
+		ReplyError(errors.New("no such host"))
+
+	fetcher := NewRepoFetcher(t.TempDir())
+
+	_, err := fetcher.FetchManifest(context.Background(), "dolphinv/mcp")
+	if err == nil {
+		t.Fatal("expected error when network fails and no local dir is set")
+	}
+}
+
+func TestFetchManifestTimeoutFallsBackToLocal(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://raw.githubusercontent.com").
+		Get("/dolphinv/mcp/main/manifest.json").
+		Reply(200).
+		BodyString(`{"name":"remote","tools":[]}`).
+		Delay(3 * time.Second) // longer than the 2s client timeout
+
+	localDir := t.TempDir()
+	writeJSON(t, filepath.Join(localDir, "mcp.json"), `{"name":"mcp","tools":[{"name":"timeout-tool","description":"timeout fallback"}]}`)
+
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(localDir)
+
+	m, err := fetcher.FetchManifest(context.Background(), "dolphinv/mcp")
+	if err != nil {
+		t.Fatalf("expected timeout fallback to succeed, got: %v", err)
+	}
+	if m.Name != "mcp" {
+		t.Errorf("name = %q, want mcp (local fallback after timeout)", m.Name)
+	}
+}
+
+func TestFetchManifestUsesNetworkWhenAvailable(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://raw.githubusercontent.com").
+		Get("/dolphinv/mcp/main/manifest.json").
+		Reply(200).
+		BodyString(`{"name":"remote","tools":[{"name":"remote-tool","description":"from network"}]}`)
+
+	localDir := t.TempDir()
+	writeJSON(t, filepath.Join(localDir, "mcp.json"), `{"name":"local","tools":[]}`)
+
+	fetcher := NewRepoFetcher(t.TempDir())
+	fetcher.SetLocalDir(localDir)
+
+	m, err := fetcher.FetchManifest(context.Background(), "dolphinv/mcp")
+	if err != nil {
+		t.Fatalf("expected network to succeed, got: %v", err)
+	}
+	if m.Name != "remote" {
+		t.Errorf("name = %q, want remote (network should win over local)", m.Name)
+	}
+	if len(m.Tools) != 1 || m.Tools[0].Name != "remote-tool" {
+		t.Errorf("tools mismatch: %+v, want remote data", m.Tools)
 	}
 }

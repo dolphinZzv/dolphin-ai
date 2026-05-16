@@ -41,6 +41,7 @@ type RepoSource struct {
 // RepoFetcher fetches and caches tool manifests from GitHub repos.
 type RepoFetcher struct {
 	cacheDir string
+	localDir string // offline fallback: directory containing <shortname>.json files
 	ttl      time.Duration
 	mu       sync.RWMutex
 }
@@ -58,6 +59,14 @@ func (f *RepoFetcher) SetTTL(ttl time.Duration) {
 	f.ttl = ttl
 }
 
+// SetLocalDir sets the directory searched for offline fallback JSON files.
+// Files are expected to be named <shortname>.json (e.g. "mcp.json", "skills.json").
+func (f *RepoFetcher) SetLocalDir(dir string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.localDir = dir
+}
+
 // FetchManifest fetches the manifest.json for a single repo.
 // Repo name format: "owner/repo" (e.g. "dolphinv/skills").
 func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*ToolManifest, error) {
@@ -73,19 +82,31 @@ func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*Tool
 		return nil, fmt.Errorf("create request: %w", err)
 	}
 
-	client := &http.Client{Timeout: 10 * time.Second}
+	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		// Network error — try local fallback
+		if m, ok := f.tryLocalFallback(repoName); ok {
+			return m, nil
+		}
 		return nil, fmt.Errorf("fetch %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		// Non-200 response — try local fallback
+		if m, ok := f.tryLocalFallback(repoName); ok {
+			return m, nil
+		}
 		return nil, fmt.Errorf("fetch %s: HTTP %d", url, resp.StatusCode)
 	}
 
 	var m ToolManifest
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		// Parse error — try local fallback
+		if m, ok := f.tryLocalFallback(repoName); ok {
+			return m, nil
+		}
 		return nil, fmt.Errorf("parse manifest from %s: %w", repoName, err)
 	}
 
@@ -235,4 +256,39 @@ func (f *RepoFetcher) writeCache(repoName string, m *ToolManifest) {
 func (f *RepoFetcher) cachePath(repoName string) string {
 	safe := strings.ReplaceAll(repoName, "/", "-")
 	return filepath.Join(f.cacheDir, safe, "manifest.json")
+}
+
+// localManifestName derives a local filename from a repo name.
+// e.g. "dolphinv/mcp" → "mcp.json", "dolphinv/skills" → "skills.json"
+func localManifestName(repoName string) string {
+	parts := strings.SplitN(repoName, "/", 2)
+	short := repoName
+	if len(parts) == 2 {
+		short = parts[1]
+	}
+	return short + ".json"
+}
+
+// tryLocalFallback attempts to read a manifest from the local offline directory.
+func (f *RepoFetcher) tryLocalFallback(repoName string) (*ToolManifest, bool) {
+	f.mu.RLock()
+	dir := f.localDir
+	f.mu.RUnlock()
+	if dir == "" {
+		return nil, false
+	}
+	path := filepath.Join(dir, localManifestName(repoName))
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	var m ToolManifest
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, false
+	}
+	if m.Name == "" {
+		m.Name = repoName
+	}
+	f.writeCache(repoName, &m)
+	return &m, true
 }

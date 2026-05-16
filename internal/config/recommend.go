@@ -51,8 +51,11 @@ func RecommendTools(ctx context.Context, workDir string, profile *CareerProfile,
 	}
 	cacheDir := filepath.Join(homeDir, UserConfigDir, "cache")
 	fetcher := NewRepoFetcher(cacheDir)
+	if ex, err := os.Executable(); err == nil {
+		fetcher.SetLocalDir(filepath.Dir(ex))
+	}
 
-	fetchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	fetchCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
 	// Fetch skill repos
