@@ -243,6 +243,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/skills":
 			c.printSkills(io)
 			continue
+		case line == "/new":
+			c.handleNew(sess, state, io)
+			continue
 		case line == "/commands":
 			c.printCommands(io)
 			continue
@@ -1404,6 +1407,41 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 		ago := time.Since(s.mod).Truncate(time.Second).String()
 		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), shortID, s.turns, ago+" ago"))
 	}
+	io.WriteLine("")
+}
+
+func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io transport.UserIO) {
+	oldTurns := state.Turn
+	oldID := sess.ID
+
+	// Generate summary for current session before starting fresh
+	c.generateSummary(sess, state)
+
+	// Create a new child session
+	newSess, err := c.sessMgr.NewSession(c.cfg.Session.MaxLoop)
+	if err != nil {
+		io.WriteLine(fmt.Sprintf("Failed to create new session: %v", err))
+		return
+	}
+	newSess.LogSystem(fmt.Sprintf("fresh start from session %s (turn %d)", oldID, oldTurns))
+
+	// Reset state with new session, preserving config and transport
+	state.Sess = newSess
+	state.Turn = 0
+	state.Messages = nil
+	state.ToolCallCount = 0
+	state.ErrorCount = 0
+	state.StopReason = ""
+	state.SummaryGenerated = false
+
+	zap.S().Infow("session reset via /new",
+		"old_session", oldID,
+		"new_session", newSess.ID,
+	)
+
+	io.WriteLine(fmt.Sprintf("New session %s started. Previous: %s (%d turns)",
+		newSess.ID, oldID, oldTurns,
+	))
 	io.WriteLine("")
 }
 

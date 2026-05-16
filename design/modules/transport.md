@@ -18,7 +18,46 @@ type UserIO interface {
 }
 ```
 
-每个 Transport 绑定一个独立的 Coordinator goroutine。
+每个 Transport 绑定一个独立的 Coordinator goroutine，各自维护独立的 Session。
+
+## Capabilities
+
+```go
+type Capabilities struct {
+    Streaming       bool  // 流式输出（边生成边发送）
+    Flushable       bool  // 支持 Flush 语义
+    ConfirmExit     bool  // 退出前需用户确认
+    ShowToolDetails bool  // 展示工具调用参数/结果细节
+}
+```
+
+| Flag | stdio | SSH | Email | DingTalk | MQTT |
+|------|-------|-----|-------|----------|------|
+| Streaming | true | true | false | false | false |
+| ShowToolDetails | true | true | false | false | false |
+
+## Session Resume
+
+```
+启动 coordinator
+  ├─ ShowToolDetails == true (stdio/SSH)
+  │   └─ resume 配置 + 提示确认 → 恢复/新建
+  └─ ShowToolDetails == false (email/DingTalk/MQTT)
+      └─ 始终自动恢复最后一次 session（持续记忆）
+```
+
+非交互 transport 用户发 `/new` 才会清空记忆开启全新 session。
+
+## Slash Commands
+
+| Command | Action |
+|---------|--------|
+| `/exit` | 退出 session |
+| `/help` | 显示帮助 |
+| `/status` | 会话状态 |
+| `/mcp` | 列出 MCP 工具 |
+| `/new` | 持久化当前会话摘要 → 开新 session 清空记忆 |
+| `/skills` | 列出技能 |
 
 ## Implementations
 
