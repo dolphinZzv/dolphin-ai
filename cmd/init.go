@@ -3,10 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"time"
 
 	"dolphin/internal/config"
 	"dolphin/internal/i18n"
 
+	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/spf13/cobra"
 )
 
@@ -68,6 +72,41 @@ func runInit(restrictive bool) error {
 		}
 		fmt.Fprintf(os.Stderr, "Default config generated: %s\n", fp)
 		fmt.Fprintf(os.Stderr, "Edit it and run 'dolphin' to start.\n")
+	}
+
+	if err := gitInitDotDolphin(config.ProjectConfigDir); err != nil {
+		fmt.Fprintf(os.Stderr, "git init .dolphin: %v\n", err)
+	}
+
+	return nil
+}
+
+func gitInitDotDolphin(dir string) error {
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+		return nil // already initialized
+	}
+
+	repo, err := git.PlainInit(dir, false)
+	if err != nil {
+		return fmt.Errorf("init: %w", err)
+	}
+
+	gitignore := "# dolphin version control\nconfig.yaml\nlogs/\n"
+	if err := os.WriteFile(filepath.Join(dir, ".gitignore"), []byte(gitignore), 0600); err != nil {
+		return fmt.Errorf(".gitignore: %w", err)
+	}
+
+	wt, err := repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("worktree: %w", err)
+	}
+	if _, err := wt.Add("."); err != nil {
+		return fmt.Errorf("add: %w", err)
+	}
+	if _, err := wt.Commit("dolphin init", &git.CommitOptions{
+		Author: &object.Signature{Name: "dolphin", Email: "dolphin@localhost", When: time.Now()},
+	}); err != nil {
+		return fmt.Errorf("commit: %w", err)
 	}
 
 	return nil
