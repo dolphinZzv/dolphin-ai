@@ -117,6 +117,45 @@ func TestDevModeNoDuplicates(t *testing.T) {
 	}
 }
 
+func TestDevModeDemoSkillsDownload(t *testing.T) {
+	// This test exercises the full remote flow with dolphinZzv/demo_skills
+	homeDir := t.TempDir()
+	origHome := os.Getenv("HOME")
+	os.Setenv("HOME", homeDir)
+	defer os.Setenv("HOME", origHome)
+
+	profile := &CareerProfile{
+		Name:        "demo",
+		Skills:      []string{"demo-skill"},
+		MCP:         []string{},
+		Description: "Demo download test",
+	}
+
+	skills, _ := AugmentWithRepos(profile, []string{"dolphinZzv/demo_skills"}, []string{})
+	if len(skills) == 0 {
+		t.Skip("demo_skills repo not reachable (network issue)")
+	}
+	t.Logf("matched %d skills from demo_skills repo", len(skills))
+	for _, s := range skills {
+		t.Logf("  %s: url=%s", s.Name, s.URL)
+	}
+
+	if err := ApplyTools(skills, nil); err != nil {
+		t.Fatalf("ApplyTools: %v", err)
+	}
+
+	// Verify demo-skill.md was created in skills dir
+	skillsDir := filepath.Join(homeDir, UserConfigDir, "skills")
+	data, err := os.ReadFile(filepath.Join(skillsDir, "demo-skill.md"))
+	if err != nil {
+		t.Fatalf("demo-skill.md not created: %v", err)
+	}
+	if !strings.Contains(string(data), "Demo Skill") {
+		t.Errorf("skill content does not contain expected text, got: %s", string(data)[:200])
+	}
+	t.Logf("downloaded skill content:\n%s", string(data)[:200])
+}
+
 func findProjectRoot(t *testing.T) string {
 	t.Helper()
 	dir, err := os.Getwd()

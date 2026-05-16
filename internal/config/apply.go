@@ -141,11 +141,10 @@ func downloadSkill(client *http.Client, url string) ([]byte, error) {
 }
 
 // toRawGitHubURL converts a GitHub blob/directory URL to a raw URL.
-// "https://github.com/dolphinv/skills/blob/main/frontend-expert/" →
-// "https://raw.githubusercontent.com/dolphinv/skills/main/frontend-expert/skill.md"
+// Directory: "https://github.com/org/repo/blob/main/dir/" → ".../dir/skill.md"
+// File:      "https://github.com/org/repo/blob/main/skill.md" → ".../skill.md"
 func toRawGitHubURL(url string) string {
 	url = strings.TrimRight(url, "/")
-	// Replace github.com/<org>/<repo>/blob/<ref>/<path> → raw.githubusercontent.com/<org>/<repo>/<ref>/<path>
 	prefix := "https://github.com/"
 	if !strings.HasPrefix(url, prefix) {
 		return ""
@@ -155,8 +154,12 @@ func toRawGitHubURL(url string) string {
 	if len(parts) < 4 || parts[2] != "blob" {
 		return ""
 	}
-	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/skill.md",
-		parts[0], parts[1], parts[3])
+	refPath := parts[3]
+	// If path already ends with .md, use it as-is
+	if strings.HasSuffix(refPath, ".md") {
+		return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s", parts[0], parts[1], refPath)
+	}
+	return fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/%s/skill.md", parts[0], parts[1], refPath)
 }
 
 // skillTemplate builds a minimal skill markdown file from a ToolEntry.
