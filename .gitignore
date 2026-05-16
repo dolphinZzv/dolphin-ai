@@ -68,3 +68,6 @@ logs
 /.dolphin/diary
 # Per-user agent/workspace state
 /.dolphinzZ/
+
+
+.dolphin

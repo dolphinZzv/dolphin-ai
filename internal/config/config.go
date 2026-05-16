@@ -111,11 +111,31 @@ func (l *LLMConfig) EffectiveProviders() []ProviderConfig {
 }
 
 type SessionConfig struct {
-	Dir     string `mapstructure:"dir"`
 	MaxLoop int    `mapstructure:"max_loop"`
 	Summary bool   `mapstructure:"summary"`
 	MaxAge  string `mapstructure:"max_age"`
 	Resume  bool   `mapstructure:"resume"`
+}
+
+var sessionsDirOverride string
+
+// SetSessionsDir overrides the sessions directory (for testing).
+func SetSessionsDir(dir string) { sessionsDirOverride = dir }
+
+// SessionsDir returns the sessions directory, preferring project-level (.dolphin/sessions/)
+// and falling back to user-level (~/.dolphin/sessions/).
+func SessionsDir() string {
+	if sessionsDirOverride != "" {
+		return sessionsDirOverride
+	}
+	if _, err := os.Stat(ProjectConfigDir); err == nil {
+		return filepath.Join(ProjectConfigDir, "sessions")
+	}
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return filepath.Join(UserConfigDir, "sessions")
+	}
+	return filepath.Join(homeDir, UserConfigDir, "sessions")
 }
 
 type TransportConfig struct {
@@ -231,11 +251,12 @@ type ShellConfig struct {
 }
 
 type CDPConfig struct {
-	Enabled     bool   `mapstructure:"enabled"`
-	Headless    bool   `mapstructure:"headless"`
-	WsURL       string `mapstructure:"ws_url"`
-	Priority    int    `mapstructure:"priority"`     // tool listing priority (lower = preferred)
-	IdleTimeout int    `mapstructure:"idle_timeout"` // seconds, 0 = disabled
+	Enabled        bool   `mapstructure:"enabled"`
+	Headless       bool   `mapstructure:"headless"`
+	WsURL          string `mapstructure:"ws_url"`
+	Priority       int    `mapstructure:"priority"`        // tool listing priority (lower = preferred)
+	IdleTimeout    int    `mapstructure:"idle_timeout"`    // seconds, 0 = disabled
+	StartupTimeout int    `mapstructure:"startup_timeout"` // seconds for browser init verify, 0 = use default 30s
 }
 
 // EmailMCPConfig controls the built-in email MCP tool.
@@ -352,11 +373,6 @@ func Load(cfgFile string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, err
-	}
-
-	// Resolve session dir
-	if cfg.Session.Dir == "" {
-		cfg.Session.Dir = defaultSessionDir()
 	}
 
 	// Manual env var overrides (Viper v1.18.2 env binding has issues)
@@ -523,7 +539,6 @@ func DefaultConfig() *Config {
 	if err := v.Unmarshal(&cfg); err != nil {
 		zap.S().Errorw("unmarshal default config", "error", err)
 	}
-	cfg.Session.Dir = defaultSessionDir()
 	if cfg.ID == "" {
 		cfg.ID = LoadOrCreateDolphinID()
 	}
@@ -716,7 +731,6 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("llm.compress_mode", "drop")
 	v.SetDefault("llm.segment_merge_limit", 100)
 
-	v.SetDefault("session.dir", defaultSessionDir())
 	v.SetDefault("session.max_loop", 50)
 	v.SetDefault("session.summary", true)
 
@@ -755,6 +769,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.cdp.headless", true)
 	v.SetDefault("mcp.cdp.priority", 1000)
 	v.SetDefault("mcp.cdp.idle_timeout", 300)
+	v.SetDefault("mcp.cdp.startup_timeout", 30)
 	v.SetDefault("mcp.email.enabled", true)
 	v.SetDefault("mcp.email.priority", 500)
 

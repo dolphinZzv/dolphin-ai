@@ -112,7 +112,7 @@ func TestAgentPoolSetParentSessionID(t *testing.T) {
 
 func TestAgentPoolAddAndList(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{}
@@ -144,7 +144,7 @@ func TestAgentPoolAddAndList(t *testing.T) {
 
 func TestAgentPoolDispatchThenCollect(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{
@@ -178,7 +178,7 @@ func TestAgentPoolDispatchThenCollect(t *testing.T) {
 
 func TestAgentPoolConcurrentAddAndList(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{}
@@ -225,7 +225,7 @@ func TestAgentPoolDispatchToNonexistent(t *testing.T) {
 
 func TestAgentPoolRemoveIdle(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{}

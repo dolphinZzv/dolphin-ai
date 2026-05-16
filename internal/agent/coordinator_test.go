@@ -182,7 +182,7 @@ func TestParseCommandName(t *testing.T) {
 
 func TestBuildDynamicPromptBase(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	agt := newTestAgent(cfg, &mockProvider{})
 	coord := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
@@ -199,7 +199,7 @@ func TestBuildDynamicPromptBase(t *testing.T) {
 
 func TestBuildDynamicPromptWithAgents(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	agt := newTestAgent(cfg, &mockProvider{})
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -222,7 +222,7 @@ func TestBuildDynamicPromptWithAgents(t *testing.T) {
 
 func TestBuildDynamicPromptWithSkills(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	agt := newTestAgent(cfg, &mockProvider{})
 	coord := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
@@ -245,7 +245,7 @@ func TestBuildDynamicPromptWithSkills(t *testing.T) {
 
 func TestBuildDynamicPromptWithPendingResults(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	agt := newTestAgent(cfg, &mockProvider{})
 	coord := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
@@ -267,7 +267,7 @@ func TestBuildDynamicPromptWithPendingResults(t *testing.T) {
 
 func TestBuildDynamicPromptTruncatesLongResults(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	cfg.Pool.MaxPendingResultLen = 20
 	agt := newTestAgent(cfg, &mockProvider{})
@@ -290,7 +290,7 @@ func TestBuildDynamicPromptTruncatesLongResults(t *testing.T) {
 
 func TestBuildDynamicPromptNoTruncationWhenZero(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	cfg.Pool.MaxPendingResultLen = 0
 	agt := newTestAgent(cfg, &mockProvider{})
@@ -310,7 +310,7 @@ func TestBuildDynamicPromptNoTruncationWhenZero(t *testing.T) {
 
 func TestBuildDynamicPromptTruncationDoesNotAffectShortResults(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	cfg.Pool.MaxPendingResultLen = 100
 	agt := newTestAgent(cfg, &mockProvider{})
@@ -333,11 +333,11 @@ func TestBuildDynamicPromptTruncationDoesNotAffectShortResults(t *testing.T) {
 
 func TestCoordinatorRunExitCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -365,11 +365,11 @@ func TestCoordinatorRunExitCommand(t *testing.T) {
 
 func TestCoordinatorRunHelpCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -413,11 +413,11 @@ func TestCoordinatorRunHelpCommand(t *testing.T) {
 
 func TestCoordinatorRunSkillsCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -452,11 +452,11 @@ func TestCoordinatorRunSkillsCommand(t *testing.T) {
 
 func TestCoordinatorRunCommandsListing(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -501,11 +501,11 @@ func TestCoordinatorRunCommandsListing(t *testing.T) {
 
 func TestCoordinatorRunCustomCommandDispatchedToLLM(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -548,11 +548,11 @@ func TestCoordinatorRunCustomCommandDispatchedToLLM(t *testing.T) {
 
 func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -585,11 +585,11 @@ func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
 
 func TestCoordinatorRunCancelAllTasks(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -669,11 +669,11 @@ func TestCoordinatorPrintCommandsEmpty(t *testing.T) {
 
 func TestCoordinatorCancelSpecificTask(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -793,7 +793,7 @@ func TestCoordinatorPrintAgentsEmpty(t *testing.T) {
 
 func TestCoordinatorPrintAgentsPopulated(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	agt := newTestAgent(cfg, &mockProvider{})
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -813,7 +813,7 @@ func TestCoordinatorPrintAgentsPopulated(t *testing.T) {
 
 func TestCoordinatorHandleSearchMCPToolsNoResults(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	toolReg := mcp.NewRegistry(cfg)
 	toolReg.Register(&mockTool{name: "shell"})
@@ -831,7 +831,7 @@ func TestCoordinatorHandleSearchMCPToolsNoResults(t *testing.T) {
 
 func TestCoordinatorHandleSearchMCPToolsWithResults(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	toolReg := mcp.NewRegistry(cfg)
 	toolReg.Register(&mockTool{name: "shell"})
@@ -1132,7 +1132,7 @@ func TestFormatDurationEdgeCases(t *testing.T) {
 func TestE2ERunTaskGeneratesSummary(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	prov := &mockProvider{
@@ -1161,7 +1161,7 @@ func TestE2ERunTaskGeneratesSummary(t *testing.T) {
 	}
 
 	// Verify child summary file exists
-	summaryPath := filepath.Join(cfg.Session.Dir, result.TaskID+"-summary.json")
+	summaryPath := filepath.Join(config.SessionsDir(), result.TaskID+"-summary.json")
 	data, err := os.ReadFile(summaryPath)
 	if err != nil {
 		t.Fatalf("ReadFile child summary: %v", err)
@@ -1178,7 +1178,7 @@ func TestE2ERunTaskGeneratesSummary(t *testing.T) {
 func TestE2EParentChildSummaryChain(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	agt := newTestAgent(cfg, &mockProvider{
@@ -1213,8 +1213,8 @@ func TestE2EParentChildSummaryChain(t *testing.T) {
 	agt.generateSummary(parentSess, parentState)
 
 	// Verify both summary files exist
-	parentSummaryPath := filepath.Join(cfg.Session.Dir, string(parentSess.ID)+"-summary.json")
-	childSummaryPath := filepath.Join(cfg.Session.Dir, result.TaskID+"-summary.json")
+	parentSummaryPath := filepath.Join(config.SessionsDir(), string(parentSess.ID)+"-summary.json")
+	childSummaryPath := filepath.Join(config.SessionsDir(), result.TaskID+"-summary.json")
 
 	if _, err := os.Stat(parentSummaryPath); os.IsNotExist(err) {
 		t.Error("parent summary file missing")
@@ -1240,7 +1240,7 @@ func TestE2EParentChildSummaryChain(t *testing.T) {
 	}
 
 	// Verify child JSONL contains parent link
-	childJSONL := filepath.Join(cfg.Session.Dir, result.TaskID+".jsonl")
+	childJSONL := filepath.Join(config.SessionsDir(), result.TaskID+".jsonl")
 	jData, _ := os.ReadFile(childJSONL)
 	if !strings.Contains(string(jData), string(parentSess.ID)) {
 		t.Error("child JSONL should reference parent session ID")
@@ -1252,7 +1252,7 @@ func TestE2EParentChildSummaryChain(t *testing.T) {
 func TestE2ETransportErrorSkipsSummary(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	agt := newTestAgent(cfg, &mockProvider{})
 	sess, _ := agt.sessMgr.NewSession(50)
@@ -1268,7 +1268,7 @@ func TestE2ETransportErrorSkipsSummary(t *testing.T) {
 	agt.generateSummary(sess, state)
 
 	// Should NOT have written a summary
-	summaryPath := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	summaryPath := filepath.Join(config.SessionsDir(), string(sess.ID)+"-summary.json")
 	if _, err := os.Stat(summaryPath); !os.IsNotExist(err) {
 		t.Error("expected no summary for transport_error with 0 activity")
 	}
@@ -1521,11 +1521,11 @@ func TestCoordinatorHandleSkillNewCreatesFile(t *testing.T) {
 
 func TestCoordinatorSkillNewViaRun(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -1565,10 +1565,10 @@ func TestCoordinatorSkillNewViaRun(t *testing.T) {
 
 func TestCoordinatorStatusCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.Model = "test-model"
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -1618,10 +1618,10 @@ func TestCoordinatorStatusCommand(t *testing.T) {
 
 func TestCoordinatorStatusCommandMinimal(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.Model = "minimal-model"
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -1655,9 +1655,9 @@ func TestCoordinatorStatusCommandMinimal(t *testing.T) {
 
 func TestCoordinatorSessionsCommandNoSessions(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -1688,9 +1688,9 @@ func TestCoordinatorSessionsCommandNoSessions(t *testing.T) {
 
 func TestCoordinatorSessionsCommandWithSessions(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	// Create a couple of session files
@@ -1732,9 +1732,9 @@ func TestCoordinatorSessionsCommandWithSessions(t *testing.T) {
 
 func TestCoordinatorHelpIncludesStatusAndSessions(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)

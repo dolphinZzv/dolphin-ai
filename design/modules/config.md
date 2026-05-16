@@ -13,7 +13,7 @@
 | Section | Struct | Key Fields |
 |---------|--------|------------|
 | `llm` | `LLMConfig` | Type, BaseURL, APIKey, Model, MaxTokens, Providers[], Temperature, MaxContextTokens, CompressMode |
-| `session` | `SessionConfig` | Dir, MaxLoop, Summary, MaxAge, Resume |
+| `session` | `SessionConfig` | MaxLoop, Summary, MaxAge, Resume |
 | `transport` | `TransportConfig` | Stdio/SSH/MQTT/Email 四子结构 |
 | `mcp` | `MCPConfig` | Shell/CDP/Email/Webhook 开关, Servers[], Repos[] |
 | `agent_pool` | `PoolConfig` | MaxConcurrency, DefaultTimeout, WorkspaceDir, IdleTimeout |

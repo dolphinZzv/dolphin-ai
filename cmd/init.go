@@ -40,40 +40,42 @@ Use --restrictive to generate a security-hardened config with:
 }
 
 func runInit(restrictive bool) error {
-	// Check if config already exists
-	path := config.ProjectConfigDir + "/" + config.ConfigFileName + ".yaml"
-	if _, err := os.Stat(path); err == nil {
-		fmt.Fprintf(os.Stderr, "Config already exists at %s.\n", path)
-		fmt.Fprintf(os.Stderr, "Remove it first or edit manually.\n")
-		return nil
+	cfgPath := config.ProjectConfigDir + "/" + config.ConfigFileName + ".yaml"
+	cfgExists := false
+	if _, err := os.Stat(cfgPath); err == nil {
+		cfgExists = true
 	}
 
-	lang := i18n.DetectLang()
-	var fp string
-	var err error
+	// Generate config if missing
+	if !cfgExists {
+		lang := i18n.DetectLang()
+		var fp string
+		var err error
 
-	if restrictive {
-		fp, err = config.GenerateRestrictiveConfigFile(lang)
-		if err != nil {
-			return fmt.Errorf("generate restrictive config: %w", err)
+		if restrictive {
+			fp, err = config.GenerateRestrictiveConfigFile(lang)
+			if err != nil {
+				return fmt.Errorf("generate restrictive config: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "\nSecurity-hardened config generated: %s\n", fp)
+			fmt.Fprintf(os.Stderr, "\nKey differences from default:\n")
+			fmt.Fprintf(os.Stderr, "  - Shell: only allowlisted commands (ls, cat, grep, find, ...)\n")
+			fmt.Fprintf(os.Stderr, "  - CDP browser: disabled\n")
+			fmt.Fprintf(os.Stderr, "  - Webhook: disabled\n")
+			fmt.Fprintf(os.Stderr, "  - Log level: warn\n")
+			fmt.Fprintf(os.Stderr, "  - Plugins: disabled\n")
+			fmt.Fprintf(os.Stderr, "\nRun 'dolphin' to start with this config.\n")
+		} else {
+			fp, err = config.GenerateConfigFile(lang)
+			if err != nil {
+				return fmt.Errorf("generate config: %w", err)
+			}
+			fmt.Fprintf(os.Stderr, "Default config generated: %s\n", fp)
+			fmt.Fprintf(os.Stderr, "Edit it and run 'dolphin' to start.\n")
 		}
-		fmt.Fprintf(os.Stderr, "\nSecurity-hardened config generated: %s\n", fp)
-		fmt.Fprintf(os.Stderr, "\nKey differences from default:\n")
-		fmt.Fprintf(os.Stderr, "  - Shell: only allowlisted commands (ls, cat, grep, find, ...)\n")
-		fmt.Fprintf(os.Stderr, "  - CDP browser: disabled\n")
-		fmt.Fprintf(os.Stderr, "  - Webhook: disabled\n")
-		fmt.Fprintf(os.Stderr, "  - Log level: warn\n")
-		fmt.Fprintf(os.Stderr, "  - Plugins: disabled\n")
-		fmt.Fprintf(os.Stderr, "\nRun 'dolphin' to start with this config.\n")
-	} else {
-		fp, err = config.GenerateConfigFile(lang)
-		if err != nil {
-			return fmt.Errorf("generate config: %w", err)
-		}
-		fmt.Fprintf(os.Stderr, "Default config generated: %s\n", fp)
-		fmt.Fprintf(os.Stderr, "Edit it and run 'dolphin' to start.\n")
 	}
 
+	// Git init .dolphin (idempotent)
 	if err := gitInitDotDolphin(config.ProjectConfigDir); err != nil {
 		fmt.Fprintf(os.Stderr, "git init .dolphin: %v\n", err)
 	}

@@ -184,6 +184,18 @@ var configurablePaths = []configEntry{
 		},
 	},
 	{
+		path: "mcp.cdp.startup_timeout", description: "Browser startup verify timeout in seconds",
+		get: func(c *config.Config) any { return c.MCP.CDP.StartupTimeout },
+		set: func(c *config.Config, v any) error {
+			n, err := toInt(v)
+			if err != nil {
+				return err
+			}
+			c.MCP.CDP.StartupTimeout = n
+			return nil
+		},
+	},
+	{
 		path: "mcp.cdp.enabled", description: "Enable CDP browser tool",
 		get: func(c *config.Config) any { return c.MCP.CDP.Enabled },
 		set: func(c *config.Config, v any) error {
@@ -282,6 +294,18 @@ func findConfigEntry(path string) *configEntry {
 	return nil
 }
 
+// findConfigChildren returns all entries whose path starts with prefix + "."
+func findConfigChildren(prefix string) []configEntry {
+	var children []configEntry
+	p := prefix + "."
+	for _, entry := range configurablePaths {
+		if strings.HasPrefix(entry.path, p) {
+			children = append(children, entry)
+		}
+	}
+	return children
+}
+
 func (c *Coordinator) handleConfig(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params configInput
 	if err := json.Unmarshal(input, &params); err != nil {
@@ -331,7 +355,18 @@ func (c *Coordinator) handleConfigGet(path string) (*mcp.ToolResult, error) {
 	}
 	entry := findConfigEntry(path)
 	if entry == nil {
-		return &mcp.ToolResult{Content: fmt.Sprintf("unknown path %q — use list to see all paths", path), IsError: true}, nil
+		// Check if it's a group prefix with children
+		children := findConfigChildren(path)
+		if len(children) == 0 {
+			return &mcp.ToolResult{Content: fmt.Sprintf("unknown path %q — use list to see all paths", path), IsError: true}, nil
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "=== %s ===\n\n", path)
+		for _, ch := range children {
+			val := ch.get(c.cfg)
+			fmt.Fprintf(&b, "%s = %v\n  %s\n\n", ch.path, formatValue(val), ch.description)
+		}
+		return &mcp.ToolResult{Content: b.String()}, nil
 	}
 	val := entry.get(c.cfg)
 	return &mcp.ToolResult{

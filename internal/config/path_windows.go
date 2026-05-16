@@ -7,10 +7,6 @@ import (
 	"path/filepath"
 )
 
-func defaultSessionDir() string {
-	return filepath.Join(os.TempDir(), "dolphin")
-}
-
 func defaultSystemConfigDir() string {
 	programData := os.Getenv("ProgramData")
 	if programData == "" {

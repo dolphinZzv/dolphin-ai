@@ -2,10 +2,11 @@ package mcp
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -126,15 +127,16 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	defer c.mu.Unlock()
 
 	if c.initialized {
-		// Health check: try a lightweight operation to see if browser is still alive
-		healthCtx, cancel := context.WithTimeout(c.browserCtx, 5*time.Second)
-		defer cancel()
-		err := chromedp.Run(healthCtx, chromedp.Navigate("about:blank"))
-		if err == nil {
+		// Health check: try a lightweight operation to see if browser is still alive.
+		// Discard cancel — calling it would trigger chromedp cleanup and kill the
+		// browserCtx's WebSocket connection. The timeout expires harmlessly in ~10s.
+		healthCtx, _ := context.WithTimeout(c.browserCtx, 10*time.Second)
+		if err := chromedp.Run(healthCtx, chromedp.Navigate("about:blank")); err == nil {
 			return c.browserCtx, nil
+		} else {
+			zap.S().Warnw("cdp browser appears dead, reinitializing", "error", err)
+			c.shutdownBrowser()
 		}
-		zap.S().Warnw("cdp browser appears dead, reinitializing", "error", err)
-		c.shutdownBrowser()
 	}
 
 	if c.cfg.WsURL != "" {
@@ -156,6 +158,14 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 			chromedp.Flag("headless", c.cfg.Headless),
 			chromedp.Flag("disable-gpu", true),
 			chromedp.Flag("no-sandbox", true),
+			chromedp.Flag("disable-dev-shm-usage", true),
+			chromedp.Flag("disable-extensions", true),
+			chromedp.Flag("disable-background-networking", true),
+			chromedp.Flag("disable-sync", true),
+			chromedp.Flag("disable-default-apps", true),
+			chromedp.Flag("disable-translate", true),
+			chromedp.Flag("no-first-run", true),
+			chromedp.Flag("no-default-browser-check", true),
 		}
 		allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
@@ -168,9 +178,14 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	c.initialized = true
 	zap.S().Debugw("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
 
-	// Verify browser is working
-	initCtx, cancel := context.WithTimeout(c.browserCtx, 10*time.Second)
-	defer cancel()
+	// Verify browser is working — cold start can be slow (esp. macOS).
+	// Discard cancel to avoid triggering chromedp's context cleanup which
+	// would kill the browserCtx's WebSocket connection.
+	startupTimeout := time.Duration(c.cfg.StartupTimeout) * time.Second
+	if startupTimeout <= 0 {
+		startupTimeout = 30 * time.Second
+	}
+	initCtx, _ := context.WithTimeout(c.browserCtx, startupTimeout)
 	if err := chromedp.Run(initCtx, chromedp.Navigate("about:blank")); err != nil {
 		c.shutdownBrowser()
 		return nil, fmt.Errorf("browser init verify failed: %w", err)
@@ -274,14 +289,25 @@ func (c *CDPTool) screenshot(ctx context.Context, selector string) (*ToolResult,
 			return &ToolResult{Content: fmt.Sprintf("element screenshot failed for '%s': %v", selector, err), IsError: true}, nil
 		}
 	} else {
-		// Full page screenshot
 		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 100)); err != nil {
 			return &ToolResult{Content: fmt.Sprintf("full page screenshot failed: %v", err), IsError: true}, nil
 		}
 	}
 
-	result := fmt.Sprintf("data:image/png;base64,%s", bytesToBase64(buf))
-	return &ToolResult{Content: result}, nil
+	// Save to file — don't send base64 to the LLM (wastes tokens, gets truncated)
+	screenshotDir := filepath.Join(config.ProjectConfigDir, "screenshots")
+	if err := os.MkdirAll(screenshotDir, 0700); err != nil {
+		return &ToolResult{Content: fmt.Sprintf("create screenshot dir: %v", err), IsError: true}, nil
+	}
+	filename := fmt.Sprintf("screenshot_%s.png", time.Now().Format("20060102_150405"))
+	filePath := filepath.Join(screenshotDir, filename)
+	if err := os.WriteFile(filePath, buf, 0600); err != nil {
+		return &ToolResult{Content: fmt.Sprintf("write screenshot: %v", err), IsError: true}, nil
+	}
+
+	return &ToolResult{
+		Content: fmt.Sprintf("Screenshot saved: %s (%d bytes)", filePath, len(buf)),
+	}, nil
 }
 
 func (c *CDPTool) evaluate(ctx context.Context, script string) (*ToolResult, error) {
@@ -325,11 +351,6 @@ func (c *CDPTool) getText(ctx context.Context, selector string) (*ToolResult, er
 	}
 
 	return &ToolResult{Content: text}, nil
-}
-
-// bytesToBase64 encodes byte data to base64 string.
-func bytesToBase64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
 }
 
 func truncate(s string, max int) string {

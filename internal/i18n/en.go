@@ -103,4 +103,8 @@ var enMessages = map[string]string{
 	KeySessionsHeader: "Sessions (%d):",
 	KeyNoSessions:     "No past sessions found.",
 	KeySessionRow:     "  %s  %4d turns  %s",
+
+	// pprof
+	KeyPprofBanner: "\n=== pprof server on %s ===\n",
+	KeyPprofURL:    "  http://%s/debug/pprof/\n",
 }

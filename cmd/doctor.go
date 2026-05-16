@@ -58,7 +58,7 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		results = append(results, checkLLM(cfg)...)
 
 		// 4. Session directory
-		results = append(results, checkSessionDir(cfg)...)
+		results = append(results, checkSessionDir()...)
 
 		// 5. Transport checks
 		results = append(results, checkTransports(cfg)...)
@@ -195,8 +195,8 @@ func checkLLM(cfg *config.Config) []checkResult {
 	return results
 }
 
-func checkSessionDir(cfg *config.Config) []checkResult {
-	dir := cfg.Session.Dir
+func checkSessionDir() []checkResult {
+	dir := config.SessionsDir()
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {

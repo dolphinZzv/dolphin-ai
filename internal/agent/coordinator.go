@@ -147,6 +147,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	// Register coordinator tools on the agent's tool registry
 	c.registerCoordinatorTools()
 
+	// Auto-load enabled MCP tools so the LLM doesn't waste turns discovering them
+	c.autoLoadMCPTools()
+
 	// Link pool to coordinator session for sub-agent session tracing
 	c.pool.SetParentSessionID(sess.ID)
 
@@ -245,6 +248,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 			continue
 		case line == "/new":
 			c.handleNew(sess, state, io)
+			sess = state.Sess
 			continue
 		case line == "/commands":
 			c.printCommands(io)
@@ -504,7 +508,7 @@ You are a coordinator agent. Your job:
 4. Tasks dispatched to agents run asynchronously — you'll see results in the next turn.
 5. Always synthesize multiple agent results into a coherent response for the user.
 6. You can dispatch multiple tasks concurrently in a single turn.
-7. MCP tools are not loaded by default. Use search_mcp_tools to discover available tools, then load_mcp_tools to add them to your tool list for subsequent turns.`)
+7. Common MCP tools (shell, cdp, email, webhook) are pre-loaded when enabled. Use search_mcp_tools only when you need tools beyond these.`)
 
 	return strings.Join(parts, "\n\n")
 }
@@ -878,6 +882,27 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 		sb.WriteString(fmt.Sprintf("- %s: %s%s\n", d.Name, d.Description, usage))
 	}
 	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+// autoLoadMCPTools pre-loads MCP tools that are enabled in config so the LLM
+// doesn't waste turns on search_mcp_tools + load_mcp_tools discovery.
+func (c *Coordinator) autoLoadMCPTools() {
+	enabled := []struct {
+		name    string
+		enabled bool
+	}{
+		{"shell", c.cfg.MCP.Shell.Enabled},
+		{"cdp", c.cfg.MCP.CDP.Enabled},
+		{"email", c.cfg.MCP.Email.Enabled},
+		{"webhook", c.cfg.MCP.Webhook.Enabled},
+	}
+	for _, t := range enabled {
+		if t.enabled {
+			if _, ok := c.toolReg.Get(t.name); ok {
+				c.loadedTools[t.name] = true
+			}
+		}
+	}
 }
 
 // handleLoadMCPTools loads MCP tools by name into the LLM's active tool set for the next turn.
@@ -1414,8 +1439,10 @@ func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io tran
 	oldTurns := state.Turn
 	oldID := sess.ID
 
-	// Generate summary for current session before starting fresh
+	// Generate summary and close the old session
 	c.generateSummary(sess, state)
+	sess.Close()
+	c.sessMgr.Remove(sess.ID)
 
 	// Create a new child session
 	newSess, err := c.sessMgr.NewSession(c.cfg.Session.MaxLoop)

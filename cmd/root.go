@@ -96,7 +96,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Setup logging
 	setupLogging(cfg)
-	zap.S().Infow("config loaded", "session_dir", cfg.Session.Dir)
+	zap.S().Infow("config loaded", "session_dir", config.SessionsDir())
 
 	// Check LLM configuration — warn if no API key is set
 	if !cfg.LLMConfigured() {
@@ -107,7 +107,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	firstRunSetup(cfg)
 
 	// Init session manager
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	if err := sessMgr.EnsureDir(); err != nil {
 		return fmt.Errorf("session dir: %w", err)
 	}
@@ -461,7 +461,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 			MaxMonthWeeks:  cfg.Diary.MaxMonthWeeks,
 			MaxYearMonths:  cfg.Diary.MaxYearMonths,
 			MaxTotalMB:     cfg.Diary.MaxTotalMB,
-		}, cfg.Session.Dir)
+		}, config.SessionsDir())
 		go func() { d.Sync() }()
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -641,6 +641,12 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.
 			Addr:    cfg.Pprof.Addr,
 			Handler: http.DefaultServeMux,
 		}
+		host := cfg.Pprof.Addr
+		if strings.HasPrefix(host, ":") {
+			host = "localhost" + host
+		}
+		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyPprofBanner), cfg.Pprof.Addr)
+		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyPprofURL), host)
 		g.Add(func() error {
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("pprof server: %w", err)

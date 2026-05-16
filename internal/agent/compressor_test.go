@@ -11,7 +11,7 @@ import (
 )
 
 func newTestAgentForCompress(cfg *config.Config) *Agent {
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	toolReg.Register(&mockTool{name: "test_tool"})
 	return New(cfg, sessMgr, toolReg)
@@ -20,7 +20,7 @@ func newTestAgentForCompress(cfg *config.Config) *Agent {
 func TestDropCompressorBelowThreshold(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgentForCompress(cfg)
 
 	msgs := []Message{
@@ -40,7 +40,7 @@ func TestDropCompressorBelowThreshold(t *testing.T) {
 func TestDropCompressorDropsOldMessages(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgentForCompress(cfg)
 
 	msgs := []Message{
@@ -65,7 +65,7 @@ func TestDropCompressorDropsOldMessages(t *testing.T) {
 func TestDropCompressorPreservesLastSix(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgentForCompress(cfg)
 
 	msgs := make([]Message, 6)
@@ -87,7 +87,7 @@ func TestDropCompressorPreservesLastSix(t *testing.T) {
 
 func TestDropCompressorDefaultInNewAgent(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgentForCompress(cfg)
 
 	// Default compress_mode is "drop"

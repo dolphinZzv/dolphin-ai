@@ -28,18 +28,20 @@ const (
 )
 
 type SessionEvent struct {
-	Timestamp  time.Time       `json:"ts"`
-	SessionID  SessionID       `json:"session_id"`
-	ParentID   SessionID       `json:"parent_id,omitempty"`
-	Type       EventType       `json:"type"`
-	Turn       int             `json:"turn"`
-	Role       string          `json:"role,omitempty"`
-	Content    json.RawMessage `json:"content,omitempty"`
-	ToolName   string          `json:"tool_name,omitempty"`
-	ToolInput  json.RawMessage `json:"tool_input,omitempty"`
-	ToolResult json.RawMessage `json:"tool_result,omitempty"`
-	IsError    bool            `json:"is_error,omitempty"`
-	DurationMs int64           `json:"duration_ms,omitempty"`
+	Timestamp    time.Time       `json:"ts"`
+	SessionID    SessionID       `json:"session_id"`
+	ParentID     SessionID       `json:"parent_id,omitempty"`
+	Type         EventType       `json:"type"`
+	Turn         int             `json:"turn"`
+	Role         string          `json:"role,omitempty"`
+	Content      json.RawMessage `json:"content,omitempty"`
+	ToolName     string          `json:"tool_name,omitempty"`
+	ToolInput    json.RawMessage `json:"tool_input,omitempty"`
+	ToolResult   json.RawMessage `json:"tool_result,omitempty"`
+	IsError      bool            `json:"is_error,omitempty"`
+	DurationMs   int64           `json:"duration_ms,omitempty"`
+	InputTokens  int             `json:"input_tokens,omitempty"`
+	OutputTokens int             `json:"output_tokens,omitempty"`
 }
 
 type Session struct {
@@ -128,6 +130,17 @@ func (s *Session) LogMessage(role string, content json.RawMessage) error {
 		Type:    EventMessage,
 		Role:    role,
 		Content: content,
+	})
+}
+
+// LogMessageWithUsage logs a message event with token usage.
+func (s *Session) LogMessageWithUsage(role string, content json.RawMessage, inputTokens, outputTokens int) error {
+	return s.LogEvent(SessionEvent{
+		Type:         EventMessage,
+		Role:         role,
+		Content:      content,
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
 	})
 }
 

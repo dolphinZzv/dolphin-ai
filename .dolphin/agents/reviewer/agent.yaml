@@ -1,7 +1,0 @@
-name: reviewer
-role: code review specialist
-tools:
-  - shell
-model: ""
-workspace: .dolphin/workspaces/reviewer
-timeout: 300

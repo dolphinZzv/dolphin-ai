@@ -162,12 +162,8 @@ llm:
 }
 
 func TestSessionDirDefault(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Session.Dir == "" {
-		t.Error("session.dir should have a default")
+	if SessionsDir() == "" {
+		t.Error("SessionsDir() should return a non-empty default")
 	}
 }
 

@@ -138,7 +138,7 @@ func (t *mockTool) Execute(_ context.Context, _ json.RawMessage) (*mcp.ToolResul
 }
 
 func newTestAgent(cfg *config.Config, provider Provider) *Agent {
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	toolReg.Register(&mockTool{name: "test_tool"})
 	return &Agent{
@@ -153,7 +153,7 @@ func newTestAgent(cfg *config.Config, provider Provider) *Agent {
 func TestRunTurnNoToolCalls(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
 			{
@@ -194,7 +194,7 @@ func TestRunTurnNoToolCalls(t *testing.T) {
 func TestRunTurnWithToolCall(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	// First response: tool call, second: final text
 	prov := &mockProvider{
@@ -244,7 +244,7 @@ func TestRunTurnWithToolCall(t *testing.T) {
 func TestRunTurnTruncatesLargeResult(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -405,8 +405,8 @@ func TestNewWithAnthropicProvider(t *testing.T) {
 	cfg.LLM.Type = "anthropic"
 	cfg.LLM.APIKey = "test-key"
 	cfg.LLM.Model = "claude-3-opus"
-	cfg.Session.Dir = t.TempDir()
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	config.SetSessionsDir(t.TempDir())
+	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	agt := New(cfg, sessMgr, toolReg)
 	if agt == nil {
@@ -421,8 +421,8 @@ func TestNewWithOpenAIProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.Type = "openai"
 	cfg.LLM.APIKey = "test-key"
-	cfg.Session.Dir = t.TempDir()
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	config.SetSessionsDir(t.TempDir())
+	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	agt := New(cfg, sessMgr, toolReg)
 	if agt == nil {
@@ -437,8 +437,8 @@ func TestNewWithDefaultProvider(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.Type = "unsupported"
 	cfg.LLM.APIKey = "test-key"
-	cfg.Session.Dir = t.TempDir()
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	config.SetSessionsDir(t.TempDir())
+	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	agt := New(cfg, sessMgr, toolReg)
 	if agt == nil {
@@ -481,7 +481,7 @@ func TestExtractFinalResponseEmpty(t *testing.T) {
 func TestRunTaskBasic(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -520,7 +520,7 @@ func TestRunTaskBasic(t *testing.T) {
 func TestGenerateSummaryDisabled(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = false
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgent(cfg, &mockProvider{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
@@ -535,7 +535,7 @@ func TestGenerateSummaryDisabled(t *testing.T) {
 	agt.generateSummary(sess, state)
 
 	// Verify no summary file was created
-	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	path := filepath.Join(config.SessionsDir(), string(sess.ID)+"-summary.json")
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Error("expected no summary file when Summary config is disabled")
 	}
@@ -544,7 +544,7 @@ func TestGenerateSummaryDisabled(t *testing.T) {
 func TestGenerateSummaryEnabled(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgent(cfg, &mockProvider{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
@@ -561,7 +561,7 @@ func TestGenerateSummaryEnabled(t *testing.T) {
 	agt.generateSummary(sess, state)
 
 	// Verify summary file exists and has correct content
-	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	path := filepath.Join(config.SessionsDir(), string(sess.ID)+"-summary.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile: %v", err)
@@ -603,7 +603,7 @@ func TestGenerateSummaryStopReasons(t *testing.T) {
 		t.Run(tt.stopReason, func(t *testing.T) {
 			cfg := config.DefaultConfig()
 			cfg.Session.Summary = true
-			cfg.Session.Dir = t.TempDir()
+			config.SetSessionsDir(t.TempDir())
 			agt := newTestAgent(cfg, &mockProvider{})
 
 			sess, _ := agt.sessMgr.NewSession(10)
@@ -615,7 +615,7 @@ func TestGenerateSummaryStopReasons(t *testing.T) {
 
 			agt.generateSummary(sess, state)
 
-			path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+			path := filepath.Join(config.SessionsDir(), string(sess.ID)+"-summary.json")
 			if tt.wantSkip {
 				if _, err := os.Stat(path); !os.IsNotExist(err) {
 					t.Error("expected no summary file for transport_error with 0 turns")
@@ -636,7 +636,7 @@ func TestGenerateSummaryTransportErrorWithActivity(t *testing.T) {
 	// transport_error with actual turns should still generate a summary
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	agt := newTestAgent(cfg, &mockProvider{})
 
 	sess, _ := agt.sessMgr.NewSession(10)
@@ -652,7 +652,7 @@ func TestGenerateSummaryTransportErrorWithActivity(t *testing.T) {
 
 	agt.generateSummary(sess, state)
 
-	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	path := filepath.Join(config.SessionsDir(), string(sess.ID)+"-summary.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("expected summary file for transport_error with activity: %v", err)
@@ -672,7 +672,7 @@ func TestGenerateSummaryTransportErrorWithActivity(t *testing.T) {
 func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
 	// Simulate a multi-turn conversation with tool calls
@@ -731,7 +731,7 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 	agt.generateSummary(sess, state)
 
 	// Verify summary file
-	path := filepath.Join(cfg.Session.Dir, string(sess.ID)+"-summary.json")
+	path := filepath.Join(config.SessionsDir(), string(sess.ID)+"-summary.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("ReadFile summary: %v", err)
@@ -765,7 +765,7 @@ func TestSessionFullLifecycleWithSummary(t *testing.T) {
 func TestE2EAgentRunReadLineErrorSkipsSummary(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.Summary = true
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 	cfg.Session.MaxLoop = 10
 
@@ -778,7 +778,7 @@ func TestE2EAgentRunReadLineErrorSkipsSummary(t *testing.T) {
 	agt.Run(ctx, io)
 
 	// Verify no summary file (transport_error + 0 turns → skip)
-	entries, _ := os.ReadDir(cfg.Session.Dir)
+	entries, _ := os.ReadDir(config.SessionsDir())
 	for _, e := range entries {
 		if strings.HasSuffix(e.Name(), "-summary.json") {
 			t.Errorf("expected no summary for transport_error + 0 turns, found: %s", e.Name())
@@ -790,7 +790,7 @@ func TestE2EAgentRunReadLineErrorSkipsSummary(t *testing.T) {
 
 // newTestAgentWithProvider creates a test agent with a given provider for Run() tests.
 func newTestAgentWithProvider(cfg *config.Config, prov Provider) *Agent {
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	toolReg := mcp.NewRegistry(cfg)
 	return &Agent{
 		cfg:        cfg,
@@ -804,7 +804,7 @@ func newTestAgentWithProvider(cfg *config.Config, prov Provider) *Agent {
 func TestRunStdioExitConfirmed(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -828,7 +828,7 @@ func TestRunStdioExitConfirmed(t *testing.T) {
 func TestRunStdioExitConfirmedWithYes(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -849,7 +849,7 @@ func TestRunStdioExitConfirmedWithYes(t *testing.T) {
 func TestRunStdioExitCancelled(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -870,7 +870,7 @@ func TestRunStdioExitCancelled(t *testing.T) {
 func TestRunStdioExitConfirmError(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -892,7 +892,7 @@ func TestRunStdioExitConfirmError(t *testing.T) {
 func TestRunStdioSlashExitConfirmed(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -913,7 +913,7 @@ func TestRunStdioSlashExitConfirmed(t *testing.T) {
 func TestRunNonStdioExitIsMessage(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -936,7 +936,7 @@ func TestRunNonStdioExitIsMessage(t *testing.T) {
 func TestRunNonStdioSlashExitIsMessage(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -958,7 +958,7 @@ func TestRunNonStdioSlashExitIsMessage(t *testing.T) {
 func TestRunNonStdioQuitIsMessage(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -979,7 +979,7 @@ func TestRunNonStdioQuitIsMessage(t *testing.T) {
 func TestRunStdioExitCancelledThenMessage(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Session.MaxLoop = 100
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{
@@ -1001,7 +1001,7 @@ func TestRunStdioExitCancelledThenMessage(t *testing.T) {
 func TestRunTaskWithParentSession(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxContextTokens = 100000
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 
 	prov := &mockProvider{
 		responses: []*ProviderResponse{

@@ -50,7 +50,6 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	fmt.Println("Session:")
-	fmt.Printf("  Dir:      %s\n", cfg.Session.Dir)
 	fmt.Printf("  Max Loop: %d\n", cfg.Session.MaxLoop)
 	fmt.Printf("  Summary:  %v\n", cfg.Session.Summary)
 	fmt.Printf("  Max Age:  %s\n", cfg.Session.MaxAge)

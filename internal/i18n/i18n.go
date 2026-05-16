@@ -120,6 +120,10 @@ const (
 	KeySessionsHeader = "sessions_header"
 	KeyNoSessions     = "no_sessions"
 	KeySessionRow     = "session_row"
+
+	// pprof
+	KeyPprofBanner = "pprof_banner"
+	KeyPprofURL    = "pprof_url"
 )
 
 var (

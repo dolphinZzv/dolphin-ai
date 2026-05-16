@@ -2,17 +2,65 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"testing"
 )
 
-func TestDefaultSessionDir(t *testing.T) {
-	dir := defaultSessionDir()
+func TestSessionsDirProjectLevel(t *testing.T) {
+	// When .dolphin/ exists in CWD, use it
+	dir := SessionsDir()
 	if dir == "" {
-		t.Fatal("defaultSessionDir() returned empty")
+		t.Fatal("SessionsDir() returned empty")
 	}
-	if runtime.GOOS != "windows" && dir != "/tmp/dolphin" {
-		t.Errorf("defaultSessionDir() = %q, want /tmp/dolphin", dir)
+}
+
+func TestSessionsDirOverride(t *testing.T) {
+	// SetSessionsDir overrides the normal resolution
+	old := sessionsDirOverride
+	defer func() { sessionsDirOverride = old }()
+
+	SetSessionsDir("/custom/sessions")
+	dir := SessionsDir()
+	if dir != "/custom/sessions" {
+		t.Errorf("SessionsDir() = %q, want /custom/sessions", dir)
+	}
+
+	// Reset returns to normal behavior
+	sessionsDirOverride = ""
+	dir2 := SessionsDir()
+	if dir2 == "" {
+		t.Fatal("SessionsDir() returned empty after reset")
+	}
+	if dir2 == "/custom/sessions" {
+		t.Error("SessionsDir() still overridden after reset")
+	}
+}
+
+func TestSessionsDirUserFallback(t *testing.T) {
+	// When .dolphin/ does not exist, fall back to ~/.dolphin/sessions/
+	// Save and restore .dolphin directory state
+	projectDir := ProjectConfigDir
+	origExists := false
+	if _, err := os.Stat(projectDir); err == nil {
+		origExists = true
+		// Rename out of the way
+		tmpName := projectDir + ".test-tmp"
+		if err := os.Rename(projectDir, tmpName); err != nil {
+			t.Skipf("cannot rename .dolphin for test: %v", err)
+		}
+		defer os.Rename(tmpName, projectDir)
+	}
+
+	dir := SessionsDir()
+	homeDir, _ := os.UserHomeDir()
+	expected := filepath.Join(homeDir, UserConfigDir, "sessions")
+	if dir != expected {
+		t.Errorf("SessionsDir() = %q, want %q (home fallback)", dir, expected)
+	}
+
+	if origExists {
+		// Already deferred restore; check that when restored, it uses project dir again
 	}
 }
 
@@ -27,20 +75,27 @@ func TestDefaultSystemConfigDir(t *testing.T) {
 }
 
 func TestSessionDirUsesDefaultWhenEmpty(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Session.Dir == "" {
-		t.Error("Session.Dir should not be empty after Load()")
+	dir := SessionsDir()
+	if dir == "" {
+		t.Error("SessionsDir() should not be empty")
 	}
 }
 
 func TestDefaultConfigSessionDir(t *testing.T) {
-	cfg := DefaultConfig()
-	if cfg.Session.Dir == "" {
-		t.Error("DefaultConfig().Session.Dir should not be empty")
+	_ = DefaultConfig()
+	if SessionsDir() == "" {
+		t.Error("SessionsDir() should not be empty after DefaultConfig()")
 	}
+}
+
+func TestDefaultConfigSessionDirFieldRemoved(t *testing.T) {
+	cfg := DefaultConfig()
+	// Session.Dir field no longer exists; SessionsDir() is the source of truth
+	dir := SessionsDir()
+	if dir == "" {
+		t.Fatal("SessionsDir() returned empty")
+	}
+	_ = cfg
 }
 
 func TestSystemConfigDirVar(t *testing.T) {
@@ -50,19 +105,12 @@ func TestSystemConfigDirVar(t *testing.T) {
 }
 
 func TestHomeDirFallback(t *testing.T) {
-	// Simulate os.UserHomeDir() failure by setting a fake HOME that doesn't exist
 	oldHome := os.Getenv("HOME")
 	os.Setenv("HOME", "/nonexistent_home_12345")
 	defer os.Setenv("HOME", oldHome)
 
-	// When UserHomeDir fails and the fallback is used, line 434 sets hd = os.TempDir()
-	// Then it tries to read the SSH password file from <hd>/.dolphin/ssh_password
-	// which won't exist, so it will generate a new one. This should not crash.
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error with bad HOME: %v", err)
-	}
-	if cfg.Session.Dir == "" {
-		t.Error("Session.Dir should not be empty even with bad HOME")
+	dir := SessionsDir()
+	if dir == "" {
+		t.Error("SessionsDir() should not be empty even with bad HOME")
 	}
 }

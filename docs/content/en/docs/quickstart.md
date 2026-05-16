@@ -92,7 +92,34 @@ Dolphin > what does the weather look like today?
 
 Dolphin can run commands, read and write files, browse the web, and more — all from the prompt.
 
-## 5. What's next?
+## 5. Session Diagram
+
+Generate a Mermaid sequence diagram from any past session:
+
+```bash
+# List available sessions
+dolphin sessions list
+
+# Generate mermaid diagram for a session
+dolphin sessions dump <session-id>
+```
+
+Example output:
+
+```mermaid
+sequenceDiagram
+    autoNumber
+    Note over User,Agent: Turn 0
+    Agent->>shell: shell({"command":"date"})
+    shell-->>Agent: (empty)
+    Agent->>Agent: 当前系统时间为：**2026年5月16日 星期六 18:10:47 CST**（中国标准时间）。
+
+    participant shell
+```
+
+Paste the output into https://mermaid.live to render.
+
+## 6. What's next?
 
 - **[Configuration Reference]({{< relref "docs/config" >}})** — customize providers, transports, and tools
 - **[Install Guide]({{< relref "docs/install" >}})** — all install options and troubleshooting

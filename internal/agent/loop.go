@@ -927,7 +927,11 @@ func (a *Agent) buildAssistantMessage(result *streamResult, state *LoopState) (j
 }
 
 func (a *Agent) logLLMResponse(ctx context.Context, state *LoopState, subTurn int, llmDuration time.Duration, content json.RawMessage, toolCalls []ToolCall, usage *Usage) {
-	state.Sess.LogMessage("assistant", content)
+	if usage != nil {
+		state.Sess.LogMessageWithUsage("assistant", content, usage.InputTokens, usage.OutputTokens)
+	} else {
+		state.Sess.LogMessage("assistant", content)
+	}
 	for _, tc := range toolCalls {
 		state.Sess.LogToolCall(tc.Name, tc.Arguments)
 	}
@@ -1202,7 +1206,7 @@ func (a *Agent) generateSummary(sess *session.Session, state *LoopState) {
 	}
 
 	summaryText := strings.Join(state.SummaryTexts, "\n")
-	sess.GenerateSummary(a.cfg.Session.Dir, state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText)
+	sess.GenerateSummary(config.SessionsDir(), state.ToolCallCount, state.ErrorCount, state.CompressionCount, stateStr, summaryText)
 	zap.S().Infow("session summary",
 		"session_id", sess.ID,
 		"turns", sess.Turn,

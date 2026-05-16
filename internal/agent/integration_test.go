@@ -15,11 +15,11 @@ import (
 
 func TestRunFullSessionWelcomeAndExit(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 50
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -60,10 +60,10 @@ func TestRunFullSessionWelcomeAndExit(t *testing.T) {
 
 func TestRunHelpCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -97,12 +97,12 @@ func TestRunHelpCommand(t *testing.T) {
 
 func TestRunMaxLoopGeneratesSummary(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 1
 	cfg.Session.Summary = true
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -137,11 +137,11 @@ func TestRunMaxLoopGeneratesSummary(t *testing.T) {
 
 func TestRunEmptyInputSkipped(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 5
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -173,11 +173,11 @@ func TestRunEmptyInputSkipped(t *testing.T) {
 
 func TestRunToolCallAndStreaming(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 10
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -224,12 +224,12 @@ func TestRunToolCallAndStreaming(t *testing.T) {
 
 func TestRunContextCompressionTriggered(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 20
 	// Set a low context limit to trigger compression
 	cfg.LLM.MaxContextTokens = 100
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -263,11 +263,11 @@ func TestRunContextCompressionTriggered(t *testing.T) {
 
 func TestRunMultiToolChain(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 20
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -322,11 +322,11 @@ func TestRunMultiToolChain(t *testing.T) {
 
 func TestRunErrorRecovery(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 20
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -362,11 +362,11 @@ func TestRunErrorRecovery(t *testing.T) {
 
 func TestRunTurnContextCancelled(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 10
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -400,11 +400,11 @@ func TestRunTurnContextCancelled(t *testing.T) {
 
 func TestRunTurnWithThinking(t *testing.T) {
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 10
 	cfg.LLM.MaxContextTokens = 100000
 
-	sessMgr := session.NewManager(cfg.Session.Dir)
+	sessMgr := session.NewManager(config.SessionsDir())
 	sessMgr.EnsureDir()
 
 	toolReg := mcp.NewRegistry(cfg)
@@ -447,7 +447,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 	defer os.Setenv("HOME", origHome)
 
 	cfg := config.DefaultConfig()
-	cfg.Session.Dir = t.TempDir()
+	config.SetSessionsDir(t.TempDir())
 	cfg.Session.MaxLoop = 20
 	cfg.LLM.MaxContextTokens = 100000
 
@@ -459,7 +459,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 
 	// First run with email transport — should print welcome and create marker.
 	{
-		sessMgr := session.NewManager(cfg.Session.Dir)
+		sessMgr := session.NewManager(config.SessionsDir())
 		sessMgr.EnsureDir()
 		toolReg := mcp.NewRegistry(cfg)
 		toolReg.Register(&mockTool{name: "email_tool"})
@@ -488,7 +488,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 
 	// Second run with email transport — should skip welcome (marker exists).
 	{
-		sessMgr := session.NewManager(cfg.Session.Dir)
+		sessMgr := session.NewManager(config.SessionsDir())
 		sessMgr.EnsureDir()
 		toolReg := mcp.NewRegistry(cfg)
 
@@ -510,7 +510,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 
 	// Stdio run — should always print welcome (not email transport).
 	{
-		sessMgr := session.NewManager(cfg.Session.Dir)
+		sessMgr := session.NewManager(config.SessionsDir())
 		sessMgr.EnsureDir()
 		toolReg := mcp.NewRegistry(cfg)
 

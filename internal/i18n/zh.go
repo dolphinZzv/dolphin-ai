@@ -103,4 +103,8 @@ var zhMessages = map[string]string{
 	KeySessionsHeader: "会话（%d）：",
 	KeyNoSessions:     "未找到历史会话。",
 	KeySessionRow:     "  %s  %4d 轮  %s",
+
+	// pprof
+	KeyPprofBanner: "\n=== pprof 服务监听在 %s ===\n",
+	KeyPprofURL:    "  http://%s/debug/pprof/\n",
 }

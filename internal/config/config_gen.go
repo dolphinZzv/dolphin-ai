@@ -63,6 +63,7 @@ mcp:
     headless: true
     priority: 1000
     idle_timeout: 300     # seconds before auto-closing idle browser
+    startup_timeout: 30   # seconds before giving up on browser init verify
   email:
     enabled: true         # email send/search/fetch MCP tool (uses transport.email config)
     priority: 500
@@ -249,6 +250,7 @@ mcp:
     headless: true
     priority: 1000
     idle_timeout: 300     # 空闲多少秒后自动关闭浏览器
+    startup_timeout: 30   # 浏览器启动验证超时时间（秒）
   servers: {}             # 外部 MCP 服务器，如 myserver: {type: stdio, command: npx, args: [...]}
   #                       #   或远程: {type: sse, url: "https://...", headers: {Authorization: "Bearer ..."}}
   #                       #   或远程: {type: http-stream, url: "https://..."}
