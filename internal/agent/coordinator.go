@@ -1421,8 +1421,9 @@ func parseCommandName(line string) string {
 	return strings.TrimPrefix(parts[0], "/")
 }
 
-// tryResumeSession checks for a previous session and prompts the user to resume.
-// Returns a populated session + LoopState, or (nil, nil) to start fresh.
+// tryResumeSession checks for a previous session. For interactive transports (stdio, SSH)
+// it prompts the user to confirm. For non-interactive transports (email, DingTalk, MQTT)
+// it auto-resumes without prompting when resume is enabled.
 func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO) (*session.Session, *LoopState) {
 	if !c.cfg.Session.Resume {
 		return nil, nil
@@ -1433,18 +1434,22 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 		return nil, nil
 	}
 
-	age := "unknown"
-	if info, serr := os.Stat(path); serr == nil {
-		age = formatDuration(time.Since(info.ModTime()))
-	}
+	caps := io.Capabilities()
+	if caps.ShowToolDetails {
+		// Interactive transport: prompt the user
+		age := "unknown"
+		if info, serr := os.Stat(path); serr == nil {
+			age = formatDuration(time.Since(info.ModTime()))
+		}
 
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyResumePrompt), id, turns, age))
-	line, rerr := io.ReadLine()
-	if rerr != nil || (line != "" && line != "y" && line != "Y" && line != strings.ToLower(i18n.TL(i18n.KeyResumeYes))) {
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyResumePrompt), id, turns, age))
+		line, rerr := io.ReadLine()
+		if rerr != nil || (line != "" && line != "y" && line != "Y" && line != strings.ToLower(i18n.TL(i18n.KeyResumeYes))) {
+			io.WriteLine("")
+			return nil, nil
+		}
 		io.WriteLine("")
-		return nil, nil
 	}
-	io.WriteLine("")
 
 	// Read and replay session events
 	events, rerr := session.ReadEvents(path)
