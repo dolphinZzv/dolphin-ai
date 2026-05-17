@@ -12,6 +12,20 @@
 
 将默认模式改为使用平台原生 shell（`sh -c` on Unix, `cmd /C` on Windows），与当前的 `AllowUnrestricted` 路径一致。
 
+### 执行决策流程
+
+```mermaid
+flowchart TD
+    Start["Execute(cmd)"] --> Allowed{allowed_commands<br/>非空?}
+    Allowed -->|Yes| Direct["exec.Command 直接执行<br/>拦截 shell 元字符"]
+    Allowed -->|No| Unrestricted{"allow_unrestricted<br/>= true?"}
+    Unrestricted -->|Yes| ShellShC["shellCommand(sh -c)"]
+    Unrestricted -->|No| ShellShC
+
+    style Direct fill:#ffcdd2
+    style ShellShC fill:#c8e6c9
+```
+
 ### 变更点
 
 | 文件 | 变更 |

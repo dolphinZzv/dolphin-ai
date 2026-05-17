@@ -4,12 +4,33 @@
 
 `Builder.Build()` / `Builder.BuildForAgent(agentName)` 按顺序拼接系统提示：
 
-1. **PREFACE.md** — `//go:embed` 硬编码，系统身份定义
-2. **BUILTIN_SKILLS.md** — `//go:embed`，内置技能声明
-3. **AGENTS.md** — agentDir → projectDir → userDir → systemDir fallback
-4. **RULES.md** — 同上
-5. **USER.md** — 同上
-6. **SYSTEM.md** — user 目录，首次运行生成，每次会话注入
+```mermaid
+flowchart LR
+    subgraph System Prompt
+        P1["PREFACE.md<br/>(//go:embed)"]
+        P2["BUILTIN_SKILLS.md<br/>(//go:embed)"]
+        P3["AGENTS.md<br/>(agent → project → user → system)"]
+        P4["RULES.md"]
+        P5["USER.md"]
+        P6["SYSTEM.md"]
+    end
+
+    P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> Out["System Prompt"]
+```
+
+## BuildForAgent
+
+```mermaid
+flowchart TB
+    Start["BuildForAgent(name)"] --> Check{".dolphin/agents/<name>/<br/>AGENTS.md exists?"}
+    Check -->|Yes| AgentDir["使用 agent 专属上下文"]
+    Check -->|No| Fallback["fallback 项目/用户/系统目录"]
+    AgentDir --> Out["系统提示 (含 AGENTS.md)"]
+    Fallback --> Out
+
+    style Start fill:#e1f5fe
+    style Out fill:#c8e6c9
+```
 
 ## Caching
 
