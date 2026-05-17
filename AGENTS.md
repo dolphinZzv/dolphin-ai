@@ -34,6 +34,7 @@ Dolphin is a cross-terminal/email/chat/SSH AI agent that runs shell commands, co
 - Architecture design in `design/` directory
 - New features/cross-component changes must update design docs first, then code
 - Design doc path: `design/modules/<module-name>.md`
+- Every document must include a last-modified timestamp at the end: `<!-- last-modified: YYYY-MM-DD -->`
 
 ## Security
 
@@ -49,3 +50,5 @@ Dolphin is a cross-terminal/email/chat/SSH AI agent that runs shell commands, co
 - CI/CD: `workflow/ci-cd.md`
 - Architecture: `design/README.md`
 - Panda client: `./app/panda/AGENTS.md`
+
+<!-- last-modified: 2026-05-17 -->
