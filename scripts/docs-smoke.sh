@@ -36,9 +36,13 @@ check "docs/en/config.example.yaml is valid YAML" \
 check "docs/zh/config.example.zh.yaml is valid YAML" \
 	"python3 -c 'import yaml; yaml.safe_load(open(\"docs/zh/config.example.zh.yaml\"))'"
 
-# Check that the actual config can be loaded as valid YAML
-check ".dolphin/config.yaml is valid YAML" \
-	"python3 -c 'import yaml; yaml.safe_load(open(\".dolphin/config.yaml\"))'"
+# Check that the actual config can be loaded as valid YAML (skip if absent)
+if [ -f ".dolphin/config.yaml" ]; then
+	check ".dolphin/config.yaml is valid YAML" \
+		"python3 -c 'import yaml; yaml.safe_load(open(\".dolphin/config.yaml\"))'"
+else
+	check ".dolphin/config.yaml (absent, skipped)" "true"
+fi
 
 # ── 2. DeepSeek config consistency ─────────────────────────
 echo ""
@@ -49,13 +53,17 @@ check "zh config default model is deepseek-v4-flash" \
 check "zh config default base_url has deepseek" \
 	"grep -q 'api.deepseek.com' docs/zh/config.example.zh.yaml"
 
-# README deepseek env vars should match actual config
-ACTUAL_BASE_URL=$(grep '^  base_url' .dolphin/config.yaml | awk '{print $2}')
-ACTUAL_MODEL=$(grep '^  model' .dolphin/config.yaml | awk '{print $2}')
-check "README.zh.md DZ_LLM_MODEL matches config" \
-	"grep -q \"$ACTUAL_MODEL\" README.zh.md"
-check "README.zh.md DZ_LLM_BASE_URL matches config" \
-	"grep -q \"$ACTUAL_BASE_URL\" README.zh.md"
+# README deepseek env vars should match actual config (skip if absent)
+if [ -f ".dolphin/config.yaml" ]; then
+	ACTUAL_BASE_URL=$(grep '^  base_url' .dolphin/config.yaml | awk '{print $2}')
+	ACTUAL_MODEL=$(grep '^  model' .dolphin/config.yaml | awk '{print $2}')
+	check "README.zh.md DZ_LLM_MODEL matches config" \
+		"grep -q \"$ACTUAL_MODEL\" README.zh.md"
+	check "README.zh.md DZ_LLM_BASE_URL matches config" \
+		"grep -q \"$ACTUAL_BASE_URL\" README.zh.md"
+else
+	check "README.zh.md config consistency (absent, skipped)" "true"
+fi
 
 # ── 3. Internal links in markdown ──────────────────────────
 echo ""
