@@ -8,34 +8,34 @@
 #
 # Manual install:
 #   brew tap dolphinZzv/dolphin
-#   brew install dolphin
+#   brew install dolphin-ai
 #
 # Or from this local file:
 #   brew install --formula deploy/dolphin.rb
 
-class Dolphin < Formula
+class DolphinAi < Formula
   desc "AI agent platform with multi-agent coordination, MCP tool integration, and multi-provider LLM support"
   homepage "https://github.com/dolphinZzv/dolphin"
   license "MIT"
 
   on_macos do
     on_arm do
-      url "https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin_macOS_arm64.tar.gz"
+      url "https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_macOS_arm64.tar.gz"
     end
     on_intel do
-      url "https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin_macOS_x86_64.tar.gz"
+      url "https://github.com/dolphinZzv/dolphin/releases/latest/download/dolphin-ai_macOS_x86_64.tar.gz"
     end
   end
 
   depends_on "git"
 
   def install
-    bin.install "dolphin"
+    bin.install "dolphin-ai"
   end
 
   def caveats
     <<~EOS
-      dolphin is installed. Run `dolphin setup` to get started.
+      dolphin-ai is installed. Run `dolphin-ai setup` to get started.
 
       For CDP browser automation, install chromium or google-chrome.
       See https://github.com/dolphinZzv/dolphin for documentation.
@@ -43,6 +43,6 @@ class Dolphin < Formula
   end
 
   test do
-    assert_match "dev", shell_output("#{bin}/dolphin --version")
+    assert_match "dev", shell_output("#{bin}/dolphin-ai --version")
   end
 end

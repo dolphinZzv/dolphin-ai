@@ -27,6 +27,7 @@ Dolphin is a cross-terminal/email/chat/SSH AI agent that runs shell commands, co
 - Code must be stable, recoverable, observable, and testable
 - Test coverage: 60%+ overall, 80%+ for critical paths
 - Tests with race detection: `go test -race ./...`
+- Publishing to GitHub requires 100% CI pass rate — never merge while CI is failing
 
 ## Design Docs
 

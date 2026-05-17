@@ -1,7 +1,7 @@
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
 
-project_name: dolphin
+project_name: dolphin-ai
 
 before:
   hooks:
@@ -9,7 +9,7 @@ before:
     - go vet ./...
 
 builds:
-  - binary: dolphin
+  - binary: dolphin-ai
     main: .
     ldflags:
       - -s -w -X 'dolphin/cmd.Version={{.Version}}'
@@ -53,7 +53,7 @@ nfpms:
       {{- else }}{{ .Arch }}{{ end }}
     vendor: dolphinZzv
     homepage: https://github.com/dolphinZzv/dolphin
-    maintainer: dolphinZzv <dolphin@dolphinzzv.com>
+    maintainer: dolphinZzv <dolphin@siciv.space>
     description: |
       dolphin is an AI agent platform with multi-agent coordination,
       MCP tool integration, skills, cron tasks, and multi-provider LLM support.
@@ -78,23 +78,22 @@ nfpms:
           - chromium
 
 brews:
-  - name: dolphin
+  - name: dolphin-ai
     repository:
       owner: dolphinZzv
       name: homebrew-dolphin
     commit_author:
       name: dolphinZzv
-      email: dolphin@dolphinzzv.com
+      email: dolphin@siciv.space
     homepage: https://github.com/dolphinZzv/dolphin
     description: |
-      dolphin is an AI agent platform with multi-agent coordination,
+      dolphin-ai is an AI agent platform with multi-agent coordination,
       MCP tool integration, skills, cron tasks, and multi-provider LLM support.
     license: MIT
-    skip_upload: true
     dependencies:
       - name: git
     caveats: |
-      dolphin is installed. Run `dolphin setup` to get started.
+      dolphin-ai is installed. Run `dolphin-ai setup` to get started.
 
       For CDP browser automation, install chromium or google-chrome.
       See https://github.com/dolphinZzv/dolphin for documentation.
