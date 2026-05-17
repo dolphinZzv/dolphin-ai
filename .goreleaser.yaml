@@ -121,3 +121,4 @@ release:
     name: dolphin
   draft: false
   make_latest: false
+  overwrite: true
