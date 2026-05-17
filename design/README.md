@@ -36,3 +36,5 @@ dolphin is an AI agent connecting terminal, email, chat, and SSH — providing a
 | [gaps.md](gaps.md) | Remaining design gaps |
 | [history.md](history.md) | Implementation order |
 | [dependencies.md](dependencies.md) | Dependency list |
+
+<!-- last-modified: 2026-05-13 -->

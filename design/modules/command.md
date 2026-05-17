@@ -5,3 +5,5 @@
 - 多目录加载: `~/.dolphin/commands/` + `.dolphin/commands/`
 - YAML frontmatter + Markdown body
 - 使用跟踪 (call_count, last_called_at)
+
+<!-- last-modified: 2026-05-13 -->

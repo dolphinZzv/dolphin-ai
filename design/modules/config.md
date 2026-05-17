@@ -36,3 +36,5 @@
 ## Runtime Config
 
 `config_handler.go` — 通过 MCP 工具提供运行时的 `config list` / `config get` / `config set` / `config save`，支持修改 temperature、模型、压缩模式等。
+
+<!-- last-modified: 2026-05-16 -->

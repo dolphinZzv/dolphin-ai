@@ -63,3 +63,5 @@ Session 存储目录跟随配置层级，不可通过配置文件修改：
 
 `config.SessionsDir()` 优先返回项目级路径（当 `.dolphin/` 存在时），否则回退到用户级路径。
 测试可通过 `config.SetSessionsDir(dir)` 覆盖。
+
+<!-- last-modified: 2026-05-16 -->

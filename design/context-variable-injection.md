@@ -182,3 +182,5 @@ System language: zh_CN.UTF-8
 | `env` as function not map field | Explicit namespace, avoids `.Env` collision paranoia |
 | Template errors → raw content | Context files must never break the agent |
 | All default keys pre-populated | `{{.Config.name}}` never empty, no surprises |
+
+<!-- last-modified: 2026-05-16 -->

@@ -39,3 +39,5 @@ flowchart TB
 ## Agent-Specific Context
 
 `BuildForAgent("reviewer")` 会在 `.dolphin/agents/reviewer/` 下优先查找 AGENTS.md/RULES.md/USER.md，fallback 到项目/用户/系统目录。
+
+<!-- last-modified: 2026-05-17 -->

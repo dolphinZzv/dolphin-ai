@@ -18,3 +18,5 @@ type Plugin interface {
 ## Script Loading
 
 `scripts.go` — 从插件目录加载 `.so` 或脚本文件 (可扩展)。
+
+<!-- last-modified: 2026-05-13 -->

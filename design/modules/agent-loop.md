@@ -106,3 +106,5 @@ flowchart LR
     M1 --> M2 --> M3 --> Mn --> Comp
     Comp --> C1 --> C2 --> C3
 ```
+
+<!-- last-modified: 2026-05-17 -->

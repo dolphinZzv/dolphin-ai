@@ -18,3 +18,5 @@ golang.org/x/crypto                          SSH server
 golang.org/x/time                            Rate limiting (unused)
 gopkg.in/yaml.v3                             YAML parsing
 ```
+
+<!-- last-modified: 2026-05-13 -->

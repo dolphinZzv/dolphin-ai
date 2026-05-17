@@ -84,3 +84,5 @@ dolphin/
     ├── AGENTS.md / RULES.md / USER.md / SYSTEM.md
     ├── skills/ / commands/ / agents/
 ```
+
+<!-- last-modified: 2026-05-13 -->

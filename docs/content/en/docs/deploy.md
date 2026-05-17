@@ -195,3 +195,5 @@ nssm start dolphin
 | nssm | `nssm dump dolphin` 查看日志配置 |
 | nohup | wherever stdout was redirected |
 | Dolphin session logs | `~/.dolphin/logs/agent.log` |
+
+<!-- last-modified: 2026-05-15 -->

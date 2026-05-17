@@ -13,7 +13,7 @@ weight: 5
 
 ```bash
 curl -sfL https://github.com/dolphinZzv/dolphin/releases/latest/download/install.sh | sh
-dolphin --version
+dolphin-ai --version
 ```
 
 **Go 安装**（需 Go 1.26+）：
@@ -26,9 +26,9 @@ go install github.com/dolphinZzv/dolphin@latest
 
 ```powershell
 $VERSION = "v1.0.0"
-Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin_${VERSION}_windows_x86_64.zip" -OutFile "dolphin.zip"
-Expand-Archive -Path "dolphin.zip" -DestinationPath .
-Move-Item .\dolphin.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin.exe"
+Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai.zip"
+Expand-Archive -Path "dolphin-ai.zip" -DestinationPath .
+Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
 ```
 
 详见[完整安装指南]({{< relref "docs/install" >}})。
@@ -64,7 +64,7 @@ export DZ_LLM_MODEL="glm-5"
 ## 3. 启动小海豚
 
 ```bash
-dolphin
+dolphin-ai
 ```
 
 首次运行会启动设置向导：
@@ -96,3 +96,5 @@ Dolphin > 今天天气怎么样？
 
 - **[配置参考]({{< relref "docs/config" >}})** — 自定义提供商、传输层和工具
 - **[安装指南]({{< relref "docs/install" >}})** — 所有安装方式和故障排查
+
+<!-- last-modified: 2026-05-14 -->

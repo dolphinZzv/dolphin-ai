@@ -118,3 +118,5 @@ runAgent():
   10. run.Group{ signal, reaper, diary, transports, pprof, metrics }
   11. g.Run() — 任一 Actor 退出 → cancel 全部
 ```
+
+<!-- last-modified: 2026-05-13 -->

@@ -209,3 +209,5 @@ if !strings.HasSuffix(name, ".jsonl") && !strings.HasSuffix(name, "-summary.json
 | 子任务 (`RunTask`) | 自带 session 生命周期，独立生成摘要 |
 | 会话恢复 | 子会话链接到父会话 (`parent_id`)，各自生成独立摘要 |
 | Reaper 竞态 | activeFiles 集合在锁内构建，活跃会话摘要不被删除 |
+
+<!-- last-modified: 2026-05-11 -->

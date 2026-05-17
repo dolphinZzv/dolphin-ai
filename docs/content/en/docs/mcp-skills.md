@@ -254,3 +254,5 @@ Example workflow:
 1. Configure an MCP server to track issues.
 2. Create a skill with your team's issue triage conventions.
 3. The agent loads the skill, learns your triage rules, then calls `issue-tracker:search_issues` and `issue-tracker:transition_issue` using those rules.
+
+<!-- last-modified: 2026-05-16 -->

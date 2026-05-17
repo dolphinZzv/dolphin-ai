@@ -19,3 +19,5 @@
 | Config Handler 无权限 | 运行时配置修改无审计 | 增加操作审计 + 权限校验 |
 | 无分布式支持 | Session/Metrics/Event 均为单进程内存模型 | 无法水平扩展 |
 | 无持久化队列 | EventBus channel 满时直接 drop | 需要背压或持久化机制 |
+
+<!-- last-modified: 2026-05-13 -->

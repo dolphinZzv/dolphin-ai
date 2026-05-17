@@ -13,7 +13,7 @@ Get Dolphin running in five minutes. You'll need an LLM API key and a terminal.
 
 ```bash
 curl -sfL https://github.com/dolphinZzv/dolphin/releases/latest/download/install.sh | sh
-dolphin --version
+dolphin-ai --version
 ```
 
 **Go install** (requires Go 1.26+):
@@ -26,9 +26,9 @@ go install github.com/dolphinZzv/dolphin@latest
 
 ```powershell
 $VERSION = "v1.0.0"
-Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin_${VERSION}_windows_x86_64.zip" -OutFile "dolphin.zip"
-Expand-Archive -Path "dolphin.zip" -DestinationPath .
-Move-Item .\dolphin.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin.exe"
+Invoke-WebRequest -Uri "https://github.com/dolphinZzv/dolphin/releases/download/$VERSION/dolphin-ai_${VERSION}_windows_x86_64.zip" -OutFile "dolphin-ai.zip"
+Expand-Archive -Path "dolphin-ai.zip" -DestinationPath .
+Move-Item .\dolphin-ai.exe "$env:LOCALAPPDATA\Microsoft\WindowsApps\dolphin-ai.exe"
 ```
 
 See the [full install guide]({{< relref "docs/install" >}}) for more options.
@@ -64,7 +64,7 @@ export DZ_LLM_MODEL="deepseek-v4-flash"
 ## 3. Start Dolphin
 
 ```bash
-dolphin
+dolphin-ai
 ```
 
 On first run Dolphin starts a setup wizard:
@@ -123,3 +123,5 @@ Paste the output into https://mermaid.live to render.
 
 - **[Configuration Reference]({{< relref "docs/config" >}})** — customize providers, transports, and tools
 - **[Install Guide]({{< relref "docs/install" >}})** — all install options and troubleshooting
+
+<!-- last-modified: 2026-05-16 -->

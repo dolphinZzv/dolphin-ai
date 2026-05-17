@@ -174,3 +174,5 @@ Compression happens before each LLM call (`runTurn`), triggered when estimated t
 | CJK-aware estimation | Primary user base is Chinese-language; generic estimators undershoot |
 | Stat-cached context files | Context files are read once per session, hot-reloaded on mtime change |
 | LLM fallback to concatenation | Compression must never fail — if provider is down, degrade gracefully |
+
+<!-- last-modified: 2026-05-16 -->

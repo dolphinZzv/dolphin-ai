@@ -71,3 +71,5 @@ if cfg.Health.Enabled {
         func(err error) { srv.Shutdown(...) })
 }
 ```
+
+<!-- last-modified: 2026-05-15 -->

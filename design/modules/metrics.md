@@ -27,3 +27,5 @@
 - LLM duration: `Histogram` → `LabeledHistogram` with `provider` dimension
 - MCP tool metrics: added `LabeledHistogram` per-tool latency + error counter
 - Transport: added `transport_connections_active` gauge
+
+<!-- last-modified: 2026-05-15 -->

@@ -27,3 +27,5 @@
 | [v0.3] Plugin | Plugin.Register(reg) | 统一 hook + event 注册 |
 | [v0.3] Metrics | 自定义 Counter/Gauge/Histogram | 轻量，无需 exporter |
 | [v0.3] I18n | 键值映射 + LANG 检测 | 最小化依赖 |
+
+<!-- last-modified: 2026-05-13 -->

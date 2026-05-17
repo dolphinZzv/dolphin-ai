@@ -254,3 +254,5 @@ MCP 工具和 Skills 协同工作：
 1. 配置 MCP 服务器用于跟踪 issues。
 2. 创建一个包含团队 issue 分类规范的技能文件。
 3. Agent 加载技能、学习你的分类规则，然后用 `issue-tracker:search_issues` 和 `issue-tracker:transition_issue` 按规则处理 issue。
+
+<!-- last-modified: 2026-05-16 -->

@@ -5,3 +5,5 @@
 - Console encoder, ISO8601 时间格式, CapitalLevelEncoder
 - Config: Level, File, MaxSize, MaxAge, MaxBackup
 - 空 File → stderr 输出
+
+<!-- last-modified: 2026-05-13 -->

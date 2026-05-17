@@ -224,3 +224,5 @@ Each release includes a `checksums.txt` file. Verify your download:
 sha256sum dolphin_*.tar.gz
 # compare against checksums.txt from the release
 ```
+
+<!-- last-modified: 2026-05-13 -->

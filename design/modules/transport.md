@@ -120,3 +120,5 @@ sequenceDiagram
 | `Subject` | `Re: <decoded original subject>` |
 | `In-Reply-To` | `<original Message-Id>` |
 | `References` | `<original Message-Id>` |
+
+<!-- last-modified: 2026-05-16 -->

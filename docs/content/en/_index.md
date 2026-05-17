@@ -39,3 +39,5 @@ On the first run, Dolphin will walk you through a setup wizard — choose your r
 
 - [GitHub](https://github.com/dolphinZzv/dolphin)
 - [Gitee](https://gitee.com/dolphinzzv/dolphindolphin)
+
+<!-- last-modified: 2026-05-14 -->

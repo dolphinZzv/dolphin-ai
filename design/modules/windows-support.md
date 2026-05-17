@@ -126,3 +126,5 @@
 
 - 单个文件级别回滚: 每个变更独立，可单独 revert
 - 全局回滚: `git revert <merge-commit>`
+
+<!-- last-modified: 2026-05-15 -->
