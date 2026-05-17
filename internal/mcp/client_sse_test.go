@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"dolphin/internal/config"
+	"dolphin/internal/mcp/transport"
 )
 
 // sseServerConfig builds a config for the remote SSE MCP server.
@@ -53,21 +54,16 @@ func readTokenFile() (string, error) {
 func TestSSETransportInitialize(t *testing.T) {
 	cfg := sseServerConfig(t)
 
-	transport, err := newSSETransport("chick", cfg)
+	tport, err := transport.NewSSE("chick", cfg)
 	if err != nil {
-		t.Fatalf("newSSETransport: %v", err)
+		t.Fatalf("NewSSE: %v", err)
 	}
-	defer transport.close()
+	defer tport.Close()
 
 	ctx := context.Background()
-	if err := transport.connect(ctx); err != nil {
+	if err := tport.Connect(ctx); err != nil {
 		t.Fatalf("connect: %v", err)
 	}
-
-	if transport.messageURL == "" {
-		t.Fatal("messageURL is empty after connect")
-	}
-	t.Logf("connected, messageURL=%s", transport.messageURL)
 
 	// Initialize
 	initReq := map[string]any{
@@ -83,7 +79,7 @@ func TestSSETransportInitialize(t *testing.T) {
 			},
 		},
 	}
-	initRaw, err := transport.sendRequest(ctx, initReq)
+	initRaw, err := tport.SendRequest(ctx, initReq)
 	if err != nil {
 		t.Fatalf("initialize: %v", err)
 	}
@@ -108,7 +104,7 @@ func TestSSETransportInitialize(t *testing.T) {
 		initResult.Result.Capabilities.Tools != nil)
 
 	// Send initialized notification
-	if err := transport.sendNotification(ctx, map[string]any{
+	if err := tport.SendNotification(ctx, map[string]any{
 		"jsonrpc": "2.0",
 		"method":  "notifications/initialized",
 	}); err != nil {

@@ -1,4 +1,4 @@
-package mcp
+package transport
 
 import (
 	"bufio"
@@ -21,9 +21,9 @@ type sseResult struct {
 	} `json:"error,omitempty"`
 }
 
-// parseSSEResult reads an SSE stream from r and returns the first JSON-RPC
+// ParseSSEResult reads an SSE stream from r and returns the first JSON-RPC
 // result object found. Events without a "data:" prefix are skipped.
-func parseSSEResult(r io.Reader) (json.RawMessage, error) {
+func ParseSSEResult(r io.Reader) (json.RawMessage, error) {
 	scanner := bufio.NewScanner(r)
 	var dataBuf []byte
 
@@ -51,9 +51,9 @@ func parseSSEResult(r io.Reader) (json.RawMessage, error) {
 	return nil, fmt.Errorf("no response event found")
 }
 
-// NewSSENotification creates an HTTP POST request for a JSON-RPC notification.
+// NewNotification creates an HTTP POST request for a JSON-RPC notification.
 // The given doer executes the request and the response body is closed.
-func NewSSENotification(ctx context.Context, url string, notif map[string]any, setHeaders func(*http.Request), doer interface {
+func NewNotification(ctx context.Context, url string, notif map[string]any, setHeaders func(*http.Request), doer interface {
 	Do(*http.Request) (*http.Response, error)
 }) error {
 	body, err := json.Marshal(notif)

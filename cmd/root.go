@@ -21,6 +21,10 @@ import (
 	"dolphin/internal/i18n"
 	"dolphin/internal/logger"
 	"dolphin/internal/mcp"
+	"dolphin/internal/mcp/cdp"
+	"dolphin/internal/mcp/email"
+	mcpshell "dolphin/internal/mcp/shell"
+	"dolphin/internal/mcp/webhook"
 	"dolphin/internal/metrics"
 	"dolphin/internal/plugin"
 	"dolphin/internal/scheduler"
@@ -118,21 +122,21 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Register built-in tools
 	if cfg.MCP.Shell.Enabled {
-		toolRegistry.Register(mcp.NewShellTool(cfg))
+		toolRegistry.Register(mcpshell.New(cfg))
 		zap.S().Infow("shell tool registered")
 	}
-	var cdpTool *mcp.CDPTool
+	var cdpTool *cdp.Tool
 	if cfg.MCP.CDP.Enabled {
-		cdpTool = mcp.NewCDPTool(cfg)
+		cdpTool = cdp.New(cfg)
 		toolRegistry.Register(cdpTool)
 		zap.S().Infow("cdp tool registered")
 	}
 	if cfg.MCP.Email.Enabled && cfg.Transport.Email.Username != "" {
-		toolRegistry.Register(mcp.NewEmailTool(cfg))
+		toolRegistry.Register(email.New(cfg))
 		zap.S().Infow("email tool registered")
 	}
 	if cfg.MCP.Webhook.Enabled {
-		toolRegistry.Register(mcp.NewWebhookTool(cfg))
+		toolRegistry.Register(webhook.New(cfg))
 		zap.S().Infow("webhook tool registered")
 	}
 
@@ -418,7 +422,7 @@ func initCronManager(cfg *config.Config) *scheduler.Manager {
 }
 
 // runActorGroup builds and runs the actor group for all enabled transports and services.
-func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *mcp.CDPTool, sessMgr *session.Manager, newCoordinator func() *agent.Coordinator) error {
+func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.Tool, sessMgr *session.Manager, newCoordinator func() *agent.Coordinator) error {
 	var g run.Group
 	actorCount := 0
 

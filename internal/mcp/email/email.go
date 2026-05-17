@@ -1,4 +1,4 @@
-package mcp
+package email
 
 import (
 	"bufio"
@@ -19,18 +19,19 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/mcp"
 
 	goimap "github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
 )
 
-// EmailTool provides SMTP send and IMAP/POP3 search/fetch as a built-in MCP tool.
-type EmailTool struct {
+// Tool provides SMTP send and IMAP/POP3 search/fetch as a built-in MCP tool.
+type Tool struct {
 	cfg    *config.Config
 	schema json.RawMessage
 }
 
-func NewEmailTool(cfg *config.Config) *EmailTool {
+func New(cfg *config.Config) *Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -83,11 +84,11 @@ func NewEmailTool(cfg *config.Config) *EmailTool {
 		},
 		"required": []string{"action"},
 	})
-	return &EmailTool{cfg: cfg, schema: schema}
+	return &Tool{cfg: cfg, schema: schema}
 }
 
-func (e *EmailTool) Definition() ToolDefinition {
-	return ToolDefinition{
+func (e *Tool) Definition() mcp.ToolDefinition {
+	return mcp.ToolDefinition{
 		Name:        "email",
 		Description: "Send and receive emails via SMTP/IMAP/POP3. Actions: send (send an email), search (search mailbox messages), fetch (read a specific email body by sequence number). Supports IMAP and POP3 (see transport.email.protocol). Requires transport.email to be configured.",
 		InputSchema: e.schema,
@@ -96,7 +97,7 @@ func (e *EmailTool) Definition() ToolDefinition {
 	}
 }
 
-func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResult, error) {
+func (e *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
 		Action      string `json:"action"`
 		To          string `json:"to,omitempty"`
@@ -111,12 +112,12 @@ func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		} `json:"attachments,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &ToolResult{Content: "Invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "Invalid input: " + err.Error(), IsError: true}, nil
 	}
 
 	ecfg := &e.cfg.Transport.Email
 	if ecfg.Username == "" || ecfg.Password == "" {
-		return &ToolResult{Content: "Email not configured. Set transport.email.username and transport.email.password in config.", IsError: true}, nil
+		return &mcp.ToolResult{Content: "Email not configured. Set transport.email.username and transport.email.password in config.", IsError: true}, nil
 	}
 
 	switch params.Action {
@@ -129,24 +130,22 @@ func (e *EmailTool) Execute(ctx context.Context, input json.RawMessage) (*ToolRe
 		return e.search(ecfg, params.Query, params.UnreadOnly, params.MaxResults)
 	case "fetch":
 		if params.Seq <= 0 {
-			return &ToolResult{Content: "seq (message sequence number, 1 = oldest) is required for fetch action.", IsError: true}, nil
+			return &mcp.ToolResult{Content: "seq (message sequence number, 1 = oldest) is required for fetch action.", IsError: true}, nil
 		}
 		return e.fetch(ecfg, params.Seq)
 	default:
-		return &ToolResult{Content: fmt.Sprintf("Unknown action: %q. Available: send, search, fetch.", params.Action), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Unknown action: %q. Available: send, search, fetch.", params.Action), IsError: true}, nil
 	}
 }
 
-// ── Send ─────────────────────────────────────────────────────────────
-
-func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, attachments []struct {
+func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachments []struct {
 	FilePath string `json:"file_path"`
-}) (*ToolResult, error) {
+}) (*mcp.ToolResult, error) {
 	if to == "" {
-		return &ToolResult{Content: "Missing required field: to.", IsError: true}, nil
+		return &mcp.ToolResult{Content: "Missing required field: to.", IsError: true}, nil
 	}
 	if subject == "" {
-		return &ToolResult{Content: "Missing required field: subject.", IsError: true}, nil
+		return &mcp.ToolResult{Content: "Missing required field: subject.", IsError: true}, nil
 	}
 
 	from := ecfg.From
@@ -161,28 +160,27 @@ func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, att
 	}
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	// Read attachment files
 	type attachFile struct {
 		name     string
 		data     []byte
 		mimeType string
 	}
 	var files []attachFile
-	const maxFileSize = 10 * 1024 * 1024 // 10MB per file
+	const maxFileSize = 10 * 1024 * 1024
 	for _, a := range attachments {
 		if a.FilePath == "" {
 			continue
 		}
 		absPath, err := filepath.Abs(a.FilePath)
 		if err != nil {
-			return &ToolResult{Content: fmt.Sprintf("Invalid file path %q: %v", a.FilePath, err), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("Invalid file path %q: %v", a.FilePath, err), IsError: true}, nil
 		}
 		data, err := os.ReadFile(absPath)
 		if err != nil {
-			return &ToolResult{Content: fmt.Sprintf("Cannot read attachment %q: %v", absPath, err), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("Cannot read attachment %q: %v", absPath, err), IsError: true}, nil
 		}
 		if len(data) > maxFileSize {
-			return &ToolResult{Content: fmt.Sprintf("Attachment %q too large (%d bytes, max %d)", absPath, len(data), maxFileSize), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("Attachment %q too large (%d bytes, max %d)", absPath, len(data), maxFileSize), IsError: true}, nil
 		}
 		mimeType := mime.TypeByExtension(filepath.Ext(absPath))
 		if mimeType == "" {
@@ -211,13 +209,11 @@ func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, att
 		msg.WriteString(fmt.Sprintf("Content-Type: multipart/mixed; boundary=\"%s\"\r\n", mw.Boundary()))
 		msg.WriteString("\r\n")
 
-		// Text part
 		textPart, _ := mw.CreatePart(map[string][]string{
 			"Content-Type": {"text/plain; charset=\"utf-8\""},
 		})
 		textPart.Write([]byte(body))
 
-		// Attachment parts
 		for _, f := range files {
 			part, err := mw.CreatePart(map[string][]string{
 				"Content-Type":              {f.mimeType},
@@ -225,7 +221,7 @@ func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, att
 				"Content-Transfer-Encoding": {"base64"},
 			})
 			if err != nil {
-				return &ToolResult{Content: fmt.Sprintf("Failed to create attachment part: %v", err), IsError: true}, nil
+				return &mcp.ToolResult{Content: fmt.Sprintf("Failed to create attachment part: %v", err), IsError: true}, nil
 			}
 			part.Write(f.data)
 		}
@@ -236,11 +232,11 @@ func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, att
 
 	if ecfg.UseTLS && ecfg.SMTPPort == 465 {
 		if err := sendTLS(addr, host, from, []string{to}, rawMsg, ecfg.Username, ecfg.Password); err != nil {
-			return &ToolResult{Content: fmt.Sprintf("Send failed (TLS): %s", err.Error()), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("Send failed (TLS): %s", err.Error()), IsError: true}, nil
 		}
 	} else {
 		if err := sendPlain(addr, host, from, []string{to}, rawMsg, ecfg.Username, ecfg.Password); err != nil {
-			return &ToolResult{Content: fmt.Sprintf("Send failed: %s", err.Error()), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("Send failed: %s", err.Error()), IsError: true}, nil
 		}
 	}
 
@@ -249,9 +245,9 @@ func (e *EmailTool) send(ecfg *config.EmailConfig, to, subject, body string, att
 		for _, f := range files {
 			names = append(names, f.name)
 		}
-		return &ToolResult{Content: fmt.Sprintf("Email sent to %s: %s (attachments: %s)", to, subject, strings.Join(names, ", "))}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Email sent to %s: %s (attachments: %s)", to, subject, strings.Join(names, ", "))}, nil
 	}
-	return &ToolResult{Content: fmt.Sprintf("Email sent to %s: %s", to, subject)}, nil
+	return &mcp.ToolResult{Content: fmt.Sprintf("Email sent to %s: %s", to, subject)}, nil
 }
 
 func sendTLS(addr, host, from string, to []string, msg, user, pass string) error {
@@ -294,9 +290,7 @@ func sendPlain(addr, host, from string, to []string, msg, user, pass string) err
 	return smtp.SendMail(addr, auth, from, to, []byte(msg))
 }
 
-// ── Search ───────────────────────────────────────────────────────────
-
-func (e *EmailTool) search(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*ToolResult, error) {
+func (e *Tool) search(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*mcp.ToolResult, error) {
 	protocol := strings.ToLower(ecfg.Protocol)
 	if protocol == "pop3" {
 		return e.searchPOP3(ecfg, query, maxResults)
@@ -304,19 +298,19 @@ func (e *EmailTool) search(ecfg *config.EmailConfig, query string, unreadOnly bo
 	return e.searchIMAP(ecfg, query, unreadOnly, maxResults)
 }
 
-func (e *EmailTool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*ToolResult, error) {
+func (e *Tool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*mcp.ToolResult, error) {
 	c, err := dialIMAP(ecfg)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
 	}
 	defer c.Logout()
 
 	mbox, err := c.Select("INBOX", false)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("Failed to select INBOX: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to select INBOX: %s", err.Error()), IsError: true}, nil
 	}
 	if mbox.Messages == 0 {
-		return &ToolResult{Content: "No messages in inbox."}, nil
+		return &mcp.ToolResult{Content: "No messages in inbox."}, nil
 	}
 
 	criteria := goimap.NewSearchCriteria()
@@ -335,13 +329,12 @@ func (e *EmailTool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnl
 
 	seqNums, err := c.Search(criteria)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("Search failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Search failed: %s", err.Error()), IsError: true}, nil
 	}
 	if len(seqNums) == 0 {
-		return &ToolResult{Content: "No matching emails found."}, nil
+		return &mcp.ToolResult{Content: "No matching emails found."}, nil
 	}
 
-	// Most recent N messages
 	start := 0
 	if len(seqNums) > maxResults {
 		start = len(seqNums) - maxResults
@@ -352,7 +345,7 @@ func (e *EmailTool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnl
 
 	messages := make(chan *goimap.Message, len(latest))
 	if err := c.Fetch(seqset, []goimap.FetchItem{goimap.FetchEnvelope}, messages); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("Fetch failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Fetch failed: %s", err.Error()), IsError: true}, nil
 	}
 
 	var results []string
@@ -364,26 +357,25 @@ func (e *EmailTool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnl
 	}
 
 	if len(results) == 0 {
-		return &ToolResult{Content: "No matching emails found."}, nil
+		return &mcp.ToolResult{Content: "No matching emails found."}, nil
 	}
 
-	return &ToolResult{Content: fmt.Sprintf("Found %d matching emails (showing %d):\n\n%s",
+	return &mcp.ToolResult{Content: fmt.Sprintf("Found %d matching emails (showing %d):\n\n%s",
 		len(seqNums), len(results), strings.Join(results, "\n"))}, nil
 }
 
-func (e *EmailTool) searchPOP3(ecfg *config.EmailConfig, query string, maxResults int) (*ToolResult, error) {
+func (e *Tool) searchPOP3(ecfg *config.EmailConfig, query string, maxResults int) (*mcp.ToolResult, error) {
 	p, err := dialPOP3(ecfg)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
 	}
 	defer p.quit()
 
 	count := p.messageCount()
 	if count == 0 {
-		return &ToolResult{Content: "No messages in mailbox."}, nil
+		return &mcp.ToolResult{Content: "No messages in mailbox."}, nil
 	}
 
-	// Determine which messages to scan (most recent first)
 	start := 1
 	if count > maxResults {
 		start = count - maxResults + 1
@@ -395,13 +387,11 @@ func (e *EmailTool) searchPOP3(ecfg *config.EmailConfig, query string, maxResult
 		if err != nil {
 			continue
 		}
-		// Try parsing with net/mail
 		if parsed, err := mail.ReadMessage(strings.NewReader(raw)); err == nil {
 			subj := parsed.Header.Get("Subject")
 			from := parsed.Header.Get("From")
 			date := parsed.Header.Get("Date")
 
-			// Filter by query
 			if query != "" {
 				subjLower := strings.ToLower(subj)
 				fromLower := strings.ToLower(from)
@@ -412,20 +402,18 @@ func (e *EmailTool) searchPOP3(ecfg *config.EmailConfig, query string, maxResult
 			}
 
 			results = append(results, fmt.Sprintf("Seq:%d | %s | %s | %s",
-				i, formatDate(date), truncate(from, 40), truncate(subj, 60)))
+				i, formatDate(date), truncateStr(from, 40), truncateStr(subj, 60)))
 		}
 	}
 
 	if len(results) == 0 {
-		return &ToolResult{Content: "No matching emails found."}, nil
+		return &mcp.ToolResult{Content: "No matching emails found."}, nil
 	}
 
-	return &ToolResult{Content: strings.Join(results, "\n")}, nil
+	return &mcp.ToolResult{Content: strings.Join(results, "\n")}, nil
 }
 
-// ── Fetch ────────────────────────────────────────────────────────────
-
-func (e *EmailTool) fetch(ecfg *config.EmailConfig, seq int) (*ToolResult, error) {
+func (e *Tool) fetch(ecfg *config.EmailConfig, seq int) (*mcp.ToolResult, error) {
 	protocol := strings.ToLower(ecfg.Protocol)
 	if protocol == "pop3" {
 		return e.fetchPOP3(ecfg, seq)
@@ -433,15 +421,15 @@ func (e *EmailTool) fetch(ecfg *config.EmailConfig, seq int) (*ToolResult, error
 	return e.fetchIMAP(ecfg, uint32(seq))
 }
 
-func (e *EmailTool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*ToolResult, error) {
+func (e *Tool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*mcp.ToolResult, error) {
 	c, err := dialIMAP(ecfg)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
 	}
 	defer c.Logout()
 
 	if _, err := c.Select("INBOX", true); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("Failed to select INBOX: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to select INBOX: %s", err.Error()), IsError: true}, nil
 	}
 
 	seqset := new(goimap.SeqSet)
@@ -450,42 +438,40 @@ func (e *EmailTool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*ToolResult
 	messages := make(chan *goimap.Message, 1)
 	items := []goimap.FetchItem{goimap.FetchEnvelope, goimap.FetchRFC822}
 	if err := c.Fetch(seqset, items, messages); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("Fetch failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Fetch failed: %s", err.Error()), IsError: true}, nil
 	}
 
 	msg := <-messages
 	if msg == nil {
-		return &ToolResult{Content: fmt.Sprintf("Message seq %d not found.", seq), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Message seq %d not found.", seq), IsError: true}, nil
 	}
 
 	return formatMessageBody(msg.Body, int(seq)), nil
 }
 
-func (e *EmailTool) fetchPOP3(ecfg *config.EmailConfig, seq int) (*ToolResult, error) {
+func (e *Tool) fetchPOP3(ecfg *config.EmailConfig, seq int) (*mcp.ToolResult, error) {
 	p, err := dialPOP3(ecfg)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
 	}
 	defer p.quit()
 
 	count := p.messageCount()
 	if seq < 1 || seq > count {
-		return &ToolResult{Content: fmt.Sprintf("Invalid seq %d. Mailbox has %d messages (1-%d).", seq, count, count), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Invalid seq %d. Mailbox has %d messages (1-%d).", seq, count, count), IsError: true}, nil
 	}
 
 	raw, err := p.retr(seq)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("Failed to fetch message %d: %s", seq, err.Error()), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to fetch message %d: %s", seq, err.Error()), IsError: true}, nil
 	}
 
 	content := formatParsedMessage(raw, seq, func(hdr mail.Header) string {
 		return fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d",
 			hdr.Get("From"), hdr.Get("To"), hdr.Get("Subject"), hdr.Get("Date"), seq)
 	})
-	return &ToolResult{Content: content}, nil
+	return &mcp.ToolResult{Content: content}, nil
 }
-
-// ── IMAP helpers ─────────────────────────────────────────────────────
 
 func tlsConfigForEmail(ecfg *config.EmailConfig) *tls.Config {
 	return &tls.Config{InsecureSkipVerify: ecfg.SkipTLSVerify}
@@ -529,11 +515,11 @@ func formatEnvelope(seq int, env *goimap.Envelope) string {
 	return fmt.Sprintf("Seq:%d | %s | %s | %s",
 		seq,
 		env.Date.Format("2006-01-02 15:04"),
-		truncate(from, 40),
-		truncate(env.Subject, 60))
+		truncateStr(from, 40),
+		truncateStr(env.Subject, 60))
 }
 
-func formatMessageBody(body map[*goimap.BodySectionName]goimap.Literal, seq int) *ToolResult {
+func formatMessageBody(body map[*goimap.BodySectionName]goimap.Literal, seq int) *mcp.ToolResult {
 	var raw string
 	for _, literal := range body {
 		data, err := io.ReadAll(literal)
@@ -544,22 +530,20 @@ func formatMessageBody(body map[*goimap.BodySectionName]goimap.Literal, seq int)
 		break
 	}
 	if raw == "" {
-		return &ToolResult{Content: "No body content found."}
+		return &mcp.ToolResult{Content: "No body content found."}
 	}
 
 	content := formatParsedMessage(raw, seq, func(hdr mail.Header) string {
 		return fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\nDate: %s\nSeq: %d",
 			hdr.Get("From"), hdr.Get("To"), hdr.Get("Subject"), hdr.Get("Date"), seq)
 	})
-	return &ToolResult{Content: content}
+	return &mcp.ToolResult{Content: content}
 }
 
-// formatParsedMessage parses a raw RFC822 message and returns a formatted string.
-// Handles multipart messages by listing attachments separately.
 func formatParsedMessage(raw string, seq int, headerFn func(mail.Header) string) string {
 	parsed, err := mail.ReadMessage(strings.NewReader(raw))
 	if err != nil {
-		return fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncate(raw, 2000))
+		return fmt.Sprintf("Seq: %d\n(raw, parse failed)\n\n%s", seq, truncateStr(raw, 2000))
 	}
 
 	header := parsed.Header
@@ -568,7 +552,6 @@ func formatParsedMessage(raw string, seq int, headerFn func(mail.Header) string)
 	bodyBytes, _ := io.ReadAll(parsed.Body)
 	bodyStr := string(bodyBytes)
 
-	// If multipart, walk parts
 	if strings.HasPrefix(contentType, "multipart/") {
 		_, params, _ := mime.ParseMediaType(contentType)
 		boundary := params["boundary"]
@@ -605,7 +588,7 @@ func formatParsedMessage(raw string, seq int, headerFn func(mail.Header) string)
 
 			result := headerFn(header) + "\n"
 			if len(textParts) > 0 {
-				result += "\n" + truncate(strings.Join(textParts, "\n---\n"), 8000)
+				result += "\n" + truncateStr(strings.Join(textParts, "\n---\n"), 8000)
 			}
 			if len(attachInfos) > 0 {
 				result += "\n\nAttachments:\n" + strings.Join(attachInfos, "\n")
@@ -614,13 +597,8 @@ func formatParsedMessage(raw string, seq int, headerFn func(mail.Header) string)
 		}
 	}
 
-	return fmt.Sprintf("%s\n\n%s", headerFn(header), truncate(bodyStr, 10000))
+	return fmt.Sprintf("%s\n\n%s", headerFn(header), truncateStr(bodyStr, 10000))
 }
-
-// ── POP3 client ──────────────────────────────────────────────────────
-//
-// Minimal POP3 client that never issues DELE — remote messages are never
-// deleted. Implements RFC 1939 over TLS.
 
 type pop3Conn struct {
 	conn   net.Conn
@@ -645,7 +623,6 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 	d := &net.Dialer{Timeout: 30 * time.Second}
 	tlsConn, err := tls.DialWithDialer(d, "tcp", fmt.Sprintf("%s:%d", host, port), tlsConfigForEmail(ecfg))
 	if err != nil {
-		// Fallback to plain with STARTTLS-like on port 110
 		plainConn, err2 := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, 110), 30*time.Second)
 		if err2 != nil {
 			return nil, fmt.Errorf("pop3 connect failed (TLS %s:%d and plain :110): %w / %s", host, port, err, err2)
@@ -658,7 +635,6 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 		rw:   bufio.NewReadWriter(bufio.NewReader(tlsConn), bufio.NewWriter(tlsConn)),
 	}
 
-	// Read greeting
 	line, err := p.readLine()
 	if err != nil {
 		tlsConn.Close()
@@ -669,25 +645,21 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 		return nil, fmt.Errorf("pop3 unexpected greeting: %s", line)
 	}
 
-	// USER
 	if _, err := p.cmd("USER %s", ecfg.Username); err != nil {
 		tlsConn.Close()
 		return nil, fmt.Errorf("pop3 user: %w", err)
 	}
-	// PASS
 	if _, err := p.cmd("PASS %s", ecfg.Password); err != nil {
 		tlsConn.Close()
 		return nil, fmt.Errorf("pop3 pass: %w", err)
 	}
 	p.logged = true
 
-	// STAT to get message count
 	statLine, err := p.cmd("STAT")
 	if err != nil {
 		p.quit()
 		return nil, fmt.Errorf("pop3 stat: %w", err)
 	}
-	// "+OK 42 123456" → count=42
 	parts := strings.Fields(statLine)
 	if len(parts) >= 2 {
 		p.count, _ = strconv.Atoi(parts[1])
@@ -726,10 +698,7 @@ func (p *pop3Conn) messageCount() int {
 	return p.count
 }
 
-// retrHeaders fetches only the headers of message n using TOP (RFC 2980).
-// Falls back to full RETR if TOP is not supported.
 func (p *pop3Conn) retrHeaders(n int) (string, error) {
-	// Try TOP first (lines=0 = headers only)
 	topCmd := fmt.Sprintf("TOP %d 0", n)
 	if _, err := p.rw.WriteString(topCmd + "\r\n"); err != nil {
 		return "", err
@@ -747,11 +716,9 @@ func (p *pop3Conn) retrHeaders(n int) (string, error) {
 		return p.readMultiline(), nil
 	}
 
-	// TOP not supported, fall back to full RETR
 	return p.retr(n)
 }
 
-// retr fetches the full message n.
 func (p *pop3Conn) retr(n int) (string, error) {
 	if _, err := p.cmd("RETR %d", n); err != nil {
 		return "", err
@@ -766,11 +733,9 @@ func (p *pop3Conn) readMultiline() string {
 		if err != nil {
 			break
 		}
-		// End of multi-line response
 		if line == "." {
 			break
 		}
-		// Remove byte-stuffed leading dot
 		if strings.HasPrefix(line, "..") {
 			line = line[1:]
 		}
@@ -789,8 +754,6 @@ func (p *pop3Conn) quit() {
 	p.logged = false
 }
 
-// ── General helpers ──────────────────────────────────────────────────
-
 func formatDate(s string) string {
 	t, err := time.Parse(time.RFC1123Z, s)
 	if err == nil {
@@ -800,6 +763,12 @@ func formatDate(s string) string {
 	if err == nil {
 		return t.Format("2006-01-02 15:04")
 	}
-	// Return as-is if can't parse
 	return s
+}
+
+func truncateStr(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }

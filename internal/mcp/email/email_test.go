@@ -1,4 +1,4 @@
-package mcp
+package email
 
 import (
 	"context"
@@ -50,8 +50,8 @@ func emailConfig(addr string) *config.Config {
 	}
 }
 
-func emailToolForTest(t *testing.T, addr string) *EmailTool {
-	return NewEmailTool(emailConfig(addr))
+func emailToolForTest(t *testing.T, addr string) *Tool {
+	return New(emailConfig(addr))
 }
 
 // ── Mock TCP servers ───────────────────────────────────────────────────
@@ -416,7 +416,7 @@ func portFromAddr(addr string) int {
 // ── Tests ──────────────────────────────────────────────────────────────
 
 func TestEmailToolDefinition(t *testing.T) {
-	tool := NewEmailTool(config.DefaultConfig())
+	tool := New(config.DefaultConfig())
 	def := tool.Definition()
 	if def.Name != "email" {
 		t.Errorf("Name = %q, want %q", def.Name, "email")
@@ -427,7 +427,7 @@ func TestEmailToolDefinition(t *testing.T) {
 }
 
 func TestEmailExecuteInvalidJSON(t *testing.T) {
-	tool := NewEmailTool(config.DefaultConfig())
+	tool := New(config.DefaultConfig())
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{invalid}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -441,7 +441,7 @@ func TestEmailExecuteUnknownAction(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Transport.Email.Username = "user"
 	cfg.Transport.Email.Password = "pass"
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"unknown"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -452,7 +452,7 @@ func TestEmailExecuteUnknownAction(t *testing.T) {
 }
 
 func TestEmailExecuteNoConfig(t *testing.T) {
-	tool := NewEmailTool(config.DefaultConfig())
+	tool := New(config.DefaultConfig())
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"a@b.com","subject":"hi","body":"hello"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -466,7 +466,7 @@ func TestEmailSendMissingFields(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Transport.Email.Username = "user"
 	cfg.Transport.Email.Password = "pass"
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 
 	t.Run("missing to", func(t *testing.T) {
 		result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","subject":"hi","body":"hello"}`))
@@ -495,7 +495,7 @@ func TestEmailSendViaMockSMTP(t *testing.T) {
 	cfg.Transport.Email.UseTLS = false
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"recipient@example.com","subject":"Test Subject","body":"Hello, this is a test."}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -525,7 +525,7 @@ func TestEmailSendConnectionFailure(t *testing.T) {
 	cfg.Transport.Email.SMTPPort = 1 // nothing listening here
 	cfg.Transport.Email.UseTLS = false
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"a@b.com","subject":"hi","body":"hello"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -539,7 +539,7 @@ func TestEmailFetchMissingSeq(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Transport.Email.Username = "user"
 	cfg.Transport.Email.Password = "pass"
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"fetch"}`))
 	if err != nil {
@@ -557,7 +557,7 @@ func TestEmailFetchIMAP(t *testing.T) {
 	addr := startIMAPServer(t, msgs)
 	cfg := emailConfig(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"fetch","seq":1}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -581,7 +581,7 @@ func TestEmailSearchIMAP(t *testing.T) {
 	addr := startIMAPServer(t, msgs)
 	cfg := emailConfig(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"hello","max_results":5}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -617,7 +617,7 @@ func TestEmailFetchPOP3(t *testing.T) {
 	cfg.Transport.Email.SkipTLSVerify = true
 	cfg.Transport.Email.SkipTLSVerify = true
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"fetch","seq":1}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -654,7 +654,7 @@ func TestEmailSearchPOP3(t *testing.T) {
 	cfg.Transport.Email.IMAPHost = host
 	cfg.Transport.Email.SkipTLSVerify = true
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"second","max_results":5}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -681,7 +681,7 @@ func TestEmailSearchPOP3EmptyMailbox(t *testing.T) {
 	cfg.Transport.Email.IMAPHost = host
 	cfg.Transport.Email.SkipTLSVerify = true
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"anything","max_results":5}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -722,7 +722,7 @@ func TestEmailSearchPOP3QueryFilter(t *testing.T) {
 	cfg.Transport.Email.IMAPHost = host
 	cfg.Transport.Email.SkipTLSVerify = true
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"beta","max_results":5}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -759,7 +759,7 @@ func TestEmailSearchPOP3MaxResults(t *testing.T) {
 	cfg.Transport.Email.IMAPHost = host
 	cfg.Transport.Email.SkipTLSVerify = true
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 
 	// max_results = 3, should scan only last 3 of 20 messages
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"message","max_results":3}`))
@@ -835,7 +835,7 @@ func TestEmailPOP3NoDelete(t *testing.T) {
 	cfg.Transport.Email.IMAPHost = host
 	cfg.Transport.Email.SkipTLSVerify = true
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"test","max_results":5}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -856,7 +856,7 @@ func TestEmailPOP3ConnectionFailure(t *testing.T) {
 	cfg.Transport.Email.POP3Host = "127.0.0.1"
 	cfg.Transport.Email.POP3Port = 1
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"search","query":"test","max_results":5}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -867,7 +867,7 @@ func TestEmailPOP3ConnectionFailure(t *testing.T) {
 }
 
 func TestEmailToolSchema(t *testing.T) {
-	tool := NewEmailTool(config.DefaultConfig())
+	tool := New(config.DefaultConfig())
 	def := tool.Definition()
 
 	var schema map[string]any
@@ -930,7 +930,7 @@ func TestEmailSendWithAttachment(t *testing.T) {
 	cfg.Transport.Email.UseTLS = false
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	input := fmt.Sprintf(`{"action":"send","to":"r@x.com","subject":"With Attachment","body":"See attached.","attachments":[{"file_path":"%s"}]}`, filePath)
 	result, err := tool.Execute(context.Background(), json.RawMessage(input))
 	if err != nil {
@@ -976,7 +976,7 @@ func TestEmailSendWithMultipleAttachments(t *testing.T) {
 	cfg.Transport.Email.UseTLS = false
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	input := fmt.Sprintf(`{"action":"send","to":"r@x.com","subject":"Two Files","body":"Here are two files.","attachments":[{"file_path":"%s"},{"file_path":"%s"}]}`,
 		filepath.Join(tmpDir, "a.txt"), filepath.Join(tmpDir, "b.pdf"))
 	result, err := tool.Execute(context.Background(), json.RawMessage(input))
@@ -1009,7 +1009,7 @@ func TestEmailSendAttachmentNotFound(t *testing.T) {
 	cfg.Transport.Email.UseTLS = false
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"r@x.com","subject":"Bad Attach","body":"test","attachments":[{"file_path":"/nonexistent/file.txt"}]}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -1028,7 +1028,7 @@ func TestEmailSendAttachmentEmptyPath(t *testing.T) {
 	cfg.Transport.Email.UseTLS = false
 	cfg.Transport.Email.SMTPPort = portFromAddr(addr)
 
-	tool := NewEmailTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"send","to":"r@x.com","subject":"Empty Path","body":"test","attachments":[{"file_path":""}]}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)

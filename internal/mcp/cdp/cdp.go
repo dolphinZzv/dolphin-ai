@@ -1,4 +1,4 @@
-package mcp
+package cdp
 
 import (
 	"context"
@@ -13,14 +13,14 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/mcp"
 
 	"github.com/chromedp/chromedp"
 	"go.uber.org/zap"
 )
 
-// CDPTool implements browser automation via Chrome DevTools Protocol.
-// The browser context is created once and reused across tool calls.
-type CDPTool struct {
+// Tool implements browser automation via Chrome DevTools Protocol.
+type Tool struct {
 	cfg    *config.CDPConfig
 	schema json.RawMessage
 
@@ -31,10 +31,10 @@ type CDPTool struct {
 	browserCancel context.CancelFunc
 	initialized   bool
 	lastUsedAt    time.Time
-	idleStop      chan struct{} // closed in Shutdown to stop the idle watcher
+	idleStop      chan struct{}
 }
 
-func NewCDPTool(cfg *config.Config) *CDPTool {
+func New(cfg *config.Config) *Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -58,7 +58,7 @@ func NewCDPTool(cfg *config.Config) *CDPTool {
 		"required": []string{"action"},
 	})
 
-	t := &CDPTool{
+	t := &Tool{
 		cfg:      &cfg.MCP.CDP,
 		schema:   schema,
 		idleStop: make(chan struct{}),
@@ -69,8 +69,8 @@ func NewCDPTool(cfg *config.Config) *CDPTool {
 	return t
 }
 
-func (c *CDPTool) Definition() ToolDefinition {
-	return ToolDefinition{
+func (c *Tool) Definition() mcp.ToolDefinition {
+	return mcp.ToolDefinition{
 		Name:        "cdp",
 		Description: "Control a browser using Chrome DevTools Protocol. Actions: navigate (goto a URL and wait for page load), click (click an element by CSS selector), screenshot (capture page or element as base64 PNG), evaluate (run JavaScript, supports async/await), get_text (extract visible text from element). Browser state persists across calls within the same session.",
 		InputSchema: c.schema,
@@ -79,7 +79,7 @@ func (c *CDPTool) Definition() ToolDefinition {
 	}
 }
 
-func (c *CDPTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResult, error) {
+func (c *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
 		Action   string `json:"action"`
 		URL      string `json:"url,omitempty"`
@@ -87,13 +87,12 @@ func (c *CDPTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResu
 		Script   string `json:"script,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
 	}
 
-	// Get or create browser context (persistent across calls)
 	browserCtx, err := c.getBrowser(ctx)
 	if err != nil {
-		return &ToolResult{Content: err.Error(), IsError: true}, nil
+		return &mcp.ToolResult{Content: err.Error(), IsError: true}, nil
 	}
 
 	c.mu.Lock()
@@ -114,22 +113,18 @@ func (c *CDPTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResu
 	case "get_text":
 		return c.getText(browserCtx, params.Selector)
 	default:
-		return &ToolResult{
+		return &mcp.ToolResult{
 			Content: fmt.Sprintf("unknown action: %s (supported: navigate, click, screenshot, evaluate, get_text)", params.Action),
 			IsError: true,
 		}, nil
 	}
 }
 
-// getBrowser returns a persistent browser context, creating one if needed.
-func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
+func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if c.initialized {
-		// Health check: try a lightweight operation to see if browser is still alive.
-		// Discard cancel — calling it would trigger chromedp cleanup and kill the
-		// browserCtx's WebSocket connection. The timeout expires harmlessly in ~10s.
 		healthCtx, _ := context.WithTimeout(c.browserCtx, 10*time.Second)
 		if err := chromedp.Run(healthCtx, chromedp.Navigate("about:blank")); err == nil {
 			return c.browserCtx, nil
@@ -140,7 +135,6 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	}
 
 	if c.cfg.WsURL != "" {
-		// Connect to remote browser — use background context so request timeouts don't kill it
 		allocCtx, allocCancel := chromedp.NewRemoteAllocator(context.Background(), c.cfg.WsURL)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
 		c.allocCtx = allocCtx
@@ -148,12 +142,10 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 		c.browserCtx = browserCtx
 		c.browserCancel = browserCancel
 	} else {
-		// Pre-flight: check that a browser executable is available
 		if _, err := findBrowser(); err != nil {
 			return nil, err
 		}
 
-		// Start local browser — use background context so request timeouts don't kill it
 		allocOpts := []chromedp.ExecAllocatorOption{
 			chromedp.Flag("headless", c.cfg.Headless),
 			chromedp.Flag("disable-gpu", true),
@@ -181,9 +173,6 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	c.initialized = true
 	zap.S().Debugw("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
 
-	// Verify browser is working — cold start can be slow (esp. macOS).
-	// Discard cancel to avoid triggering chromedp's context cleanup which
-	// would kill the browserCtx's WebSocket connection.
 	startupTimeout := time.Duration(c.cfg.StartupTimeout) * time.Second
 	if startupTimeout <= 0 {
 		startupTimeout = 30 * time.Second
@@ -197,9 +186,7 @@ func (c *CDPTool) getBrowser(ctx context.Context) (context.Context, error) {
 	return c.browserCtx, nil
 }
 
-// shutdownBrowser cleans up browser resources without holding the lock
-// (caller must hold c.mu).
-func (c *CDPTool) shutdownBrowser() {
+func (c *Tool) shutdownBrowser() {
 	if c.browserCancel != nil {
 		c.browserCancel()
 		c.browserCancel = nil
@@ -211,14 +198,11 @@ func (c *CDPTool) shutdownBrowser() {
 	c.initialized = false
 }
 
-// Shutdown cleans up browser resources and stops the idle watcher.
-// Safe to call from multiple goroutines.
-func (c *CDPTool) Shutdown() {
+func (c *Tool) Shutdown() {
 	c.mu.Lock()
 	if c.idleStop != nil {
 		select {
 		case <-c.idleStop:
-			// already closed
 		default:
 			close(c.idleStop)
 		}
@@ -227,10 +211,7 @@ func (c *CDPTool) Shutdown() {
 	c.mu.Unlock()
 }
 
-// startIdleWatcher runs a background goroutine that shuts down the browser
-// if no Execute call has been made within the given timeout.
-// The goroutine exits when c.idleStop is closed (via Shutdown).
-func (c *CDPTool) startIdleWatcher(timeout time.Duration) {
+func (c *Tool) startIdleWatcher(timeout time.Duration) {
 	go func() {
 		ticker := time.NewTicker(timeout / 2)
 		defer ticker.Stop()
@@ -250,12 +231,11 @@ func (c *CDPTool) startIdleWatcher(timeout time.Duration) {
 	}()
 }
 
-func (c *CDPTool) navigate(ctx context.Context, url string) (*ToolResult, error) {
+func (c *Tool) navigate(ctx context.Context, url string) (*mcp.ToolResult, error) {
 	if url == "" {
-		return &ToolResult{Content: "url is required for navigate action", IsError: true}, nil
+		return &mcp.ToolResult{Content: "url is required for navigate action", IsError: true}, nil
 	}
 
-	// Add https:// if no scheme
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		url = "https://" + url
 	}
@@ -268,59 +248,57 @@ func (c *CDPTool) navigate(ctx context.Context, url string) (*ToolResult, error)
 		chromedp.Title(&title),
 	)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("navigate to '%s' failed: %v", url, err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("navigate to '%s' failed: %v", url, err), IsError: true}, nil
 	}
 
-	return &ToolResult{Content: fmt.Sprintf("Navigated to %s\nPage title: %s", url, title)}, nil
+	return &mcp.ToolResult{Content: fmt.Sprintf("Navigated to %s\nPage title: %s", url, title)}, nil
 }
 
-func (c *CDPTool) click(ctx context.Context, selector string) (*ToolResult, error) {
+func (c *Tool) click(ctx context.Context, selector string) (*mcp.ToolResult, error) {
 	if selector == "" {
-		return &ToolResult{Content: "selector is required for click action", IsError: true}, nil
+		return &mcp.ToolResult{Content: "selector is required for click action", IsError: true}, nil
 	}
 
 	if err := chromedp.Run(ctx, chromedp.Click(selector, chromedp.NodeVisible)); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("click failed on '%s': %v", selector, err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("click failed on '%s': %v", selector, err), IsError: true}, nil
 	}
 
-	return &ToolResult{Content: fmt.Sprintf("Clicked element: %s", selector)}, nil
+	return &mcp.ToolResult{Content: fmt.Sprintf("Clicked element: %s", selector)}, nil
 }
 
-func (c *CDPTool) screenshot(ctx context.Context, selector string) (*ToolResult, error) {
+func (c *Tool) screenshot(ctx context.Context, selector string) (*mcp.ToolResult, error) {
 	var buf []byte
 
 	if selector != "" {
 		if err := chromedp.Run(ctx, chromedp.Screenshot(selector, &buf, chromedp.NodeVisible)); err != nil {
-			return &ToolResult{Content: fmt.Sprintf("element screenshot failed for '%s': %v", selector, err), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("element screenshot failed for '%s': %v", selector, err), IsError: true}, nil
 		}
 	} else {
 		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 100)); err != nil {
-			return &ToolResult{Content: fmt.Sprintf("full page screenshot failed: %v", err), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("full page screenshot failed: %v", err), IsError: true}, nil
 		}
 	}
 
-	// Save to file — don't send base64 to the LLM (wastes tokens, gets truncated)
 	screenshotDir := filepath.Join(config.ProjectConfigDir, "screenshots")
 	if err := os.MkdirAll(screenshotDir, 0700); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("create screenshot dir: %v", err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("create screenshot dir: %v", err), IsError: true}, nil
 	}
 	filename := fmt.Sprintf("screenshot_%s.png", time.Now().Format("20060102_150405"))
 	filePath := filepath.Join(screenshotDir, filename)
 	if err := os.WriteFile(filePath, buf, 0600); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("write screenshot: %v", err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("write screenshot: %v", err), IsError: true}, nil
 	}
 
-	return &ToolResult{
+	return &mcp.ToolResult{
 		Content: fmt.Sprintf("Screenshot saved: %s (%d bytes)", filePath, len(buf)),
 	}, nil
 }
 
-func (c *CDPTool) evaluate(ctx context.Context, script string) (*ToolResult, error) {
+func (c *Tool) evaluate(ctx context.Context, script string) (*mcp.ToolResult, error) {
 	if script == "" {
-		return &ToolResult{Content: "script is required for evaluate action", IsError: true}, nil
+		return &mcp.ToolResult{Content: "script is required for evaluate action", IsError: true}, nil
 	}
 
-	// Auto-wrap in async IIFE if the script uses await
 	wrappedScript := script
 	if strings.Contains(script, "await ") {
 		wrappedScript = "(async () => { " + script + " })()"
@@ -328,7 +306,7 @@ func (c *CDPTool) evaluate(ctx context.Context, script string) (*ToolResult, err
 
 	var result string
 	if err := chromedp.Run(ctx, chromedp.Evaluate(wrappedScript, &result)); err != nil {
-		return &ToolResult{
+		return &mcp.ToolResult{
 			Content: fmt.Sprintf("evaluate failed:\nscript: %s\nerror: %v", truncate(script, 200), err),
 			IsError: true,
 		}, nil
@@ -337,17 +315,17 @@ func (c *CDPTool) evaluate(ctx context.Context, script string) (*ToolResult, err
 	if len(result) > 10000 {
 		result = result[:10000] + "... [truncated]"
 	}
-	return &ToolResult{Content: result}, nil
+	return &mcp.ToolResult{Content: result}, nil
 }
 
-func (c *CDPTool) getText(ctx context.Context, selector string) (*ToolResult, error) {
+func (c *Tool) getText(ctx context.Context, selector string) (*mcp.ToolResult, error) {
 	if selector == "" {
-		return &ToolResult{Content: "selector is required for get_text action", IsError: true}, nil
+		return &mcp.ToolResult{Content: "selector is required for get_text action", IsError: true}, nil
 	}
 
 	var text string
 	if err := chromedp.Run(ctx, chromedp.Text(selector, &text, chromedp.NodeVisible)); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("get_text failed for '%s': %v", selector, err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("get_text failed for '%s': %v", selector, err), IsError: true}, nil
 	}
 
 	text = strings.TrimSpace(text)
@@ -355,7 +333,7 @@ func (c *CDPTool) getText(ctx context.Context, selector string) (*ToolResult, er
 		text = text[:10000] + "... [truncated]"
 	}
 
-	return &ToolResult{Content: text}, nil
+	return &mcp.ToolResult{Content: text}, nil
 }
 
 func truncate(s string, max int) string {
@@ -365,8 +343,6 @@ func truncate(s string, max int) string {
 	return s[:max] + "..."
 }
 
-// findBrowser locates a Chrome/Chromium executable on the system.
-// Returns the path and a user-friendly error if none is found.
 func findBrowser() (string, error) {
 	candidates := []string{
 		"google-chrome-stable",

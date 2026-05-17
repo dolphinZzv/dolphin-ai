@@ -9,6 +9,7 @@ import (
 
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
+	"dolphin/internal/mcp/shell"
 	"dolphin/internal/session"
 
 	"go.uber.org/zap"
@@ -231,7 +232,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 
 	// Set workspace directory for workspace isolation
 	if inst.Def.Workspace != "" {
-		taskCtx = mcp.WithWorkdir(taskCtx, inst.Def.Workspace)
+		taskCtx = shell.WithWorkdir(taskCtx, inst.Def.Workspace)
 	}
 
 	// Store cancel function so CancelTask can call it

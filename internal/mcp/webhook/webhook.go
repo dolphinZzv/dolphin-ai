@@ -1,4 +1,4 @@
-package mcp
+package webhook
 
 import (
 	"bytes"
@@ -12,12 +12,13 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/mcp"
 
 	"go.uber.org/zap"
 )
 
-// WebhookTool sends HTTP webhook requests to configured or inline endpoints.
-type WebhookTool struct {
+// Tool sends HTTP webhook requests to configured or inline endpoints.
+type Tool struct {
 	cfg    *config.MCPWebhookConfig
 	schema json.RawMessage
 	client *http.Client
@@ -25,14 +26,14 @@ type WebhookTool struct {
 
 // webhookInput is the JSON-unmarshal shape for the Execute input.
 type webhookInput struct {
-	Target  string            `json:"target"`  // named target from config
-	URL     string            `json:"url"`     // inline URL (used when target is empty)
-	Method  string            `json:"method"`  // HTTP method, default "POST"
-	Headers map[string]string `json:"headers"` // extra headers, merged with target headers
-	Body    string            `json:"body"`    // request body
+	Target  string            `json:"target"`
+	URL     string            `json:"url"`
+	Method  string            `json:"method"`
+	Headers map[string]string `json:"headers"`
+	Body    string            `json:"body"`
 }
 
-func NewWebhookTool(cfg *config.Config) *WebhookTool {
+func New(cfg *config.Config) *Tool {
 	schema, _ := json.Marshal(map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -61,15 +62,15 @@ func NewWebhookTool(cfg *config.Config) *WebhookTool {
 			},
 		},
 	})
-	return &WebhookTool{
+	return &Tool{
 		cfg:    &cfg.MCP.Webhook,
 		schema: schema,
 		client: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
-func (w *WebhookTool) Definition() ToolDefinition {
-	return ToolDefinition{
+func (w *Tool) Definition() mcp.ToolDefinition {
+	return mcp.ToolDefinition{
 		Name:        "webhook",
 		Description: "Send HTTP webhook requests to configured or arbitrary endpoints. Supports GET, POST, PUT, PATCH, DELETE. Use a named target from config or provide a direct URL.",
 		InputSchema: w.schema,
@@ -78,25 +79,23 @@ func (w *WebhookTool) Definition() ToolDefinition {
 	}
 }
 
-func (w *WebhookTool) Execute(ctx context.Context, input json.RawMessage) (*ToolResult, error) {
+func (w *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params webhookInput
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &ToolResult{Content: fmt.Sprintf("invalid input: %v", err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("invalid input: %v", err), IsError: true}, nil
 	}
 
-	// Resolve URL
-	url := params.URL
+	urlStr := params.URL
 	method := params.Method
 	headers := make(map[string]string)
 
-	// Copy target headers first (if a named target is specified)
 	if params.Target != "" {
 		target, ok := w.cfg.Targets[params.Target]
 		if !ok {
-			return &ToolResult{Content: fmt.Sprintf("webhook target %q not found in config", params.Target), IsError: true}, nil
+			return &mcp.ToolResult{Content: fmt.Sprintf("webhook target %q not found in config", params.Target), IsError: true}, nil
 		}
-		if url == "" {
-			url = target.URL
+		if urlStr == "" {
+			urlStr = target.URL
 		}
 		if method == "" {
 			method = target.Method
@@ -106,27 +105,25 @@ func (w *WebhookTool) Execute(ctx context.Context, input json.RawMessage) (*Tool
 		}
 	}
 
-	if url == "" {
-		return &ToolResult{Content: "no URL provided: set a target name or url parameter", IsError: true}, nil
+	if urlStr == "" {
+		return &mcp.ToolResult{Content: "no URL provided: set a target name or url parameter", IsError: true}, nil
 	}
 	if method == "" {
 		method = "POST"
 	}
 
-	// Merge inline headers (override target headers)
 	for k, v := range params.Headers {
 		headers[k] = v
 	}
 
-	// Build request body
 	var bodyReader io.Reader
 	if params.Body != "" {
 		bodyReader = bytes.NewBufferString(params.Body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	req, err := http.NewRequestWithContext(ctx, method, urlStr, bodyReader)
 	if err != nil {
-		return &ToolResult{Content: fmt.Sprintf("build request: %v", err), IsError: true}, nil
+		return &mcp.ToolResult{Content: fmt.Sprintf("build request: %v", err), IsError: true}, nil
 	}
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -135,7 +132,7 @@ func (w *WebhookTool) Execute(ctx context.Context, input json.RawMessage) (*Tool
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	zap.S().Debugw("webhook: sending request", "method", method, "url", sanitizeURL(url))
+	zap.S().Debugw("webhook: sending request", "method", method, "url", sanitizeURL(urlStr))
 
 	resp, err := w.client.Do(req)
 	if err != nil {
@@ -144,12 +141,11 @@ func (w *WebhookTool) Execute(ctx context.Context, input json.RawMessage) (*Tool
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	return &ToolResult{
+	return &mcp.ToolResult{
 		Content: fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, string(respBody)),
 	}, nil
 }
 
-// sanitizeURL strips query params for logging to avoid leaking secrets in URLs.
 func sanitizeURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Host == "" {
@@ -164,8 +160,6 @@ func sanitizeURL(rawURL string) string {
 	return u.String()
 }
 
-// blockPrivateTarget checks if a URL points to a private or internal IP range
-// to prevent SSRF attacks. Returns an error if the target is blocked.
 func blockPrivateTarget(rawURL string) error {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -173,7 +167,6 @@ func blockPrivateTarget(rawURL string) error {
 	}
 	host := u.Hostname()
 
-	// Resolve hostname to IP addresses
 	ips, err := net.LookupHost(host)
 	if err != nil {
 		return fmt.Errorf("cannot resolve host %q: %v", host, err)
@@ -191,15 +184,12 @@ func blockPrivateTarget(rawURL string) error {
 	return nil
 }
 
-// isPrivateIP checks if an IP falls in a private or link-local range.
 func isPrivateIP(ip net.IP) bool {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsPrivate() {
 		return true
 	}
-	// Also check IPv4-mapped IPv6 for private ranges
 	if ip4 := ip.To4(); ip4 != nil {
-		return false // net.IP.IsPrivate() already covers 10/8, 172.16/12, 192.168/16, 127/8
+		return false
 	}
-	// Block IPv6 unique-local (fc00::/7)
 	return len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc
 }

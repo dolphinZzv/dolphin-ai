@@ -1,4 +1,4 @@
-package mcp
+package transport
 
 import (
 	"bufio"
@@ -17,12 +17,12 @@ import (
 	"go.uber.org/zap"
 )
 
-// mcpTransport abstracts the communication channel to an MCP server.
-type mcpTransport interface {
-	connect(ctx context.Context) error
-	sendRequest(ctx context.Context, req map[string]any) (json.RawMessage, error)
-	sendNotification(ctx context.Context, notif map[string]any) error
-	close() error
+// Transport abstracts the communication channel to an MCP server.
+type Transport interface {
+	Connect(ctx context.Context) error
+	SendRequest(ctx context.Context, req map[string]any) (json.RawMessage, error)
+	SendNotification(ctx context.Context, notif map[string]any) error
+	Close() error
 }
 
 // stdioTransport communicates with a local MCP server subprocess via stdin/stdout.
@@ -36,7 +36,8 @@ type stdioTransport struct {
 	nextID atomic.Int64
 }
 
-func newStdioTransport(name string, cfg config.MCPServerConfig) (*stdioTransport, error) {
+// NewStdio creates a stdio-based transport for a local MCP server subprocess.
+func NewStdio(name string, cfg config.MCPServerConfig) (*stdioTransport, error) {
 	if cfg.Command == "" {
 		return nil, fmt.Errorf("mcp server %q: command is required", name)
 	}
@@ -64,12 +65,11 @@ func newStdioTransport(name string, cfg config.MCPServerConfig) (*stdioTransport
 	}, nil
 }
 
-func (t *stdioTransport) connect(ctx context.Context) error {
-	// Handshake is done by ServerClient.initialize() after transport creation.
+func (t *stdioTransport) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (t *stdioTransport) sendRequest(ctx context.Context, req map[string]any) (json.RawMessage, error) {
+func (t *stdioTransport) SendRequest(ctx context.Context, req map[string]any) (json.RawMessage, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -112,13 +112,13 @@ func (t *stdioTransport) sendRequest(ctx context.Context, req map[string]any) (j
 	return nil, fmt.Errorf("server closed connection")
 }
 
-func (t *stdioTransport) sendNotification(ctx context.Context, notif map[string]any) error {
+func (t *stdioTransport) SendNotification(ctx context.Context, notif map[string]any) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.writeLine(notif)
 }
 
-func (t *stdioTransport) close() error {
+func (t *stdioTransport) Close() error {
 	zap.S().Debugw("shutting down mcp server", "server", t.name)
 
 	if err := t.cmd.Process.Signal(syscall.SIGTERM); err != nil {

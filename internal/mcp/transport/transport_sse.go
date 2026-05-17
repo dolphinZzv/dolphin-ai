@@ -1,4 +1,4 @@
-package mcp
+package transport
 
 import (
 	"bufio"
@@ -26,11 +26,11 @@ type sseTransport struct {
 	client     *http.Client
 	mu         sync.Mutex
 
-	// SSE connection for server→client notifications
 	sseCancel context.CancelFunc
 }
 
-func newSSETransport(name string, cfg config.MCPServerConfig) (*sseTransport, error) {
+// NewSSE creates an SSE-based transport for a remote MCP server.
+func NewSSE(name string, cfg config.MCPServerConfig) (*sseTransport, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("mcp server %q: url is required for sse transport", name)
 	}
@@ -38,11 +38,11 @@ func newSSETransport(name string, cfg config.MCPServerConfig) (*sseTransport, er
 		cfg:     cfg,
 		name:    name,
 		baseURL: strings.TrimRight(cfg.URL, "/"),
-		client:  newHTTPClient(cfg.Timeout),
+		client:  NewHTTPClient(cfg.Timeout),
 	}, nil
 }
 
-func (t *sseTransport) connect(ctx context.Context) error {
+func (t *sseTransport) Connect(ctx context.Context) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.baseURL+"/sse", nil)
 	if err != nil {
 		return fmt.Errorf("sse connect: %w", err)
@@ -60,7 +60,6 @@ func (t *sseTransport) connect(ctx context.Context) error {
 		return fmt.Errorf("sse connect: HTTP %d", resp.StatusCode)
 	}
 
-	// Read the first event to get the message endpoint
 	endpoint, err := t.readEndpoint(bufio.NewReader(resp.Body))
 	resp.Body.Close()
 	if err != nil {
@@ -69,7 +68,6 @@ func (t *sseTransport) connect(ctx context.Context) error {
 
 	t.messageURL = t.baseURL + endpoint
 
-	// Start background SSE listener for server→client notifications
 	sseCtx, cancel := context.WithCancel(context.Background())
 	t.sseCancel = cancel
 	go t.listenSSE(sseCtx)
@@ -78,7 +76,6 @@ func (t *sseTransport) connect(ctx context.Context) error {
 	return nil
 }
 
-// readEndpoint reads the first SSE event to extract the endpoint path.
 func (t *sseTransport) readEndpoint(r *bufio.Reader) (string, error) {
 	var eventType string
 	var data string
@@ -95,7 +92,6 @@ func (t *sseTransport) readEndpoint(r *bufio.Reader) (string, error) {
 		} else if strings.HasPrefix(line, "data:") {
 			data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
 		} else if line == "" {
-			// Empty line = end of event
 			if eventType == "endpoint" && data != "" {
 				return data, nil
 			}
@@ -105,9 +101,6 @@ func (t *sseTransport) readEndpoint(r *bufio.Reader) (string, error) {
 	}
 }
 
-// listenSSE maintains the SSE connection for server→client notifications.
-// In the current implementation, server→client requests/notifications are not
-// processed; this goroutine keeps the connection alive to avoid session expiry.
 func (t *sseTransport) listenSSE(ctx context.Context) {
 	for {
 		select {
@@ -133,14 +126,10 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 			}
 		}
 
-		// Drain the body until context is cancelled, then close it.
-		// Without this, the goroutine blocks forever on ctx.Done() and
-		// resp.Body is never closed — a goroutine + connection leak.
 		go func() {
 			<-ctx.Done()
 			resp.Body.Close()
 		}()
-		// Block read from body to keep the SSE connection alive.
 		buf := make([]byte, 4096)
 		for {
 			_, err := resp.Body.Read(buf)
@@ -152,7 +141,7 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 	}
 }
 
-func (t *sseTransport) sendRequest(ctx context.Context, reqJSON map[string]any) (json.RawMessage, error) {
+func (t *sseTransport) SendRequest(ctx context.Context, reqJSON map[string]any) (json.RawMessage, error) {
 	body, err := json.Marshal(reqJSON)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -181,7 +170,6 @@ func (t *sseTransport) sendRequest(ctx context.Context, reqJSON map[string]any) 
 		return t.parseSSEResponse(resp.Body, reqJSON["id"])
 	}
 
-	// Plain JSON response
 	var msg struct {
 		Result json.RawMessage `json:"result"`
 		Error  *struct {
@@ -198,17 +186,15 @@ func (t *sseTransport) sendRequest(ctx context.Context, reqJSON map[string]any) 
 	return msg.Result, nil
 }
 
-// parseSSEResponse reads an SSE stream from the POST response body and extracts
-// the JSON-RPC result matching the given request ID.
 func (t *sseTransport) parseSSEResponse(r io.Reader, _ any) (json.RawMessage, error) {
-	return parseSSEResult(r)
+	return ParseSSEResult(r)
 }
 
-func (t *sseTransport) sendNotification(ctx context.Context, notif map[string]any) error {
-	return NewSSENotification(ctx, t.messageURL, notif, t.setHeaders, t.client)
+func (t *sseTransport) SendNotification(ctx context.Context, notif map[string]any) error {
+	return NewNotification(ctx, t.messageURL, notif, t.setHeaders, t.client)
 }
 
-func (t *sseTransport) close() error {
+func (t *sseTransport) Close() error {
 	if t.sseCancel != nil {
 		t.sseCancel()
 	}
@@ -221,8 +207,8 @@ func (t *sseTransport) setHeaders(req *http.Request) {
 	}
 }
 
-// newHTTPClient creates an http.Client with the configured timeout.
-func newHTTPClient(timeoutSec int) *http.Client {
+// NewHTTPClient creates an http.Client with the configured timeout.
+func NewHTTPClient(timeoutSec int) *http.Client {
 	d := 30 * time.Second
 	if timeoutSec > 0 {
 		d = time.Duration(timeoutSec) * time.Second

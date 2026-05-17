@@ -7,29 +7,30 @@ import (
 	"sync/atomic"
 
 	"dolphin/internal/config"
+	"dolphin/internal/mcp/transport"
 
 	"go.uber.org/zap"
 )
 
 // ServerClient manages transport to an external MCP server.
 type ServerClient struct {
-	name      string
-	transport mcpTransport
-	nextID    atomic.Int64
+	name   string
+	tport  transport.Transport
+	nextID atomic.Int64
 }
 
 // NewServerClient creates a transport to an external MCP server and initializes it.
 func NewServerClient(ctx context.Context, name string, cfg config.MCPServerConfig) (*ServerClient, error) {
-	var transport mcpTransport
+	var tport transport.Transport
 	var err error
 
 	switch cfg.Type {
 	case "stdio":
-		transport, err = newStdioTransport(name, cfg)
+		tport, err = transport.NewStdio(name, cfg)
 	case "sse":
-		transport, err = newSSETransport(name, cfg)
+		tport, err = transport.NewSSE(name, cfg)
 	case "http-stream":
-		transport, err = newHTTPStreamTransport(name, cfg)
+		tport, err = transport.NewHTTPStream(name, cfg)
 	default:
 		return nil, fmt.Errorf("unsupported mcp server type: %q (supported: stdio, sse, http-stream)", cfg.Type)
 	}
@@ -38,21 +39,21 @@ func NewServerClient(ctx context.Context, name string, cfg config.MCPServerConfi
 	}
 
 	sc := &ServerClient{
-		name:      name,
-		transport: transport,
+		name:  name,
+		tport: tport,
 	}
 
 	timeout := config.TimeoutDuration(cfg.Timeout)
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	if err := transport.connect(ctx); err != nil {
-		transport.close()
+	if err := tport.Connect(ctx); err != nil {
+		tport.Close()
 		return nil, fmt.Errorf("connect mcp server %q: %w", name, err)
 	}
 
 	if err := sc.initialize(ctx); err != nil {
-		transport.close()
+		tport.Close()
 		return nil, fmt.Errorf("initialize mcp server %q: %w", name, err)
 	}
 
@@ -74,7 +75,7 @@ func (c *ServerClient) initialize(ctx context.Context) error {
 			},
 		},
 	}
-	if _, err := c.transport.sendRequest(ctx, initReq); err != nil {
+	if _, err := c.tport.SendRequest(ctx, initReq); err != nil {
 		return fmt.Errorf("initialize: %w", err)
 	}
 
@@ -82,7 +83,7 @@ func (c *ServerClient) initialize(ctx context.Context) error {
 		"jsonrpc": "2.0",
 		"method":  "notifications/initialized",
 	}
-	if err := c.transport.sendNotification(ctx, notif); err != nil {
+	if err := c.tport.SendNotification(ctx, notif); err != nil {
 		return err
 	}
 
@@ -98,7 +99,7 @@ func (c *ServerClient) ListTools(ctx context.Context) ([]ToolDefinition, error) 
 		"method":  "tools/list",
 		"params":  map[string]any{},
 	}
-	raw, err := c.transport.sendRequest(ctx, req)
+	raw, err := c.tport.SendRequest(ctx, req)
 	if err != nil {
 		return nil, fmt.Errorf("tools/list: %w", err)
 	}
@@ -147,7 +148,7 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 			"arguments": args,
 		},
 	}
-	raw, err := c.transport.sendRequest(ctx, req)
+	raw, err := c.tport.SendRequest(ctx, req)
 	if err != nil {
 		zap.S().Warnw("mcp server tool call failed", "server", c.name, "tool", name, "error", err)
 		return &ToolResult{Content: fmt.Sprintf("MCP server %q unavailable: %v", c.name, err), IsError: true}, nil
@@ -177,5 +178,5 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 // Close shuts down the transport to the MCP server.
 func (c *ServerClient) Close() error {
 	zap.S().Debugw("shutting down mcp server", "server", c.name)
-	return c.transport.close()
+	return c.tport.Close()
 }

@@ -1,4 +1,4 @@
-package mcp
+package shell
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func TestWithWorkdir(t *testing.T) {
 }
 
 func TestShellExecuteInvalidInput(t *testing.T) {
-	tool := NewShellTool(config.DefaultConfig())
+	tool := New(config.DefaultConfig())
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{invalid}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -30,7 +30,7 @@ func TestShellExecuteInvalidInput(t *testing.T) {
 func TestShellExecuteEmptyCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = []string{"echo"}
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":""}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -43,7 +43,7 @@ func TestShellExecuteEmptyCommand(t *testing.T) {
 func TestShellExecuteDisallowedCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = []string{"echo"}
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"rm -rf /"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -56,7 +56,7 @@ func TestShellExecuteDisallowedCommand(t *testing.T) {
 func TestShellExecuteSuccess(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -67,7 +67,7 @@ func TestShellExecuteSuccess(t *testing.T) {
 }
 
 func TestShellDefinition(t *testing.T) {
-	tool := NewShellTool(config.DefaultConfig())
+	tool := New(config.DefaultConfig())
 	def := tool.Definition()
 	if def.Name != "shell" {
 		t.Errorf("Name = %q", def.Name)
@@ -80,7 +80,7 @@ func TestShellDefinition(t *testing.T) {
 func TestShellExecuteWithWorkdir(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	ctx := WithWorkdir(context.Background(), "/tmp")
 	result, err := tool.Execute(ctx, json.RawMessage(`{"command":"pwd"}`))
 	if err != nil {
@@ -95,7 +95,7 @@ func TestShellExecuteTimeout(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
 	cfg.MCP.Shell.TimeoutSeconds = 1
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"sleep 5"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -108,7 +108,7 @@ func TestShellExecuteTimeout(t *testing.T) {
 func TestShellExecutePipeCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | wc -c"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -121,7 +121,7 @@ func TestShellExecutePipeCommand(t *testing.T) {
 func TestShellExecuteRedirectCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	// Use a pipe to test shell features: echo piped to cat with redirect target
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | tee /dev/null"}`))
 	if err != nil {
@@ -135,7 +135,7 @@ func TestShellExecuteRedirectCommand(t *testing.T) {
 func TestShellExecuteRestrictedMode(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = []string{"echo", "ls"}
-	tool := NewShellTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)

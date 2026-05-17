@@ -1,4 +1,4 @@
-package mcp
+package cdp
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 func TestCDPShutdownUninitialized(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.CDP.IdleTimeout = 0
-	tool := NewCDPTool(cfg)
+	tool := New(cfg)
 	tool.Shutdown()
 }
 
@@ -40,7 +40,7 @@ func TestCDPNavigateNoURL(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.CDP.IdleTimeout = 0
 	cfg.MCP.CDP.Enabled = false
-	tool := NewCDPTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"navigate"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -53,7 +53,7 @@ func TestCDPNavigateNoURL(t *testing.T) {
 func TestCDPClickNoSelector(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.CDP.IdleTimeout = 0
-	tool := NewCDPTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"click"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -66,7 +66,7 @@ func TestCDPClickNoSelector(t *testing.T) {
 func TestCDPUnknownAction(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.CDP.IdleTimeout = 0
-	tool := NewCDPTool(cfg)
+	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"action":"invalid"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -79,7 +79,7 @@ func TestCDPUnknownAction(t *testing.T) {
 func TestCDPInvalidInput(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.CDP.IdleTimeout = 0
-	tool := NewCDPTool(cfg)
+	tool := New(cfg)
 	_, err := tool.Execute(context.Background(), json.RawMessage(`{invalid json}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
@@ -98,7 +98,7 @@ func TestCDPIntegrationNavigateAndScreenshot(t *testing.T) {
 	cfg.MCP.CDP.StartupTimeout = 30
 	cfg.MCP.CDP.Priority = 1000
 
-	tool := NewCDPTool(cfg)
+	tool := New(cfg)
 	defer tool.Shutdown()
 
 	t.Run("navigate", func(t *testing.T) {

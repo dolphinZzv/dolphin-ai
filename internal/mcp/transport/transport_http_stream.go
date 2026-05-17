@@ -1,4 +1,4 @@
-package mcp
+package transport
 
 import (
 	"bytes"
@@ -23,7 +23,8 @@ type httpStreamTransport struct {
 	client    *http.Client
 }
 
-func newHTTPStreamTransport(name string, cfg config.MCPServerConfig) (*httpStreamTransport, error) {
+// NewHTTPStream creates a Streamable HTTP transport for a remote MCP server.
+func NewHTTPStream(name string, cfg config.MCPServerConfig) (*httpStreamTransport, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("mcp server %q: url is required for http-stream transport", name)
 	}
@@ -31,16 +32,16 @@ func newHTTPStreamTransport(name string, cfg config.MCPServerConfig) (*httpStrea
 		cfg:     cfg,
 		name:    name,
 		baseURL: strings.TrimRight(cfg.URL, "/"),
-		client:  newHTTPClient(cfg.Timeout),
+		client:  NewHTTPClient(cfg.Timeout),
 	}, nil
 }
 
-func (t *httpStreamTransport) connect(ctx context.Context) error {
+func (t *httpStreamTransport) Connect(ctx context.Context) error {
 	zap.S().Debugw("http-stream transport ready", "server", t.name, "url", t.baseURL)
 	return nil
 }
 
-func (t *httpStreamTransport) sendRequest(ctx context.Context, reqJSON map[string]any) (json.RawMessage, error) {
+func (t *httpStreamTransport) SendRequest(ctx context.Context, reqJSON map[string]any) (json.RawMessage, error) {
 	body, err := json.Marshal(reqJSON)
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
@@ -67,7 +68,6 @@ func (t *httpStreamTransport) sendRequest(ctx context.Context, reqJSON map[strin
 		return nil, fmt.Errorf("http error: %d", resp.StatusCode)
 	}
 
-	// Persist session ID if server sends one
 	if sid := resp.Header.Get("Mcp-Session-Id"); sid != "" {
 		t.sessionID = sid
 	}
@@ -77,7 +77,6 @@ func (t *httpStreamTransport) sendRequest(ctx context.Context, reqJSON map[strin
 		return t.parseSSEResponse(resp.Body, reqJSON["id"])
 	}
 
-	// Plain JSON response
 	var msg struct {
 		Result json.RawMessage `json:"result"`
 		Error  *struct {
@@ -94,12 +93,11 @@ func (t *httpStreamTransport) sendRequest(ctx context.Context, reqJSON map[strin
 	return msg.Result, nil
 }
 
-// parseSSEResponse reads an SSE stream and extracts the JSON-RPC result.
 func (t *httpStreamTransport) parseSSEResponse(r io.Reader, _ any) (json.RawMessage, error) {
-	return parseSSEResult(r)
+	return ParseSSEResult(r)
 }
 
-func (t *httpStreamTransport) sendNotification(ctx context.Context, notif map[string]any) error {
+func (t *httpStreamTransport) SendNotification(ctx context.Context, notif map[string]any) error {
 	url := t.baseURL + "/message"
 	setHeaders := func(req *http.Request) {
 		t.setHeaders(req)
@@ -107,10 +105,10 @@ func (t *httpStreamTransport) sendNotification(ctx context.Context, notif map[st
 			req.Header.Set("Mcp-Session-Id", t.sessionID)
 		}
 	}
-	return NewSSENotification(ctx, url, notif, setHeaders, t.client)
+	return NewNotification(ctx, url, notif, setHeaders, t.client)
 }
 
-func (t *httpStreamTransport) close() error {
+func (t *httpStreamTransport) Close() error {
 	return nil
 }
 
