@@ -62,6 +62,7 @@ type Builder struct {
 type SectionInfo struct {
 	Name     string
 	Priority int
+	Size     int // content length in bytes
 }
 
 // LoadedSections returns info about sections included in the last build.
@@ -69,10 +70,20 @@ func (b *Builder) LoadedSections() []SectionInfo {
 	return b.loadedSections
 }
 
-// LoadSection loads a single context section by filename (e.g. "SYSTEM.md")
-// using the standard fallback chain: project > user > system.
+// LoadSection loads a single context section by filename (e.g. "SYSTEM.md").
+// Checks embedded content first (PREFACE.md, BUILTIN_SKILLS.md, SELF_EVOLUTION_SKILLS.md),
+// then falls back to the standard project > user > system chain.
 func (b *Builder) LoadSection(name string) string {
-	return b.loadFileFallback("", name)
+	switch name {
+	case "PREFACE.md":
+		return DefaultPreface
+	case "BUILTIN_SKILLS.md":
+		return BuiltinSkills
+	case "SELF_EVOLUTION_SKILLS.md", "SELF_EVOLUTION.md":
+		return SelfEvolutionSkills
+	default:
+		return b.loadFileFallback("", name)
+	}
 }
 
 func NewBuilder() *Builder {
@@ -133,72 +144,80 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 
 	// SOUL.md (project > user > system, optional)
 	if soul := b.loadFileFallback("", "SOUL.md"); soul != "" {
+		content := "## Soul\n" + soul
 		secs = append(secs, section{
 			priority: b.sectionPriority("soul", PrioritySoul),
-			content:  "## Soul\n" + soul,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SOUL.md", Priority: b.sectionPriority("soul", PrioritySoul)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SOUL.md", Priority: b.sectionPriority("soul", PrioritySoul), Size: len(content)})
 	}
 
 	// PREFACE (embedded, always)
+	content := DefaultPreface
 	secs = append(secs, section{
 		priority: b.sectionPriority("preface", PriorityPreface),
-		content:  DefaultPreface,
+		content:  content,
 	})
-	b.loadedSections = append(b.loadedSections, SectionInfo{Name: "PREFACE.md", Priority: b.sectionPriority("preface", PriorityPreface)})
+	b.loadedSections = append(b.loadedSections, SectionInfo{Name: "PREFACE.md", Priority: b.sectionPriority("preface", PriorityPreface), Size: len(content)})
 
 	// BUILTIN SKILLS (embedded, always)
 	if BuiltinSkills != "" {
+		content := BuiltinSkills
 		secs = append(secs, section{
 			priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills),
-			content:  BuiltinSkills,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "BUILTIN_SKILLS.md", Priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "BUILTIN_SKILLS.md", Priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills), Size: len(content)})
 	}
 
 	// SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
 	if b.SelfEvolution && SelfEvolutionSkills != "" {
+		content := SelfEvolutionSkills
 		secs = append(secs, section{
 			priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills),
-			content:  SelfEvolutionSkills,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SELF_EVOLUTION.md", Priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SELF_EVOLUTION.md", Priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills), Size: len(content)})
 	}
 
 	// AGENTS.md (agent > project > user > system)
 	if agents := b.loadFileFallback(agentDir, "AGENTS.md"); agents != "" {
+		content := "## Agent Definitions\n" + agents
 		secs = append(secs, section{
 			priority: b.sectionPriority("agents", PriorityAgents),
-			content:  "## Agent Definitions\n" + agents,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "AGENTS.md", Priority: b.sectionPriority("agents", PriorityAgents)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "AGENTS.md", Priority: b.sectionPriority("agents", PriorityAgents), Size: len(content)})
 	}
 
 	// RULES.md
 	if rules := b.loadFileFallback(agentDir, "RULES.md"); rules != "" {
+		content := "## Rules\n" + rules
 		secs = append(secs, section{
 			priority: b.sectionPriority("rules", PriorityRules),
-			content:  "## Rules\n" + rules,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "RULES.md", Priority: b.sectionPriority("rules", PriorityRules)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "RULES.md", Priority: b.sectionPriority("rules", PriorityRules), Size: len(content)})
 	}
 
 	// USER.md
 	if user := b.loadFileFallback(agentDir, "USER.md"); user != "" {
+		content := "## User Context\n" + user
 		secs = append(secs, section{
 			priority: b.sectionPriority("user", PriorityUser),
-			content:  "## User Context\n" + user,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "USER.md", Priority: b.sectionPriority("user", PriorityUser)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "USER.md", Priority: b.sectionPriority("user", PriorityUser), Size: len(content)})
 	}
 
 	// SYSTEM.md (user dir only — generated once, injected every startup)
 	if sys := b.loadSystemMD(); sys != "" {
+		content := "## System\n" + sys
 		secs = append(secs, section{
 			priority: b.sectionPriority("system", PrioritySystem),
-			content:  "## System\n" + sys,
+			content:  content,
 		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem)})
+		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem), Size: len(content)})
 	}
 
 	// Sort by priority ascending

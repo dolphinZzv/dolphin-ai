@@ -556,7 +556,8 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 	if loaded := c.ctxBuilder.LoadedSections(); len(loaded) > 0 {
 		io.WriteLine(i18n.TL(i18n.KeyContextSectionsHd))
 		for _, s := range loaded {
-			io.WriteLine(fmt.Sprintf("  %-20s %d", s.Name, s.Priority))
+			size := formatSize(s.Size)
+			io.WriteLine(fmt.Sprintf("  %-20s %d  %s", s.Name, s.Priority, size))
 		}
 		io.WriteLine("")
 	}
@@ -643,6 +644,17 @@ func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
 		io.WriteLine(line)
 	}
 	io.WriteLine("")
+}
+
+func formatSize(n int) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%d B", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	default:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
+	}
 }
 
 func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io transport.UserIO) {

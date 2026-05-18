@@ -136,7 +136,7 @@ var zhMessages = map[string]string{
 	KeyContextCommandsNA: "命令：        不可用",
 	KeyContextCron:       "定时任务：    %d 个已调度",
 	KeyContextSelfEvolve: "自进化：      %v",
-	KeyContextSectionsHd: "--- 上下文章节（优先级）---",
+	KeyContextSectionsHd: "--- 上下文章节（优先级 · 大小）---",
 
 	// pprof
 	KeyPprofBanner: "\n=== pprof 服务监听在 %s ===\n",

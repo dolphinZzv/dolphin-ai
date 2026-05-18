@@ -136,7 +136,7 @@ var enMessages = map[string]string{
 	KeyContextCommandsNA: "Commands:     not available",
 	KeyContextCron:       "Cron Tasks:   %d scheduled",
 	KeyContextSelfEvolve: "Self-Evolve:  %v",
-	KeyContextSectionsHd: "--- Context Sections (priority) ---",
+	KeyContextSectionsHd: "--- Context Sections (priority · size) ---",
 
 	// pprof
 	KeyPprofBanner: "\n=== pprof server on %s ===\n",
