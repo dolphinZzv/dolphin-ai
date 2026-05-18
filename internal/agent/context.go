@@ -27,3 +27,8 @@ func (b *ContextBuilder) BuildForAgent(agentName string) (string, error) {
 func (b *ContextBuilder) SetRenderData(cfg *config.Config) {
 	b.b.SetRenderData(ctx.NewRenderData(cfg))
 }
+
+// SetSelfEvolution enables or disables self-evolution skills in the prompt.
+func (b *ContextBuilder) SetSelfEvolution(enabled bool) {
+	b.b.SelfEvolution = enabled
+}

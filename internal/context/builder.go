@@ -23,6 +23,11 @@ type Builder struct {
 	systemDir  string
 	statCache  map[string]cachedFile
 	rdata      *RenderData
+
+	// SelfEvolution controls whether SELF_EVOLUTION_SKILLS.md is included
+	// in the built prompt. When enabled, LLM tools for config CRUD, skill
+	// management, command management, reload, and context are documented.
+	SelfEvolution bool
 }
 
 func NewBuilder() *Builder {
@@ -77,6 +82,11 @@ func (b *Builder) BuildForAgent(agentName string) (string, error) {
 	// 2. BUILTIN SKILLS (embedded, always)
 	if BuiltinSkills != "" {
 		parts = append(parts, BuiltinSkills)
+	}
+
+	// 2b. SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
+	if b.SelfEvolution && SelfEvolutionSkills != "" {
+		parts = append(parts, SelfEvolutionSkills)
 	}
 
 	// 3. AGENTS.md (agent > project > user > system)
