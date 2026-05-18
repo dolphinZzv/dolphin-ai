@@ -121,16 +121,21 @@ dolphin 支持 **Linux**、**macOS** 和 **Windows**（arm64 和 x86_64）。完
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
 cd dolphin
+```
 
-# Linux / macOS
-make build                  # 开发版本（版本号 = dev）
-make build VERSION=v1.0.0   # 发布版本
+**Linux**
+```bash
+make build
+```
 
-# Windows（PowerShell）
-go build -o dolphin.exe .   # 开发版本
+**macOS**
+```bash
+make build
+```
 
-# Windows（通过 Chocolatey/winget 安装 make 后）
-make build                  # 开发版本
+**Windows**
+```powershell
+go build -o dolphin.exe .
 ```
 
 详细文档见 `design/` 目录。

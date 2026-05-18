@@ -104,16 +104,21 @@ Quick reference:
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
 cd dolphin
+```
 
-# Linux / macOS
-make build              # development build (version = dev)
-make build VERSION=v1.0.0   # release build
+**Linux**
+```bash
+make build
+```
 
-# Windows (PowerShell)
-go build -o dolphin.exe .   # development build
+**macOS**
+```bash
+make build
+```
 
-# Windows (with make, via Chocolatey/winget)
-make build                  # development build
+**Windows**
+```powershell
+go build -o dolphin.exe .
 ```
 
 Documentation lives in `design/`.
