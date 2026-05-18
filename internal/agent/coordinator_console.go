@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"dolphin/internal/agent/console"
+	ctx "dolphin/internal/context"
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
@@ -533,6 +534,18 @@ func (c *Coordinator) printContext(io transport.UserIO) {
 	runtime.ReadMemStats(&m)
 	io.WriteLine(fmt.Sprintf("Memory:       %d MB used", m.Alloc/1024/1024))
 	io.WriteLine(fmt.Sprintf("Self-Evolve:  %v", c.cfg.Flags.SelfEvolution))
+	io.WriteLine("")
+	io.WriteLine("--- Context Sections (priority) ---")
+	io.WriteLine(fmt.Sprintf("  SOUL.md              %d", ctx.PrioritySoul))
+	io.WriteLine(fmt.Sprintf("  PREFACE.md           %d", ctx.PriorityPreface))
+	io.WriteLine(fmt.Sprintf("  BUILTIN_SKILLS.md    %d", ctx.PriorityBuiltinSkills))
+	if c.cfg.Flags.SelfEvolution {
+		io.WriteLine(fmt.Sprintf("  SELF_EVOLUTION.md    %d", ctx.PrioritySelfEvoSkills))
+	}
+	io.WriteLine(fmt.Sprintf("  AGENTS.md            %d", ctx.PriorityAgents))
+	io.WriteLine(fmt.Sprintf("  RULES.md             %d", ctx.PriorityRules))
+	io.WriteLine(fmt.Sprintf("  USER.md              %d", ctx.PriorityUser))
+	io.WriteLine(fmt.Sprintf("  SYSTEM.md            %d", ctx.PrioritySystem))
 	io.WriteLine("")
 }
 
