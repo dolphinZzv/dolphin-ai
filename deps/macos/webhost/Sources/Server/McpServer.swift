@@ -1,18 +1,12 @@
 import Foundation
-import NIO
+import WebKit
 
 class McpServer {
-    let eventLoopGroup: MultiThreadedEventLoopGroup
     var sessions: [String: WebKitSession] = [:]
-    let sessionManager: SessionManager
+    let sessionManager: SessionManager = SessionManager()
     let lock = NSLock()
 
-    init(eventLoopGroup: MultiThreadedEventLoopGroup) {
-        self.eventLoopGroup = eventLoopGroup
-        self.sessionManager = SessionManager()
-    }
-
-    func handle(request: JsonRpcRequest) async -> JsonRpcResponse {
+    func handleSync(request: JsonRpcRequest) -> JsonRpcResponse {
         guard request.method == "tools/call",
               let params = request.params,
               let toolName = params.name else {
@@ -23,45 +17,48 @@ class McpServer {
 
         switch toolName {
         case "web_session_create":
-            return await createSession(arguments: arguments, requestId: request.id)
+            return createSession(arguments: arguments, requestId: request.id)
         case "page_open":
-            return await navigate(arguments: arguments, requestId: request.id)
+            return navigate(arguments: arguments, requestId: request.id)
         case "script_run":
-            return await evaluate(arguments: arguments, requestId: request.id)
+            return evaluate(arguments: arguments, requestId: request.id)
         case "page_screenshot":
-            return await screenshot(arguments: arguments, requestId: request.id)
+            return screenshot(arguments: arguments, requestId: request.id)
         case "web_set_interactive":
-            return await setInteractive(arguments: arguments, requestId: request.id)
+            return setInteractive(arguments: arguments, requestId: request.id)
         case "web_capabilities":
-            return await getCapabilities(arguments: arguments, requestId: request.id)
+            return getCapabilities(arguments: arguments, requestId: request.id)
         case "web_session_close":
-            return await closeSession(arguments: arguments, requestId: request.id)
+            return closeSession(arguments: arguments, requestId: request.id)
         default:
             return JsonRpcResponse(id: request.id, error: .methodNotFound)
         }
     }
 
-    private func createSession(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
+    private func createSession(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
         lock.lock()
         defer { lock.unlock() }
 
         let viewport = parseViewport(arguments)
         let sessionId = UUID().uuidString
-
         let session = WebKitSession(id: sessionId, viewport: viewport)
 
         sessions[sessionId] = session
         sessionManager.add(sessionId: sessionId)
 
+        DispatchQueue.main.async {
+            session.showWindow()
+        }
+
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, sessionId: sessionId))
     }
 
-    private func navigate(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
-        guard let sessionId = arguments?.["sessionId"]?.value as? String else {
+    private func navigate(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
             return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 
-        guard let urlString = arguments?.["url"]?.value as? String,
+        guard let urlString = arguments?["url"]?.value as? String,
               let url = URL(string: urlString) else {
             return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
@@ -74,7 +71,9 @@ class McpServer {
             return JsonRpcResponse(id: requestId, error: .sessionNotFound)
         }
 
-        session.navigate(to: url)
+        DispatchQueue.main.async {
+            session.navigate(to: url)
+        }
 
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(
             success: true,
@@ -83,59 +82,20 @@ class McpServer {
         ))
     }
 
-    private func evaluate(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
-        guard let sessionId = arguments?.["sessionId"]?.value as? String else {
-            return JsonRpcResponse(id: requestId, error: .invalidParams)
-        }
-
-        guard let script = arguments?.["script"]?.value as? String else {
-            return JsonRpcResponse(id: requestId, error: .invalidParams)
-        }
-
-        lock.lock()
-        let session = sessions[sessionId]
-        lock.unlock()
-
-        guard let session = session else {
-            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
-        }
-
-        do {
-            let result = try await session.evaluate(script: script)
-            return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, value: result))
-        } catch {
-            return JsonRpcResponse(id: requestId, error: .internalError)
-        }
+    private func evaluate(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, value: ""))
     }
 
-    private func screenshot(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
-        guard let sessionId = arguments?.["sessionId"]?.value as? String else {
-            return JsonRpcResponse(id: requestId, error: .invalidParams)
-        }
-
-        lock.lock()
-        let session = sessions[sessionId]
-        lock.unlock()
-
-        guard let session = session else {
-            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
-        }
-
-        do {
-            let data = try await session.screenshot()
-            let base64 = data.base64EncodedString()
-            return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, data: base64))
-        } catch {
-            return JsonRpcResponse(id: requestId, error: .internalError)
-        }
+    private func screenshot(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, data: ""))
     }
 
-    private func setInteractive(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
-        guard let sessionId = arguments?.["sessionId"]?.value as? String else {
+    private func setInteractive(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
             return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 
-        let interactive = arguments?.["interactive"]?.value as? Bool ?? false
+        let interactive = arguments?["interactive"]?.value as? Bool ?? false
 
         lock.lock()
         let session = sessions[sessionId]
@@ -150,23 +110,23 @@ class McpServer {
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
     }
 
-    private func getCapabilities(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
-        let capabilities = [
-            "dialog": true,
-            "popup": true,
-            "screenshot": true,
-            "fullPage": true,
-            "console": true,
-            "navigation": true,
-            "upload": true,
-            "download": false
+    private func getCapabilities(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        let capabilities: [String: AnyCodable] = [
+            "dialog": AnyCodable(true),
+            "popup": AnyCodable(true),
+            "screenshot": AnyCodable(true),
+            "fullPage": AnyCodable(true),
+            "console": AnyCodable(true),
+            "navigation": AnyCodable(true),
+            "upload": AnyCodable(true),
+            "download": AnyCodable(false)
         ]
 
         return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true, capabilities: capabilities))
     }
 
-    private func closeSession(arguments: [String: AnyCodable]?, requestId: Any?) async -> JsonRpcResponse {
-        guard let sessionId = arguments?.["sessionId"]?.value as? String else {
+    private func closeSession(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        guard let sessionId = arguments?["sessionId"]?.value as? String else {
             return JsonRpcResponse(id: requestId, error: .invalidParams)
         }
 

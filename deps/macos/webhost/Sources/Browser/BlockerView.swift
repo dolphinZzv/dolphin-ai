@@ -6,5 +6,5 @@ class BlockerView: NSView {
     override func mouseDown(with event: NSEvent) {}
     override func mouseUp(with event: NSEvent) {}
     override func rightMouseDown(with event: NSEvent) {}
-    override func keyDown(with event: NSEvent) -> Bool { false }
+    override func keyDown(with event: NSEvent) {}
 }

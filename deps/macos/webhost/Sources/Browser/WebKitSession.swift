@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import WebKit
 
@@ -8,15 +9,27 @@ class WebKitSession: NSObject, Sendable {
     private var blockerView: BlockerView?
     private let eventBuffer = EventBuffer()
     private let lock = NSLock()
+    private let hostWindow: NSWindow
 
     init(id: String, viewport: Viewport) {
         self.id = id
         let config = WKWebViewConfiguration()
-        config.preferences.javaScriptEnabled = true
         webView = WKWebView(frame: NSRect(x: 0, y: 0, width: viewport.width, height: viewport.height), configuration: config)
+        hostWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: viewport.width, height: viewport.height),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                              backing: .buffered,
+                              defer: false)
+        hostWindow.title = "Browser - \(id.prefix(8))"
+        hostWindow.backgroundColor = .white
+        hostWindow.setFrame(NSRect(x: 100, y: 100, width: viewport.width, height: viewport.height), display: true)
+        hostWindow.contentView?.addSubview(webView)
         super.init()
-        webView.UIDelegate = self
+        webView.uiDelegate = self
         webView.navigationDelegate = self
+    }
+
+    func showWindow() {
+        hostWindow.makeKeyAndOrderFront(nil)
     }
 
     func evaluate(script: String) async throws -> String {
@@ -32,18 +45,15 @@ class WebKitSession: NSObject, Sendable {
     }
 
     @MainActor func screenshot() throws -> Data {
-        let bounds = NSRect(x: 0, y: 0, width: webView.bounds.width, height: webView.bounds.height)
-        let success = webView.drawHierarchy(in: bounds, afterScreenUpdates: true)
-        guard success else { throw WebHostError.drawHierarchyFailed }
+        let bounds = webView.bounds
+        webView.layoutSubtreeIfNeeded()
 
-        guard let window = webView.window,
-              let bitmap = window.contentView?.bitmapImageRepForCachingDisplay(in: bounds),
-              let cgImage = bitmap.cgImage else {
+        guard let bitmapRep = hostWindow.contentView?.bitmapImageRepForCachingDisplay(in: bounds) else {
             throw WebHostError.captureFailed
         }
+        hostWindow.contentView?.cacheDisplay(in: bounds, to: bitmapRep)
 
-        let nsImage = NSImage(cgImage: cgImage, size: bounds.size)
-        guard let pngData = nsImage.pngData() else {
+        guard let pngData = bitmapRep.representation(using: .png, properties: [:]) else {
             throw WebHostError.pngConversionFailed
         }
         return pngData
@@ -124,7 +134,7 @@ extension WebKitSession: WKUIDelegate {
                  for navigationAction: WKNavigationAction,
                  windowFeatures: WKWindowFeatures) -> WKWebView? {
         let url = navigationAction.request.url?.absoluteString ?? ""
-        let event = WebEvent.popup(url: url, popupId: UUID().uuidString)
+        let event = WebEvent.popup(url, popupId: UUID().uuidString)
         pushEvent(event)
         return nil
     }
@@ -143,7 +153,6 @@ extension WebKitSession: WKNavigationDelegate {
 }
 
 enum WebHostError: Error {
-    case drawHierarchyFailed
     case captureFailed
     case pngConversionFailed
 }

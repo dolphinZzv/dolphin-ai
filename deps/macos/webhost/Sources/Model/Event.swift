@@ -34,8 +34,8 @@ struct WebEvent {
     }
 
     static func navigation(_ url: String, status: String, progress: Int? = nil) -> Event {
-        var params = ["url": url, "status": status]
-        if let p = progress { params["progress"] = p }
+        var params = ["url": url, "status": status] as [String: Any]
+        if let p = progress { params["progress"] = String(p) }
         return Event(method: "web/navigation", params: params)
     }
 
