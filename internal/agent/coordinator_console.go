@@ -76,6 +76,13 @@ func (c *Coordinator) onboardConsole() {
 		Name: "context", Desc: i18n.TL(i18n.KeyHelpContext),
 		Handler: func(args []string, io transport.UserIO) { c.printContext(args, io) },
 	})
+	con.Add(&console.Command{
+		Name: "reload", Desc: i18n.TL(i18n.KeyHelpReload),
+		Handler: func(args []string, io transport.UserIO) {
+			c.reloadRequested = true
+			io.WriteLine("Reloading agent...")
+		},
+	})
 
 	c.console = con
 }
@@ -86,6 +93,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
 	io.WriteLine(i18n.TL(i18n.KeyHelpContext))
 	io.WriteLine(i18n.TL(i18n.KeyHelpExit))
+	io.WriteLine(i18n.TL(i18n.KeyHelpReload))
 	io.WriteLine("")
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))

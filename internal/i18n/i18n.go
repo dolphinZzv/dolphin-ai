@@ -141,6 +141,7 @@ const (
 
 	// /context
 	KeyHelpContext       = "help_context"
+	KeyHelpReload        = "help_reload"
 	KeyContextSummaryHd  = "context_summary_hd"
 	KeyContextSectionNF  = "context_section_nf"
 	KeyContextSectionHd  = "context_section_hd"

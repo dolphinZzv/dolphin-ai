@@ -30,7 +30,7 @@ var zhMessages = map[string]string{
 	KeyConfigGenerated:   "配置文件已生成",
 
 	// Coordinator interaction
-	KeyCoordReady:          "dolphin 协调器已就绪\n  /exit            退出协调器\n  /help           显示帮助\n  /status         显示当前状态\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /sessions       查看历史会话\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n",
+	KeyCoordReady:          "dolphin ai 已就绪\n  /exit            退出\n  /help           显示帮助\n  /status         显示当前状态\n  /agents         列出代理及状态\n  /skills         列出技能\n  /commands       用户自定义命令\n  /crontab        查看定时任务\n  /sessions       查看历史会话\n  /mcp            列出 MCP 工具\n  /model [name]   列出或切换 LLM 提供商\n  /reload         重新加载代理\n",
 	KeyHelpHeader:          "命令：",
 	KeyHelpExit:            "  /exit          - 退出",
 	KeyHelpHelp:            "  /help         - 显示帮助",
@@ -122,6 +122,7 @@ var zhMessages = map[string]string{
 	KeySessionRow:     "  %s  %4d 轮  %s",
 
 	// /context
+	KeyHelpReload:      "  /reload       - 重新加载（重启）代理",
 	KeyHelpContext:       "  /context       - 显示当前上下文摘要；/context <名称> 查看章节内容",
 	KeyContextSummaryHd:  "=== 上下文摘要 ===",
 	KeyContextSectionNF:  "章节 %q 未找到。",

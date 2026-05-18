@@ -30,7 +30,7 @@ var enMessages = map[string]string{
 	KeyConfigGenerated:   "Config generated",
 
 	// Coordinator interaction
-	KeyCoordReady:          "dolphin Coordinator Ready\n  /exit           Quit coordinator\n  /help           Show help\n  /status         Show status\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /sessions       List past sessions\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n",
+	KeyCoordReady:          "dolphin Coordinator Ready\n  /exit           Quit\n  /help           Show help\n  /status         Show status\n  /agents         List agents & status\n  /skills         List skills\n  /commands       User-defined commands\n  /crontab        View scheduled tasks\n  /sessions       List past sessions\n  /mcp            List MCP tools\n  /model [name]   List or switch LLM provider\n  /reload         Reload (restart) the agent\n",
 	KeyHelpHeader:          "Commands:",
 	KeyHelpExit:            "  /exit          - Exit",
 	KeyHelpHelp:            "  /help         - This help",
@@ -122,6 +122,7 @@ var enMessages = map[string]string{
 	KeySessionRow:     "  %s  %4d turns  %s",
 
 	// /context
+	KeyHelpReload:      "  /reload       - Reload (restart) the agent",
 	KeyHelpContext:       "  /context       - Show current context summary; /context <name> to view section",
 	KeyContextSummaryHd:  "=== Context Summary ===",
 	KeyContextSectionNF:  "Section %q not found.",
