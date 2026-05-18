@@ -69,6 +69,10 @@ func (c *Coordinator) onboardConsole() {
 		Name: "cancel", Desc: "Cancel running tasks",
 		Handler: func(args []string, io transport.UserIO) { c.handleCancelCmd(args, io) },
 	})
+	con.Add(&console.Command{
+		Name: "context", Desc: "Show current context summary",
+		Handler: func(args []string, io transport.UserIO) { c.printContext(io) },
+	})
 
 	c.console = con
 }
@@ -85,6 +89,7 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
+	io.WriteLine("  /context - Show current context summary")
 	io.WriteLine("")
 	io.WriteLine(i18n.TL(i18n.KeyHelpTopMCP))
 	stats := c.toolReg.ToolStats()
@@ -486,6 +491,48 @@ func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io t
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusMemory), m.Alloc/1024/1024))
+	io.WriteLine("")
+}
+
+func (c *Coordinator) printContext(io transport.UserIO) {
+	io.WriteLine("=== Context Summary ===\n")
+
+	sessionID := "none"
+	if c.currentSess != nil {
+		sessionID = string(c.currentSess.ID)
+	}
+	io.WriteLine(fmt.Sprintf("Session:      %s", sessionID))
+	io.WriteLine(fmt.Sprintf("Provider:     %s (%s)", c.cfg.LLM.Model, c.provider.Name()))
+	io.WriteLine(fmt.Sprintf("Config Paths: %d total", len(configurablePaths)))
+	io.WriteLine(fmt.Sprintf("MCP Tools:    %d registered", len(c.toolReg.List())))
+
+	agents := c.pool.List()
+	busyCount := 0
+	for _, a := range agents {
+		if a.Status == "busy" {
+			busyCount++
+		}
+	}
+	io.WriteLine(fmt.Sprintf("Agents:       %d (%d busy)", len(agents), busyCount))
+
+	if c.skills != nil {
+		io.WriteLine(fmt.Sprintf("Skills:       %d available", len(c.skills.List())))
+	} else {
+		io.WriteLine("Skills:       not available")
+	}
+	if c.commands != nil {
+		io.WriteLine(fmt.Sprintf("Commands:     %d available", len(c.commands.List())))
+	} else {
+		io.WriteLine("Commands:     not available")
+	}
+	if c.cronMgr != nil {
+		io.WriteLine(fmt.Sprintf("Cron Tasks:   %d scheduled", len(c.cronMgr.List())))
+	}
+
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	io.WriteLine(fmt.Sprintf("Memory:       %d MB used", m.Alloc/1024/1024))
+	io.WriteLine(fmt.Sprintf("Self-Evolve:  %v", c.cfg.Flags.SelfEvolution))
 	io.WriteLine("")
 }
 

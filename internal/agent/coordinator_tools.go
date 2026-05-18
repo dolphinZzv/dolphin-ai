@@ -192,6 +192,14 @@ func (c *Coordinator) registerCoordinatorTools() {
 			},
 			c.handleReload,
 		)
+		c.registerCoordTool("context",
+			"Show the full agent context including system prompt, available agents, tools, skills, pending results, and config settings. Use this to understand the current execution environment.",
+			map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+			c.handleContextTool,
+		)
 	}
 	c.registerCoordTool("add_cron_task",
 		"Add a scheduled task that runs on a cron schedule.",
@@ -866,6 +874,12 @@ func (c *Coordinator) handleReload(ctx context.Context, _ json.RawMessage) (*mcp
 	zap.S().Infow("reload requested by LLM")
 	return &mcp.ToolResult{
 		Content: "Reloading agent. The current session will disconnect and the agent will restart cleanly.",
+	}, nil
+}
+
+func (c *Coordinator) handleContextTool(_ context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
+	return &mcp.ToolResult{
+		Content: c.buildDynamicPrompt(),
 	}, nil
 }
 // handlerTool wraps a function as an MCP Tool.

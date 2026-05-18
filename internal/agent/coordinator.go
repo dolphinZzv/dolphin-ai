@@ -80,7 +80,7 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		coreTools = append(coreTools,
 			"create_skill", "update_skill", "delete_skill",
 			"create_command", "update_command", "delete_command",
-			"reload")
+			"reload", "context")
 	}
 	loaded := make(map[string]bool, len(coreTools))
 	for _, name := range coreTools {

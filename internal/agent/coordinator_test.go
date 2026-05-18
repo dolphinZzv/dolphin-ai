@@ -1706,6 +1706,46 @@ func TestHandleReloadWithoutEvents(t *testing.T) {
 	}
 }
 
+func TestHandleContextTool(t *testing.T) {
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	c := &Coordinator{
+		Agent: &Agent{cfg: cfg},
+		pool:  NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
+	}
+	result, err := c.handleContextTool(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "Coordinator") && !strings.Contains(result.Content, "system") {
+		t.Errorf("context should contain prompt content, got: %s", result.Content)
+	}
+}
+
+func TestPrintContextConsole(t *testing.T) {
+	io := &mockIO{}
+	ctx := context.Background()
+	cfg := config.DefaultConfig()
+	c := &Coordinator{
+		Agent: &Agent{
+			cfg:     cfg,
+			provider: &mockProvider{},
+			toolReg: mcp.NewRegistry(cfg),
+		},
+		pool: NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
+	}
+	c.currentSess = &session.Session{ID: "test"}
+	c.basePrompt = "test prompt"
+	c.printContext(io)
+	output := io.writes.String()
+	if !strings.Contains(output, "Context Summary") && !strings.Contains(output, "Session") {
+		t.Errorf("output should contain context heading, got: %s", output)
+	}
+}
+
 func TestCoordinatorHandleSkillNewNilManager(t *testing.T) {
 	io := &mockIO{}
 	c := &Coordinator{}
