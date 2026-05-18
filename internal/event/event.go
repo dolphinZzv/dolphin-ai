@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/xid"
 	"go.uber.org/zap"
 )
 
@@ -31,6 +32,8 @@ const (
 	TypeAgentDispatched Type = "agent:dispatched"
 	TypeAgentCompleted  Type = "agent:completed"
 	TypeSkillLoaded     Type = "skill:loaded"
+	TypeAppStarted      Type = "app:started"
+	TypeAppStopped      Type = "app:stopped"
 )
 
 var AllTypes = []Type{
@@ -39,6 +42,7 @@ var AllTypes = []Type{
 	TypeToolCalled, TypeToolCompleted,
 	TypeCompression, TypeError, TypeHeartbeat,
 	TypeAgentDispatched, TypeAgentCompleted, TypeSkillLoaded,
+	TypeAppStarted, TypeAppStopped,
 }
 
 // Event is an asynchronous notification.
@@ -54,11 +58,17 @@ type Event struct {
 // indefinitely.
 type Handler func(ctx context.Context, evt Event)
 
+// handlerEntry wraps a handler with a unique ID for unsubscribe support.
+type handlerEntry struct {
+	id      string
+	handler Handler
+}
+
 // EventBus dispatches events to subscribers. It is safe for concurrent use.
 type EventBus struct {
 	mu       sync.RWMutex
-	subs     map[Type][]Handler // exact-type subscribers
-	wildcard []Handler          // "*" subscribers
+	subs     map[Type][]handlerEntry // exact-type subscribers
+	wildcard []handlerEntry          // "*" subscribers
 
 	buffer int
 
@@ -78,7 +88,7 @@ func NewEventBus(bufferSize int) *EventBus {
 		bufferSize = 256
 	}
 	return &EventBus{
-		subs:          make(map[Type][]Handler),
+		subs:          make(map[Type][]handlerEntry),
 		buffer:        bufferSize,
 		webhookEvents: make(map[Type]bool),
 		webhookClient: &http.Client{Timeout: 10 * time.Second},
@@ -86,13 +96,41 @@ func NewEventBus(bufferSize int) *EventBus {
 }
 
 // On subscribes a handler to an event type. Use "*" to receive all events.
-func (b *EventBus) On(t Type, h Handler) {
+// Returns an unsubscribe function that removes the handler.
+func (b *EventBus) On(t Type, h Handler) (unsubscribe func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	entry := handlerEntry{id: xid.New().String(), handler: h}
+
 	if t == "*" {
-		b.wildcard = append(b.wildcard, h)
-	} else {
-		b.subs[t] = append(b.subs[t], h)
+		b.wildcard = append(b.wildcard, entry)
+		return func() { b.removeHandler("", entry.id) }
+	}
+	b.subs[t] = append(b.subs[t], entry)
+	return func() { b.removeHandler(t, entry.id) }
+}
+
+func (b *EventBus) removeHandler(t Type, id string) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	if t == "" {
+		for i, e := range b.wildcard {
+			if e.id == id {
+				b.wildcard = append(b.wildcard[:i], b.wildcard[i+1:]...)
+				return
+			}
+		}
+		return
+	}
+
+	entries := b.subs[t]
+	for i, e := range entries {
+		if e.id == id {
+			b.subs[t] = append(entries[:i], entries[i+1:]...)
+			return
+		}
 	}
 }
 
@@ -131,8 +169,12 @@ func (b *EventBus) Emit(ctx context.Context, evt Event) {
 
 	b.mu.RLock()
 	handlers := make([]Handler, 0, len(b.subs[evt.Type])+len(b.wildcard))
-	handlers = append(handlers, b.subs[evt.Type]...)
-	handlers = append(handlers, b.wildcard...)
+	for _, e := range b.subs[evt.Type] {
+		handlers = append(handlers, e.handler)
+	}
+	for _, e := range b.wildcard {
+		handlers = append(handlers, e.handler)
+	}
 	logWriter := b.logWriter
 	webhookURL := b.webhookURL
 	shouldWebhook := b.webhookEvents[evt.Type]

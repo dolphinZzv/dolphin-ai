@@ -26,6 +26,7 @@ const (
 	EventSystem      EventType = "system"
 	EventSummary     EventType = "summary"
 	EventCompression EventType = "compression"
+	EventAgentAction EventType = "agent_action"
 )
 
 type SessionEvent struct {

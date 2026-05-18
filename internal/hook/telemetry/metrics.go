@@ -234,6 +234,21 @@ func registerCallbacks() {
 			span.End()
 		}
 	}
+
+	agent.TelemetryCallbacks.OnBuildinSpan = func(ctx context.Context, agentName, triggerEvent string) func() {
+		tr := Tracer(tracerName)
+		_, span := tr.Start(ctx, "buildin.action",
+			trace.WithSpanKind(trace.SpanKindInternal),
+		)
+		span.SetAttributes(
+			attribute.String("agent.name", agentName),
+			attribute.String("trigger.event", triggerEvent),
+		)
+		return func() {
+			span.SetStatus(codes.Ok, "")
+			span.End()
+		}
+	}
 }
 
 // ---- recording helpers (called from agent / provider code) ----

@@ -509,6 +509,9 @@ func (p *AgentPool) reapIdleAgents() {
 			p.mu.Lock()
 			var reap []*AgentInstance
 			for name, inst := range p.agents {
+				if inst.Kind == AgentBuildin {
+					continue // buildin agents are persistent
+				}
 				if inst.Kind != AgentCoord {
 					continue
 				}

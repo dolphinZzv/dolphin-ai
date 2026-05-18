@@ -6,8 +6,9 @@ import "time"
 type AgentKind int
 
 const (
-	AgentUser  AgentKind = iota // from .dolphin/agents/<name>/
-	AgentCoord                  // created by coordinator at runtime
+	AgentUser    AgentKind = iota // from .dolphin/agents/<name>/
+	AgentCoord                    // created by coordinator at runtime
+	AgentBuildin                  // system built-in, event-triggered
 )
 
 func (k AgentKind) String() string {
@@ -16,6 +17,8 @@ func (k AgentKind) String() string {
 		return "user"
 	case AgentCoord:
 		return "temp"
+	case AgentBuildin:
+		return "buildin"
 	default:
 		return "unknown"
 	}

@@ -109,17 +109,25 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 
 func (c *Coordinator) printAgents(io transport.UserIO) {
 	agents := c.pool.List()
-	if len(agents) == 0 {
-		io.WriteLine(i18n.TL(i18n.KeyNoAgents))
-		io.WriteLine(i18n.TL(i18n.KeyNoAgentsHint))
-		return
-	}
 
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyAgentHeader), "AGENT", "STATUS", "TYPE", "TASKS"))
 	io.WriteLine("------------------------------------------------")
 	for _, a := range agents {
 		io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %d",
 			a.Name, a.Status, a.Kind, a.TasksDone))
+	}
+
+	// Built-in agents from registry
+	if c.buildinRegistry != nil {
+		for _, ba := range c.buildinRegistry.List() {
+			io.WriteLine(fmt.Sprintf("%-16s %-10s %-6s %d",
+				ba.Name(), "active", "buildin", 0))
+		}
+	}
+
+	if len(agents) == 0 && (c.buildinRegistry == nil || len(c.buildinRegistry.List()) == 0) {
+		io.WriteLine(i18n.TL(i18n.KeyNoAgents))
+		io.WriteLine(i18n.TL(i18n.KeyNoAgentsHint))
 	}
 	io.WriteLine("")
 }
@@ -557,6 +565,7 @@ func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io tran
 	state.ErrorCount = 0
 	state.StopReason = ""
 	state.SummaryGenerated = false
+	c.currentSess = newSess
 
 	zap.S().Infow("session reset via /new",
 		"old_session", oldID,

@@ -7,8 +7,10 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
+	"dolphin/internal/agent/buildin"
 	"dolphin/internal/agent/compressor"
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/agent/console"
@@ -22,6 +24,7 @@ import (
 	"dolphin/internal/skill"
 	"dolphin/internal/transport"
 
+	"github.com/rs/xid"
 	"go.uber.org/zap"
 )
 
@@ -37,6 +40,9 @@ type Coordinator struct {
 	pending          []TaskResult // results collected but not yet in LLM context
 	startupRecommend *config.Recommendation
 	loadedTools      map[string]bool // MCP tools loaded by LLM via load_mcp_tools
+	buildinRegistry  *buildin.BuildinRegistry
+	buildinCancelFns map[string][]func() // per-agent unsubscribe funcs
+	currentSess      *session.Session    // current session for buildin logging
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -79,9 +85,11 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		loaded[name] = true
 	}
 	coord := &Coordinator{
-		Agent:       coordAgent,
-		pool:        pool,
-		loadedTools: loaded,
+		Agent:            coordAgent,
+		pool:             pool,
+		loadedTools:      loaded,
+		buildinRegistry:  buildin.GetRegistry(),
+		buildinCancelFns: make(map[string][]func()),
 	}
 	coord.onboardConsole()
 	return coord
@@ -109,6 +117,72 @@ func (c *Coordinator) SetStartupRecommend(rec *config.Recommendation) {
 }
 
 
+// initBuildinAgents initializes all registered built-in agents. It wires
+// dispatch, session logging, and telemetry span creation into each agent's
+// handle, then calls Init() on each agent so they can subscribe to events.
+func (c *Coordinator) initBuildinAgents(ctx context.Context) {
+	if c.events == nil || c.buildinRegistry == nil || len(c.buildinRegistry.List()) == 0 {
+		return
+	}
+
+	// Wire up dispatch — use RunTask directly (buildin agents are not pool agents)
+	dispatchTask := func(ctx context.Context, agentName, prompt string) (string, error) {
+		taskID := xid.New().String()
+		parentID := session.SessionID("")
+		if c.currentSess != nil {
+			parentID = c.currentSess.ID
+		}
+		result, err := c.RunTask(ctx, prompt, c.basePrompt, c.toolReg, parentID)
+		if err != nil {
+			return taskID, err
+		}
+		if !result.Success {
+			return taskID, fmt.Errorf("%s", result.Error)
+		}
+		return taskID, nil
+	}
+
+	// Wire up session logging (no-op if no session)
+	logEvent := func(ctx context.Context, evtType string, data map[string]any) {
+		if c.currentSess == nil {
+			return
+		}
+		content, _ := json.Marshal(data)
+		_ = c.currentSess.LogEvent(session.SessionEvent{
+			Type:    session.EventAgentAction,
+			Content: content,
+		})
+	}
+
+	// Wire up OTel span creation
+	startSpan := func(ctx context.Context, agentName, triggerEvent string) func() {
+		if TelemetryCallbacks.OnBuildinSpan != nil {
+			return TelemetryCallbacks.OnBuildinSpan(ctx, agentName, triggerEvent)
+		}
+		return func() {}
+	}
+
+	handle := buildin.NewAgentHandle(c.events, dispatchTask, logEvent, startSpan)
+
+	for _, ba := range c.buildinRegistry.List() {
+		ba.Init(ctx, handle)
+		zap.S().Infow("buildin agent initialized", "agent", ba.Name())
+	}
+
+	// Emit app:started once across all transports
+	appStartedOnce.Do(func() {
+		c.events.Emit(ctx, event.Event{Type: event.TypeAppStarted})
+		zap.S().Infow("buildin agents ready")
+	})
+}
+
+var (
+	// appStartedOnce ensures app:started fires only once per process lifetime.
+	appStartedOnce sync.Once
+	// appStoppedOnce ensures app:stopped fires only once per process lifetime.
+	appStoppedOnce sync.Once
+)
+
 // Run starts the coordinator event loop.
 func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	zap.S().Infow("coordinator starting")
@@ -124,6 +198,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		}
 		state = &LoopState{Sess: sess}
 	}
+	c.currentSess = sess
 
 	defer func() {
 		// Fire transport:disconnect hook
@@ -198,6 +273,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		go c.processDueTasks(ctx, dueCh, sess.ID)
 	}
 
+	// Initialize built-in agents (event subscriptions + session/OTel recording)
+	c.initBuildinAgents(ctx)
+
 	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Coordinator Ready", c.version, runtime.GOOS, runtime.Version(), c.buildTime))
 	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
 
@@ -210,6 +288,11 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		select {
 		case <-ctx.Done():
 			state.StopReason = "interrupted"
+			appStoppedOnce.Do(func() {
+				if c.events != nil {
+					c.events.Emit(ctx, event.Event{Type: event.TypeAppStopped})
+				}
+			})
 			return
 		default:
 		}

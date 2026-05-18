@@ -16,4 +16,5 @@ var TelemetryCallbacks = struct {
 	OnCompressionSpan func(ctx context.Context, sessionID string, turn int) (end func())
 	OnDispatchSpan    func(ctx context.Context, agentName string) (end func())
 	OnTaskSpan        func(ctx context.Context, agentName, taskID string) (end func())
+	OnBuildinSpan     func(ctx context.Context, agentName, triggerEvent string) (end func())
 }{}
