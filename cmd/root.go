@@ -46,11 +46,12 @@ import (
 )
 
 var (
-	cfgFile   string
-	verbose   bool
-	quiet     bool
-	Version   = "dev"
-	BuildTime = "unknown"
+	cfgFile    string
+	verbose    bool
+	quiet      bool
+	Version    = "dev"
+	BuildTime  = "unknown"
+	CommitHash = "unknown"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -239,6 +240,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		agt := agent.New(cfg, sessMgr, toolRegistry)
 		agt.SetVersion(Version)
 		agt.SetBuildTime(BuildTime)
+		agt.SetCommitHash(CommitHash)
 		agt.SetHooks(hooks)
 		agt.SetEventBus(bus)
 		agt.SetHeartbeatInterval(cfg.Plugins.HeartbeatTurns)

@@ -40,6 +40,7 @@ type Agent struct {
 	providerIndex      int
 	version            string
 	buildTime          string
+	commitHash         string
 }
 
 // LoopState holds state for a single agent run.
@@ -137,6 +138,7 @@ func (a *Agent) switchToProvider(name string) bool {
 
 func (a *Agent) SetVersion(v string)   { a.version = v }
 func (a *Agent) SetBuildTime(t string) { a.buildTime = t }
+func (a *Agent) SetCommitHash(h string) { a.commitHash = h }
 
 func (a *Agent) rebuildCompressor() {
 	switch a.cfg.LLM.CompressMode {
@@ -370,7 +372,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	// email is configured, not on every startup.
 	skipWelcome := io.Name() == "email" && config.IsEmailConfigured()
 	if !skipWelcome {
-		io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Agent ready. Type /exit to quit, /help for help.", a.version, runtime.GOOS, runtime.Version(), a.buildTime))
+		io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Agent ready. Type /exit to quit, /help for help.", a.version, runtime.GOOS, runtime.Version(), a.commitHash))
 		toolDefs := a.toolReg.List()
 		if len(toolDefs) > 0 {
 			io.WriteString("Loaded MCP tools: ")

@@ -12,7 +12,7 @@ builds:
   - binary: dolphin-ai
     main: .
     ldflags:
-      - -s -w -X 'dolphin/cmd.Version={{.Version}}'
+      - -s -w -X 'dolphin/cmd.Version={{.Version}}' -X 'dolphin/cmd.CommitHash={{.ShortCommit}}'
     env:
       - CGO_ENABLED=0
     goos:

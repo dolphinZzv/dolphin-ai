@@ -68,6 +68,7 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		events:             agent.events,
 		version:            agent.version,
 		buildTime:          agent.buildTime,
+		commitHash:         agent.commitHash,
 		availableProviders: agent.availableProviders,
 		providerIndex:      agent.providerIndex,
 	}
@@ -279,7 +280,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	// Initialize built-in agents (event subscriptions + session/OTel recording)
 	c.initBuildinAgents(ctx)
 
-	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) built %s — Coordinator Ready", c.version, runtime.GOOS, runtime.Version(), c.buildTime))
+	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Coordinator Ready", c.version, runtime.GOOS, runtime.Version(), c.commitHash))
 	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
 
 	// Display async startup recommendation if ready
