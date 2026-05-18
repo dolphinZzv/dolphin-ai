@@ -501,14 +501,7 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 
 // autoLoadMCPTools pre-loads MCP tools that are enabled in config so the LLM
 // doesn't waste turns on search_mcp_tools + load_mcp_tools discovery.
-// When self_evolution is enabled, MCP tools are NOT auto-loaded — the LLM
-// must explicitly request them via load_mcp_tools.
 func (c *Coordinator) autoLoadMCPTools() {
-	if c.cfg.Flags.SelfEvolution {
-		zap.S().Debugw("self_evolution enabled: skipping MCP tool auto-load")
-		return
-	}
-
 	enabled := []struct {
 		name    string
 		enabled bool
