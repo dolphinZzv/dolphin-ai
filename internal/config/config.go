@@ -45,6 +45,7 @@ type Config struct {
 	LogFile   string          `mapstructure:"log_file"`
 	Plugins   PluginsConfig   `mapstructure:"plugins"`
 	Flags     FlagsConfig     `mapstructure:"flags"`
+	Resource  ResourceConfig  `mapstructure:"resource"`
 }
 
 // Clone deep-copies the Config using JSON round-trip.
@@ -315,6 +316,15 @@ type HealthConfig struct {
 // FlagsConfig controls optional feature flags.
 type FlagsConfig struct {
 	SelfEvolution bool `mapstructure:"self_evolution"` // enable self-evolution: BUILTIN_SKILLS.md + LLM CRUD tools for skills/commands
+}
+
+// ResourceConfig configures the system resource monitor.
+type ResourceConfig struct {
+	Enabled      bool      `mapstructure:"enabled"`        // enable periodic resource monitoring
+	Interval     string    `mapstructure:"interval"`       // sampling interval, e.g. "30s" (default 30s)
+	DiskPaths    []string  `mapstructure:"disk_paths"`     // filesystem paths to monitor (e.g. ["/", "/data"])
+	MaxBandwidth uint64    `mapstructure:"max_bandwidth"`  // max network bandwidth in bytes/sec for % calculation (default 125MB/s = 1Gbps)
+	Thresholds   []float64 `mapstructure:"thresholds"`     // percentage thresholds to monitor, sorted ascending (default [20, 40, 60, 80])
 }
 
 // TelemetryConfig holds OpenTelemetry tracing configuration.
@@ -835,6 +845,12 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("telemetry.metrics_enabled", false)
 
 	v.SetDefault("flags.self_evolution", false)
+
+	v.SetDefault("resource.enabled", false)
+	v.SetDefault("resource.interval", "30s")
+	v.SetDefault("resource.disk_paths", []string{"/"})
+	v.SetDefault("resource.max_bandwidth", 125000000)
+	v.SetDefault("resource.thresholds", []float64{20, 40, 60, 80})
 
 	v.SetDefault("update.enabled", true)
 	v.SetDefault("update.check_interval", "24h")

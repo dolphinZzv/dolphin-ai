@@ -34,6 +34,12 @@ const (
 	TypeSkillLoaded     Type = "skill:loaded"
 	TypeAppStarted      Type = "app:started"
 	TypeAppStopped      Type = "app:stopped"
+
+	// Resource monitoring events
+	TypeResourceCPU     Type = "resource:cpu"
+	TypeResourceMemory  Type = "resource:memory"
+	TypeResourceDisk    Type = "resource:disk"
+	TypeResourceNetwork Type = "resource:network"
 )
 
 var AllTypes = []Type{
@@ -43,6 +49,7 @@ var AllTypes = []Type{
 	TypeCompression, TypeError, TypeHeartbeat,
 	TypeAgentDispatched, TypeAgentCompleted, TypeSkillLoaded,
 	TypeAppStarted, TypeAppStopped,
+	TypeResourceCPU, TypeResourceMemory, TypeResourceDisk, TypeResourceNetwork,
 }
 
 // Event is an asynchronous notification.

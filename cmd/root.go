@@ -29,6 +29,7 @@ import (
 	"dolphin/internal/mcp/webhook"
 	"dolphin/internal/metrics"
 	"dolphin/internal/plugin"
+	"dolphin/internal/resource"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
@@ -261,7 +262,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return coord
 	}
 
-	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, newCoordinator)
+	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, bus, newCoordinator)
 }
 
 // isDevMode returns true when DZ_DEV=true (integration test mode).
@@ -449,7 +450,7 @@ func initCronManager(cfg *config.Config) *scheduler.Manager {
 }
 
 // runActorGroup builds and runs the actor group for all enabled transports and services.
-func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.Tool, sessMgr *session.Manager, newCoordinator func() *agent.Coordinator) error {
+func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.Tool, sessMgr *session.Manager, bus *event.EventBus, newCoordinator func() *agent.Coordinator) error {
 	var g run.Group
 	actorCount := 0
 
@@ -761,6 +762,18 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
 			srv.Shutdown(shutdownCtx)
+		})
+		actorCount++
+	}
+
+	// Resource monitor actor
+	if cfg.Resource.Enabled {
+		rMonitor := resource.New(resource.ConfigFrom(cfg.Resource), bus)
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			return rMonitor.Start(ctx)
+		}, func(err error) {
+			cancel()
 		})
 		actorCount++
 	}
