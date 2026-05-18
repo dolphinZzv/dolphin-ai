@@ -11,6 +11,7 @@ import (
 
 	"dolphin/internal/command"
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
@@ -1418,6 +1419,7 @@ func TestConfigToolGetInvalidPath(t *testing.T) {
 
 func TestConfigToolSetInt(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = true
 	cfg.MCP.Shell.TimeoutSeconds = 30
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}
 
@@ -1440,6 +1442,7 @@ func TestConfigToolSetInt(t *testing.T) {
 
 func TestConfigToolSetBool(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = true
 	cfg.MCP.CDP.Headless = false
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}
 
@@ -1462,6 +1465,7 @@ func TestConfigToolSetBool(t *testing.T) {
 
 func TestConfigToolSetString(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = true
 	cfg.LLM.CompressMode = "drop"
 	c := &Coordinator{Agent: &Agent{cfg: cfg, compressor: &compressor.DropCompressor{}}}
 
@@ -1484,6 +1488,7 @@ func TestConfigToolSetString(t *testing.T) {
 
 func TestConfigToolSetInvalidPath(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = true
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
@@ -1501,6 +1506,7 @@ func TestConfigToolSetInvalidPath(t *testing.T) {
 
 func TestConfigToolSetWrongType(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = true
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
@@ -1518,6 +1524,7 @@ func TestConfigToolSetWrongType(t *testing.T) {
 
 func TestConfigToolSave(t *testing.T) {
 	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = true
 	cfg.MCP.Shell.TimeoutSeconds = 99
 	c := &Coordinator{Agent: &Agent{cfg: cfg}}
 	// Save to project config path (within allowed config dir)
@@ -1556,6 +1563,146 @@ func TestConfigToolUnknownAction(t *testing.T) {
 	}
 	if !result.IsError {
 		t.Fatal("expected error for unknown action")
+	}
+}
+
+func TestConfigToolSetWithoutSelfEvolution(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = false
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]any{
+		"action": "set",
+		"path":   "mcp.shell.timeout_seconds",
+		"value":  60,
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error when self_evolution is disabled")
+	}
+	if !strings.Contains(result.Content, "self_evolution") {
+		t.Errorf("error should mention self_evolution, got: %s", result.Content)
+	}
+}
+
+func TestConfigToolSaveWithoutSelfEvolution(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = false
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{
+		"action": "save",
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error when self_evolution is disabled")
+	}
+	if !strings.Contains(result.Content, "self_evolution") {
+		t.Errorf("error should mention self_evolution, got: %s", result.Content)
+	}
+}
+
+func TestConfigToolDeleteWithoutSelfEvolution(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = false
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]any{
+		"action": "delete",
+		"path":   "mcp.shell.timeout_seconds",
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error when self_evolution is disabled")
+	}
+	if !strings.Contains(result.Content, "self_evolution") {
+		t.Errorf("error should mention self_evolution, got: %s", result.Content)
+	}
+}
+
+func TestConfigToolListWithoutSelfEvolution(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = false
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{"action": "list"})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "mcp.shell.timeout_seconds") {
+		t.Errorf("list should contain config paths, got: %s", result.Content)
+	}
+}
+
+func TestConfigToolGetWithoutSelfEvolution(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.Flags.SelfEvolution = false
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	input, _ := json.Marshal(map[string]string{
+		"action": "get",
+		"path":   "mcp.shell.timeout_seconds",
+	})
+	result, err := c.handleConfig(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+}
+
+func TestHandleReload(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg, events: event.NewEventBus(10)}}
+	_, err := c.handleReload(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.reloadRequested {
+		t.Error("expected reloadRequested to be true")
+	}
+}
+
+func TestHandleReloadEmitsEvent(t *testing.T) {
+	bus := event.NewEventBus(10)
+	received := make(chan event.Event, 1)
+	bus.On(event.TypeAgentReload, func(ctx context.Context, evt event.Event) {
+		received <- evt
+	})
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg, events: bus}}
+	_, err := c.handleReload(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case evt := <-received:
+		if evt.Type != event.TypeAgentReload {
+			t.Errorf("expected agent:reload, got %s", evt.Type)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timeout waiting for reload event")
+	}
+}
+
+func TestHandleReloadWithoutEvents(t *testing.T) {
+	cfg := config.DefaultConfig()
+	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	_, err := c.handleReload(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !c.reloadRequested {
+		t.Error("expected reloadRequested to be true")
 	}
 }
 

@@ -40,6 +40,9 @@ const (
 	TypeResourceMemory  Type = "resource:memory"
 	TypeResourceDisk    Type = "resource:disk"
 	TypeResourceNetwork Type = "resource:network"
+
+	// Agent lifecycle
+	TypeAgentReload Type = "agent:reload"
 )
 
 var AllTypes = []Type{
@@ -49,6 +52,7 @@ var AllTypes = []Type{
 	TypeCompression, TypeError, TypeHeartbeat,
 	TypeAgentDispatched, TypeAgentCompleted, TypeSkillLoaded,
 	TypeAppStarted, TypeAppStopped,
+	TypeAgentReload,
 	TypeResourceCPU, TypeResourceMemory, TypeResourceDisk, TypeResourceNetwork,
 }
 

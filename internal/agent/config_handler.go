@@ -283,6 +283,94 @@ var configurablePaths = []configEntry{
 			return nil
 		},
 	},
+		{
+			path: "mcp.shell.allow_unrestricted", description: "Allow unrestricted shell access when no command whitelist",
+			get: func(c *config.Config) any { return c.MCP.Shell.AllowUnrestricted },
+			set: func(c *config.Config, v any) error {
+				b, err := toBool(v)
+				if err != nil {
+					return err
+				}
+				c.MCP.Shell.AllowUnrestricted = b
+				return nil
+			},
+		},
+		// Session
+		{
+			path: "session.max_age", description: "Session max age (e.g. 24h, 7d)",
+			get: func(c *config.Config) any { return c.Session.MaxAge },
+			set: func(c *config.Config, v any) error {
+				s, err := toString(v)
+				if err != nil {
+					return err
+				}
+				c.Session.MaxAge = s
+				return nil
+			},
+		},
+		{
+			path: "session.resume", description: "Auto-resume last session on interactive transports",
+			get: func(c *config.Config) any { return c.Session.Resume },
+			set: func(c *config.Config, v any) error {
+				b, err := toBool(v)
+				if err != nil {
+					return err
+				}
+				c.Session.Resume = b
+				return nil
+			},
+		},
+		// Skills
+		{
+			path: "skills.max_top", description: "Max skills shown in system prompt (default: 10)",
+			get: func(c *config.Config) any { return c.Skills.MaxTop },
+			set: func(c *config.Config, v any) error {
+				n, err := toInt(v)
+				if err != nil {
+					return err
+				}
+				c.Skills.MaxTop = n
+				return nil
+			},
+		},
+		// Resource monitor
+		{
+			path: "resource.enabled", description: "Enable periodic resource monitoring",
+			get: func(c *config.Config) any { return c.Resource.Enabled },
+			set: func(c *config.Config, v any) error {
+				b, err := toBool(v)
+				if err != nil {
+					return err
+				}
+				c.Resource.Enabled = b
+				return nil
+			},
+		},
+		{
+			path: "resource.interval", description: "Resource sampling interval (e.g. 30s, 1m)",
+			get: func(c *config.Config) any { return c.Resource.Interval },
+			set: func(c *config.Config, v any) error {
+				s, err := toString(v)
+				if err != nil {
+					return err
+				}
+				c.Resource.Interval = s
+				return nil
+			},
+		},
+		// Logging
+		{
+			path: "log_level", description: "Log level (debug, info, warn, error)",
+			get: func(c *config.Config) any { return c.LogLevel },
+			set: func(c *config.Config, v any) error {
+				s, err := toString(v)
+				if err != nil {
+					return err
+				}
+				c.LogLevel = s
+				return nil
+			},
+		},
 }
 
 func findConfigEntry(path string) *configEntry {
@@ -318,12 +406,23 @@ func (c *Coordinator) handleConfig(ctx context.Context, input json.RawMessage) (
 	case "get":
 		return c.handleConfigGet(params.Path)
 	case "set":
+		if !c.cfg.Flags.SelfEvolution {
+			return configWriteErr(), nil
+		}
 		return c.handleConfigSet(params.Path, params.Value)
 	case "save":
+		if !c.cfg.Flags.SelfEvolution {
+			return configWriteErr(), nil
+		}
 		return c.handleConfigSave(params.File)
+	case "delete":
+		if !c.cfg.Flags.SelfEvolution {
+			return configWriteErr(), nil
+		}
+		return c.handleConfigDelete(params.Path)
 	default:
 		return &mcp.ToolResult{
-			Content: fmt.Sprintf("unknown action %q — use list, get, set, or save", params.Action),
+			Content: fmt.Sprintf("unknown action %q — use list, get, set, save, or delete", params.Action),
 			IsError: true,
 		}, nil
 	}
@@ -443,6 +542,49 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 
 	zap.S().Infow("config saved to disk", "file", filePath)
 	return &mcp.ToolResult{Content: fmt.Sprintf("Config persisted to %s", filePath)}, nil
+}
+
+func configWriteErr() *mcp.ToolResult {
+	return &mcp.ToolResult{
+		Content: "modifying config requires self_evolution to be enabled (set flags.self_evolution = true in config.yaml)",
+		IsError: true,
+	}
+}
+
+func (c *Coordinator) handleConfigDelete(path string) (*mcp.ToolResult, error) {
+	if path == "" {
+		return &mcp.ToolResult{Content: "path is required", IsError: true}, nil
+	}
+	entry := findConfigEntry(path)
+	if entry == nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("unknown path %q — use list to see all paths", path), IsError: true}, nil
+	}
+	oldVal := entry.get(c.cfg)
+	var zero any
+	switch oldVal.(type) {
+	case string:
+		zero = ""
+	case int:
+		zero = 0
+	case float64:
+		zero = float64(0)
+	case bool:
+		zero = false
+	case []string:
+		zero = []string{}
+	default:
+		zero = nil
+	}
+	if err := entry.set(c.cfg, zero); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("delete %s: %v", path, err), IsError: true}, nil
+	}
+	if entry.needsSync {
+		c.rebuildCompressor()
+	}
+	zap.S().Infow("config deleted (reset to zero)", "path", path, "old", oldVal)
+	return &mcp.ToolResult{
+		Content: fmt.Sprintf("Reset %s to default (was: %v). Use `save` to persist to disk.", path, formatValue(oldVal)),
+	}, nil
 }
 
 // ---- Value coercion helpers ----

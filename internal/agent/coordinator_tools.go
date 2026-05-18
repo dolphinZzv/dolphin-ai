@@ -184,6 +184,14 @@ func (c *Coordinator) registerCoordinatorTools() {
 			},
 			c.handleDeleteCommand,
 		)
+		c.registerCoordTool("reload",
+			"Reload (restart) the agent. Disconnects the current session and triggers a clean restart. Config changes that require a restart take effect after this.",
+			map[string]any{
+				"type":       "object",
+				"properties": map[string]any{},
+			},
+			c.handleReload,
+		)
 	}
 	c.registerCoordTool("add_cron_task",
 		"Add a scheduled task that runs on a cron schedule.",
@@ -230,32 +238,54 @@ func (c *Coordinator) registerCoordinatorTools() {
 		},
 		c.handleToggleCronTask,
 	)
-	c.registerCoordTool("config",
-		"Read and modify runtime configuration. Actions: list (show all settings), get (read a path), set (modify a setting), save (persist to disk). Changes to MCP tool settings (shell/cdp/email/webhook) take effect immediately. Changes to LLM settings take effect on the next conversation turn.",
-		map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"action": map[string]any{
-					"type":        "string",
-					"enum":        []string{"list", "get", "set", "save"},
-					"description": "Action: list (show all settings), get (read a path), set (modify a path), save (persist to disk)",
+	if c.cfg.Flags.SelfEvolution {
+		c.registerCoordTool("config",
+			"Read and modify runtime configuration. Actions: list (show all settings), get (read a path), set (modify a setting), save (persist to disk), delete (reset a setting to its default value). Changes to MCP tool settings (shell/cdp/email/webhook) take effect immediately. Changes to LLM settings take effect on the next conversation turn.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"enum":        []string{"list", "get", "set", "save", "delete"},
+						"description": "Action: list, get (read a path), set (modify a path), save (persist to disk), delete (reset to default)",
+					},
+					"path": map[string]any{
+						"type":        "string",
+						"description": "Config path in dot notation, e.g. mcp.shell.timeout_seconds, llm.temperature. Use list to see all paths.",
+					},
+					"value": map[string]any{
+						"description": "New value for the setting (used with set action). Type depends on the setting.",
+					},
+					"file": map[string]any{
+						"type":        "string",
+						"description": "Target file path for save action (optional, defaults to .dolphin/config.yaml)",
+					},
 				},
-				"path": map[string]any{
-					"type":        "string",
-					"description": "Config path in dot notation, e.g. mcp.shell.timeout_seconds, llm.temperature. Use list to see all paths.",
-				},
-				"value": map[string]any{
-					"description": "New value for the setting (used with set action). Type depends on the setting.",
-				},
-				"file": map[string]any{
-					"type":        "string",
-					"description": "Target file path for save action (optional, defaults to .dolphin/config.yaml)",
-				},
+				"required": []string{"action"},
 			},
-			"required": []string{"action"},
-		},
-		c.handleConfig,
-	)
+			c.handleConfig,
+		)
+	} else {
+		c.registerCoordTool("config",
+			"Read runtime configuration. Actions: list (show all settings), get (read a path). To modify configuration, enable self_evolution (set flags.self_evolution = true in config.yaml).",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"action": map[string]any{
+						"type":        "string",
+						"enum":        []string{"list", "get"},
+						"description": "Action: list (show all settings), get (read a path)",
+					},
+					"path": map[string]any{
+						"type":        "string",
+						"description": "Config path in dot notation, e.g. mcp.shell.timeout_seconds. Use list to see all paths.",
+					},
+				},
+				"required": []string{"action"},
+			},
+			c.handleConfig,
+		)
+	}
 	c.registerCoordTool("load_mcp_tools",
 		"Load MCP tools by name so they become available for use as API-level tools. Use search_mcp_tools first to discover available tool names. Loaded tools will appear in the tool list starting from your next turn.",
 		map[string]any{
@@ -826,6 +856,17 @@ func (c *Coordinator) handleToggleCronTask(_ context.Context, input json.RawMess
 		return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q %s.", params.Name, state)}, nil
 	}
 	return &mcp.ToolResult{Content: fmt.Sprintf("Scheduled task %q not found.", params.Name), IsError: true}, nil
+}
+
+func (c *Coordinator) handleReload(ctx context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
+	c.reloadRequested = true
+	if c.events != nil && ctx != nil {
+		c.events.Emit(ctx, event.Event{Type: event.TypeAgentReload})
+	}
+	zap.S().Infow("reload requested by LLM")
+	return &mcp.ToolResult{
+		Content: "Reloading agent. The current session will disconnect and the agent will restart cleanly.",
+	}, nil
 }
 // handlerTool wraps a function as an MCP Tool.
 type handlerTool struct {

@@ -43,6 +43,7 @@ type Coordinator struct {
 	buildinRegistry  *buildin.BuildinRegistry
 	buildinCancelFns map[string][]func() // per-agent unsubscribe funcs
 	currentSess      *session.Session    // current session for buildin logging
+	reloadRequested bool                // set by reload tool to trigger clean exit
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -78,7 +79,8 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 	if agent.cfg.Flags.SelfEvolution {
 		coreTools = append(coreTools,
 			"create_skill", "update_skill", "delete_skill",
-			"create_command", "update_command", "delete_command")
+			"create_command", "update_command", "delete_command",
+			"reload")
 	}
 	loaded := make(map[string]bool, len(coreTools))
 	for _, name := range coreTools {
@@ -297,6 +299,12 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		default:
 		}
 
+		// Check for reload request before next turn
+		if c.reloadRequested {
+			state.StopReason = "reload"
+			return
+		}
+
 		// Check max loop
 		if state.Turn >= c.cfg.Session.MaxLoop && !state.SummaryGenerated {
 			state.SummaryGenerated = true
@@ -435,6 +443,12 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// transports are not affected because Collect() is non-blocking and
 		// returns immediately when no agents are busy.
 		c.collectAgentResults(ctx, state, io)
+
+		// Check for reload request
+		if c.reloadRequested {
+			state.StopReason = "reload"
+			return
+		}
 	}
 }
 
