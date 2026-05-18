@@ -70,8 +70,8 @@ func (c *Console) Execute(line string, io transport.UserIO) bool {
 
 	// If the current command has children but user typed an unknown subcommand
 	if len(args) > 0 && len(cmd.Children) > 0 {
-		io.WriteLine(fmt.Sprintf("Unknown subcommand: /%s %s", name, args[0]))
-		io.WriteLine("Available: " + joinNames(cmd.Children))
+		_ = io.WriteLine(fmt.Sprintf("Unknown subcommand: /%s %s", name, args[0]))
+		_ = io.WriteLine("Available: " + joinNames(cmd.Children))
 		return true
 	}
 

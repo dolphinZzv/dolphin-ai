@@ -4,6 +4,7 @@ package health
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 )
 
@@ -61,7 +62,9 @@ func Handler(checkers ...Checker) http.Handler {
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(result)
+		if err := json.NewEncoder(w).Encode(result); err != nil {
+			log.Printf("health encode error: %v", err)
+		}
 	})
 }
 

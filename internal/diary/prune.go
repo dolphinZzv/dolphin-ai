@@ -103,7 +103,7 @@ func (d *Diary) pruneWeeks() error {
 			// Remove oldest day dirs, keep newest
 			pruned := entry.Children[len(entry.Children)-limit:]
 			for _, ch := range entry.Children[:len(entry.Children)-limit] {
-				os.RemoveAll(filepath.Join(d.dir, ch.Path))
+				_ = os.RemoveAll(filepath.Join(d.dir, ch.Path))
 			}
 			entry.Children = pruned
 			atomicWriteJSON(weekPath, entry)
@@ -134,7 +134,7 @@ func (d *Diary) pruneMonths() error {
 		}
 		pruned := entry.Children[len(entry.Children)-limit:]
 		for _, ch := range entry.Children[:len(entry.Children)-limit] {
-			os.Remove(filepath.Join(d.dir, ch.Path))
+			_ = os.Remove(filepath.Join(d.dir, ch.Path))
 		}
 		entry.Children = pruned
 		atomicWriteJSON(monthJSON, entry)
@@ -167,7 +167,7 @@ func (d *Diary) pruneYears() error {
 		}
 		pruned := entry.Children[len(entry.Children)-limit:]
 		for _, ch := range entry.Children[:len(entry.Children)-limit] {
-			os.RemoveAll(filepath.Join(d.dir, ch.Path))
+			_ = os.RemoveAll(filepath.Join(d.dir, ch.Path))
 		}
 		entry.Children = pruned
 		atomicWriteJSON(yearPath, entry)

@@ -211,7 +211,7 @@ func checkSessionDir() []checkResult {
 	if err != nil {
 		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf("%s is not writable: %v", dir, err)}}
 	}
-	os.Remove(f.Name())
+	_ = os.Remove(f.Name())
 	f.Close()
 	return []checkResult{{name: "session directory", status: "OK", detail: dir}}
 }
@@ -339,7 +339,7 @@ func checkPort(addr, label string) []checkResult {
 			detail: fmt.Sprintf("%s in use or unavailable (%v)", addr, err),
 		}}
 	}
-	listener.Close()
+	_ = listener.Close()
 	return []checkResult{{
 		name:   fmt.Sprintf("port %s", label),
 		status: "OK",

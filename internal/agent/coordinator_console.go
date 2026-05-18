@@ -851,7 +851,7 @@ func (c *Coordinator) handleConfigSetCmd(args []string, io transport.UserIO) {
 		return
 	}
 
-	if err := entry.set(c.cfg, coerced); err != nil {
+	if err = entry.set(c.cfg, coerced); err != nil {
 		io.WriteLine(fmt.Sprintf("Failed to set %s: %v", path, err))
 		return
 	}
@@ -863,8 +863,8 @@ func (c *Coordinator) handleConfigSetCmd(args []string, io transport.UserIO) {
 
 	filePath := filepath.Join(config.ProjectConfigDir, config.ConfigFileName+".yaml")
 	existing := make(map[string]any)
-	if data, err := os.ReadFile(filePath); err == nil {
-		if err := yaml.Unmarshal(data, &existing); err != nil {
+	if data, readErr := os.ReadFile(filePath); readErr == nil {
+		if err = yaml.Unmarshal(data, &existing); err != nil {
 			zap.S().Warnw("failed to parse existing config", "path", filePath, "error", err)
 		}
 	}

@@ -905,7 +905,7 @@ func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMes
 		Format string `json:"format,omitempty"`
 	}
 	if err := json.Unmarshal(input, &params); err != nil {
-		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+		return nil, fmt.Errorf("invalid input: %w", err)
 	}
 	if params.Format == "" {
 		params.Format = "list"
@@ -913,7 +913,7 @@ func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMes
 	sessionPath := filepath.Join(c.sessMgr.Dir(), params.ID+".jsonl")
 	events, err := session.ReadEvents(sessionPath)
 	if err != nil {
-		return &mcp.ToolResult{Content: "Failed to read session: " + err.Error(), IsError: true}, nil
+		return nil, fmt.Errorf("failed to read session: %w", err)
 	}
 	var sb strings.Builder
 	switch params.Format {

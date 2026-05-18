@@ -286,8 +286,9 @@ func (p *OpenAIProvider) buildMessages(req ProviderRequest) []openai.ChatComplet
 }
 
 func rawToOpenAIMsg(raw map[string]any) openai.ChatCompletionMessage {
+	role, _ := raw["role"].(string)
 	msg := openai.ChatCompletionMessage{
-		Role: raw["role"].(string),
+		Role: role,
 	}
 
 	if content, ok := raw["content"].(string); ok {
