@@ -32,12 +32,13 @@ dolphin doesn't care which door you knock on — it answers them all. The same a
 
 ## How to connect
 
-dolphin speaks four transports, and you can enable any combination of them:
+dolphin speaks five transports, and you can enable any combination of them:
 
 - **stdio** — the default. Run `./dolphin-ai` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
 - **SSH** — connect from anywhere. `ssh dolphin-ai@host -p 2222`. Same agent session, terminal interface.
 - **MQTT** — lightweight pub/sub messaging. Great for embedded devices, chat apps, or event-driven automation. Ships with a native macOS client (Panda).
 - **Email** — send a command as an email subject, get the response back. Polls IMAP on a configurable interval.
+- **DingTalk** — connect through DingTalk bot for team collaboration. Supports interactive commands and notifications via DingTalk Stream mode.
 
 All transports share the same agent instance, tools, and session state. Switch between them freely.
 
