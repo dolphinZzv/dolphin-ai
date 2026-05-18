@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dolphin/internal/agent/console"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
@@ -33,6 +34,7 @@ type Coordinator struct {
 	skills           *skill.Manager
 	commands         *command.Manager
 	cronMgr          *scheduler.Manager
+	console          *console.Console
 	basePrompt       string
 	pending          []TaskResult // results collected but not yet in LLM context
 	startupRecommend *config.Recommendation
@@ -78,11 +80,13 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 	for _, name := range coreTools {
 		loaded[name] = true
 	}
-	return &Coordinator{
+	coord := &Coordinator{
 		Agent:       coordAgent,
 		pool:        pool,
 		loadedTools: loaded,
 	}
+	coord.onboardConsole()
+	return coord
 }
 
 // SetSkillManager sets the skill manager for skills support.
@@ -104,6 +108,62 @@ func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 // SetStartupRecommend sets a recommendation to display on startup (async, non-blocking).
 func (c *Coordinator) SetStartupRecommend(rec *config.Recommendation) {
 	c.startupRecommend = rec
+}
+
+// onboardConsole registers all built-in console commands.
+func (c *Coordinator) onboardConsole() {
+	con := console.New()
+
+	con.Add(&console.Command{
+		Name: "help", Desc: i18n.TL(i18n.KeyHelpHelp),
+		Handler: func(args []string, io transport.UserIO) { c.printHelp(io) },
+	})
+	con.Add(&console.Command{
+		Name: "sessions", Desc: i18n.TL(i18n.KeyHelpSessions),
+		Handler: func(args []string, io transport.UserIO) { c.handleSessions(io) },
+	})
+	con.Add(&console.Command{
+		Name: "mcp", Desc: i18n.TL(i18n.KeyHelpMCP),
+		Handler: func(args []string, io transport.UserIO) { c.printMCP(io) },
+	})
+	con.Add(&console.Command{
+		Name: "agents", Desc: i18n.TL(i18n.KeyHelpAgents),
+		Handler: func(args []string, io transport.UserIO) { c.printAgents(io) },
+	})
+	con.Add(&console.Command{
+		Name: "crontab", Desc: i18n.TL(i18n.KeyHelpCron),
+		Handler: func(args []string, io transport.UserIO) { c.printCronTasks(io) },
+	})
+	con.Add(&console.Command{
+		Name: "skills",
+		Desc: i18n.TL(i18n.KeyHelpSkills),
+		Children: []*console.Command{
+			{Name: "new", Desc: "Create a new skill template", Handler: func(args []string, io transport.UserIO) { c.handleSkillNew(args, io) }},
+			{Name: "delete", Desc: "Delete a skill", Handler: func(args []string, io transport.UserIO) { c.handleSkillDelete(args, io) }},
+			{Name: "show", Desc: "Show skill content", Handler: func(args []string, io transport.UserIO) { c.handleSkillShow(args, io) }},
+		},
+		Handler: func(args []string, io transport.UserIO) { c.printSkills(io) },
+	})
+	con.Add(&console.Command{
+		Name: "commands",
+		Desc: i18n.TL(i18n.KeyHelpCommands),
+		Children: []*console.Command{
+			{Name: "new", Desc: "Create a new command template", Handler: func(args []string, io transport.UserIO) { c.handleCmdNew(args, io) }},
+			{Name: "delete", Desc: "Delete a command", Handler: func(args []string, io transport.UserIO) { c.handleCmdDelete(args, io) }},
+			{Name: "show", Desc: "Show command content", Handler: func(args []string, io transport.UserIO) { c.handleCmdShow(args, io) }},
+		},
+		Handler: func(args []string, io transport.UserIO) { c.printCommands(io) },
+	})
+	con.Add(&console.Command{
+		Name: "model", Desc: i18n.TL(i18n.KeyHelpModel),
+		Handler: func(args []string, io transport.UserIO) { c.handleModelCmd(args, io) },
+	})
+	con.Add(&console.Command{
+		Name: "cancel", Desc: "Cancel running tasks",
+		Handler: func(args []string, io transport.UserIO) { c.handleCancelCmd(args, io) },
+	})
+
+	c.console = con
 }
 
 // Run starts the coordinator event loop.
@@ -256,63 +316,21 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case line == "/exit":
 			state.StopReason = "user_exit"
 			return
-		case line == "/help":
-			c.printHelp(io)
-			continue
-		case line == "/status":
-			c.handleStatus(sess, state, io)
-			continue
-		case line == "/sessions":
-			c.handleSessions(io)
-			continue
-		case line == "/mcp":
-			c.printMCP(io)
-			continue
-		case line == "/agents":
-			c.printAgents(io)
-			continue
-		case strings.HasPrefix(line, "/skills new"):
-			c.handleSkillNew(line, io)
-			continue
-		case strings.HasPrefix(line, "/skills delete"):
-			c.handleSkillDelete(line, io)
-			continue
-		case strings.HasPrefix(line, "/skills show"):
-			c.handleSkillShow(line, io)
-			continue
-		case line == "/skills":
-			c.printSkills(io)
-			continue
 		case line == "/new":
 			c.handleNew(sess, state, io)
 			sess = state.Sess
 			continue
-		case strings.HasPrefix(line, "/commands new"):
-			c.handleCmdNew(line, io)
+		case line == "/status":
+			c.handleStatus(sess, state, io)
 			continue
-		case strings.HasPrefix(line, "/commands delete"):
-			c.handleCmdDelete(line, io)
-			continue
-		case strings.HasPrefix(line, "/commands show"):
-			c.handleCmdShow(line, io)
-			continue
-		case line == "/commands":
-			c.printCommands(io)
-			continue
-		case line == "/crontab":
-			c.printCronTasks(io)
-			continue
-		case line == "/model" || strings.HasPrefix(line, "/model "):
-			c.handleModelCmd(line, io)
-			continue
-		case strings.HasPrefix(line, "/cancel"):
-			c.handleCancelCmd(line, io)
+		case c.console.Execute(line, io):
 			continue
 		case line == "":
 			continue
 		}
 
-		// Check user-defined /commands (matched after built-in commands)
+		// User-defined /commands (fallthrough after console)
+		var matchedUserCmd bool
 		if c.commands != nil && strings.HasPrefix(line, "/") {
 			if cmdName := parseCommandName(line); cmdName != "" {
 				if cmd, ok := c.commands.Get(cmdName); ok {
@@ -322,14 +340,21 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 					sb.WriteString(cmdName)
 					sb.WriteString("\n\n")
 					sb.WriteString(cmd.Content)
-					args := strings.TrimSpace(line[len("/"+cmdName):])
-					if args != "" {
+					rest := strings.TrimSpace(line[len("/"+cmdName):])
+					if rest != "" {
 						sb.WriteString("\n\nUser arguments: ")
-						sb.WriteString(args)
+						sb.WriteString(rest)
 					}
 					line = sb.String()
+					matchedUserCmd = true
 				}
 			}
+		}
+		if matchedUserCmd {
+			// Will fall through to LLM processing below
+		} else if strings.HasPrefix(line, "/") {
+			io.WriteLine(fmt.Sprintf("Unknown command: %s. Type /help for available commands.", strings.Fields(line)[0]))
+			continue
 		}
 
 		state.Turn++
@@ -1473,22 +1498,19 @@ func (c *Coordinator) printSkills(io transport.UserIO) {
 	io.WriteLine("")
 }
 
-func (c *Coordinator) handleSkillNew(line string, io transport.UserIO) {
+func (c *Coordinator) handleSkillNew(args []string, io transport.UserIO) {
 	if c.skills == nil {
 		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
 		return
 	}
 
-	// Parse: "/skills new <name>"
-	rest := strings.TrimPrefix(line, "/skills new")
-	rest = strings.TrimSpace(rest)
 
-	if rest == "" {
+	if len(args) == 0 {
 		io.WriteLine(i18n.TL(i18n.KeySkillNewUsage))
 		return
 	}
 
-	name := rest
+	name := args[0]
 
 	if err := c.skills.NewTemplate(name, ""); err != nil {
 		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewError), err))
@@ -1499,13 +1521,16 @@ func (c *Coordinator) handleSkillNew(line string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewCreated), name, dir))
 }
 
-func (c *Coordinator) handleSkillDelete(line string, io transport.UserIO) {
+func (c *Coordinator) handleSkillDelete(args []string, io transport.UserIO) {
 	if c.skills == nil {
 		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
 		return
 	}
 
-	name := strings.TrimSpace(strings.TrimPrefix(line, "/skills delete"))
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeySkillDeleteUsage))
 		return
@@ -1524,13 +1549,16 @@ func (c *Coordinator) handleSkillDelete(line string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillDeleteDone), name))
 }
 
-func (c *Coordinator) handleSkillShow(line string, io transport.UserIO) {
+func (c *Coordinator) handleSkillShow(args []string, io transport.UserIO) {
 	if c.skills == nil {
 		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
 		return
 	}
 
-	name := strings.TrimSpace(strings.TrimPrefix(line, "/skills show"))
+		name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeySkillShowUsage))
 		return
@@ -1571,26 +1599,22 @@ func (c *Coordinator) printCommands(io transport.UserIO) {
 	io.WriteLine("")
 }
 
-func (c *Coordinator) handleCmdNew(line string, io transport.UserIO) {
+func (c *Coordinator) handleCmdNew(args []string, io transport.UserIO) {
 	if c.commands == nil {
 		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
 		return
 	}
 
-	// Parse: "/commands new <name> [description]"
-	rest := strings.TrimPrefix(line, "/commands new")
-	rest = strings.TrimSpace(rest)
+	if len(args) == 0 {
 
-	if rest == "" {
 		io.WriteLine(i18n.TL(i18n.KeyCmdNewUsage))
 		return
 	}
 
-	parts := strings.SplitN(rest, " ", 2)
-	name := parts[0]
+	name := args[0]
 	description := name
-	if len(parts) > 1 {
-		description = strings.TrimSpace(parts[1])
+	if len(args) > 1 {
+		description = strings.Join(args[1:], " ")
 	}
 
 	if err := c.commands.NewTemplate(name, description); err != nil {
@@ -1602,13 +1626,16 @@ func (c *Coordinator) handleCmdNew(line string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdNewCreated), name, dir))
 }
 
-func (c *Coordinator) handleCmdDelete(line string, io transport.UserIO) {
+func (c *Coordinator) handleCmdDelete(args []string, io transport.UserIO) {
 	if c.commands == nil {
 		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
 		return
 	}
 
-	name := strings.TrimSpace(strings.TrimPrefix(line, "/commands delete"))
+			name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
 		return
@@ -1627,13 +1654,16 @@ func (c *Coordinator) handleCmdDelete(line string, io transport.UserIO) {
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdDeleteDone), name))
 }
 
-func (c *Coordinator) handleCmdShow(line string, io transport.UserIO) {
+func (c *Coordinator) handleCmdShow(args []string, io transport.UserIO) {
 	if c.commands == nil {
 		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
 		return
 	}
 
-	name := strings.TrimSpace(strings.TrimPrefix(line, "/commands show"))
+			name := ""
+		if len(args) > 0 {
+			name = args[0]
+		}
 	if name == "" {
 		io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
 		return
@@ -1692,15 +1722,14 @@ func (c *Coordinator) printCronTasks(io transport.UserIO) {
 	io.WriteLine("")
 }
 
-func (c *Coordinator) handleModelCmd(line string, io transport.UserIO) {
+func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
 	providers := c.availableProviders
 	if len(providers) == 0 {
 		io.WriteLine("No providers configured")
 		return
 	}
 
-	parts := strings.Fields(line)
-	if len(parts) == 1 {
+	if len(args) == 0 {
 		// List providers
 		io.WriteLine("Available providers (type:model):")
 		io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", "NAME", "MODEL", "STATUS"))
@@ -1718,7 +1747,7 @@ func (c *Coordinator) handleModelCmd(line string, io transport.UserIO) {
 	}
 
 	// Switch to named provider
-	name := parts[1]
+	name := args[0]
 	if c.switchToProvider(name) {
 		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.provider.Name()))
 	} else {
@@ -1726,10 +1755,9 @@ func (c *Coordinator) handleModelCmd(line string, io transport.UserIO) {
 	}
 }
 
-func (c *Coordinator) handleCancelCmd(line string, io transport.UserIO) {
-	parts := strings.Fields(line)
-	if len(parts) > 1 {
-		taskID := parts[1]
+func (c *Coordinator) handleCancelCmd(args []string, io transport.UserIO) {
+	if len(args) > 0 {
+		taskID := args[0]
 		if c.pool.Cancel(taskID) {
 			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCancelTask), taskID))
 		} else {

@@ -669,8 +669,8 @@ func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
 	coord.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "don't know") {
-		t.Error("expected LLM to handle unknown /command, got:", output)
+	if !strings.Contains(output, "Unknown command") {
+		t.Error("expected unknown command message, got:", output)
 	}
 }
 
@@ -1560,7 +1560,7 @@ func TestConfigToolUnknownAction(t *testing.T) {
 func TestCoordinatorHandleSkillNewNilManager(t *testing.T) {
 	io := &mockIO{}
 	c := &Coordinator{}
-	c.handleSkillNew("/skills new my-skill", io)
+	c.handleSkillNew([]string{"my-skill"}, io)
 	output := io.writes.String()
 	if !strings.Contains(output, i18n.T(i18n.KeySkillsNotAvail, i18n.EN)) {
 		t.Error("expected not available message, got:", output)
@@ -1574,7 +1574,7 @@ func TestCoordinatorHandleSkillNewNoName(t *testing.T) {
 	c.SetSkillManager(skillMgr)
 
 	io := &mockIO{}
-	c.handleSkillNew("/skills new", io)
+	c.handleSkillNew([]string{}, io)
 	output := io.writes.String()
 	if !strings.Contains(output, "Usage:") {
 		t.Error("expected usage message, got:", output)
@@ -1588,7 +1588,7 @@ func TestCoordinatorHandleSkillNewCreatesFile(t *testing.T) {
 	c.SetSkillManager(skillMgr)
 
 	io := &mockIO{}
-	c.handleSkillNew("/skills new custom-review", io)
+	c.handleSkillNew([]string{"custom-review"}, io)
 	output := io.writes.String()
 	if !strings.Contains(output, "Created") {
 		t.Error("expected Created message, got:", output)

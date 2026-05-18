@@ -60,6 +60,8 @@ const (
 	KeyHelpMCP             = "help_mcp"
 	KeyHelpStatus          = "help_status"
 	KeyHelpSessions        = "help_sessions"
+	KeyHelpCron            = "help_cron"
+	KeyHelpModel           = "help_model"
 	KeyHelpTopMCP          = "help_top_mcp"
 	KeyHelpSkillsAvail     = "help_skills_avail"
 	KeyNoAgents            = "no_agents"

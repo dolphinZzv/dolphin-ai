@@ -42,6 +42,8 @@ var enMessages = map[string]string{
 	KeyHelpMCP:             "  /mcp          - List all MCP tools",
 	KeyHelpStatus:          "  /status       - Show current status",
 	KeyHelpSessions:        "  /sessions     - List past sessions",
+	KeyHelpCron:            "  /crontab      - View scheduled tasks",
+	KeyHelpModel:           "  /model [name] - List or switch LLM provider",
 	KeyHelpTopMCP:          "Top MCP tools (by usage, use search_mcp_tools to find more):",
 	KeyHelpSkillsAvail:     "\nSkills: %d available (use /skills to list, search_skills to find)",
 	KeyNoAgents:            "No agents configured.",

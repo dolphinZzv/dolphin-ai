@@ -42,6 +42,8 @@ var zhMessages = map[string]string{
 	KeyHelpMCP:             "  /mcp          - 列出所有 MCP 工具",
 	KeyHelpStatus:          "  /status       - 显示当前状态",
 	KeyHelpSessions:        "  /sessions     - 查看历史会话",
+	KeyHelpCron:            "  /crontab      - 查看定时任务",
+	KeyHelpModel:           "  /model [name] - 列出或切换 LLM 提供商",
 	KeyHelpTopMCP:          "常用 MCP 工具（按使用次数，使用 search_mcp_tools 查找更多）：",
 	KeyHelpSkillsAvail:     "\n技能：%d 个可用（使用 /skills 列出，search_skills 查找）",
 	KeyNoAgents:            "未配置代理。",
