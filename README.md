@@ -34,8 +34,8 @@ dolphin doesn't care which door you knock on — it answers them all. The same a
 
 dolphin speaks four transports, and you can enable any combination of them:
 
-- **stdio** — the default. Run `./dolphin` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
-- **SSH** — connect from anywhere. `ssh dolphin@host -p 2222`. Same agent session, terminal interface.
+- **stdio** — the default. Run `./dolphin-ai` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
+- **SSH** — connect from anywhere. `ssh dolphin-ai@host -p 2222`. Same agent session, terminal interface.
 - **MQTT** — lightweight pub/sub messaging. Great for embedded devices, chat apps, or event-driven automation. Ships with a native macOS client (Panda).
 - **Email** — send a command as an email subject, get the response back. Polls IMAP on a configurable interval.
 
@@ -46,11 +46,11 @@ All transports share the same agent instance, tools, and session state. Switch b
 ### Quick start
 
 ```bash
-go build -o dolphin ./main.go
+go build -o dolphin-ai .
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="gpt-4o"          # model name
 export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpoints
-./dolphin
+./dolphin-ai
 ```
 
 ### Environment variables
@@ -58,11 +58,9 @@ export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpo
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `DZ_LLM_API_KEY` | **yes** | — | LLM API key |
-| `DZ_LLM_MODEL` | no | `gpt-4o` | Model name (e.g. `gpt-4o`, `claude-opus-4-7`) |
-| `DZ_LLM_BASE_URL` | no | `https://api.openai.com/v1` | API base URL (custom endpoints, proxies) |
-| `DZ_LLM_TYPE` | no | `openai` | Provider type: `openai` or `anthropic` |
-| `DZ_LLM_MAX_TOKENS` | no | `4096` | Max tokens per response |
-| `DZ_LOG_LEVEL` | no | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `DZ_LLM_MODEL` | **yes** | — | Model name (e.g. `gpt-5.5-instant`, `claude-sonnet-4-6`, `deepseek-v4-flash`) |
+| `DZ_LLM_BASE_URL` | **yes** | — | API base URL (e.g. `https://api.openai.com/v1`, `https://api.deepseek.com/v1`) |
+| `DZ_LLM_TYPE` | **yes** | — | Provider type: `openai` or `anthropic` |
 
 ### First-run flow
 
@@ -74,7 +72,7 @@ On first run, dolphin walks you through setup:
 
 Everything happens interactively in the terminal. No data leaves your machine.
 
-To re-run the wizard later: `./dolphin setup`
+To re-run the wizard later: `./dolphin-ai setup`
 
 ### Configuration
 
@@ -84,7 +82,7 @@ Config lives in `.dolphin/config.yaml` (project-level) or `~/.dolphin/config.yam
 # Minimal: env vars only, no config file needed
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="gpt-4o"
-./dolphin
+./dolphin-ai
 ```
 
 ## Build from source
@@ -102,29 +100,13 @@ make build              # development build (version = dev)
 make build VERSION=v1.0.0   # release build
 
 # Windows (PowerShell)
-go build -o dolphin.exe .   # development build
+go build -o dolphin-ai.exe .   # development build
 
 # Windows (with make, via Chocolatey/winget)
 make build                  # development build
 ```
 
-## Project structure
-
-```
-.dolphin/
-├── config.yaml          # project configuration
-├── agents/              # user-defined sub-agents
-│   └── reviewer/
-│       └── agent.yaml
-├── skills/              # on-demand skill definitions
-│   └── code-review.md
-├── commands/            # custom slash commands
-│   └── deploy.md
-├── CRONTAB.md           # scheduled tasks
-└── logs/                # agent logs (rotated)
-```
-
-Documentation lives in `design/` — read the design doc and the full README there for details on configuration, MCP tools, and the multi-agent system.
+Documentation lives in `design/`.
 
 ## Philosophy
 

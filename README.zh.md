@@ -60,9 +60,9 @@ export DZ_LLM_TYPE="openai"
 # export DZ_LLM_BASE_URL="https://api.minimax.chat/v1"
 # export DZ_LLM_TYPE="openai"
 
-# 智谱 GLM-5 示例
+# 智谱 GLM-5.1 示例
 # export DZ_LLM_API_KEY="sk-..."
-# export DZ_LLM_MODEL="glm-5"
+# export DZ_LLM_MODEL="glm-5.1"
 # export DZ_LLM_BASE_URL="https://open.bigmodel.cn/api/paas/v4"
 # export DZ_LLM_TYPE="openai"
 
@@ -80,11 +80,9 @@ export DZ_LLM_TYPE="openai"
 | 变量 | 必填 | 默认值 | 说明 |
 |---|---|---|---|
 | `DZ_LLM_API_KEY` | **是** | — | LLM API 密钥 |
-| `DZ_LLM_MODEL` | 否 | `deepseek-v4-flash` | 模型名称（如 `deepseek-v4-flash`、`MiniMax-M2.7`、`glm-5`、`qwen3.6-max-preview`） |
-| `DZ_LLM_BASE_URL` | 否 | `https://api.deepseek.com/v1` | API 基础地址（自定义端点、代理） |
-| `DZ_LLM_TYPE` | 否 | `openai` | 提供商类型：`openai` 或 `anthropic`。中国地区建议使用兼容 OpenAI 接口的服务商（DeepSeek、通义千问等） |
-| `DZ_LLM_MAX_TOKENS` | 否 | `4096` | 每次回复最大 token 数 |
-| `DZ_LOG_LEVEL` | 否 | `info` | 日志级别：`debug`、`info`、`warn`、`error` |
+| `DZ_LLM_MODEL` | **是** | — | 模型名称（如 `deepseek-v4-flash`、`glm-5.1`、`MiniMax-M2.7`、`qwen3.6-max-preview`、`kimi-k2.6`） |
+| `DZ_LLM_BASE_URL` | **是** | — | API 基础地址（如 `https://api.deepseek.com/v1`、`https://open.bigmodel.cn/api/paas/v4`） |
+| `DZ_LLM_TYPE` | **是** | — | 提供商类型：`openai` 或 `anthropic`。中国地区建议使用兼容 OpenAI 接口的服务商（DeepSeek、通义千问等） |
 
 ### 中国地区推荐模型
 
@@ -92,7 +90,7 @@ export DZ_LLM_TYPE="openai"
 |--------|------|----------|----------|
 | **DeepSeek** | `deepseek-v4-flash` | `https://api.deepseek.com/v1` | OpenAI 兼容 |
 | **MiniMax** | `MiniMax-M2.7` | `https://api.minimax.chat/v1` | OpenAI 兼容 |
-| **智谱 GLM** | `glm-5` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
+| **智谱 GLM** | `glm-5.1` | `https://open.bigmodel.cn/api/paas/v4` | OpenAI 兼容 |
 | **通义千问** | `qwen3.6-max-preview` | `https://dashscope.aliyuncs.com/compatible-mode/v1` | OpenAI 兼容 |
 | **Kimi** | `kimi-k2.6` | `https://api.moonshot.ai/v1` | OpenAI 兼容 |
 
@@ -137,7 +135,7 @@ dolphin-ai 支持 **Linux**、**macOS** 和 **Windows**（arm64 和 x86_64）。
 
 ```bash
 git clone https://github.com/dolphinZzv/dolphin.git
-cd dolphin-ai
+cd dolphin
 
 # Linux / macOS
 make build                  # 开发版本（版本号 = dev）
@@ -150,24 +148,7 @@ go build -o dolphin-ai.exe .   # 开发版本
 make build                  # 开发版本
 ```
 
-## 项目结构
-
-```
-.dolphin/
-├── config.yaml          # 项目配置
-├── agents/              # 用户定义的子 agent
-│   └── reviewer/
-│       └── agent.yaml
-├── skills/              # 按需加载的技能定义
-│   └── code-review.md
-├── commands/            # 自定义斜杠命令
-│   └── deploy.md
-├── CRONTAB.md           # 定时任务
-├── diary/               # 会话摘要聚合（年/月/周/日）
-└── logs/                # agent 日志（轮转）
-```
-
-详细文档见 `design/` 目录 —— 配置说明、MCP 工具、多 agent 系统等。
+详细文档见 `design/` 目录。
 
 ## 设计哲学
 
