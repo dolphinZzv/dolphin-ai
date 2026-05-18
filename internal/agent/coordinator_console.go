@@ -1,7 +1,9 @@
 package agent
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net/smtp"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -75,6 +77,10 @@ func (c *Coordinator) onboardConsole() {
 	con.Add(&console.Command{
 		Name: "context", Desc: i18n.TL(i18n.KeyHelpContext),
 		Handler: func(args []string, io transport.UserIO) { c.printContext(args, io) },
+	})
+	con.Add(&console.Command{
+		Name: "feedback", Desc: "Send feedback to the development team via email",
+		Handler: func(args []string, io transport.UserIO) { c.handleFeedback(args, io) },
 	})
 	con.Add(&console.Command{
 		Name: "reload", Desc: i18n.TL(i18n.KeyHelpReload),
@@ -742,6 +748,125 @@ func formatSize(n int) string {
 	default:
 		return fmt.Sprintf("%.1f MB", float64(n)/(1024*1024))
 	}
+}
+
+func (c *Coordinator) handleFeedback(args []string, io transport.UserIO) {
+	if len(args) == 0 {
+		io.WriteLine("Usage: /feedback <message>  —  Send feedback to the development team")
+		io.WriteLine("Please provide your feedback text as arguments.")
+		return
+	}
+	ecfg := c.cfg.Transport.Email
+	if ecfg.SMTPHost == "" {
+		io.WriteLine("Email SMTP not configured. Set transport.email in config.yaml to send feedback.")
+		return
+	}
+	msg := strings.Join(args, " ")
+	subject := "[feedback]" + msg
+	from := ecfg.From
+	if from == "" {
+		from = ecfg.Username
+	}
+	to := "feedback@siciv.space"
+	host := ecfg.SMTPHost
+	port := ecfg.SMTPPort
+	if port <= 0 {
+		port = 587
+	}
+	addr := fmt.Sprintf("%s:%d", host, port)
+	var rawMsg strings.Builder
+	fmt.Fprintf(&rawMsg, "From: %s\r\n", from)
+	fmt.Fprintf(&rawMsg, "To: %s\r\n", to)
+	fmt.Fprintf(&rawMsg, "Subject: %s\r\n", subject)
+	fmt.Fprintf(&rawMsg, "Date: %s\r\n", time.Now().Format(time.RFC1123Z))
+	rawMsg.WriteString("Content-Type: text/plain; charset=\"utf-8\"\r\n")
+	rawMsg.WriteString("\r\n")
+	rawMsg.WriteString(msg)
+	io.WriteLine(fmt.Sprintf("Sending feedback to %s...", to))
+	if ecfg.UseTLS && port == 465 {
+		if err := sendFeedbackTLS(addr, host, from, to, rawMsg.String(), ecfg.Username, ecfg.Password); err != nil {
+			io.WriteLine(fmt.Sprintf("Failed to send feedback: %v", err))
+			return
+		}
+	} else {
+		if err := sendFeedbackPlain(addr, host, from, to, rawMsg.String(), ecfg.Username, ecfg.Password); err != nil {
+			io.WriteLine(fmt.Sprintf("Failed to send feedback: %v", err))
+			return
+		}
+	}
+	io.WriteLine("Thank you! Your feedback has been sent to the development team.")
+}
+
+func sendFeedbackPlain(addr, host, from, to, msg, user, pass string) error {
+	c, err := smtp.Dial(addr)
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer c.Close()
+	if err = c.Hello(host); err != nil {
+		return fmt.Errorf("hello: %w", err)
+	}
+	if user != "" || pass != "" {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err = c.Auth(smtp.PlainAuth("", user, pass, host)); err != nil {
+				return fmt.Errorf("auth: %w", err)
+			}
+		}
+	}
+	if err = c.Mail(from); err != nil {
+		return fmt.Errorf("mail from: %w", err)
+	}
+	if err = c.Rcpt(to); err != nil {
+		return fmt.Errorf("rcpt to: %w", err)
+	}
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	if _, err = w.Write([]byte(msg)); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("close: %w", err)
+	}
+	return c.Quit()
+}
+
+func sendFeedbackTLS(addr, host, from, to, msg, user, pass string) error {
+	tconn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: host})
+	if err != nil {
+		return fmt.Errorf("connect TLS: %w", err)
+	}
+	defer tconn.Close()
+	c, err := smtp.NewClient(tconn, host)
+	if err != nil {
+		return fmt.Errorf("smtp client: %w", err)
+	}
+	defer c.Close()
+	if user != "" || pass != "" {
+		if ok, _ := c.Extension("AUTH"); ok {
+			if err = c.Auth(smtp.PlainAuth("", user, pass, host)); err != nil {
+				return fmt.Errorf("auth: %w", err)
+			}
+		}
+	}
+	if err = c.Mail(from); err != nil {
+		return fmt.Errorf("mail from: %w", err)
+	}
+	if err = c.Rcpt(to); err != nil {
+		return fmt.Errorf("rcpt to: %w", err)
+	}
+	w, err := c.Data()
+	if err != nil {
+		return fmt.Errorf("data: %w", err)
+	}
+	if _, err = w.Write([]byte(msg)); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	if err = w.Close(); err != nil {
+		return fmt.Errorf("close: %w", err)
+	}
+	return c.Quit()
 }
 
 func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io transport.UserIO) {
