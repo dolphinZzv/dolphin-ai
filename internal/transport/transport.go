@@ -1,7 +1,12 @@
 // Package transport provides user I/O transport implementations.
 package transport
 
-import "context"
+import (
+	"context"
+
+	"github.com/charmbracelet/glamour"
+	"github.com/charmbracelet/glamour/styles"
+)
 
 // Transport represents a user connection transport.
 // Each Transport instance corresponds to one user session.
@@ -34,4 +39,26 @@ type Capabilities struct {
 	Flushable       bool
 	ConfirmExit     bool // if true, require confirmation before exiting the agent
 	ShowToolDetails bool // if true, show tool call arguments/outputs to the user
+}
+
+// newMarkdownRenderer creates a glamour terminal renderer for the given style name.
+// Supported styles: "auto" (auto-detect dark/light), "dark", "light", "ascii",
+// "pink", "dracula", "tokyo-night". Falls back to auto on unknown style names.
+// Returns nil on error.
+func newMarkdownRenderer(style string) *glamour.TermRenderer {
+	switch style {
+	case "", "auto":
+		md, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))
+		if err == nil {
+			return md
+		}
+	default:
+		if sc, ok := styles.DefaultStyles[style]; ok {
+			md, err := glamour.NewTermRenderer(glamour.WithStyles(*sc), glamour.WithWordWrap(0))
+			if err == nil {
+				return md
+			}
+		}
+	}
+	return nil
 }

@@ -151,8 +151,9 @@ type TransportConfig struct {
 }
 
 type StdioConfig struct {
-	Enabled       bool `mapstructure:"enabled"`
-	MarkdownRender bool `mapstructure:"markdown_render"`
+	Enabled        bool   `mapstructure:"enabled"`
+	MarkdownRender bool   `mapstructure:"markdown_render"`
+	MarkdownStyle  string `mapstructure:"markdown_style"`
 }
 
 type SSHConfig struct {
@@ -162,6 +163,7 @@ type SSHConfig struct {
 	Username       string `mapstructure:"username"`
 	Password       string `mapstructure:"password"`
 	MarkdownRender bool   `mapstructure:"markdown_render"`
+	MarkdownStyle  string `mapstructure:"markdown_style"`
 }
 
 type MQTTAccount struct {
@@ -768,8 +770,10 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("transport.stdio.enabled", true)
 	v.SetDefault("transport.stdio.markdown_render", true)
+	v.SetDefault("transport.stdio.markdown_style", "auto")
 	v.SetDefault("transport.ssh.enabled", false)
 	v.SetDefault("transport.ssh.markdown_render", true)
+	v.SetDefault("transport.ssh.markdown_style", "auto")
 	v.SetDefault("transport.ssh.addr", ":2222")
 	v.SetDefault("transport.ssh.host_key", "~/.ssh/id_ed25519")
 	v.SetDefault("transport.ssh.username", "dolphin")

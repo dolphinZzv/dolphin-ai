@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"dolphin/internal/config"
-
 	"github.com/charmbracelet/glamour"
+
 	"github.com/chzyer/readline"
 )
 
@@ -52,10 +52,7 @@ func NewStdioTransport(cfg *config.Config) *StdioTransport {
 
 	t := &StdioTransport{rl: rl}
 	if cfg != nil && cfg.Transport.Stdio.MarkdownRender {
-		md, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))
-		if err == nil {
-			t.md = md
-		}
+		t.md = newMarkdownRenderer(cfg.Transport.Stdio.MarkdownStyle)
 	}
 	return t
 }

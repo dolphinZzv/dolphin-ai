@@ -164,7 +164,7 @@ func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
 
 		var md *glamour.TermRenderer
 		if t.cfg.MarkdownRender {
-			md, _ = glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))
+			md = newMarkdownRenderer(t.cfg.MarkdownStyle)
 		}
 		session := NewSSHSession(ch, conn, sshConn.RemoteAddr().String(), sshConn.User(), md)
 		t.handler(ctx, session)
