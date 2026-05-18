@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"dolphin/internal/config"
+
+	"github.com/charmbracelet/glamour"
 	"github.com/chzyer/readline"
 )
 
@@ -16,9 +19,10 @@ const defaultPrompt = "Dolphin > "
 // StdioTransport provides stdio-based interactive I/O using readline.
 type StdioTransport struct {
 	rl *readline.Instance
+	md *glamour.TermRenderer // markdown renderer, nil when disabled
 }
 
-func NewStdioTransport() *StdioTransport {
+func NewStdioTransport(cfg *config.Config) *StdioTransport {
 	// History file path
 	home, _ := os.UserHomeDir()
 	historyDir := filepath.Join(home, ".dolphin")
@@ -43,7 +47,14 @@ func NewStdioTransport() *StdioTransport {
 		}
 	}
 
-	return &StdioTransport{rl: rl}
+	t := &StdioTransport{rl: rl}
+	if cfg != nil && cfg.Transport.Stdio.MarkdownRender {
+		md, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))
+		if err == nil {
+			t.md = md
+		}
+	}
+	return t
 }
 
 // tab completer for commands
@@ -100,6 +111,13 @@ func (t *StdioTransport) WriteString(s string) error {
 
 func (t *StdioTransport) WriteLine(s string) error {
 	msgsSent.Inc()
+	if t.md != nil && s != "" {
+		rendered, err := t.md.Render(s)
+		if err == nil {
+			_, err = fmt.Print(rendered)
+			return err
+		}
+	}
 	_, err := fmt.Println(s)
 	return err
 }

@@ -18,6 +18,7 @@ import (
 
 	"time"
 
+	"github.com/charmbracelet/glamour"
 	"go.uber.org/zap"
 	gossh "golang.org/x/crypto/ssh"
 )
@@ -161,7 +162,11 @@ func (t *SSHTransport) handleConn(ctx context.Context, conn net.Conn) {
 		}
 		go handleChannelRequests(reqs)
 
-		session := NewSSHSession(ch, conn, sshConn.RemoteAddr().String(), sshConn.User())
+		var md *glamour.TermRenderer
+		if t.cfg.MarkdownRender {
+			md, _ = glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))
+		}
+		session := NewSSHSession(ch, conn, sshConn.RemoteAddr().String(), sshConn.User(), md)
 		t.handler(ctx, session)
 		ch.Close()
 	}
@@ -198,9 +203,10 @@ type SSHSession struct {
 	histIdx int
 	remote  string // remote address
 	user    string // SSH user
+	md      *glamour.TermRenderer // markdown renderer, nil when disabled
 }
 
-func NewSSHSession(ch gossh.Channel, conn net.Conn, remote, user string) *SSHSession {
+func NewSSHSession(ch gossh.Channel, conn net.Conn, remote, user string, md *glamour.TermRenderer) *SSHSession {
 	return &SSHSession{
 		ch:      ch,
 		conn:    conn,
@@ -209,6 +215,7 @@ func NewSSHSession(ch gossh.Channel, conn net.Conn, remote, user string) *SSHSes
 		histIdx: -1,
 		remote:  remote,
 		user:    user,
+		md:      md,
 	}
 }
 
@@ -401,6 +408,13 @@ func (s *SSHSession) Capabilities() Capabilities {
 
 func (s *SSHSession) WriteLine(text string) error {
 	msgsSent.Inc()
+	if s.md != nil && text != "" {
+		rendered, err := s.md.Render(text)
+		if err == nil {
+			_, err = fmt.Fprint(s.ch, strings.ReplaceAll(rendered, "\n", "\r\n"))
+			return err
+		}
+	}
 	_, err := fmt.Fprint(s.ch, strings.ReplaceAll(text, "\n", "\r\n"), "\r\n")
 	return err
 }

@@ -662,7 +662,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	// Stdio transport
 	if cfg.Transport.Stdio.Enabled {
 		ctx, cancel := context.WithCancel(context.Background())
-		io := transport.NewStdioTransport()
+		io := transport.NewStdioTransport(cfg)
 
 		g.Add(func() error {
 			newCoordinator().Run(ctx, io)

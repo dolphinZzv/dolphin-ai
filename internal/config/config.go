@@ -151,15 +151,17 @@ type TransportConfig struct {
 }
 
 type StdioConfig struct {
-	Enabled bool `mapstructure:"enabled"`
+	Enabled       bool `mapstructure:"enabled"`
+	MarkdownRender bool `mapstructure:"markdown_render"`
 }
 
 type SSHConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Addr     string `mapstructure:"addr"`
-	HostKey  string `mapstructure:"host_key"`
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
+	Enabled        bool   `mapstructure:"enabled"`
+	Addr           string `mapstructure:"addr"`
+	HostKey        string `mapstructure:"host_key"`
+	Username       string `mapstructure:"username"`
+	Password       string `mapstructure:"password"`
+	MarkdownRender bool   `mapstructure:"markdown_render"`
 }
 
 type MQTTAccount struct {
