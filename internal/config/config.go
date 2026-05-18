@@ -432,7 +432,7 @@ func Load(cfgFile string) (*Config, error) {
 		cfg.LLM.Type = v
 	}
 	if v := os.Getenv("DZ_LLM_MAX_TOKENS"); v != "" {
-		fmt.Sscanf(v, "%d", &cfg.LLM.MaxTokens)
+		_, _ = fmt.Sscanf(v, "%d", &cfg.LLM.MaxTokens)
 	}
 	// Propagate llm.max_tokens to providers that don't specify their own.
 	if cfg.LLM.MaxTokens > 0 {
@@ -613,7 +613,7 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 	// Read existing loaded config
 	existing := LoadedConfig{}
 	if data, err := os.ReadFile(configPath); err == nil {
-		yaml.Unmarshal(data, &existing)
+		_ = yaml.Unmarshal(data, &existing)
 	}
 
 	// Merge selections, deduplicate
@@ -649,7 +649,7 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 	// Read-modify-write avoids YAML corruption from blind append.
 	full := make(map[string]any)
 	if existingData, err := os.ReadFile(configPath); err == nil {
-		yaml.Unmarshal(existingData, &full)
+		_ = yaml.Unmarshal(existingData, &full)
 	}
 	// Merge the merged loaded-tools into the full config.
 	// Deep-merge into existing section maps to avoid overwriting other settings

@@ -6,18 +6,11 @@ let package = Package(
     platforms: [
         .macOS(.v13)
     ],
-    dependencies: [
-        .package(url: "https://github.com/apple/swift-nio", from: "2.60.0"),
-        .package(url: "https://github.com/apple/swift-log", from: "1.5.0")
-    ],
+    dependencies: [],
     targets: [
         .executableTarget(
             name: "WebHost",
-            dependencies: [
-                .product(name: "NIO", package: "swift-nio"),
-                .product(name: "NIOHTTP1", package: "swift-nio"),
-                .product(name: "Logging", package: "swift-log")
-            ],
+            dependencies: [],
             path: "Sources"
         ),
         .testTarget(

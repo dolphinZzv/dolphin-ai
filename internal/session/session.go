@@ -111,7 +111,9 @@ func (m *Manager) NewSessionWithParent(maxLoop int, parentID SessionID) (*Sessio
 	zap.S().Debugw("session created", attrs...)
 
 	if parentID != "" {
-		sess.LogSystem(fmt.Sprintf("child session of %s", parentID))
+		if err := sess.LogSystem(fmt.Sprintf("child session of %s", parentID)); err != nil {
+			zap.S().Warnw("log system failed", "error", err)
+		}
 	}
 	return sess, nil
 }
@@ -207,7 +209,9 @@ func (m *Manager) Remove(id SessionID) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if s, ok := m.sessions[id]; ok {
-		s.Close()
+		if err := s.Close(); err != nil {
+			zap.S().Warnw("session close failed", "error", err)
+		}
 		delete(m.sessions, id)
 	}
 }
@@ -349,7 +353,9 @@ func (m *Manager) Cleanup() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for id, s := range m.sessions {
-		s.Close()
+		if err := s.Close(); err != nil {
+			zap.S().Warnw("session close failed", "error", err)
+		}
 		delete(m.sessions, id)
 	}
 }

@@ -203,7 +203,7 @@ func runHookScript(ctx context.Context, scriptPath string, point hook.Point, hc 
 	}
 	if len(hc.ToolArgs) > 0 {
 		var args any
-		json.Unmarshal(hc.ToolArgs, &args)
+		_ = json.Unmarshal(hc.ToolArgs, &args)
 		input["tool_args"] = args
 	}
 	if hc.Error != nil {

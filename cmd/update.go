@@ -84,7 +84,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Fprintf(os.Stderr, "Are you sure? [y/N]: ")
 
 		var input string
-		fmt.Scanln(&input)
+		_, _ = fmt.Scanln(&input)
 		input = strings.TrimSpace(strings.ToLower(input))
 		if input != "y" && input != "yes" {
 			fmt.Fprintln(os.Stderr, "Update cancelled.")

@@ -396,7 +396,7 @@ func (d *Diary) buildDayEntry(date time.Time, sessions []SessionRef) DiaryEntry 
 func (d *Diary) cascadeWeek(weekKey string) {
 	var year int
 	var week int
-	fmt.Sscanf(weekKey, "%d-W%02d", &year, &week)
+	_, _ = fmt.Sscanf(weekKey, "%d-W%02d", &year, &week)
 
 	// Find all day dirs belonging to this week
 	monthDir := filepath.Join(d.dir, fmt.Sprintf("%04d", year))
@@ -698,7 +698,7 @@ func (d *Diary) listEntriesUnder(parent string, level Level) ([]DiaryEntry, erro
 func (d *Diary) listDaysForWeek(weekKey string) ([]DiaryEntry, error) {
 	// weekKey format: "2026-W18"
 	var year, week int
-	fmt.Sscanf(weekKey, "%d-W%02d", &year, &week)
+	_, _ = fmt.Sscanf(weekKey, "%d-W%02d", &year, &week)
 
 	// Find the first day of this ISO week and iterate 7 days
 	// Jan 4 is always in week 1
@@ -769,11 +769,11 @@ func atomicWrite(path string, data []byte) error {
 	tmpPath := f.Name()
 	if _, err := f.Write(data); err != nil {
 		f.Close()
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if err := f.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	return os.Rename(tmpPath, path)

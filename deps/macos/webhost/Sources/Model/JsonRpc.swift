@@ -39,17 +39,21 @@ extension JsonRpcError {
     }
 }
 
-struct JsonRpcRequest: Codable, Sendable {
-    let jsonrpc: String
+struct JsonRpcRequest: Sendable {
     let id: Any?
     let method: String
     let params: JsonRpcParams?
 
-    init(jsonrpc: String = "2.0", id: Any? = nil, method: String, params: JsonRpcParams? = nil) {
-        self.jsonrpc = jsonrpc
+    init(id: Any?, method: String, params: [String: Any]? = nil) {
         self.id = id
         self.method = method
-        self.params = params
+        if let p = params {
+            let name = p["name"] as? String ?? method
+            let args = p["arguments"] as? [String: Any] ?? p
+            self.params = JsonRpcParams(name: name, arguments: args.mapValues { AnyCodable($0) })
+        } else {
+            self.params = nil
+        }
     }
 }
 
@@ -75,28 +79,43 @@ struct JsonRpcParams: Codable, Sendable {
     }
 }
 
-struct JsonRpcResponse: Codable, Sendable {
-    let jsonrpc: String
+struct JsonRpcResponse: Sendable {
     let id: Any?
     let result: JsonRpcResult?
     let error: JsonRpcErrorResponse?
 
     init(id: Any?, result: JsonRpcResult) {
-        self.jsonrpc = "2.0"
         self.id = id
         self.result = result
         self.error = nil
     }
 
     init(id: Any?, error: JsonRpcError) {
-        self.jsonrpc = "2.0"
         self.id = id
         self.result = nil
         self.error = JsonRpcErrorResponse(code: error.code, message: error.message)
     }
+
+    func toJson() -> String {
+        var dict: [String: Any] = ["jsonrpc": "2.0"]
+        if let id = id {
+            dict["id"] = id
+        }
+        if let result = result {
+            dict["result"] = result.toDictionary()
+        }
+        if let error = error {
+            dict["error"] = ["code": error.code, "message": error.message]
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: dict),
+              let str = String(data: data, encoding: .utf8) else {
+            return "{\"jsonrpc\":\"2.0\",\"id\":null,\"error\":{\"code\":-32603,\"message\":\"encode failed\"}}"
+        }
+        return str
+    }
 }
 
-struct JsonRpcResult: Codable, Sendable {
+struct JsonRpcResult: Sendable {
     let success: Bool
     let sessionId: String?
     let value: String?
@@ -104,11 +123,11 @@ struct JsonRpcResult: Codable, Sendable {
     let url: String?
     let title: String?
     let status: String?
-    let capabilities: [String: Bool]?
+    let capabilities: [String: AnyCodable]?
 
     init(success: Bool = true, sessionId: String? = nil, value: String? = nil,
          data: String? = nil, url: String? = nil, title: String? = nil,
-         status: String? = nil, capabilities: [String: Bool]? = nil) {
+         status: String? = nil, capabilities: [String: AnyCodable]? = nil) {
         self.success = success
         self.sessionId = sessionId
         self.value = value
@@ -117,6 +136,18 @@ struct JsonRpcResult: Codable, Sendable {
         self.title = title
         self.status = status
         self.capabilities = capabilities
+    }
+
+    func toDictionary() -> [String: Any] {
+        var d: [String: Any] = ["success": success]
+        if let v = sessionId { d["sessionId"] = v }
+        if let v = value { d["value"] = v }
+        if let v = data { d["data"] = v }
+        if let v = url { d["url"] = v }
+        if let v = title { d["title"] = v }
+        if let v = status { d["status"] = v }
+        if let v = capabilities { d["capabilities"] = v.mapValues { $0.value } }
+        return d
     }
 }
 

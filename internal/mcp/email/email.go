@@ -212,7 +212,7 @@ func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachme
 		textPart, _ := mw.CreatePart(map[string][]string{
 			"Content-Type": {"text/plain; charset=\"utf-8\""},
 		})
-		textPart.Write([]byte(body))
+		_, _ = textPart.Write([]byte(body))
 
 		for _, f := range files {
 			part, err := mw.CreatePart(map[string][]string{
@@ -223,9 +223,9 @@ func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachme
 			if err != nil {
 				return &mcp.ToolResult{Content: fmt.Sprintf("Failed to create attachment part: %v", err), IsError: true}, nil
 			}
-			part.Write(f.data)
+			_, _ = part.Write(f.data)
 		}
-		mw.Close()
+		_ = mw.Close()
 	}
 
 	rawMsg := msg.String()
@@ -255,13 +255,13 @@ func sendTLS(addr, host, from string, to []string, msg, user, pass string) error
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
-	defer tconn.Close()
+	defer tconn.Close() //nolint:errcheck
 
 	sc, err := smtp.NewClient(tconn, host)
 	if err != nil {
 		return fmt.Errorf("smtp client: %w", err)
 	}
-	defer sc.Close()
+	defer sc.Close() //nolint:errcheck
 
 	auth := smtp.PlainAuth("", user, pass, host)
 	//nolint:govet
@@ -306,7 +306,7 @@ func (e *Tool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnly boo
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
 	}
-	defer c.Logout()
+	defer c.Logout() //nolint:errcheck
 
 	mbox, err := c.Select("INBOX", false)
 	if err != nil {
@@ -429,7 +429,7 @@ func (e *Tool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*mcp.ToolResult,
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
 	}
-	defer c.Logout()
+	defer c.Logout() //nolint:errcheck
 
 	if _, err := c.Select("INBOX", true); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to select INBOX: %s", err.Error()), IsError: true}, nil
@@ -497,11 +497,11 @@ func dialIMAP(ecfg *config.EmailConfig) (*client.Client, error) {
 	}
 	c, err := client.New(tlsConn)
 	if err != nil {
-		tlsConn.Close()
+		_ = tlsConn.Close()
 		return nil, err
 	}
 	if err := c.Login(ecfg.Username, ecfg.Password); err != nil {
-		c.Logout()
+		_ = c.Logout()
 		return nil, err
 	}
 	return c, nil
@@ -640,11 +640,11 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 
 	line, err := p.readLine()
 	if err != nil {
-		tlsConn.Close()
+		_ = tlsConn.Close()
 		return nil, fmt.Errorf("pop3 greeting: %w", err)
 	}
 	if !strings.HasPrefix(line, "+OK") {
-		tlsConn.Close()
+		_ = tlsConn.Close()
 		return nil, fmt.Errorf("pop3 unexpected greeting: %s", line)
 	}
 
@@ -753,8 +753,8 @@ func (p *pop3Conn) quit() {
 	if !p.logged {
 		return
 	}
-	p.rw.WriteString("QUIT\r\n")
-	p.rw.Flush()
+	_, _ = p.rw.WriteString("QUIT\r\n")
+	_ = p.rw.Flush()
 	p.conn.Close()
 	p.logged = false
 }

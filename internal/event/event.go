@@ -234,8 +234,14 @@ func (b *EventBus) writeLog(w io.Writer, evt Event) {
 		return
 	}
 	b.logMu.Lock()
-	w.Write(data)
-	w.Write([]byte{'\n'})
+	if _, err := w.Write(data); err != nil {
+		b.logMu.Unlock()
+		return
+	}
+	if _, err := w.Write([]byte{'\n'}); err != nil {
+		b.logMu.Unlock()
+		return
+	}
 	b.logMu.Unlock()
 }
 

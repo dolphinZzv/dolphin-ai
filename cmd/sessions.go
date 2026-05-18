@@ -305,7 +305,7 @@ func runSessionsRemove(cmd *cobra.Command, args []string) error {
 	}
 
 	sumPath := filepath.Join(sessionDir, sid+"-summary.json")
-	os.Remove(sumPath)
+	_ = os.Remove(sumPath)
 
 	fmt.Printf("Removed session %q\n", sid)
 	return nil
@@ -509,7 +509,7 @@ func serveDiagram(sid, diagram string, openBrowser bool) error {
 	if openBrowser {
 		go func() {
 			time.Sleep(500 * time.Millisecond)
-			exec.Command("open", addr).Start()
+			_ = exec.Command("open", addr).Start()
 		}()
 	}
 
@@ -523,7 +523,7 @@ func serveDiagram(sid, diagram string, openBrowser bool) error {
 	})
 
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
-	go server.Serve(ln)
+	go func() { _ = server.Serve(ln) }()
 
 	fmt.Println("Press Ctrl+C to stop.")
 	select {}

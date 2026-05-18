@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"dolphin/internal/agent"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
@@ -69,6 +70,44 @@ func loadLLMConfig(t *testing.T) (*config.Config, []config.ProviderConfig) {
 		t.Skip("no provider with API key configured")
 	}
 	return cfg, valid
+}
+
+func loadEmailFromAssets(t *testing.T) config.EmailConfig {
+	t.Helper()
+	wd, _ := os.Getwd()
+	dir := wd
+	for i := 0; i < 10; i++ {
+		path := filepath.Join(dir, "tests", "assets.yaml")
+		if data, err := os.ReadFile(path); err == nil {
+			var parsed struct {
+				Email struct {
+					Enabled  bool   `yaml:"enabled"`
+					From     string `yaml:"from"`
+					SMTPHost string `yaml:"smtp_host"`
+					SMTPPort int    `yaml:"smtp_port"`
+					Username string `yaml:"username"`
+					Password string `yaml:"password"`
+					UseTLS   bool   `yaml:"use_tls"`
+				} `yaml:"email"`
+			}
+			if err := yaml.Unmarshal(data, &parsed); err == nil && parsed.Email.SMTPHost != "" {
+				return config.EmailConfig{
+					SMTPHost: parsed.Email.SMTPHost,
+					SMTPPort: parsed.Email.SMTPPort,
+					Username: parsed.Email.Username,
+					Password: parsed.Email.Password,
+					From:     parsed.Email.From,
+					UseTLS:   parsed.Email.UseTLS,
+				}
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return config.EmailConfig{}
 }
 
 func isAuthError(err error) bool {
@@ -213,11 +252,11 @@ func TestLLMProviderHealthCheck(t *testing.T) {
 
 		for _, p := range validProviders {
 			convey.Convey("Provider "+p.Name+" ("+p.Model+") should pass health check", func() {
-				provider := agent.NewProviderFromConfig(&p)
+				prov := provider.NewProviderFromConfig(&p)
 				ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 				defer cancel()
 
-				err := provider.HealthCheck(ctx)
+				err := prov.HealthCheck(ctx)
 				if err != nil {
 					if isAuthError(err) {
 						convey.SkipSo(err, convey.ShouldBeNil)
@@ -241,15 +280,15 @@ func TestLLMProviderRoundTrip(t *testing.T) {
 		}
 
 		p := validProviders[0]
-		provider := agent.NewProviderFromConfig(&p)
+		prov := provider.NewProviderFromConfig(&p)
 
 		convey.Convey("When sending a simple message", func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
-			ch, err := provider.CompleteStream(ctx, agent.ProviderRequest{
+			ch, err := prov.CompleteStream(ctx, provider.ProviderRequest{
 				System: "You are a helpful assistant. Keep responses brief.",
-				Messages: []agent.Message{
+				Messages: []provider.Message{
 					{Role: "user", Content: json.RawMessage(`"reply with exactly: OK"`)},
 				},
 			})
@@ -620,7 +659,7 @@ func TestAgentWithRealProvider(t *testing.T) {
 		}
 
 		p := validProviders[0]
-		realProvider := agent.NewProviderFromConfig(&p)
+		realProvider := provider.NewProviderFromConfig(&p)
 
 		cfg := config.DefaultConfig()
 		config.SetSessionsDir(t.TempDir())
@@ -643,9 +682,9 @@ func TestAgentWithRealProvider(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 			defer cancel()
 
-			ch, err := realProvider.CompleteStream(ctx, agent.ProviderRequest{
+			ch, err := realProvider.CompleteStream(ctx, provider.ProviderRequest{
 				System: "You are a helpful assistant. Keep responses brief.",
-				Messages: []agent.Message{
+				Messages: []provider.Message{
 					{Role: "user", Content: json.RawMessage(`"say: test ok"`)},
 				},
 			})
@@ -1002,6 +1041,100 @@ func TestSessionJSONLFormat(t *testing.T) {
 				convey.So(err, convey.ShouldBeNil)
 				convey.So(evt["type"], convey.ShouldNotBeBlank)
 			}
+		})
+	})
+}
+
+func TestFeedbackCommand(t *testing.T) {
+	convey.Convey("Given the /feedback command", t, func() {
+		_, validProviders := loadLLMConfig(t)
+		if len(validProviders) == 0 {
+			t.Skip("no valid providers")
+			return
+		}
+
+		newCoordinator := func(emailCfg config.EmailConfig) *agent.Coordinator {
+			cfg := config.DefaultConfig()
+			config.SetSessionsDir(t.TempDir())
+			cfg.Session.MaxLoop = 5
+			cfg.LLM.MaxContextTokens = 100000
+			cfg.LLM.Providers = validProviders
+			cfg.Transport.Email = emailCfg
+
+			sessMgr := session.NewManager(config.SessionsDir())
+			sessMgr.EnsureDir()
+			toolReg := mcp.NewRegistry(cfg)
+			toolReg.Register(&mockTool{name: "shell"})
+
+			agt := agent.New(cfg, sessMgr, toolReg)
+			pool := agent.NewAgentPool(context.Background(), agent.PoolConfig{})
+			return agent.NewCoordinator(agt, pool)
+		}
+
+		convey.Convey("When no arguments are given", func() {
+			coord := newCoordinator(config.EmailConfig{})
+			io := &testIO{lines: []string{"/feedback", "/exit"}}
+			coord.Run(context.Background(), io)
+			out := io.output()
+
+			convey.Convey("Then usage should be shown", func() {
+				convey.So(out, convey.ShouldContainSubstring, "Usage: /feedback")
+				convey.So(out, convey.ShouldContainSubstring, "Send feedback to the development team")
+			})
+		})
+
+		convey.Convey("When feedback text is provided but SMTP is not configured", func() {
+			coord := newCoordinator(config.EmailConfig{})
+			io := &testIO{lines: []string{"/feedback test message 123", "/exit"}}
+			coord.Run(context.Background(), io)
+			out := io.output()
+
+			convey.Convey("Then error about missing SMTP config should appear", func() {
+				convey.So(out, convey.ShouldContainSubstring, "Email SMTP not configured")
+			})
+		})
+
+		convey.Convey("When feedback contains special characters and emoji", func() {
+			coord := newCoordinator(config.EmailConfig{})
+			io := &testIO{lines: []string{"/feedback bug report: crash on startup 😞", "/exit"}}
+			coord.Run(context.Background(), io)
+			out := io.output()
+
+			convey.Convey("Then the message should be handled without crash", func() {
+				convey.So(out, convey.ShouldContainSubstring, "Email SMTP not configured")
+			})
+		})
+
+		convey.Convey("When SMTP is configured with unreachable server", func() {
+			coord := newCoordinator(config.EmailConfig{
+				SMTPHost: "localhost",
+				SMTPPort: 19999,
+			})
+			io := &testIO{lines: []string{"/feedback unreachable server feedback", "/exit"}}
+			coord.Run(context.Background(), io)
+			out := io.output()
+
+			convey.Convey("Then it should show sending attempt and graceful failure", func() {
+				convey.So(out, convey.ShouldContainSubstring, "Sending feedback to")
+				convey.So(out, convey.ShouldContainSubstring, "Failed to send feedback")
+			})
+		})
+
+		convey.Convey("When using real SMTP config from assets.yaml", func() {
+			emailCfg := loadEmailFromAssets(t)
+			if emailCfg.SMTPHost == "" {
+				t.Skip("no email config in assets.yaml")
+				return
+			}
+			coord := newCoordinator(emailCfg)
+			io := &testIO{lines: []string{"/feedback integration test feedback from dolphin test suite", "/exit"}}
+			coord.Run(context.Background(), io)
+			out := io.output()
+
+			convey.Convey("Then feedback should be sent successfully", func() {
+				convey.So(out, convey.ShouldContainSubstring, "Sending feedback to")
+				convey.So(out, convey.ShouldContainSubstring, "Thank you! Your feedback has been sent")
+			})
 		})
 	})
 }

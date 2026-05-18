@@ -78,7 +78,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 	fmt.Fprintf(os.Stderr, "Choice: ")
 
 	var choice string
-	fmt.Scanln(&choice)
+	_, _ = fmt.Scanln(&choice)
 	choice = strings.TrimSpace(strings.ToLower(choice))
 
 	switch {

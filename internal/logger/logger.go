@@ -45,7 +45,9 @@ func getSyncer(cfg Config) zapcore.WriteSyncer {
 
 	dir := filepath.Dir(cfg.File)
 	if dir != "." {
-		os.MkdirAll(dir, 0700)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			zap.S().Warnw("mkdir log dir failed", "error", err, "dir", dir)
+		}
 	}
 
 	maxSize := cfg.MaxSize

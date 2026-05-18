@@ -128,7 +128,7 @@ func (t *stdioTransport) Close() error {
 
 	done := make(chan struct{})
 	go func() {
-		t.cmd.Wait()
+		_ = t.cmd.Wait()
 		close(done)
 	}()
 	select {
