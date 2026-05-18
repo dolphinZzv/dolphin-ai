@@ -90,6 +90,8 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyHelpMCP))
 	io.WriteLine(i18n.TL(i18n.KeyHelpStatus))
 	io.WriteLine(i18n.TL(i18n.KeyHelpSessions))
+	io.WriteLine(i18n.TL(i18n.KeyHelpCron))
+	io.WriteLine(i18n.TL(i18n.KeyHelpModel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancel))
 	io.WriteLine(i18n.TL(i18n.KeyHelpCancelID))
 	io.WriteLine(i18n.TL(i18n.KeyHelpContext))
