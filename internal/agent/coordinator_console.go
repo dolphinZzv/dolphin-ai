@@ -621,12 +621,8 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionsHeader), len(sessions)))
 	for _, s := range sessions {
-		shortID := s.id
-		if len(shortID) > 12 {
-			shortID = shortID[:12]
-		}
 		ago := time.Since(s.mod).Truncate(time.Second).String()
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), shortID, s.turns, ago+" ago", s.inputTokens, s.outputTokens))
+		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), s.id, s.turns, ago+" ago", s.inputTokens, s.outputTokens))
 	}
 	io.WriteLine("")
 }
