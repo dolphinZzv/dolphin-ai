@@ -4,11 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"dolphin/internal/event"
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
+	"dolphin/internal/session"
 
 	"github.com/rs/xid"
 	"go.uber.org/zap"
@@ -193,6 +195,17 @@ func (c *Coordinator) registerCoordinatorTools() {
 				"properties": map[string]any{},
 			},
 			c.handleReload,
+		)
+		c.registerCoordTool("session_dump",
+			"Dump all events from a session by ID. Returns timestamped events with role, tool calls, and content. Use /sessions to find session IDs.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"id": map[string]any{"type": "string", "description": "Session ID to dump"},
+				},
+				"required": []string{"id"},
+			},
+			c.handleSessionDumpTool,
 		)
 	}
 	c.registerCoordTool("context",
@@ -884,6 +897,41 @@ func (c *Coordinator) handleContextTool(_ context.Context, _ json.RawMessage) (*
 		Content: c.buildDynamicPrompt(),
 	}, nil
 }
+
+func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil
+	}
+	sessionPath := filepath.Join(c.sessMgr.Dir(), params.ID+".jsonl")
+	events, err := session.ReadEvents(sessionPath)
+	if err != nil {
+		return &mcp.ToolResult{Content: "Failed to read session: " + err.Error(), IsError: true}, nil
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Session: %s (%d events)\n", params.ID, len(events))
+	for _, evt := range events {
+		line := fmt.Sprintf("[T%d %s] %s", evt.Turn, evt.Timestamp.Format("15:04:05"), evt.Type)
+		if evt.Role != "" {
+			line += fmt.Sprintf(" (%s)", evt.Role)
+		}
+		if evt.ToolName != "" {
+			line += fmt.Sprintf(" tool=%s", evt.ToolName)
+		}
+		if len(evt.Content) > 0 {
+			content := string(evt.Content)
+			if len(content) > 500 {
+				content = content[:500] + "..."
+			}
+			line += ": " + content
+		}
+		sb.WriteString(line + "\n")
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
 // handlerTool wraps a function as an MCP Tool.
 type handlerTool struct {
 	def     mcp.ToolDefinition

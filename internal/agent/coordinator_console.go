@@ -27,6 +27,9 @@ func (c *Coordinator) onboardConsole() {
 	})
 	con.Add(&console.Command{
 		Name: "sessions", Desc: i18n.TL(i18n.KeyHelpSessions),
+		Children: []*console.Command{
+			{Name: "dump", Desc: "Dump session events by ID", Handler: func(args []string, io transport.UserIO) { c.handleSessionDump(args, io) }},
+		},
 		Handler: func(args []string, io transport.UserIO) { c.handleSessions(io) },
 	})
 	con.Add(&console.Command{
@@ -606,6 +609,38 @@ func (c *Coordinator) handleSessions(io transport.UserIO) {
 		}
 		ago := time.Since(s.mod).Truncate(time.Second).String()
 		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), shortID, s.turns, ago+" ago"))
+	}
+	io.WriteLine("")
+}
+
+func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
+	if len(args) == 0 {
+		io.WriteLine("Usage: /sessions dump <session-id>")
+		return
+	}
+	sessionPath := filepath.Join(c.sessMgr.Dir(), args[0]+".jsonl")
+	events, err := session.ReadEvents(sessionPath)
+	if err != nil {
+		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
+		return
+	}
+	io.WriteLine(fmt.Sprintf("Session: %s (%d events)\n", args[0], len(events)))
+	for _, evt := range events {
+		line := fmt.Sprintf("[T%d %s] %s", evt.Turn, evt.Timestamp.Format("15:04:05"), evt.Type)
+		if evt.Role != "" {
+			line += fmt.Sprintf(" (%s)", evt.Role)
+		}
+		if evt.ToolName != "" {
+			line += fmt.Sprintf(" tool=%s", evt.ToolName)
+		}
+		if len(evt.Content) > 0 {
+			content := string(evt.Content)
+			if len(content) > 200 {
+				content = content[:200] + "..."
+			}
+			line += ": " + content
+		}
+		io.WriteLine(line)
 	}
 	io.WriteLine("")
 }
