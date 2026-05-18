@@ -34,8 +34,8 @@ dolphin doesn't care which door you knock on — it answers them all. The same a
 
 dolphin speaks five transports, and you can enable any combination of them:
 
-- **stdio** — the default. Run `./dolphin-ai` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
-- **SSH** — connect from anywhere. `ssh dolphin-ai@host -p 2222`. Same agent session, terminal interface.
+- **stdio** — the default. Run `./dolphin` and chat in your terminal. First run walks you through setting up your profile and recommended tools.
+- **SSH** — connect from anywhere. `ssh dolphin@host -p 2222`. Same agent session, terminal interface.
 - **MQTT** — lightweight pub/sub messaging. Great for embedded devices, chat apps, or event-driven automation. Ships with a native macOS client (Panda).
 - **Email** — send a command as an email subject, get the response back. Polls IMAP on a configurable interval.
 - **DingTalk** — connect through DingTalk bot for team collaboration. Supports interactive commands and notifications via DingTalk Stream mode.
@@ -47,11 +47,11 @@ All transports share the same agent instance, tools, and session state. Switch b
 ### Quick start
 
 ```bash
-go build -o dolphin-ai .
+go build -o dolphin .
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="gpt-4o"          # model name
 export DZ_LLM_BASE_URL="https://api.openai.com/v1"  # optional, for custom endpoints
-./dolphin-ai
+./dolphin
 ```
 
 ### Environment variables
@@ -73,7 +73,7 @@ On first run, dolphin walks you through setup:
 
 Everything happens interactively in the terminal. No data leaves your machine.
 
-To re-run the wizard later: `./dolphin-ai setup`
+To re-run the wizard later: `./dolphin setup`
 
 ### Configuration
 
@@ -83,7 +83,7 @@ Config lives in `.dolphin/config.yaml` (project-level) or `~/.dolphin/config.yam
 # Minimal: env vars only, no config file needed
 export DZ_LLM_API_KEY="sk-..."
 export DZ_LLM_MODEL="gpt-4o"
-./dolphin-ai
+./dolphin
 ```
 
 ## Build from source
@@ -101,7 +101,7 @@ make build              # development build (version = dev)
 make build VERSION=v1.0.0   # release build
 
 # Windows (PowerShell)
-go build -o dolphin-ai.exe .   # development build
+go build -o dolphin.exe .   # development build
 
 # Windows (with make, via Chocolatey/winget)
 make build                  # development build
