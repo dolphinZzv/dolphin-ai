@@ -83,6 +83,10 @@ func (c *Coordinator) onboardConsole() {
 		Handler: func(args []string, io transport.UserIO) { c.handleFeedback(args, io) },
 	})
 	con.Add(&console.Command{
+		Name: "transport", Desc: "Show enabled transports",
+		Handler: func(args []string, io transport.UserIO) { c.printTransport(io) },
+	})
+	con.Add(&console.Command{
 		Name: "reload", Desc: i18n.TL(i18n.KeyHelpReload),
 		Handler: func(args []string, io transport.UserIO) {
 			c.reloadRequested = true
@@ -737,6 +741,33 @@ func (c *Coordinator) dumpSessionMermaid(events []session.SessionEvent, id strin
 		}
 	}
 	io.WriteLine("")
+}
+
+func (c *Coordinator) printTransport(io transport.UserIO) {
+	tc := c.cfg.Transport
+	io.WriteLine("Transports:")
+	if tc.Stdio.Enabled {
+		io.WriteLine("  stdio     enabled")
+	}
+	if tc.SSH.Enabled {
+		addr := tc.SSH.Addr
+		if addr == "" {
+			addr = ":2222"
+		}
+		io.WriteLine(fmt.Sprintf("  ssh       %s", addr))
+	}
+	if tc.MQTT.Enabled {
+		io.WriteLine(fmt.Sprintf("  mqtt      %s", tc.MQTT.Broker))
+	}
+	if tc.Email.Enabled {
+		io.WriteLine(fmt.Sprintf("  email     %s (IMAP:%s:%d)", tc.Email.Username, tc.Email.IMAPHost, tc.Email.IMAPPort))
+	}
+	if tc.DingTalk.Enabled {
+		io.WriteLine("  dingtalk  enabled")
+	}
+	if !tc.Stdio.Enabled && !tc.SSH.Enabled && !tc.MQTT.Enabled && !tc.Email.Enabled && !tc.DingTalk.Enabled {
+		io.WriteLine("  (none enabled)")
+	}
 }
 
 func formatSize(n int) string {
