@@ -1103,7 +1103,7 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 		)
 		if a.cfg.LogLevel == "debug" && caps.ShowToolDetails && resultContent != "" {
 			argsCompact := compactJSON(tc.Arguments, 200)
-			io.WriteLine(fmt.Sprintf("[%s] (%d/%d) %s", tc.Name, subTurn+1, maxSubTurns, argsCompact))
+			io.WriteLine(fmt.Sprintf("[%s](%d/%d) %s", tc.Name, subTurn+1, maxSubTurns, argsCompact))
 		}
 
 		innerContent, _ := json.Marshal([]map[string]any{
