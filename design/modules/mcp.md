@@ -17,6 +17,7 @@ type Tool interface {
 | CDP | `cdp.go` | 浏览器: Navigate/Click/Screenshot/Evaluate/GetText |
 | Email | `email.go` | SMTP 发送 + IMAP/POP3 搜索/取回 |
 | Webhook | `webhook.go` | HTTP 请求 (配置 target / inline URL) |
+| WebSearch | `websearch/websearch.go` | 网页搜索, duckduckgo/serper/iflow 多 provider 注册模式 |
 
 ## CDP Tool Flow
 
@@ -80,4 +81,4 @@ sequenceDiagram
 - `FilteredView(names)` — 子 Agent 工具子集
 - 自动统计: CallCount, ErrorCount, LastCalledAt, TotalDuration
 
-> Last modified: 2026-05-17
+> Last modified: 2026-05-19

@@ -143,6 +143,33 @@ mcp:
         headers: {Authorization: "Bearer my-token"}
 ```
 
+### WebSearch MCP (`mcp.web_search`)
+
+Web search tool with multiple provider support. Providers are registered via `init()` in their respective files under `internal/mcp/websearch/`. The LLM-visible enum is the intersection of configured `providers` and registered implementations.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `mcp.web_search.enabled` | `bool` | `true` | Enable the web search tool. |
+| `mcp.web_search.priority` | `int` | `90` | Tool listing priority. |
+| `mcp.web_search.provider` | `string` | `"duckduckgo"` | Default provider (legacy single-provider config). |
+| `mcp.web_search.providers` | `[]string` | `[]` | List of enabled providers. Intersected with registered providers for the LLM enum. Falls back to `provider` if empty. |
+| `mcp.web_search.api_key` | `string` | `""` | API key for providers that require one (serper, iflow). |
+
+Supported providers:
+- `duckduckgo` — zero-config, HTML scraping
+- `serper` — structured API, requires `api_key`
+- `iflow` — iflow.cn Chinese search API, requires `api_key`
+
+```yaml
+mcp:
+  web_search:
+    enabled: true
+    providers:
+      - duckduckgo
+      - iflow
+    api_key: "your-key"
+```
+
 ### External MCP Servers (`mcp.servers`)
 
 Connect to external MCP servers. Each key is a server name.
@@ -463,4 +490,4 @@ Run `dolphin init --restrictive` to generate a security-hardened config:
 - **Log level**: `warn` (reduces secret leakage in logs)
 - **Plugins**: disabled
 
-> Last modified: 2026-05-17
+> Last modified: 2026-05-19

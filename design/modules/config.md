@@ -15,7 +15,7 @@
 | `llm` | `LLMConfig` | Type, BaseURL, APIKey, Model, MaxTokens, Providers[], Temperature, MaxContextTokens, CompressMode |
 | `session` | `SessionConfig` | MaxLoop, Summary, MaxAge, Resume |
 | `transport` | `TransportConfig` | Stdio/SSH/MQTT/Email 四子结构 |
-| `mcp` | `MCPConfig` | Shell/CDP/Email/Webhook 开关, Servers[], Repos[] |
+| `mcp` | `MCPConfig` | Shell/CDP/Email/Webhook/WebSearch 开关, Servers[], Repos[] |
 | `agent_pool` | `PoolConfig` | MaxConcurrency, DefaultTimeout, WorkspaceDir, IdleTimeout |
 | `skills` | `SkillsConfig` | Dir, Repos[] |
 | `crontab` | `CrontabConfig` | File, CheckInterval |
@@ -33,8 +33,29 @@
 4. 生成 `SYSTEM.md` + 配置文件
 5. `~/.dolphin/.first-run-done` 标记
 
+## mcp.web_search
+
+```yaml
+mcp:
+  web_search:
+    enabled: true          # 默认启用
+    priority: 90           # 工具排序优先级
+    provider: duckduckgo   # 默认搜索引擎（旧式单 provider 配置）
+    providers:             # 启用列表（与注册取交集后暴露给 LLM）
+      - duckduckgo
+      - iflow
+    api_key: ""            # serper / iflow 需要
+```
+
+支持的 provider：
+- `duckduckgo` — 零配置，HTML 抓取
+- `serper` — 结构化 API，需 `api_key`
+- `iflow` — iflow.cn 中文搜索 API，需 `api_key`
+
+每个 provider 对应 `internal/mcp/websearch/<name>.go`，通过 `init() + registerProvider()` 自注册。
+
 ## Runtime Config
 
 `config_handler.go` — 通过 MCP 工具提供运行时的 `config list` / `config get` / `config set` / `config save`，支持修改 temperature、模型、压缩模式等。
 
-> Last modified: 2026-05-17
+> Last modified: 2026-05-19

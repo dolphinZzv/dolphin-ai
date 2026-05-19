@@ -147,6 +147,33 @@ mcp:
         headers: {Authorization: "Bearer my-token"}
 ```
 
+### 网页搜索 MCP (`mcp.web_search`)
+
+网页搜索工具，支持多搜索引擎。每个 provider 在 `internal/mcp/websearch/` 下通过 `init() + registerProvider()` 自注册。LLM 可用的枚举列表 = 配置中 `providers` 与已注册 provider 的交集。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `mcp.web_search.enabled` | `bool` | `true` | 启用网页搜索工具。 |
+| `mcp.web_search.priority` | `int` | `90` | 工具列表优先级。 |
+| `mcp.web_search.provider` | `string` | `"duckduckgo"` | 默认搜索引擎（旧式单 provider 配置）。 |
+| `mcp.web_search.providers` | `[]string` | `[]` | 启用的搜索引擎列表。与已注册的 provider 取交集后暴露给 LLM。为空时回退到 `provider`。 |
+| `mcp.web_search.api_key` | `string` | `""` | 需要 API 密钥的搜索引擎共用（serper、iflow）。 |
+
+支持的搜索引擎：
+- `duckduckgo` — 零配置，HTML 抓取
+- `serper` — 结构化 API，需要 `api_key`
+- `iflow` — 心流搜索，需要 `api_key`
+
+```yaml
+mcp:
+  web_search:
+    enabled: true
+    providers:
+      - duckduckgo
+      - iflow
+    api_key: "your-key"
+```
+
 ### 外部 MCP 服务器 (`mcp.servers`)
 
 连接到外部的 MCP 服务器。每个键是一个服务器名称。
@@ -467,4 +494,4 @@ Prometheus 风格指标端点。
 - **日志级别**：`warn`（减少日志中的密钥泄露风险）
 - **插件**：禁用
 
-> Last modified: 2026-05-17
+> Last modified: 2026-05-19

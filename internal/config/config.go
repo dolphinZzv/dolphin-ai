@@ -234,10 +234,11 @@ type WebhookTarget struct {
 }
 
 type MCPWebSearchConfig struct {
-	Enabled  bool   `mapstructure:"enabled"`
-	Priority int    `mapstructure:"priority"`
-	Provider string `mapstructure:"provider"` // "duckduckgo" (default, zero-config), "serper", or "iflow"
-	APIKey   string `mapstructure:"api_key"`   // for serper/iflow providers
+	Enabled   bool     `mapstructure:"enabled"`
+	Priority  int      `mapstructure:"priority"`
+	Provider  string   `mapstructure:"provider"`  // single default provider (backward compat)
+	Providers []string `mapstructure:"providers"` // enabled provider list, intersected with registered providers for LLM enum
+	APIKey    string   `mapstructure:"api_key"`   // for serper/iflow providers
 }
 
 type MCPServerConfig struct {
