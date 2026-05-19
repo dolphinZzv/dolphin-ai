@@ -4,28 +4,15 @@ import (
 	"fmt"
 	"os"
 
+	"dolphin/internal/i18n"
 	"github.com/spf13/cobra"
 )
 
 func NewCompletionCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "completion [bash|zsh|fish|powershell]",
-		Short: "Generate shell completion script",
-		Long: `Generate shell completion script for dolphin commands.
-
-Output the completion script for the specified shell.
-Source the output to enable tab completion.
-
-  bash:       source <(dolphin completion bash)
-  zsh:        source <(dolphin completion zsh)
-  fish:       dolphin completion fish | source
-  powershell: dolphin completion powershell | Out-String | Invoke-Expression
-
-To make it permanent (bash):
-  dolphin completion bash > /etc/bash_completion.d/dolphin
-
-To make it permanent (zsh):
-  dolphin completion zsh > "${fpath[1]}/_dolphin"`,
+		Use:                   i18n.TL(i18n.KeyCmdCompletionUse),
+		Short:                 i18n.TL(i18n.KeyCmdCompletionShort),
+		Long:                  i18n.TL(i18n.KeyCmdCompletionLong),
 		DisableFlagsInUseLine: true,
 		ValidArgs:             []string{"bash", "zsh", "fish", "powershell"},
 		Args:                  cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs),

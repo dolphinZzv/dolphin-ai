@@ -143,4 +143,383 @@ var zhMessages = map[string]string{
 	// pprof
 	KeyPprofBanner: "\n=== pprof 服务监听在 %s ===\n",
 	KeyPprofURL:    "  http://%s/debug/pprof/\n",
+
+	// Cobra command descriptions
+	KeyCmdDolphinUse:   "dolphin",
+	KeyCmdDolphinShort: "AI Agent — 支持 stdio / SSH / MQTT / Email 传输，MCP 工具（shell + cdp）",
+	KeyCmdDolphinLong: `dolphin 是一个支持 MCP 工具的 AI Agent。
+
+传输层: stdio（默认）、SSH (:2222)、MQTT、Email
+工具: shell、cdp（浏览器自动化）
+配置: .dolphin/config.yaml > ~/.dolphin/ > /etc/dolphin/
+环境变量: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
+
+	KeyCmdCompletionUse:   "completion [bash|zsh|fish|powershell]",
+	KeyCmdCompletionShort: "生成 shell 补全脚本",
+	KeyCmdCompletionLong: `生成 dolphin 命令的 shell 补全脚本。
+
+输出指定 shell 的补全脚本，source 后即可启用 Tab 补全。
+
+  bash:       source <(dolphin completion bash)
+  zsh:        source <(dolphin completion zsh)
+  fish:       dolphin completion fish | source
+  powershell: dolphin completion powershell | Out-String | Invoke-Expression
+
+永久生效（bash）:
+  dolphin completion bash > /etc/bash_completion.d/dolphin
+
+永久生效（zsh）:
+  dolphin completion zsh > "${fpath[1]}/_dolphin"`,
+
+	KeyCmdConfigUse:       "config",
+	KeyCmdConfigShort:     "管理配置",
+	KeyCmdConfigShowUse:   "show",
+	KeyCmdConfigShowShort: "显示当前生效的配置",
+
+	KeyCmdDoctorUse:   "doctor",
+	KeyCmdDoctorShort: "运行自诊断检查",
+	KeyCmdDoctorLong: `在系统上运行自诊断检查，识别配置问题。
+
+检查项目:
+  - 配置文件位置与可解析性
+  - LLM API 密钥存在性与端点连通性
+  - 会话目录可访问性
+  - 传输配置一致性
+  - SSH 主机密钥可用性
+  - Skills 和 MCP 目录
+  - 已启用传输的端口可用性`,
+
+	KeyCmdInitUse:   "init",
+	KeyCmdInitShort: "生成默认配置文件",
+	KeyCmdInitLong: `生成带注释的 .dolphin/config.yaml 默认配置。
+
+使用 --restrictive 生成安全加固配置：
+  - Shell 命令限制为安全白名单
+  - CDP 浏览器自动化禁用
+  - Webhook 工具禁用
+  - 日志级别设为 warn
+  - 插件禁用`,
+
+	KeyCmdNewUse:   "new",
+	KeyCmdNewShort: "从干净状态启动新的 dolphin 会话",
+	KeyCmdNewLong: `清理所有 dolphin 运行时数据和状态，然后启动全新的
+dolphin agent 会话。
+
+移除内容:
+  - 所有运行时数据（会话、日记、日志、工作区、定时任务）
+  - SSH 自动生成的密码
+  - 缓存的工具清单
+  - 下载的技能和命令
+  - SYSTEM.md（系统提示）
+  - /etc/dolphin/ 系统级数据
+  - 首次运行标记
+
+配置文件（config.yaml）将被保留。`,
+
+	KeyCmdResetUse:   "reset",
+	KeyCmdResetShort: "重置 dolphin 到干净状态",
+	KeyCmdResetLong: `删除所有运行时数据、自动生成的文件和首次运行标记，
+下次启动时就像第一次使用一样。
+
+移除的运行时数据:
+  - 会话、日记、日志、工作区、定时任务
+  - SSH 自动生成的密码
+  - 缓存的工具清单
+  - 下载的技能和命令
+  - SYSTEM.md（系统提示）
+  - /etc/dolphin/ 系统级配置和数据
+  - 首次运行标记（下次启动时显示设置向导）
+  - Email 已配置标记（下次 email 会话时重新发送启动邮件）
+
+配置文件（config.yaml）将被保留。`,
+
+	KeyCmdSessionsUse:       "sessions",
+	KeyCmdSessionsShort:     "列出和管理 agent 会话",
+	KeyCmdSessionsShowUse:   "show <id>",
+	KeyCmdSessionsShowShort: "以可读对话形式显示会话详情",
+	KeyCmdSessionsLogUse:    "log <id>",
+	KeyCmdSessionsLogShort:  "显示原始会话事件日志",
+	KeyCmdSessionsRmUse:     "rm <id>",
+	KeyCmdSessionsRmShort:   "删除会话文件",
+	KeyCmdSessionsDumpUse:   "dump <id>",
+	KeyCmdSessionsDumpShort: "生成会话的 Mermaid 时序图",
+
+	KeyCmdSetupUse:   "setup",
+	KeyCmdSetupShort: "重新运行职业导向的工具设置向导",
+	KeyCmdSetupLong: `重新运行职业选择提示并显示推荐的工具。
+
+首次运行的标记不会重置，因此不会在下次启动时触发。
+使用 --reset 清除首次运行标记并重新开始。`,
+
+	KeyCmdSkillsUse:          "skills",
+	KeyCmdSkillsShort:        "列出和管理技能",
+	KeyCmdSkillsListUse:      "list",
+	KeyCmdSkillsListShort:    "列出所有已安装的技能",
+	KeyCmdSkillsSearchUse:    "search <查询词>",
+	KeyCmdSkillsSearchShort:  "按名称或描述搜索技能",
+	KeyCmdSkillsInstallUse:   "install <名称> [描述]",
+	KeyCmdSkillsInstallShort: "从模板安装新技能",
+	KeyCmdSkillsDisableUse:   "disable <名称>",
+	KeyCmdSkillsDisableShort: "禁用并删除技能",
+
+	KeyCmdStatusUse:   "status",
+	KeyCmdStatusShort: "显示 dolphin 守护进程健康状态与配置",
+
+	KeyCmdUpdateUse:   "update [版本号]",
+	KeyCmdUpdateShort: "从 GitHub 更新 dolphin 到最新版本或指定版本",
+	KeyCmdUpdateLong: `从 GitHub Releases 下载安装指定版本的 dolphin。
+
+如不指定版本号，则使用最新版本。
+版本号需对应 GitHub Release 标签（如 "v1.0.0"）。
+
+示例:
+  dolphin update          更新到最新版本
+  dolphin update v1.0.0   更新到指定版本`,
+
+	KeyCmdVersionUse:   "version",
+	KeyCmdVersionShort: "打印版本号",
+
+	KeyCmdConfigFlag: "配置文件路径（默认搜索 .dolphin/、~/.dolphin/、/etc/dolphin/）",
+
+	// Root command flags
+	KeyFlagConfig:  "配置文件路径（默认搜索 .dolphin/、~/.dolphin/、/etc/dolphin/）",
+	KeyFlagVerbose: "启用 debug 级别日志",
+	KeyFlagQuiet:   "抑制非错误输出",
+
+	// Doctor output
+	KeyDoctorBanner:              "Dolphin 诊断工具",
+	KeyDoctorSep:                 "================",
+	KeyDoctorOK:                  "  [OK]   %s: %s",
+	KeyDoctorWarn:                "  [WARN] %s: %s",
+	KeyDoctorFail:                "  [FAIL] %s: %s",
+	KeyDoctorResults:             "结果: %d 通过, %d 警告, %d 失败",
+	KeyDoctorFixHint:             "运行 'dolphin setup' 修复配置问题。",
+	KeyDoctorCfgValid:            "配置已加载并验证",
+	KeyDoctorCfgFail:             "config.Load 失败: %v",
+	KeyDoctorLLMKeyOK:            "已配置",
+	KeyDoctorLLMKeyFail:          "未找到 API 密钥 — 设置 DZ_LLM_API_KEY 环境变量或运行 'dolphin setup'",
+	KeyDoctorLLMProvNone:         "%s 不可达: %v（检查网络或代理）",
+	KeyDoctorLLMBaseEmpty:        "Base URL 为空",
+	KeyDoctorLLMReachable:        "%s 可达",
+	KeyDoctorLLMUnreachable:      "%s 不可达: %v（检查网络或代理）",
+	KeyDoctorSessOK:              "会话目录可写",
+	KeyDoctorSessNotExist:        "%s 不存在（首次运行时将自动创建）",
+	KeyDoctorSessFail:            "%s: %v",
+	KeyDoctorSessNotDir:          "%s 不是目录",
+	KeyDoctorSessNotWritable:     "%s 不可写: %v",
+	KeyDoctorTransStdio:          "已启用",
+	KeyDoctorTransSSH:            "已启用于 %s（用户: %s）",
+	KeyDoctorTransMQTT:           "已启用（Broker: %s）",
+	KeyDoctorTransEmail:          "已启用（发件人: %s）",
+	KeyDoctorTransNone:           "没有启用任何传输 — 至少启用一种（stdio、ssh、mqtt 或 email）",
+	KeyDoctorSSHPassFail:         "SSH 密码为空 — 将自动生成，请检查日志",
+	KeyDoctorSSHKeyFail:          "无法展开 ~: %v",
+	KeyDoctorSSHKeyWarn:          "在 %s 或 %s 未找到主机密钥 — 将自动生成临时密钥",
+	KeyDoctorSSHKeyOK:            "找到主机密钥",
+	KeyDoctorSSHKeyAuto:          "自动生成的密钥位于 %s",
+	KeyDoctorSkillsDirOK:         "skills 目录可访问",
+	KeyDoctorSkillsDirWarn:       "%s 不存在（首次运行时将自动创建）",
+	KeyDoctorSkillsDirFail:       "%s: %v",
+	KeyDoctorSkillsDirNotDir:     "%s 不是目录",
+	KeyDoctorShellDisabled:       "shell 工具已禁用（mcp.shell.enabled=false）",
+	KeyDoctorShellUnrestricted:   "无限制模式 — 允许所有 shell 命令",
+	KeyDoctorShellRestricted:     "限制为: %v",
+	KeyDoctorShellDefault:        "已启用，使用默认限制",
+	KeyDoctorPortAvail:           "%s 可用",
+	KeyDoctorPortInUse:           "%s 占用或不可用（%v）",
+	KeyDoctorCfgNotFound:         "未找到（%s），跳过",
+	KeyDoctorCfgUnreadable:       "不可读: %v",
+	KeyDoctorCheckNameCfgSys:     "系统配置",
+	KeyDoctorCheckNameCfgUser:    "用户配置",
+	KeyDoctorCheckNameCfgProj:    "项目配置",
+	KeyDoctorCheckNameCfgVal:     "配置验证",
+	KeyDoctorCheckNameLLMKey:     "LLM API 密钥",
+	KeyDoctorCheckNameSessDir:    "会话目录",
+	KeyDoctorCheckNameTransStdio: "传输 stdio",
+	KeyDoctorCheckNameTransSSH:   "传输 ssh",
+	KeyDoctorCheckNameTransMQTT:  "传输 mqtt",
+	KeyDoctorCheckNameTransEmail: "传输 email",
+	KeyDoctorCheckNameTransports: "传输",
+	KeyDoctorCheckNameSSHPass:    "SSH 密码",
+	KeyDoctorCheckNameSSHKey:     "SSH 主机密钥",
+	KeyDoctorCheckNameSkillsDir:  "skills 目录",
+	KeyDoctorCheckNameShell:      "MCP shell",
+	KeyDoctorUnreadable:          "不可读: %v",
+	KeyDoctorLLMProvFail:         "未配置提供商",
+
+	// Status output
+	KeyStatusVersion:           "版本: %s",
+	KeyStatusBuild:             "构建: %s",
+	KeyStatusLLM:               "LLM:       已配置",
+	KeyStatusLLMNotCfg:         "LLM:       未配置（运行 'dolphin setup'）",
+	KeyStatusHealthUnreach:     "健康检查: 不可达（%v）",
+	KeyStatusHealthOK:          "健康检查: 正常 — %s",
+	KeyStatusHealthDisabled:    "健康检查: 已禁用（设置 health.enabled=true）",
+	KeyStatusMetricsEnabled:    "指标:     已启用于 %s",
+	KeyStatusMetricsDisabled:   "指标:     已禁用",
+	KeyStatusTransports:        "传输:",
+	KeyStatusShell:             "Shell:",
+	KeyStatusShellUnrestricted: "Shell:    无限制（允许管道和重定向）",
+	KeyStatusShellRestricted:   "Shell:    受限（允许: %v）",
+	KeyStatusTransStdio:        "  - stdio: 已启用",
+	KeyStatusTransSSH:          "  - ssh:   已启用于 %s",
+	KeyStatusTransMQTT:         "  - mqtt:  已启用（broker: %s）",
+	KeyStatusTransEmail:        "  - email: 已启用（发件人: %s）",
+
+	// Update output
+	KeyUpdateCurrent:       "当前版本: %s",
+	KeyUpdatePlatform:      "平台: %s/%s",
+	KeyUpdateRelease:       "版本: %s",
+	KeyUpdateAlreadyLatest: "已是最新版本 %s，无需更新。",
+	KeyUpdateReady:         "\n准备下载并安装 %s（%s）",
+	KeyUpdateBinary:        "当前二进制: %s",
+	KeyUpdateConfirm:       "确定要更新吗？[y/N]: ",
+	KeyUpdateCancelled:     "更新已取消。",
+	KeyUpdateDownloading:   "\n正在下载 %s ...",
+	KeyUpdateComplete:      "\n已更新到 %s",
+	KeyUpdateVerify:        "运行 'dolphin --version' 验证。",
+	KeyUpdateNoReleases:    "未找到发布版本。",
+	KeyUpdateAvailable:     "可用版本（%s/%s）:",
+	KeyUpdatePreRelease:    "\n⚠ = 预发布版本",
+
+	// Setup output
+	KeySetupFirstRunReset: "首次运行标记已重置。下次启动时将显示职业引导提示。",
+	KeySetupSkipped:       "\n设置已跳过。未做任何更改。",
+	KeySetupRecTools:      "\n=== %s 推荐工具 ===",
+	KeySetupLoadTo:        "\n安装到: [p] 项目  [a] 全局  [n] 跳过",
+	KeySetupChoice:        "选择: ",
+	KeySetupSavedProject:  "\n工具已保存到 .dolphin/config.yaml",
+	KeySetupSavedGlobal:   "\n工具已保存到 ~/.dolphin/config.yaml",
+	KeySetupSkipNoChange:  "\n已跳过。未做任何更改。",
+	KeySetupManual:        "你可以稍后手动在配置或 skill/MCP 仓库中添加工具。",
+	KeySetupComplete:      "=== 设置完成 ===",
+	KeySetupProfile:       "  职业:   %s",
+	KeySetupSkillsCount:   "  技能:   %d",
+	KeySetupMCPCount:      "  MCP:    %d",
+	KeySetupNextSteps:     "下一步:",
+	KeySetupStep1:         "  1. 设置 LLM API 密钥: export DZ_LLM_API_KEY=sk-...",
+	KeySetupStep2:         "  2. 重启 dolphin 使更改生效",
+	KeySetupStep3:         "  3. 运行 'dolphin doctor' 验证配置",
+
+	// Init output
+	KeyInitRestrictiveGenerated: "\n安全加固配置已生成: %s",
+	KeyInitRestrictiveDiffs:     "\n与默认配置的主要区别:",
+	KeyInitRestrictiveShell:     "  - Shell: 仅允许白名单命令（ls、cat、grep、find ...）",
+	KeyInitRestrictiveCDP:       "  - CDP 浏览器: 已禁用",
+	KeyInitRestrictiveWebhook:   "  - Webhook: 已禁用",
+	KeyInitRestrictiveLog:       "  - 日志级别: warn",
+	KeyInitRestrictivePlugins:   "  - 插件: 已禁用",
+	KeyInitRestrictiveRun:       "\n运行 'dolphin' 使用此配置启动。",
+	KeyInitDefaultGenerated:     "默认配置文件已生成: %s",
+	KeyInitEditAndRun:           "编辑后运行 'dolphin' 启动。",
+	KeyInitGitError:             "git init .dolphin: %v",
+	KeyInitRestrictiveFlag:      "生成安全加固配置（限制 shell、禁用 CDP/webhook、warn 日志级别）",
+
+	// Reset output
+	KeyResetWillRemove:  "以下内容将被移除:",
+	KeyResetComplete:    "重置完成: %d 项已移除",
+	KeyResetMarkerReset: "首次运行标记已重置。",
+	KeyResetRunAgain:    "运行 'dolphin' 重新进入初始设置向导。",
+	KeyResetConfirm:     "\n确定要执行吗？此操作无法撤销。[y/N]: ",
+	KeyResetCancelled:   "%s 已取消。",
+
+	// New session output
+	KeyNewStarting: "正在启动全新的 dolphin 会话:",
+
+	// Sessions output
+	KeySessNoDir:        "未找到会话（目录不存在）",
+	KeySessNone:         "未找到会话。",
+	KeySessDirLabel:     "会话目录: %s",
+	KeySessNotFound:     "会话 %q 未找到",
+	KeySessNoEvents:     "会话中没有事件。",
+	KeySessHeader:       "会话: %s",
+	KeySessDuration:     "持续时间: %s — %s（%d 个事件）",
+	KeySessTurnTokens:   "（Token: %d 入 / %d 出）",
+	KeySessRemoved:      "已删除会话 %q",
+	KeySessDumpNoEvents: "会话中没有事件",
+	KeySessServing:      "服务地址: %s",
+	KeySessStopHint:     "按 Ctrl+C 停止。",
+
+	// Config show output
+	KeyCfgShowLLM:            "LLM:",
+	KeyCfgShowSession:        "会话:",
+	KeyCfgShowTransports:     "传输:",
+	KeyCfgShowMCP:            "MCP 工具:",
+	KeyCfgShowAgentPool:      "Agent 池:",
+	KeyCfgShowSkills:         "技能:",
+	KeyCfgShowCrontab:        "定时任务:",
+	KeyCfgShowMonitoring:     "监控:",
+	KeyCfgShowPlugins:        "插件:",
+	KeyCfgShowLogLevel:       "日志级别: %s",
+	KeyCfgShowLogFile:        "日志文件: %s",
+	KeyCfgShowEnabled:        "已启用",
+	KeyCfgShowDisabled:       "已禁用",
+	KeyCfgShowType:           "  类型:       %s",
+	KeyCfgShowModel:          "  模型:       %s",
+	KeyCfgShowBaseURL:        "  Base URL:   %s",
+	KeyCfgShowAPIKey:         "  API Key:    %s",
+	KeyCfgShowMaxTokens:      "  最大 Token:  %d",
+	KeyCfgShowMaxCtxTokens:   "  最大上下文:  %d",
+	KeyCfgShowTemperature:    "  温度:       %.1f",
+	KeyCfgShowMaxSubTurns:    "  最大子轮次: %d",
+	KeyCfgShowCompressMode:   "  压缩模式:   %s",
+	KeyCfgShowMaxLoop:        "  最大循环:   %d",
+	KeyCfgShowSummary:        "  摘要:       %v",
+	KeyCfgShowMaxAge:         "  最大保留:   %s",
+	KeyCfgShowShell:          "  Shell:   enabled=%v",
+	KeyCfgShowCDP:            "  CDP:     enabled=%v",
+	KeyCfgShowEmail:          "  Email:   enabled=%v",
+	KeyCfgShowRepos:          "  仓库:       %v",
+	KeyCfgShowMaxConcurrency: "  最大并发:      %d",
+	KeyCfgShowDefaultTimeout: "  默认超时:      %ds",
+	KeyCfgShowIdleTimeout:    "  空闲超时:      %ds",
+	KeyCfgShowWorkspace:      "  工作区:        %s",
+	KeyCfgShowMaxPending:     "  最大待处理结果: %d",
+	KeyCfgShowDir:            "  目录:     %s",
+	KeyCfgShowMaxTop:         "  最大 Top: %d",
+	KeyCfgShowFile:           "  文件:            %s",
+	KeyCfgShowCheckInterval:  "  检查间隔:  %s",
+	KeyCfgShowRestricted:     "（受限: %v）",
+	KeyCfgShowUnrestricted:   "（不受限）",
+	KeyCfgShowDefault:        "（默认）",
+	KeyCfgShowRemote:         "（远程: %s）",
+	KeyCfgShowHeadless:       "（无头: %v）",
+	KeyCfgShowServer:         "  Server(%s): %s（类型: %s）",
+
+	// Transport startup messages
+	KeyTransSSHServer:   "\n=== SSH 服务已配置于 %s ===\n",
+	KeyTransSSHConnect:  "连接方式: ssh %s@<host> -p %s",
+	KeyTransMQTTActive:  "\n=== MQTT 传输已激活 ===\n",
+	KeyTransMQTTBroker:  "Broker: %s  Topic: %s  Client: %s",
+	KeyTransEmailActive: "\n=== Email 传输已激活 ===\n",
+	KeyTransEmailIMAP:   "IMAP: %s:%d（轮询间隔 %s）",
+	KeyTransEmailSMTP:   "SMTP: %s:%d",
+	KeyTransEmailHint:   "发送邮件到 %s — 主题 = 命令",
+	KeyTransDingTalk:    "\n=== DingTalk 机器人已激活（Stream 模式）===\n",
+	KeyTransNoneEnabled: "没有启用任何传输（请在配置中启用 stdio、ssh、mqtt 或 email）",
+
+	// Common
+	KeyEnabled:    "已启用",
+	KeyDisabled:   "已禁用",
+	KeyNotFound:   "未找到",
+	KeyError:      "错误",
+	KeySkipped:    "已跳过",
+	KeyCancelled:  "已取消",
+	KeyAreYouSure: "确定要执行吗？[y/N]: ",
+	KeyYes:        "是",
+	KeyNo:         "否",
+
+	// Skills CLI output
+	KeySkillsCLINone:       "未安装任何技能。",
+	KeySkillsCLITotal:      "\n总计: %d 个技能",
+	KeySkillsCLIInstalled:  "技能 %q 已安装到 %s",
+	KeySkillsCLISearchNone: "未找到匹配 %q 的技能。",
+	KeySkillsCLIFound:      "\n找到 %d 个匹配 %q 的结果（* = 已安装）。",
+	KeySkillsCLIEdit:       "编辑该文件以添加技能内容。",
+	KeySkillsCLIDisabled:   "技能 %q 已禁用并删除。",
+
+	// Cleanup common
+	KeyCleanupComplete: "清理完成: %d 项已移除",
+	KeyNotExistSkip:    "（未找到，跳过）",
+	KeyDirectory:       "/（目录）",
 }

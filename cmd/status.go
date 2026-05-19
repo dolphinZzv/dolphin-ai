@@ -7,29 +7,30 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/i18n"
 
 	"github.com/spf13/cobra"
 )
 
 func NewStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Show dolphin daemon health and configuration status",
+		Use:   i18n.TL(i18n.KeyCmdStatusUse),
+		Short: i18n.TL(i18n.KeyCmdStatusShort),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := config.Load(cfgFile)
 			if err != nil {
 				return fmt.Errorf("load config: %w", err)
 			}
 
-			fmt.Printf("Version: %s\n", Version)
-			fmt.Printf("Build: %s\n", BuildTime)
+			fmt.Printf(i18n.TL(i18n.KeyStatusVersion)+"\n", Version)
+			fmt.Printf(i18n.TL(i18n.KeyStatusBuild)+"\n", BuildTime)
 			fmt.Println()
 
 			// LLM status
 			if cfg.LLMConfigured() {
-				fmt.Println("LLM:       configured")
+				fmt.Println(i18n.TL(i18n.KeyStatusLLM))
 			} else {
-				fmt.Println("LLM:       NOT configured (run 'dolphin setup')")
+				fmt.Println(i18n.TL(i18n.KeyStatusLLMNotCfg))
 			}
 
 			// Health endpoint
@@ -38,49 +39,49 @@ func NewStatusCmd() *cobra.Command {
 				client := &http.Client{Timeout: 3 * time.Second}
 				resp, err := client.Get(fmt.Sprintf("http://%s/health", addr))
 				if err != nil {
-					fmt.Printf("Health:    unreachable (%v)\n", err)
+					fmt.Printf(i18n.TL(i18n.KeyStatusHealthUnreach)+"\n", err)
 				} else {
 					defer resp.Body.Close()
 					body, _ := io.ReadAll(resp.Body)
-					fmt.Printf("Health:    OK — %s\n", body)
+					fmt.Printf(i18n.TL(i18n.KeyStatusHealthOK)+"\n", body)
 				}
 			} else {
-				fmt.Println("Health:    disabled (set health.enabled=true)")
+				fmt.Println(i18n.TL(i18n.KeyStatusHealthDisabled))
 			}
 
 			// Metrics endpoint
 			if cfg.Metrics.Enabled {
-				fmt.Printf("Metrics:   enabled at %s\n", cfg.Metrics.Addr)
+				fmt.Printf(i18n.TL(i18n.KeyStatusMetricsEnabled)+"\n", cfg.Metrics.Addr)
 			} else {
-				fmt.Println("Metrics:   disabled")
+				fmt.Println(i18n.TL(i18n.KeyStatusMetricsDisabled))
 			}
 
 			// Transports
 			fmt.Println()
-			fmt.Println("Transports:")
+			fmt.Println(i18n.TL(i18n.KeyStatusTransports))
 			if cfg.Transport.Stdio.Enabled {
-				fmt.Println("  - stdio: enabled")
+				fmt.Println(i18n.TL(i18n.KeyStatusTransStdio))
 			}
 			if cfg.Transport.SSH.Enabled {
 				addr := cfg.Transport.SSH.Addr
 				if addr == "" {
 					addr = ":2222"
 				}
-				fmt.Printf("  - ssh:   enabled at %s\n", addr)
+				fmt.Printf(i18n.TL(i18n.KeyStatusTransSSH)+"\n", addr)
 			}
 			if cfg.Transport.MQTT.Enabled {
-				fmt.Printf("  - mqtt:  enabled (broker: %s)\n", cfg.Transport.MQTT.Broker)
+				fmt.Printf(i18n.TL(i18n.KeyStatusTransMQTT)+"\n", cfg.Transport.MQTT.Broker)
 			}
 			if cfg.Transport.Email.Enabled {
-				fmt.Printf("  - email: enabled (from: %s)\n", cfg.Transport.Email.From)
+				fmt.Printf(i18n.TL(i18n.KeyStatusTransEmail)+"\n", cfg.Transport.Email.From)
 			}
 
 			// Shell tool mode
 			fmt.Println()
 			if len(cfg.MCP.Shell.AllowedCommands) > 0 {
-				fmt.Printf("Shell:    restricted (allowed: %v)\n", cfg.MCP.Shell.AllowedCommands)
+				fmt.Printf(i18n.TL(i18n.KeyStatusShellRestricted)+"\n", cfg.MCP.Shell.AllowedCommands)
 			} else {
-				fmt.Println("Shell:    unrestricted (pipes and redirects enabled)")
+				fmt.Println(i18n.TL(i18n.KeyStatusShellUnrestricted))
 			}
 
 			return nil

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 
 	"github.com/spf13/cobra"
@@ -20,35 +21,35 @@ import (
 
 func NewSessionsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "sessions",
-		Short: "List and manage agent sessions",
+		Use:   i18n.TL(i18n.KeyCmdSessionsUse),
+		Short: i18n.TL(i18n.KeyCmdSessionsShort),
 		RunE:  runSessionsList,
 	}
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "show <id>",
-		Short: "Show session details as a readable conversation",
+		Use:   i18n.TL(i18n.KeyCmdSessionsShowUse),
+		Short: i18n.TL(i18n.KeyCmdSessionsShowShort),
 		Args:  cobra.ExactArgs(1),
 		RunE:  runSessionsShow,
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "log <id>",
-		Short: "Show raw session event log",
+		Use:   i18n.TL(i18n.KeyCmdSessionsLogUse),
+		Short: i18n.TL(i18n.KeyCmdSessionsLogShort),
 		Args:  cobra.ExactArgs(1),
 		RunE:  runSessionsLog,
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "rm <id>",
-		Short: "Remove a session file",
+		Use:   i18n.TL(i18n.KeyCmdSessionsRmUse),
+		Short: i18n.TL(i18n.KeyCmdSessionsRmShort),
 		Args:  cobra.ExactArgs(1),
 		RunE:  runSessionsRemove,
 	})
 
 	dumpCmd := &cobra.Command{
-		Use:   "dump <id>",
-		Short: "Generate Mermaid sequence diagram for a session",
+		Use:   i18n.TL(i18n.KeyCmdSessionsDumpUse),
+		Short: i18n.TL(i18n.KeyCmdSessionsDumpShort),
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			server, _ := cmd.Flags().GetBool("server")
@@ -69,7 +70,7 @@ func runSessionsList(cmd *cobra.Command, args []string) error {
 	entries, err := os.ReadDir(sessionDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			fmt.Println("No sessions found (directory does not exist)")
+			fmt.Println(i18n.TL(i18n.KeySessNoDir))
 			return nil
 		}
 		return fmt.Errorf("read session directory: %w", err)
@@ -129,11 +130,11 @@ func runSessionsList(cmd *cobra.Command, args []string) error {
 	})
 
 	if len(sessions) == 0 {
-		fmt.Println("No sessions found.")
+		fmt.Println(i18n.TL(i18n.KeySessNone))
 		return nil
 	}
 
-	fmt.Printf("Sessions in: %s\n\n", sessionDir)
+	fmt.Printf(i18n.TL(i18n.KeySessDirLabel)+"\n\n", sessionDir)
 	for _, s := range sessions {
 		age := time.Since(s.startedAt).Round(time.Second)
 		fmt.Printf("  %-24s  %s  %s  %s\n", s.id[:min(len(s.id), 20)]+"...", s.startedAt.Format("2006-01-02 15:04"), s.state, age)
@@ -156,11 +157,11 @@ func runSessionsShow(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(events) == 0 {
-		fmt.Println("No events in session.")
+		fmt.Println(i18n.TL(i18n.KeySessNoEvents))
 		return nil
 	}
 
-	fmt.Printf("Session: %s\n", sid)
+	fmt.Printf(i18n.TL(i18n.KeySessHeader)+"\n", sid)
 	fmt.Printf("Duration: %s — %s (%d events)\n",
 		events[0].Timestamp.Format("2006-01-02 15:04:05"),
 		events[len(events)-1].Timestamp.Format("15:04:05"),
@@ -307,7 +308,7 @@ func runSessionsRemove(cmd *cobra.Command, args []string) error {
 	sumPath := filepath.Join(sessionDir, sid+"-summary.json")
 	_ = os.Remove(sumPath)
 
-	fmt.Printf("Removed session %q\n", sid)
+	fmt.Printf(i18n.TL(i18n.KeySessRemoved)+"\n", sid)
 	return nil
 }
 
@@ -324,7 +325,7 @@ func runSessionsDumpDo(sid string, serve, openBrowser bool) error {
 	}
 
 	if len(events) == 0 {
-		return fmt.Errorf("no events in session")
+		return fmt.Errorf("%s", i18n.TL(i18n.KeySessDumpNoEvents))
 	}
 
 	participants := []string{"User", "LLM", "Agent"}
@@ -513,7 +514,7 @@ func serveDiagram(sid, diagram string, openBrowser bool) error {
 		}()
 	}
 
-	fmt.Printf("Serving at %s\n", addr)
+	fmt.Printf(i18n.TL(i18n.KeySessServing)+"\n", addr)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -525,7 +526,7 @@ func serveDiagram(sid, diagram string, openBrowser bool) error {
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() { _ = server.Serve(ln) }()
 
-	fmt.Println("Press Ctrl+C to stop.")
+	fmt.Println(i18n.TL(i18n.KeySessStopHint))
 	select {}
 }
 

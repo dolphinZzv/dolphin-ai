@@ -8,29 +8,17 @@ import (
 	"strings"
 
 	"dolphin/internal/config"
+	"dolphin/internal/i18n"
 
 	"github.com/spf13/cobra"
 )
 
 func NewResetCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "reset",
-		Short: "Reset dolphin to a clean state",
-		Long: `Removes all runtime data, auto-generated files, and the first-run marker
-so the next startup feels like the first time.
-
-Runtime data removed:
-  - Sessions, diary, logs, workspaces, crontab
-  - SSH auto-generated password
-  - Cached tool manifests
-  - Downloaded skills and commands
-  - SYSTEM.md (system prompt)
-  - /etc/dolphin/ system-level config and data
-  - First-run marker (setup wizard will show on next start)
-  - Email-configured marker (startup email sent again on next email session)
-
-Config files (config.yaml) are preserved.`,
-		RunE: runReset,
+		Use:   i18n.TL(i18n.KeyCmdResetUse),
+		Short: i18n.TL(i18n.KeyCmdResetShort),
+		Long:  i18n.TL(i18n.KeyCmdResetLong),
+		RunE:  runReset,
 	}
 
 	cmd.Flags().BoolP("force", "f", false, "skip confirmation prompt")
@@ -44,7 +32,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 	targets := cleanupTargets()
 
 	// Show what will be removed
-	fmt.Fprintln(os.Stderr, "The following will be removed:")
+	fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyResetWillRemove))
 	listTargets(targets)
 
 	// Confirm
@@ -58,14 +46,14 @@ func runReset(cmd *cobra.Command, args []string) error {
 	removed, errors := doRemove(targets)
 
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintf(os.Stderr, "Reset complete: %d items removed", removed)
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyResetComplete), removed))
 	if errors > 0 {
 		fmt.Fprintf(os.Stderr, ", %d errors", errors)
 	}
 	fmt.Fprintln(os.Stderr)
 	fmt.Fprintln(os.Stderr)
-	fmt.Fprintln(os.Stderr, "The first-run marker has been reset.")
-	fmt.Fprintln(os.Stderr, "Run 'dolphin' to go through the initial setup wizard again.")
+	fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyResetMarkerReset))
+	fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyResetRunAgain))
 
 	return nil
 }
@@ -107,11 +95,11 @@ func listTargets(targets []string) {
 	for _, t := range targets {
 		info, err := os.Stat(t)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "  - %s (not found, skipped)\n", t)
+			fmt.Fprintf(os.Stderr, "  - %s"+i18n.TL(i18n.KeyNotExistSkip)+"\n", t)
 			continue
 		}
 		if info.IsDir() {
-			fmt.Fprintf(os.Stderr, "  - %s/ (directory)\n", t)
+			fmt.Fprintf(os.Stderr, "  - %s"+i18n.TL(i18n.KeyDirectory)+"\n", t)
 		} else {
 			fmt.Fprintf(os.Stderr, "  - %s\n", t)
 		}
@@ -120,7 +108,7 @@ func listTargets(targets []string) {
 
 // confirmRemoval asks the user for confirmation. Returns true if confirmed.
 func confirmRemoval(action string) bool {
-	fmt.Fprintf(os.Stderr, "\nAre you sure? This action cannot be undone. [y/N]: ")
+	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyResetConfirm))
 	reader := bufio.NewReader(os.Stdin)
 	input, err := reader.ReadString('\n')
 	if err != nil {
@@ -129,7 +117,7 @@ func confirmRemoval(action string) bool {
 	input = strings.TrimSpace(strings.ToLower(input))
 	if input != "y" && input != "yes" {
 		actionLabel := strings.ToUpper(action[:1]) + action[1:]
-		fmt.Fprintf(os.Stderr, "%s cancelled.\n", actionLabel)
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyResetCancelled)+"\n", actionLabel))
 		return false
 	}
 	return true

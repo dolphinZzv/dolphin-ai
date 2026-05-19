@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/i18n"
 	"dolphin/internal/skill"
 
 	"github.com/spf13/cobra"
@@ -23,34 +24,34 @@ type skillResult struct {
 
 func NewSkillsCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "skills",
-		Short: "List and manage skills",
+		Use:   i18n.TL(i18n.KeyCmdSkillsUse),
+		Short: i18n.TL(i18n.KeyCmdSkillsShort),
 		RunE:  runSkillsList,
 	}
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "list",
-		Short: "List all installed skills",
+		Use:   i18n.TL(i18n.KeyCmdSkillsListUse),
+		Short: i18n.TL(i18n.KeyCmdSkillsListShort),
 		RunE:  runSkillsList,
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "search <query>",
-		Short: "Search skills by name or description",
+		Use:   i18n.TL(i18n.KeyCmdSkillsSearchUse),
+		Short: i18n.TL(i18n.KeyCmdSkillsSearchShort),
 		Args:  cobra.ExactArgs(1),
 		RunE:  runSkillsSearch,
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "install <name> [description]",
-		Short: "Install a new skill from boilerplate template",
+		Use:   i18n.TL(i18n.KeyCmdSkillsInstallUse),
+		Short: i18n.TL(i18n.KeyCmdSkillsInstallShort),
 		Args:  cobra.RangeArgs(1, 2),
 		RunE:  runSkillsInstall,
 	})
 
 	cmd.AddCommand(&cobra.Command{
-		Use:   "disable <name>",
-		Short: "Disable and remove a skill",
+		Use:   i18n.TL(i18n.KeyCmdSkillsDisableUse),
+		Short: i18n.TL(i18n.KeyCmdSkillsDisableShort),
 		Args:  cobra.ExactArgs(1),
 		RunE:  runSkillsDisable,
 	})
@@ -87,7 +88,7 @@ func runSkillsList(cmd *cobra.Command, args []string) error {
 
 	skills := mgr.List()
 	if len(skills) == 0 {
-		fmt.Println("No skills installed.")
+		fmt.Println(i18n.TL(i18n.KeySkillsCLINone))
 		return nil
 	}
 
@@ -100,7 +101,7 @@ func runSkillsList(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("%-30s %s\n", s.Name, desc)
 	}
-	fmt.Printf("\nTotal: %d skills\n", len(skills))
+	fmt.Printf(i18n.TL(i18n.KeySkillsCLITotal)+"\n", len(skills))
 	return nil
 }
 
@@ -167,7 +168,7 @@ func runSkillsSearch(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(results) == 0 {
-		fmt.Printf("No skills found matching %q.\n", args[0])
+		fmt.Printf(i18n.TL(i18n.KeySkillsCLISearchNone)+"\n", args[0])
 		return nil
 	}
 
@@ -184,7 +185,7 @@ func runSkillsSearch(cmd *cobra.Command, args []string) error {
 		}
 		fmt.Printf("%s%-29s %-18s %s\n", mark, r.Name, r.Source, desc)
 	}
-	fmt.Printf("\nFound %d results matching %q (* = installed).\n", len(results), args[0])
+	fmt.Printf(i18n.TL(i18n.KeySkillsCLIFound)+"\n", len(results), args[0])
 	return nil
 }
 
@@ -204,8 +205,8 @@ func runSkillsInstall(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("install skill: %w", err)
 	}
 
-	fmt.Printf("Skill %q installed in %s\n", name, mgr.Dir())
-	fmt.Println("Edit the file to add your skill content.")
+	fmt.Printf(i18n.TL(i18n.KeySkillsCLIInstalled)+"\n", name, mgr.Dir())
+	fmt.Println(i18n.TL(i18n.KeySkillsCLIEdit))
 	return nil
 }
 
@@ -224,6 +225,6 @@ func runSkillsDisable(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("disable skill: %w", err)
 	}
 
-	fmt.Printf("Skill %q disabled and removed.\n", name)
+	fmt.Printf(i18n.TL(i18n.KeySkillsCLIDisabled)+"\n", name)
 	return nil
 }

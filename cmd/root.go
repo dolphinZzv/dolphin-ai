@@ -56,21 +56,16 @@ var (
 
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "dolphin",
-		Short: "AI Agent — stdio / SSH / MQTT / Email transport, MCP tools (shell + cdp)",
-		Long: `dolphin is an AI Agent with MCP tool support.
-
-Transports: stdio (default), SSH (:2222), MQTT, Email
-Tools: shell, cdp (browser automation)
-Config: .dolphin/config.yaml > ~/.dolphin/ > /etc/dolphin/
-Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
+		Use:     i18n.TL(i18n.KeyCmdDolphinUse),
+		Short:   i18n.TL(i18n.KeyCmdDolphinShort),
+		Long:    i18n.TL(i18n.KeyCmdDolphinLong),
 		RunE:    runAgent,
 		Version: Version,
 	}
 
-	cmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", "path to config file (searches .dolphin/, ~/.dolphin/, /etc/dolphin/ by default)")
-	cmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable debug-level logging")
-	cmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "suppress non-error output")
+	cmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "", i18n.TL(i18n.KeyFlagConfig))
+	cmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, i18n.TL(i18n.KeyFlagVerbose))
+	cmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, i18n.TL(i18n.KeyFlagQuiet))
 	cmd.SetVersionTemplate("dolphin {{.Version}}\n")
 
 	cmd.AddCommand(NewSetupCmd())
@@ -380,7 +375,7 @@ func warnNoLLM(cfg *config.Config) {
 		defaultModel = "gpt-4o"
 	}
 	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyWarnNoLLM))
-	fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyWarnDefaultModel), defaultModel, cfg.LLM.BaseURL)
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyWarnDefaultModel), defaultModel, cfg.LLM.BaseURL))
 	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyWarnSetAPIKey))
 	fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyWarnRunSetup))
 }
@@ -557,8 +552,8 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if addr == "" {
 			addr = ":2222"
 		}
-		fmt.Fprintf(os.Stderr, "\n=== SSH server configured on %s ===\n", addr)
-		fmt.Fprintf(os.Stderr, "Connect: ssh %s@<host> -p %s\n", cfg.Transport.SSH.Username, addr[1:])
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransSSHServer), addr))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransSSHConnect)+"\n", cfg.Transport.SSH.Username, addr[1:]))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -588,9 +583,8 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			}
 		}
 
-		fmt.Fprintf(os.Stderr, "\n=== MQTT transport active ===\n")
-		fmt.Fprintf(os.Stderr, "Broker: %s  Topic: %s  Client: %s\n\n",
-			cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.Topic, cfg.Transport.MQTT.ClientID)
+		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransMQTTActive))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransMQTTBroker)+"\n\n", cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.Topic, cfg.Transport.MQTT.ClientID))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewMQTTTransport(cfg)
@@ -612,12 +606,12 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// Email transport
 	if cfg.Transport.Email.Enabled {
-		fmt.Fprintf(os.Stderr, "\n=== Email transport active ===\n")
-		fmt.Fprintf(os.Stderr, "IMAP: %s:%d (poll every %s)\n",
+		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransEmailActive))
+		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyTransEmailIMAP)+"\n",
 			cfg.Transport.Email.IMAPHost, cfg.Transport.Email.IMAPPort,
 			cfg.Transport.Email.PollInterval)
-		fmt.Fprintf(os.Stderr, "SMTP: %s:%d\n", cfg.Transport.Email.SMTPHost, cfg.Transport.Email.SMTPPort)
-		fmt.Fprintf(os.Stderr, "Send an email to %s — subject = command\n\n", cfg.Transport.Email.From)
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransEmailSMTP)+"\n", cfg.Transport.Email.SMTPHost, cfg.Transport.Email.SMTPPort))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransEmailHint)+"\n\n", cfg.Transport.Email.From))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewEmailTransport(&cfg.Transport.Email)
@@ -639,7 +633,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// DingTalk transport
 	if cfg.Transport.DingTalk.Enabled {
-		fmt.Fprintf(os.Stderr, "\n=== DingTalk bot active (Stream mode) ===\n")
+		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransDingTalk))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewDingTalkTransport(&cfg.Transport.DingTalk)
@@ -685,8 +679,8 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if strings.HasPrefix(host, ":") {
 			host = "localhost" + host
 		}
-		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyPprofBanner), cfg.Pprof.Addr)
-		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyPprofURL), host)
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyPprofBanner), cfg.Pprof.Addr))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyPprofURL), host))
 		g.Add(func() error {
 			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
 				return fmt.Errorf("pprof server: %w", err)
@@ -781,7 +775,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	}
 
 	if actorCount == 0 {
-		return fmt.Errorf("no transport enabled (enable stdio, ssh, mqtt, or email in config)")
+		return fmt.Errorf("%s", i18n.TL(i18n.KeyTransNoneEnabled))
 	}
 
 	return g.Run()

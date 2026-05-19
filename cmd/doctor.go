@@ -10,25 +10,17 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/i18n"
 
 	"github.com/spf13/cobra"
 )
 
 func NewDoctorCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "doctor",
-		Short: "Run self-diagnosis checks",
-		Long: `Run self-diagnosis checks on the system to identify configuration issues.
-
-Checks performed:
-  - Config file locations and parseability
-  - LLM API key presence and endpoint connectivity
-  - Session directory accessibility
-  - Transport configuration consistency
-  - SSH host key availability
-  - Skills and MCP directories
-  - Port availability for enabled transports`,
-		RunE: runDoctor,
+		Use:   i18n.TL(i18n.KeyCmdDoctorUse),
+		Short: i18n.TL(i18n.KeyCmdDoctorShort),
+		Long:  i18n.TL(i18n.KeyCmdDoctorLong),
+		RunE:  runDoctor,
 	}
 }
 
@@ -48,11 +40,11 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load(cfgFile)
 	if err != nil {
 		results = append(results, checkResult{
-			name: "config validation", status: "FAIL",
-			detail: fmt.Sprintf("config.Load failed: %v", err),
+			name: i18n.TL(i18n.KeyDoctorCheckNameCfgVal), status: "FAIL",
+			detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorCfgFail), err),
 		})
 	} else {
-		results = append(results, checkResult{name: "config validation", status: "OK", detail: "config loaded and validated"})
+		results = append(results, checkResult{name: "config validation", status: "OK", detail: i18n.TL(i18n.KeyDoctorCfgValid)})
 
 		// 3. LLM check
 		results = append(results, checkLLM(cfg)...)
@@ -77,8 +69,8 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print results
-	fmt.Println("Dolphin Doctor")
-	fmt.Println("==============")
+	fmt.Println(i18n.TL(i18n.KeyDoctorBanner))
+	fmt.Println(i18n.TL(i18n.KeyDoctorSep))
 	fmt.Println()
 
 	pass := 0
@@ -89,22 +81,22 @@ func runDoctor(cmd *cobra.Command, args []string) error {
 		switch r.status {
 		case "OK":
 			pass++
-			fmt.Printf("  [OK]   %s: %s\n", r.name, r.detail)
+			fmt.Printf(i18n.TL(i18n.KeyDoctorOK)+"\n", r.name, r.detail)
 		case "WARN":
 			warn++
-			fmt.Printf("  [WARN] %s: %s\n", r.name, r.detail)
+			fmt.Printf(i18n.TL(i18n.KeyDoctorWarn)+"\n", r.name, r.detail)
 		case "FAIL":
 			fail++
-			fmt.Printf("  [FAIL] %s: %s\n", r.name, r.detail)
+			fmt.Printf(i18n.TL(i18n.KeyDoctorFail)+"\n", r.name, r.detail)
 		}
 	}
 
 	fmt.Println()
-	fmt.Printf("Results: %d pass, %d warn, %d fail\n", pass, warn, fail)
+	fmt.Printf(i18n.TL(i18n.KeyDoctorResults)+"\n", pass, warn, fail)
 
 	if fail > 0 {
 		fmt.Println()
-		fmt.Println("Run 'dolphin setup' to fix configuration issues.")
+		fmt.Println(i18n.TL(i18n.KeyDoctorFixHint))
 	}
 
 	return nil
@@ -116,30 +108,30 @@ func checkConfigFiles() []checkResult {
 	sysDir := config.SystemConfigDir
 	sysFile := filepath.Join(sysDir, config.ConfigFileName+".yaml")
 	if _, err := os.Stat(sysFile); err == nil {
-		results = append(results, checkResult{name: "system config", status: "OK", detail: sysFile})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgSys), status: "OK", detail: sysFile})
 	} else if os.IsNotExist(err) {
-		results = append(results, checkResult{name: "system config", status: "WARN", detail: fmt.Sprintf("not found (%s), skipping", sysFile)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgSys), status: "WARN", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorCfgNotFound), sysFile)})
 	} else {
-		results = append(results, checkResult{name: "system config", status: "FAIL", detail: fmt.Sprintf("unreadable: %v", err)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgSys), status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorUnreadable), err)})
 	}
 
 	home, _ := os.UserHomeDir()
 	userFile := filepath.Join(home, config.UserConfigDir, config.ConfigFileName+".yaml")
 	if _, err := os.Stat(userFile); err == nil {
-		results = append(results, checkResult{name: "user config", status: "OK", detail: userFile})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgUser), status: "OK", detail: userFile})
 	} else if os.IsNotExist(err) {
-		results = append(results, checkResult{name: "user config", status: "WARN", detail: fmt.Sprintf("not found (%s), skipping", userFile)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgUser), status: "WARN", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorCfgNotFound), userFile)})
 	} else {
-		results = append(results, checkResult{name: "user config", status: "FAIL", detail: fmt.Sprintf("unreadable: %v", err)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgUser), status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorUnreadable), err)})
 	}
 
 	projFile := filepath.Join(config.ProjectConfigDir, config.ConfigFileName+".yaml")
 	if _, err := os.Stat(projFile); err == nil {
-		results = append(results, checkResult{name: "project config", status: "OK", detail: projFile})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgProj), status: "OK", detail: projFile})
 	} else if os.IsNotExist(err) {
-		results = append(results, checkResult{name: "project config", status: "WARN", detail: fmt.Sprintf("not found (%s), skipping", projFile)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgProj), status: "WARN", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorCfgNotFound), projFile)})
 	} else {
-		results = append(results, checkResult{name: "project config", status: "FAIL", detail: fmt.Sprintf("unreadable: %v", err)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameCfgProj), status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorUnreadable), err)})
 	}
 
 	return results
@@ -149,14 +141,14 @@ func checkLLM(cfg *config.Config) []checkResult {
 	var results []checkResult
 
 	if !cfg.LLMConfigured() {
-		results = append(results, checkResult{name: "LLM API key", status: "FAIL", detail: "no API key found — set DZ_LLM_API_KEY env var or run 'dolphin setup'"})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameLLMKey), status: "FAIL", detail: "no API key found — set DZ_LLM_API_KEY env var or run 'dolphin setup'"})
 		return results
 	}
-	results = append(results, checkResult{name: "LLM API key", status: "OK", detail: "configured"})
+	results = append(results, checkResult{name: "LLM API key", status: "OK", detail: i18n.TL(i18n.KeyDoctorLLMKeyOK)})
 
 	providers := cfg.LLM.EffectiveProviders()
 	if len(providers) == 0 {
-		results = append(results, checkResult{name: "LLM providers", status: "FAIL", detail: "no providers configured"})
+		results = append(results, checkResult{name: "LLM providers", status: "FAIL", detail: i18n.TL(i18n.KeyDoctorLLMProvNone)})
 		return results
 	}
 
@@ -166,7 +158,7 @@ func checkLLM(cfg *config.Config) []checkResult {
 			baseURL = cfg.LLM.BaseURL
 		}
 		if baseURL == "" {
-			results = append(results, checkResult{name: fmt.Sprintf("LLM %q base URL", p.Name), status: "FAIL", detail: "base URL is empty"})
+			results = append(results, checkResult{name: fmt.Sprintf("LLM %q base URL", p.Name), status: "FAIL", detail: i18n.TL(i18n.KeyDoctorLLMBaseEmpty)})
 			continue
 		}
 
@@ -180,14 +172,14 @@ func checkLLM(cfg *config.Config) []checkResult {
 			results = append(results, checkResult{
 				name:   fmt.Sprintf("LLM %q reachability", p.Name),
 				status: "WARN",
-				detail: fmt.Sprintf("%s unreachable: %v (check network or proxy)", baseURL, err),
+				detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorLLMUnreachable), baseURL, err),
 			})
 		} else {
 			resp.Body.Close()
 			results = append(results, checkResult{
 				name:   fmt.Sprintf("LLM %q reachability", p.Name),
 				status: "OK",
-				detail: fmt.Sprintf("%s reachable", baseURL),
+				detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorLLMReachable), baseURL),
 			})
 		}
 	}
@@ -200,16 +192,16 @@ func checkSessionDir() []checkResult {
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []checkResult{{name: "session directory", status: "WARN", detail: fmt.Sprintf("%s does not exist (will be created on first run)", dir)}}
+			return []checkResult{{name: i18n.TL(i18n.KeyDoctorCheckNameSessDir), status: "WARN", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessNotExist), dir)}}
 		}
-		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf("%s: %v", dir, err)}}
+		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessFail), dir, err)}}
 	}
 	if !info.IsDir() {
-		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf("%s is not a directory", dir)}}
+		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessNotDir), dir)}}
 	}
 	f, err := os.CreateTemp(dir, ".doctor-write-test-*")
 	if err != nil {
-		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf("%s is not writable: %v", dir, err)}}
+		return []checkResult{{name: "session directory", status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessNotWritable), dir, err)}}
 	}
 	_ = os.Remove(f.Name())
 	f.Close()
@@ -220,28 +212,28 @@ func checkTransports(cfg *config.Config) []checkResult {
 	var results []checkResult
 
 	if cfg.Transport.Stdio.Enabled {
-		results = append(results, checkResult{name: "transport stdio", status: "OK", detail: "enabled"})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameTransStdio), status: "OK", detail: i18n.TL(i18n.KeyEnabled)})
 	}
 	if cfg.Transport.SSH.Enabled {
 		addr := cfg.Transport.SSH.Addr
 		if addr == "" {
 			addr = ":2222"
 		}
-		results = append(results, checkResult{name: "transport ssh", status: "OK", detail: fmt.Sprintf("enabled on %s (user: %s)", addr, cfg.Transport.SSH.Username)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameTransSSH), status: "OK", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorTransSSH), addr, cfg.Transport.SSH.Username)})
 		if cfg.Transport.SSH.Password == "" {
-			results = append(results, checkResult{name: "SSH password", status: "FAIL", detail: "SSH password is empty — will be auto-generated, check logs"})
+			results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameSSHPass), status: "FAIL", detail: "SSH password is empty — will be auto-generated, check logs"})
 		}
 	}
 	if cfg.Transport.MQTT.Enabled {
-		results = append(results, checkResult{name: "transport mqtt", status: "OK", detail: fmt.Sprintf("enabled (broker: %s)", cfg.Transport.MQTT.Broker)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameTransMQTT), status: "OK", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorTransMQTT), cfg.Transport.MQTT.Broker)})
 	}
 	if cfg.Transport.Email.Enabled {
-		results = append(results, checkResult{name: "transport email", status: "OK", detail: fmt.Sprintf("enabled (from: %s)", cfg.Transport.Email.From)})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameTransEmail), status: "OK", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorTransEmail), cfg.Transport.Email.From)})
 	}
 
 	anyEnabled := cfg.Transport.Stdio.Enabled || cfg.Transport.SSH.Enabled || cfg.Transport.MQTT.Enabled || cfg.Transport.Email.Enabled
 	if !anyEnabled {
-		results = append(results, checkResult{name: "transports", status: "FAIL", detail: "no transport enabled — enable at least one (stdio, ssh, mqtt, or email)"})
+		results = append(results, checkResult{name: i18n.TL(i18n.KeyDoctorCheckNameTransports), status: "FAIL", detail: "no transport enabled — enable at least one (stdio, ssh, mqtt, or email)"})
 	}
 
 	return results
@@ -260,7 +252,7 @@ func checkSSHHostKey(cfg *config.Config) []checkResult {
 	if len(hostKey) > 0 && hostKey[0] == '~' {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return []checkResult{{name: "SSH host key", status: "FAIL", detail: fmt.Sprintf("cannot expand ~: %v", err)}}
+			return []checkResult{{name: i18n.TL(i18n.KeyDoctorCheckNameSSHKey), status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSSHKeyFail), err)}}
 		}
 		hostKey = filepath.Clean(home + hostKey[1:])
 	}
@@ -271,7 +263,7 @@ func checkSSHHostKey(cfg *config.Config) []checkResult {
 		if _, err2 := os.Stat(autoKey); err2 != nil {
 			return []checkResult{{name: "SSH host key", status: "WARN", detail: fmt.Sprintf("no host key at %s or %s — will auto-generate ephemeral key", hostKey, autoKey)}}
 		}
-		return []checkResult{{name: "SSH host key", status: "OK", detail: fmt.Sprintf("auto-generated key at %s", autoKey)}}
+		return []checkResult{{name: "SSH host key", status: "OK", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSSHKeyAuto), autoKey)}}
 	}
 	return []checkResult{{name: "SSH host key", status: "OK", detail: hostKey}}
 }
@@ -281,19 +273,19 @@ func checkSkillsDir(cfg *config.Config) []checkResult {
 	info, err := os.Stat(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return []checkResult{{name: "skills directory", status: "WARN", detail: fmt.Sprintf("%s does not exist (will be created on first run)", dir)}}
+			return []checkResult{{name: i18n.TL(i18n.KeyDoctorCheckNameSkillsDir), status: "WARN", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessNotExist), dir)}}
 		}
-		return []checkResult{{name: "skills directory", status: "FAIL", detail: fmt.Sprintf("%s: %v", dir, err)}}
+		return []checkResult{{name: "skills directory", status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessFail), dir, err)}}
 	}
 	if !info.IsDir() {
-		return []checkResult{{name: "skills directory", status: "FAIL", detail: fmt.Sprintf("%s is not a directory", dir)}}
+		return []checkResult{{name: "skills directory", status: "FAIL", detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorSessNotDir), dir)}}
 	}
 	return []checkResult{{name: "skills directory", status: "OK", detail: dir}}
 }
 
 func checkMCPShell(cfg *config.Config) []checkResult {
 	if !cfg.MCP.Shell.Enabled {
-		return []checkResult{{name: "MCP shell", status: "WARN", detail: "shell tool is disabled (mcp.shell.enabled=false)"}}
+		return []checkResult{{name: i18n.TL(i18n.KeyDoctorCheckNameShell), status: "WARN", detail: i18n.TL(i18n.KeyDoctorShellDisabled)}}
 	}
 	if cfg.MCP.Shell.AllowUnrestricted && len(cfg.MCP.Shell.AllowedCommands) == 0 {
 		return []checkResult{{name: "MCP shell", status: "WARN", detail: "unrestricted mode — any shell command is allowed"}}
@@ -301,7 +293,7 @@ func checkMCPShell(cfg *config.Config) []checkResult {
 	if len(cfg.MCP.Shell.AllowedCommands) > 0 {
 		return []checkResult{{name: "MCP shell", status: "OK", detail: fmt.Sprintf("restricted to: %v", cfg.MCP.Shell.AllowedCommands)}}
 	}
-	return []checkResult{{name: "MCP shell", status: "OK", detail: "enabled with default restrictions"}}
+	return []checkResult{{name: "MCP shell", status: "OK", detail: i18n.TL(i18n.KeyDoctorShellDefault)}}
 }
 
 func checkPorts(cfg *config.Config) []checkResult {
@@ -336,13 +328,13 @@ func checkPort(addr, label string) []checkResult {
 		return []checkResult{{
 			name:   fmt.Sprintf("port %s", label),
 			status: "WARN",
-			detail: fmt.Sprintf("%s in use or unavailable (%v)", addr, err),
+			detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorPortInUse), addr, err),
 		}}
 	}
 	_ = listener.Close()
 	return []checkResult{{
 		name:   fmt.Sprintf("port %s", label),
 		status: "OK",
-		detail: fmt.Sprintf("%s available", addr),
+		detail: fmt.Sprintf(i18n.TL(i18n.KeyDoctorPortAvail), addr),
 	}}
 }

@@ -28,3 +28,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_PAT: ${{ secrets.GORELEASER_KEY }}
+
+      - name: Keep only last 5 releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # List all releases, skip the 5 most recent, delete the rest
+          gh release list --limit 100 --json tagName --jq '.[].tagName' \
+            | tail -n +6 \
+            | while read -r tag; do
+                echo "Deleting release and tag: $tag"
+                gh release delete "$tag" --yes --cleanup-tag || true
+              done

@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"dolphin/internal/i18n"
 	"dolphin/internal/update"
 
 	"github.com/spf13/cobra"
@@ -14,18 +15,11 @@ import (
 
 func NewUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "update [version]",
-		Short: "Update dolphin to the latest or specified version from GitHub",
-		Long: `Downloads and installs the specified version of dolphin from GitHub releases.
-
-If no version tag is given, the latest release is used.
-The version tag should match a GitHub release tag (e.g. "v1.0.0").
-
-Examples:
-  dolphin update          Update to the latest release
-  dolphin update v1.0.0   Update to a specific version`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: runUpdate,
+		Use:   i18n.TL(i18n.KeyCmdUpdateUse),
+		Short: i18n.TL(i18n.KeyCmdUpdateShort),
+		Long:  i18n.TL(i18n.KeyCmdUpdateLong),
+		Args:  cobra.MaximumNArgs(1),
+		RunE:  runUpdate,
 	}
 
 	cmd.Flags().BoolP("force", "f", false, "skip confirmation prompt")
@@ -50,8 +44,8 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "Current version: %s\n", Version)
-	fmt.Fprintf(os.Stderr, "Platform: %s/%s\n\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateCurrent)+"\n", Version))
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdatePlatform)+"\n\n", runtime.GOOS, runtime.GOARCH))
 
 	client := update.NewGitHubClient()
 
@@ -66,10 +60,10 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("fetch release: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "Release: %s\n", release.TagName)
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateRelease)+"\n", release.TagName))
 
 	if Version == release.TagName {
-		fmt.Fprintf(os.Stderr, "Already at version %s. No update needed.\n", release.TagName)
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateAlreadyLatest)+"\n", release.TagName))
 		return nil
 	}
 
@@ -79,27 +73,27 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	if !force {
-		fmt.Fprintf(os.Stderr, "\nReady to download and install %s (%s)\n", release.TagName, archiveName)
-		fmt.Fprintf(os.Stderr, "Current binary: %s\n", update.MustExecPath())
-		fmt.Fprintf(os.Stderr, "Are you sure? [y/N]: ")
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateReady)+"\n", release.TagName, archiveName))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateBinary)+"\n", update.MustExecPath()))
+		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyUpdateConfirm))
 
 		var input string
 		_, _ = fmt.Scanln(&input)
 		input = strings.TrimSpace(strings.ToLower(input))
 		if input != "y" && input != "yes" {
-			fmt.Fprintln(os.Stderr, "Update cancelled.")
+			fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyUpdateCancelled))
 			return nil
 		}
 	}
 
-	fmt.Fprintf(os.Stderr, "\nDownloading %s ...\n", asset.Name)
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateDownloading)+"\n", asset.Name))
 
 	if err := update.DownloadAndInstall(asset.BrowserDownloadURL, archiveName); err != nil {
 		return fmt.Errorf("install: %w", err)
 	}
 
-	fmt.Fprintf(os.Stderr, "\nUpdated to %s\n", release.TagName)
-	fmt.Fprintln(os.Stderr, "Run 'dolphin --version' to verify.")
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateComplete)+"\n", release.TagName))
+	fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyUpdateVerify))
 	return nil
 }
 
@@ -111,11 +105,11 @@ func listVersions() error {
 	}
 
 	if len(releases) == 0 {
-		fmt.Fprintln(os.Stderr, "No releases found.")
+		fmt.Fprintln(os.Stderr, i18n.TL(i18n.KeyUpdateNoReleases))
 		return nil
 	}
 
-	fmt.Fprintf(os.Stderr, "Available versions (%s/%s):\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyUpdateAvailable)+"\n", runtime.GOOS, runtime.GOARCH))
 	for _, r := range releases {
 		mark := " "
 		if r.Prerelease {

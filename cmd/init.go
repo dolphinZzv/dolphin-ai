@@ -18,23 +18,17 @@ func NewInitCmd() *cobra.Command {
 	var restrictive bool
 
 	cmd := &cobra.Command{
-		Use:   "init",
-		Short: "Generate a default config file",
-		Long: `Generates a commented .dolphin/config.yaml with default settings.
-
-Use --restrictive to generate a security-hardened config with:
-  - Shell commands restricted to a safe allowlist
-  - CDP browser automation disabled
-  - Webhook tool disabled
-  - Log level set to warn
-  - Plugins disabled`,
+		Use:   i18n.TL(i18n.KeyCmdInitUse),
+		Short: i18n.TL(i18n.KeyCmdInitShort),
+		Long: `Long:  i18n.TL(i18n.KeyCmdInitLong),
+`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runInit(restrictive)
 		},
 	}
 
 	cmd.Flags().BoolVarP(&restrictive, "restrictive", "r", false,
-		"generate security-hardened config (restricted shell, CDP/webhook disabled, warn log level)")
+		i18n.TL(i18n.KeyInitRestrictiveFlag))
 
 	return cmd
 }
@@ -57,27 +51,27 @@ func runInit(restrictive bool) error {
 			if err != nil {
 				return fmt.Errorf("generate restrictive config: %w", err)
 			}
-			fmt.Fprintf(os.Stderr, "\nSecurity-hardened config generated: %s\n", fp)
-			fmt.Fprintf(os.Stderr, "\nKey differences from default:\n")
-			fmt.Fprintf(os.Stderr, "  - Shell: only allowlisted commands (ls, cat, grep, find, ...)\n")
-			fmt.Fprintf(os.Stderr, "  - CDP browser: disabled\n")
-			fmt.Fprintf(os.Stderr, "  - Webhook: disabled\n")
-			fmt.Fprintf(os.Stderr, "  - Log level: warn\n")
-			fmt.Fprintf(os.Stderr, "  - Plugins: disabled\n")
-			fmt.Fprintf(os.Stderr, "\nRun 'dolphin' to start with this config.\n")
+			fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyInitRestrictiveGenerated)+"\n", fp))
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictiveDiffs)+"\n")
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictiveShell)+"\n")
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictiveCDP)+"\n")
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictiveWebhook)+"\n")
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictiveLog)+"\n")
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictivePlugins)+"\n")
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitRestrictiveRun)+"\n")
 		} else {
 			fp, err = config.GenerateConfigFile(lang)
 			if err != nil {
 				return fmt.Errorf("generate config: %w", err)
 			}
-			fmt.Fprintf(os.Stderr, "Default config generated: %s\n", fp)
-			fmt.Fprintf(os.Stderr, "Edit it and run 'dolphin' to start.\n")
+			fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyInitDefaultGenerated)+"\n", fp))
+			fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyInitEditAndRun)+"\n")
 		}
 	}
 
 	// Git init .dolphin (idempotent)
 	if err := gitInitDotDolphin(config.ProjectConfigDir); err != nil {
-		fmt.Fprintf(os.Stderr, "git init .dolphin: %v\n", err)
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyInitGitError)+"\n", err))
 	}
 
 	return nil

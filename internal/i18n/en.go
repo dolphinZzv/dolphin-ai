@@ -143,4 +143,385 @@ var enMessages = map[string]string{
 	// pprof
 	KeyPprofBanner: "\n=== pprof server on %s ===\n",
 	KeyPprofURL:    "  http://%s/debug/pprof/\n",
+
+	// Cobra command descriptions
+	KeyCmdDolphinUse:   "dolphin",
+	KeyCmdDolphinShort: "AI Agent — stdio / SSH / MQTT / Email transport, MCP tools (shell + cdp)",
+	KeyCmdDolphinLong: `dolphin is an AI Agent with MCP tool support.
+
+Transports: stdio (default), SSH (:2222), MQTT, Email
+Tools: shell, cdp (browser automation)
+Config: .dolphin/config.yaml > ~/.dolphin/ > /etc/dolphin/
+Env: DZ_LLM_API_KEY, DZ_LLM_MODEL, DZ_LLM_BASE_URL`,
+
+	KeyCmdCompletionUse:   "completion [bash|zsh|fish|powershell]",
+	KeyCmdCompletionShort: "Generate shell completion script",
+	KeyCmdCompletionLong: `Generate shell completion script for dolphin commands.
+
+Output the completion script for the specified shell.
+Source the output to enable tab completion.
+
+  bash:       source <(dolphin completion bash)
+  zsh:        source <(dolphin completion zsh)
+  fish:       dolphin completion fish | source
+  powershell: dolphin completion powershell | Out-String | Invoke-Expression
+
+To make it permanent (bash):
+  dolphin completion bash > /etc/bash_completion.d/dolphin
+
+To make it permanent (zsh):
+  dolphin completion zsh > "${fpath[1]}/_dolphin"`,
+
+	KeyCmdConfigUse:       "config",
+	KeyCmdConfigShort:     "Manage configuration",
+	KeyCmdConfigShowUse:   "show",
+	KeyCmdConfigShowShort: "Show effective configuration",
+
+	KeyCmdDoctorUse:   "doctor",
+	KeyCmdDoctorShort: "Run self-diagnosis checks",
+	KeyCmdDoctorLong: `Run self-diagnosis checks on the system to identify configuration issues.
+
+Checks performed:
+  - Config file locations and parseability
+  - LLM API key presence and endpoint connectivity
+  - Session directory accessibility
+  - Transport configuration consistency
+  - SSH host key availability
+  - Skills and MCP directories
+  - Port availability for enabled transports`,
+
+	KeyCmdInitUse:   "init",
+	KeyCmdInitShort: "Generate a default config file",
+	KeyCmdInitLong: `Generates a commented .dolphin/config.yaml with default settings.
+
+Use --restrictive to generate a security-hardened config with:
+  - Shell commands restricted to a safe allowlist
+  - CDP browser automation disabled
+  - Webhook tool disabled
+  - Log level set to warn
+  - Plugins disabled`,
+
+	KeyCmdNewUse:   "new",
+	KeyCmdNewShort: "Start a fresh dolphin session from a clean state",
+	KeyCmdNewLong: `Cleans all dolphin runtime data and state, then starts a brand new
+dolphin agent session.
+
+Removed:
+  - All runtime data (sessions, diary, logs, workspaces, crontab)
+  - SSH auto-generated password
+  - Cached tool manifests
+  - Downloaded skills and commands
+  - SYSTEM.md (system prompt)
+  - /etc/dolphin/ system-level data
+  - First-run marker
+
+Config files (config.yaml) are preserved.`,
+
+	KeyCmdResetUse:   "reset",
+	KeyCmdResetShort: "Reset dolphin to a clean state",
+	KeyCmdResetLong: `Removes all runtime data, auto-generated files, and the first-run marker
+so the next startup feels like the first time.
+
+Runtime data removed:
+  - Sessions, diary, logs, workspaces, crontab
+  - SSH auto-generated password
+  - Cached tool manifests
+  - Downloaded skills and commands
+  - SYSTEM.md (system prompt)
+  - /etc/dolphin/ system-level config and data
+  - First-run marker (setup wizard will show on next start)
+  - Email-configured marker (startup email sent again on next email session)
+
+Config files (config.yaml) are preserved.`,
+
+	KeyCmdSessionsUse:       "sessions",
+	KeyCmdSessionsShort:     "List and manage agent sessions",
+	KeyCmdSessionsShowUse:   "show <id>",
+	KeyCmdSessionsShowShort: "Show session details as a readable conversation",
+	KeyCmdSessionsLogUse:    "log <id>",
+	KeyCmdSessionsLogShort:  "Show raw session event log",
+	KeyCmdSessionsRmUse:     "rm <id>",
+	KeyCmdSessionsRmShort:   "Remove a session file",
+	KeyCmdSessionsDumpUse:   "dump <id>",
+	KeyCmdSessionsDumpShort: "Generate Mermaid sequence diagram for a session",
+
+	KeyCmdSetupUse:   "setup",
+	KeyCmdSetupShort: "Re-run the career-guided tool setup wizard",
+	KeyCmdSetupLong: `Re-runs the career selection prompt and displays recommended tools.
+
+The first-run marker is NOT reset, so this does not trigger on next startup.
+Use --reset to clear the first-run marker and start fresh.`,
+
+	KeyCmdSkillsUse:          "skills",
+	KeyCmdSkillsShort:        "List and manage skills",
+	KeyCmdSkillsListUse:      "list",
+	KeyCmdSkillsListShort:    "List all installed skills",
+	KeyCmdSkillsSearchUse:    "search <query>",
+	KeyCmdSkillsSearchShort:  "Search skills by name or description",
+	KeyCmdSkillsInstallUse:   "install <name> [description]",
+	KeyCmdSkillsInstallShort: "Install a new skill from boilerplate template",
+	KeyCmdSkillsDisableUse:   "disable <name>",
+	KeyCmdSkillsDisableShort: "Disable and remove a skill",
+
+	KeyCmdStatusUse:   "status",
+	KeyCmdStatusShort: "Show dolphin daemon health and configuration status",
+
+	KeyCmdUpdateUse:   "update [version]",
+	KeyCmdUpdateShort: "Update dolphin to the latest or specified version from GitHub",
+	KeyCmdUpdateLong: `Downloads and installs the specified version of dolphin from GitHub releases.
+
+If no version tag is given, the latest release is used.
+The version tag should match a GitHub release tag (e.g. "v1.0.0").
+
+Examples:
+  dolphin update          Update to the latest release
+  dolphin update v1.0.0   Update to a specific version`,
+
+	KeyCmdVersionUse:   "version",
+	KeyCmdVersionShort: "Print the version number",
+
+	KeyCmdConfigFlag: "path to config file (searches .dolphin/, ~/.dolphin/, /etc/dolphin/ by default)",
+
+	// Root command flags
+	KeyFlagConfig:  "path to config file (searches .dolphin/, ~/.dolphin/, /etc/dolphin/ by default)",
+	KeyFlagVerbose: "enable debug-level logging",
+	KeyFlagQuiet:   "suppress non-error output",
+
+	// Doctor output
+	KeyDoctorBanner:              "Dolphin Doctor",
+	KeyDoctorSep:                 "==============",
+	KeyDoctorOK:                  "  [OK]   %s: %s",
+	KeyDoctorWarn:                "  [WARN] %s: %s",
+	KeyDoctorFail:                "  [FAIL] %s: %s",
+	KeyDoctorResults:             "Results: %d pass, %d warn, %d fail",
+	KeyDoctorFixHint:             "Run 'dolphin setup' to fix configuration issues.",
+	KeyDoctorCfgValid:            "config loaded and validated",
+	KeyDoctorCfgFail:             "config.Load failed: %v",
+	KeyDoctorLLMKeyOK:            "configured",
+	KeyDoctorLLMKeyFail:          "no API key found — set DZ_LLM_API_KEY env var or run 'dolphin setup'",
+	KeyDoctorLLMProvFail:         "no providers configured",
+	KeyDoctorLLMProvNone:         "%s unreachable: %v (check network or proxy)",
+	KeyDoctorLLMBaseEmpty:        "base URL is empty",
+	KeyDoctorLLMReachable:        "%s reachable",
+	KeyDoctorLLMUnreachable:      "%s unreachable: %v (check network or proxy)",
+	KeyDoctorSessOK:              "session directory is writable",
+	KeyDoctorSessNotExist:        "%s does not exist (will be created on first run)",
+	KeyDoctorSessFail:            "%s: %v",
+	KeyDoctorSessNotDir:          "%s is not a directory",
+	KeyDoctorSessNotWritable:     "%s is not writable: %v",
+	KeyDoctorTransStdio:          "enabled",
+	KeyDoctorTransSSH:            "enabled on %s (user: %s)",
+	KeyDoctorTransMQTT:           "enabled (broker: %s)",
+	KeyDoctorTransEmail:          "enabled (from: %s)",
+	KeyDoctorTransNone:           "no transport enabled — enable at least one (stdio, ssh, mqtt, or email)",
+	KeyDoctorSSHPassFail:         "SSH password is empty — will be auto-generated, check logs",
+	KeyDoctorSSHKeyFail:          "cannot expand ~: %v",
+	KeyDoctorSSHKeyWarn:          "no host key at %s or %s — will auto-generate ephemeral key",
+	KeyDoctorSSHKeyOK:            "host key found",
+	KeyDoctorSSHKeyAuto:          "auto-generated key at %s",
+	KeyDoctorSkillsDirOK:         "skills directory is accessible",
+	KeyDoctorSkillsDirWarn:       "%s does not exist (will be created on first run)",
+	KeyDoctorSkillsDirFail:       "%s: %v",
+	KeyDoctorSkillsDirNotDir:     "%s is not a directory",
+	KeyDoctorShellDisabled:       "shell tool is disabled (mcp.shell.enabled=false)",
+	KeyDoctorShellUnrestricted:   "unrestricted mode — any shell command is allowed",
+	KeyDoctorShellRestricted:     "restricted to: %v",
+	KeyDoctorShellDefault:        "enabled with default restrictions",
+	KeyDoctorPortAvail:           "%s available",
+	KeyDoctorPortInUse:           "%s in use or unavailable (%v)",
+	KeyDoctorCfgNotFound:         "not found (%s), skipping",
+	KeyDoctorCfgUnreadable:       "unreadable: %v",
+	KeyDoctorCheckNameCfgSys:     "system config",
+	KeyDoctorCheckNameCfgUser:    "user config",
+	KeyDoctorCheckNameCfgProj:    "project config",
+	KeyDoctorCheckNameCfgVal:     "config validation",
+	KeyDoctorCheckNameLLMKey:     "LLM API key",
+	KeyDoctorCheckNameLLMProv:    "LLM %q reachability",
+	KeyDoctorCheckNameSessDir:    "session directory",
+	KeyDoctorCheckNameTransStdio: "transport stdio",
+	KeyDoctorCheckNameTransSSH:   "transport ssh",
+	KeyDoctorCheckNameTransMQTT:  "transport mqtt",
+	KeyDoctorCheckNameTransEmail: "transport email",
+	KeyDoctorCheckNameTransports: "transports",
+	KeyDoctorCheckNameSSHPass:    "SSH password",
+	KeyDoctorCheckNameSSHKey:     "SSH host key",
+	KeyDoctorCheckNameSkillsDir:  "skills directory",
+	KeyDoctorCheckNameShell:      "MCP shell",
+	KeyDoctorUnreadable:          "unreadable: %v",
+
+	// Status output
+	KeyStatusVersion:           "Version: %s",
+	KeyStatusBuild:             "Build: %s",
+	KeyStatusLLM:               "LLM:       configured",
+	KeyStatusLLMNotCfg:         "LLM:       NOT configured (run 'dolphin setup')",
+	KeyStatusHealthUnreach:     "Health:    unreachable (%v)",
+	KeyStatusHealthOK:          "Health:    OK — %s",
+	KeyStatusHealthDisabled:    "Health:    disabled (set health.enabled=true)",
+	KeyStatusMetricsEnabled:    "Metrics:   enabled at %s",
+	KeyStatusMetricsDisabled:   "Metrics:   disabled",
+	KeyStatusTransports:        "Transports:",
+	KeyStatusShell:             "Shell:",
+	KeyStatusShellUnrestricted: "Shell:    unrestricted (pipes and redirects enabled)",
+	KeyStatusShellRestricted:   "Shell:    restricted (allowed: %v)",
+	KeyStatusTransStdio:        "  - stdio: enabled",
+	KeyStatusTransSSH:          "  - ssh:   enabled at %s",
+	KeyStatusTransMQTT:         "  - mqtt:  enabled (broker: %s)",
+	KeyStatusTransEmail:        "  - email: enabled (from: %s)",
+
+	// Update output
+	KeyUpdateCurrent:       "Current version: %s",
+	KeyUpdatePlatform:      "Platform: %s/%s",
+	KeyUpdateRelease:       "Release: %s",
+	KeyUpdateAlreadyLatest: "Already at version %s. No update needed.",
+	KeyUpdateReady:         "\nReady to download and install %s (%s)",
+	KeyUpdateBinary:        "Current binary: %s",
+	KeyUpdateConfirm:       "Are you sure? [y/N]: ",
+	KeyUpdateCancelled:     "Update cancelled.",
+	KeyUpdateDownloading:   "\nDownloading %s ...",
+	KeyUpdateComplete:      "\nUpdated to %s",
+	KeyUpdateVerify:        "Run 'dolphin --version' to verify.",
+	KeyUpdateNoReleases:    "No releases found.",
+	KeyUpdateAvailable:     "Available versions (%s/%s):",
+	KeyUpdatePreRelease:    "\n⚠ = pre-release",
+
+	// Setup output
+	KeySetupFirstRunReset: "First-run marker reset. Career prompt will show on next startup.",
+	KeySetupSkipped:       "\nSetup skipped. No changes made.",
+	KeySetupRecTools:      "\n=== Recommended tools for %s ===",
+	KeySetupLoadTo:        "\nLoad to: [p] project  [a] global  [n] skip",
+	KeySetupChoice:        "Choice: ",
+	KeySetupSavedProject:  "\nTools saved to .dolphin/config.yaml",
+	KeySetupSavedGlobal:   "\nTools saved to ~/.dolphin/config.yaml",
+	KeySetupSkipNoChange:  "\nSkipped. No changes made.",
+	KeySetupManual:        "You can add tools manually in your config or skill/MCP repos.",
+	KeySetupComplete:      "=== Setup Complete ===",
+	KeySetupProfile:       "  Profile: %s",
+	KeySetupSkillsCount:   "  Skills:  %d",
+	KeySetupMCPCount:      "  MCP:     %d",
+	KeySetupNextSteps:     "Next steps:",
+	KeySetupStep1:         "  1. Set your LLM API key: export DZ_LLM_API_KEY=sk-...",
+	KeySetupStep2:         "  2. Restart dolphin for changes to take effect",
+	KeySetupStep3:         "  3. Run 'dolphin doctor' to verify your setup",
+
+	// Init output
+	KeyInitRestrictiveGenerated: "\nSecurity-hardened config generated: %s",
+	KeyInitRestrictiveDiffs:     "\nKey differences from default:",
+	KeyInitRestrictiveShell:     "  - Shell: only allowlisted commands (ls, cat, grep, find, ...)",
+	KeyInitRestrictiveCDP:       "  - CDP browser: disabled",
+	KeyInitRestrictiveWebhook:   "  - Webhook: disabled",
+	KeyInitRestrictiveLog:       "  - Log level: warn",
+	KeyInitRestrictivePlugins:   "  - Plugins: disabled",
+	KeyInitRestrictiveRun:       "\nRun 'dolphin' to start with this config.",
+	KeyInitDefaultGenerated:     "Default config generated: %s",
+	KeyInitEditAndRun:           "Edit it and run 'dolphin' to start.",
+	KeyInitGitError:             "git init .dolphin: %v",
+	KeyInitRestrictiveFlag:      "generate security-hardened config (restricted shell, CDP/webhook disabled, warn log level)",
+
+	// Reset output
+	KeyResetWillRemove:  "The following will be removed:",
+	KeyResetComplete:    "Reset complete: %d items removed",
+	KeyResetMarkerReset: "The first-run marker has been reset.",
+	KeyResetRunAgain:    "Run 'dolphin' to go through the initial setup wizard again.",
+	KeyResetConfirm:     "\nAre you sure? This action cannot be undone. [y/N]: ",
+	KeyResetCancelled:   "%s cancelled.",
+
+	// New session output
+	KeyNewStarting: "Starting a fresh dolphin session:",
+
+	// Sessions output
+	KeySessNoDir:        "No sessions found (directory does not exist)",
+	KeySessNone:         "No sessions found.",
+	KeySessDirLabel:     "Sessions in: %s",
+	KeySessNotFound:     "session %q not found",
+	KeySessNoEvents:     "No events in session.",
+	KeySessHeader:       "Session: %s",
+	KeySessDuration:     "Duration: %s — %s (%d events)",
+	KeySessTurnTokens:   " (tokens: %d in / %d out)",
+	KeySessRemoved:      "Removed session %q",
+	KeySessDumpNoEvents: "no events in session",
+	KeySessServing:      "Serving at %s",
+	KeySessStopHint:     "Press Ctrl+C to stop.",
+
+	// Config show output
+	KeyCfgShowLLM:            "LLM:",
+	KeyCfgShowSession:        "Session:",
+	KeyCfgShowTransports:     "Transports:",
+	KeyCfgShowMCP:            "MCP Tools:",
+	KeyCfgShowAgentPool:      "Agent Pool:",
+	KeyCfgShowSkills:         "Skills:",
+	KeyCfgShowCrontab:        "Crontab:",
+	KeyCfgShowMonitoring:     "Monitoring:",
+	KeyCfgShowPlugins:        "Plugins:",
+	KeyCfgShowLogLevel:       "Log Level: %s",
+	KeyCfgShowLogFile:        "Log File:  %s",
+	KeyCfgShowEnabled:        "enabled",
+	KeyCfgShowDisabled:       "disabled",
+	KeyCfgShowType:           "  Type:       %s",
+	KeyCfgShowModel:          "  Model:      %s",
+	KeyCfgShowBaseURL:        "  Base URL:   %s",
+	KeyCfgShowAPIKey:         "  API Key:    %s",
+	KeyCfgShowMaxTokens:      "  Max Tokens: %d",
+	KeyCfgShowMaxCtxTokens:   "  Max Context Tokens: %d",
+	KeyCfgShowTemperature:    "  Temperature: %.1f",
+	KeyCfgShowMaxSubTurns:    "  Max Sub-turns: %d",
+	KeyCfgShowCompressMode:   "  Compress Mode: %s",
+	KeyCfgShowMaxLoop:        "  Max Loop: %d",
+	KeyCfgShowSummary:        "  Summary:  %v",
+	KeyCfgShowMaxAge:         "  Max Age:  %s",
+	KeyCfgShowShell:          "  Shell:   enabled=%v",
+	KeyCfgShowCDP:            "  CDP:     enabled=%v",
+	KeyCfgShowEmail:          "  Email:   enabled=%v",
+	KeyCfgShowRepos:          "  Repos:   %v",
+	KeyCfgShowMaxConcurrency: "  Max Concurrency:  %d",
+	KeyCfgShowDefaultTimeout: "  Default Timeout:  %ds",
+	KeyCfgShowIdleTimeout:    "  Idle Timeout:     %ds",
+	KeyCfgShowWorkspace:      "  Workspace:        %s",
+	KeyCfgShowMaxPending:     "  Max Pending Results: %d",
+	KeyCfgShowDir:            "  Dir:    %s",
+	KeyCfgShowMaxTop:         "  Max Top: %d",
+	KeyCfgShowFile:           "  File:           %s",
+	KeyCfgShowCheckInterval:  "  Check Interval: %s",
+	KeyCfgShowRestricted:     " (restricted: %v)",
+	KeyCfgShowUnrestricted:   " (unrestricted)",
+	KeyCfgShowDefault:        " (default)",
+	KeyCfgShowRemote:         " (remote: %s)",
+	KeyCfgShowHeadless:       " (headless: %v)",
+	KeyCfgShowServer:         "  Server(%s): %s (type: %s)",
+
+	// Transport startup messages
+	KeyTransSSHServer:   "\n=== SSH server configured on %s ===\n",
+	KeyTransSSHConnect:  "Connect: ssh %s@<host> -p %s",
+	KeyTransMQTTActive:  "\n=== MQTT transport active ===\n",
+	KeyTransMQTTBroker:  "Broker: %s  Topic: %s  Client: %s",
+	KeyTransEmailActive: "\n=== Email transport active ===\n",
+	KeyTransEmailIMAP:   "IMAP: %s:%d (poll every %s)",
+	KeyTransEmailSMTP:   "SMTP: %s:%d",
+	KeyTransEmailHint:   "Send an email to %s — subject = command",
+	KeyTransDingTalk:    "\n=== DingTalk bot active (Stream mode) ===\n",
+	KeyTransNoneEnabled: "no transport enabled (enable stdio, ssh, mqtt, or email in config)",
+
+	// Common
+	KeyEnabled:    "enabled",
+	KeyDisabled:   "disabled",
+	KeyNotFound:   "not found",
+	KeyError:      "error",
+	KeySkipped:    "skipped",
+	KeyCancelled:  "cancelled",
+	KeyAreYouSure: "Are you sure? [y/N]: ",
+	KeyYes:        "yes",
+	KeyNo:         "no",
+
+	// Skills CLI output
+	KeySkillsCLINone:       "No skills installed.",
+	KeySkillsCLITotal:      "\nTotal: %d skills",
+	KeySkillsCLIInstalled:  "Skill %q installed in %s",
+	KeySkillsCLISearchNone: "No skills found matching %q.",
+	KeySkillsCLIFound:      "\nFound %d results matching %q (* = installed).",
+	KeySkillsCLIEdit:       "Edit the file to add your skill content.",
+	KeySkillsCLIDisabled:   "Skill %q disabled and removed.",
+
+	// Cleanup common
+	KeyCleanupComplete: "Cleanup complete: %d items removed",
+	KeyNotExistSkip:    " (not found, skipped)",
+	KeyDirectory:       "/ (directory)",
 }
