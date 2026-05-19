@@ -986,8 +986,8 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 			"tool_calls", len(toolCalls),
 		)
 		if a.cfg.LogLevel == "debug" && io != nil {
-			io.WriteLine(fmt.Sprintf("model: %s sess: %s tokens: in=%d [cache=%d miss=%d] out=%d (total: in=%d out=%d cache=%d miss=%d)",
-				a.availableProviders[a.providerIndex].Model, state.Sess.ID, usage.InputTokens, usage.CachedInputTokens, usage.MissedInputTokens, usage.OutputTokens,
+			io.WriteLine(fmt.Sprintf("turn: %d model: %s sess: %s tokens: in=%d [cache=%d miss=%d] out=%d (total: in=%d out=%d cache=%d miss=%d)",
+				state.Sess.Turn, a.availableProviders[a.providerIndex].Model, state.Sess.ID, usage.InputTokens, usage.CachedInputTokens, usage.MissedInputTokens, usage.OutputTokens,
 				state.TotalInputTokens, state.TotalOutputTokens, state.TotalCachedTokens, state.TotalMissedTokens))
 		}
 	} else if a.cfg.LogLevel == "debug" && io != nil {
