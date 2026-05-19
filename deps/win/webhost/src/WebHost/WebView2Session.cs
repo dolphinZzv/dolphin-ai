@@ -112,8 +112,13 @@ namespace Dolphin.WebHost
             _eventStream = eventStream;
         }
 
+        private int _initCalled;
+
         public async Task InitializeAsync(int viewportWidth = 1920, int viewportHeight = 1080)
         {
+            if (Interlocked.Exchange(ref _initCalled, 1) != 0)
+                throw new InvalidOperationException("InitializeAsync already called");
+
             _initTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             if (!Application.Current.Dispatcher.CheckAccess())
@@ -230,7 +235,10 @@ namespace Dolphin.WebHost
                                 $"{{\"level\":{EscapeJson(level)},\"message\":{EscapeJson(msg ?? "")}}}");
                         }
                     }
-                    catch { }
+                    catch (JsonException ex)
+                    {
+                        Logger.Warn($"Console parse error: {ex.Message}");
+                    }
                 }
 
                 var dialogJson = await _webView.ExecuteScriptAsync(
@@ -246,8 +254,9 @@ namespace Dolphin.WebHost
 
                 UpdateActivity();
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.Warn($"Poll tick error: {ex.Message}");
             }
         }
 
@@ -432,7 +441,10 @@ namespace Dolphin.WebHost
                 _webView?.Dispose();
                 _webView = null;
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Warn($"Dispose error: {ex.Message}");
+            }
         }
 
     }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -22,6 +23,8 @@ namespace Dolphin.WebHost
             WriteIndented = false,
         };
 
+        private readonly Dictionary<string, Func<JsonElement?, Task<object>>> _toolHandlers;
+
         public int Port { get; }
         public SessionManager SessionManager => _sessionManager;
 
@@ -31,6 +34,24 @@ namespace Dolphin.WebHost
             _listener = new HttpListener();
             _listener.Prefixes.Add($"http://localhost:{Port}/");
             _sessionManager = new SessionManager();
+            _toolHandlers = BuildToolHandlers();
+        }
+
+        private Dictionary<string, Func<JsonElement?, Task<object>>> BuildToolHandlers()
+        {
+            return new()
+            {
+                ["web_session_create"] = HandleWebSessionCreateAsync,
+                ["page_open"] = HandlePageOpenAsync,
+                ["script_run"] = HandleScriptRunAsync,
+                ["page_screenshot"] = HandlePageScreenshotAsync,
+                ["web_inject"] = HandleWebInjectAsync,
+                ["web_wait"] = HandleWebWaitAsync,
+                ["web_set_interactive"] = HandleWebSetInteractiveAsync,
+                ["web_capabilities"] = _ => Task.FromResult(HandleWebCapabilities()),
+                ["web_session_close"] = HandleWebSessionCloseAsync,
+                ["web_dialog_response"] = HandleWebDialogResponseAsync,
+            };
         }
 
         public void Start()
@@ -150,19 +171,21 @@ namespace Dolphin.WebHost
             {
                 // Client disconnected
             }
-            catch (Exception ex)
-            {
-                try
+                catch (Exception ex)
                 {
-                    await WriteJsonErrorAsync(response, 500, -32603, ex.Message);
+                    try
+                    {
+                        await WriteJsonErrorAsync(response, 500, -32603, ex.Message);
+                    }
+                    catch (Exception innerEx)
+                    {
+                        Logger.Error(innerEx, "Failed to send error response");
+                    }
                 }
-                catch
-                {
-                }
-            }
             finally
             {
-                try { response.OutputStream.Close(); } catch { }
+                try { response.OutputStream.Close(); }
+                catch (Exception ex) { Logger.Warn($"Close response stream error: {ex.Message}"); }
             }
         }
 
@@ -208,50 +231,40 @@ namespace Dolphin.WebHost
         private async Task RouteJsonRpcAsync(JsonRpcRequest rpcRequest,
             HttpListenerResponse response, CancellationToken ct)
         {
-            if (rpcRequest.Method == "tools/call")
+            if (rpcRequest.Method != "tools/call")
             {
-                var rpcParams = rpcRequest.Params.HasValue
-                    ? JsonSerializer.Deserialize<ToolsCallParams>(rpcRequest.Params.Value.GetRawText(), JsonOpts)
-                    : null;
-
-                if (rpcParams == null || string.IsNullOrEmpty(rpcParams.Name))
-                {
-                    await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null,
-                        new JsonRpcError { Code = -32602, Message = "Missing tool name" });
-                    return;
-                }
-
-                var args = rpcParams.Arguments;
-                var toolName = rpcParams.Name;
-
-                object? result = toolName switch
-                {
-                    "web_session_create" => await HandleWebSessionCreateAsync(args),
-                    "page_open" => await HandlePageOpenAsync(args),
-                    "script_run" => await HandleScriptRunAsync(args),
-                    "page_screenshot" => await HandlePageScreenshotAsync(args),
-                    "web_inject" => await HandleWebInjectAsync(args),
-                    "web_wait" => await HandleWebWaitAsync(args),
-                    "web_set_interactive" => await HandleWebSetInteractiveAsync(args),
-                    "web_capabilities" => HandleWebCapabilities(),
-                    "web_session_close" => await HandleWebSessionCloseAsync(args),
-                    "web_dialog_response" => await HandleWebDialogResponseAsync(args),
-                    _ => new JsonRpcError { Code = -32601, Message = $"Unknown tool: {toolName}" }
-                };
-
-                if (result is JsonRpcError err)
-                {
-                    await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null, err);
-                }
-                else
-                {
-                    await WriteJsonRpcResponseAsync(response, rpcRequest.Id, result, null);
-                }
+                await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null,
+                    new JsonRpcError { Code = -32601, Message = $"Unknown method: {rpcRequest.Method}" });
                 return;
             }
 
-            await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null,
-                new JsonRpcError { Code = -32601, Message = $"Unknown method: {rpcRequest.Method}" });
+            var rpcParams = rpcRequest.Params.HasValue
+                ? JsonSerializer.Deserialize<ToolsCallParams>(rpcRequest.Params.Value.GetRawText(), JsonOpts)
+                : null;
+
+            if (rpcParams == null || string.IsNullOrEmpty(rpcParams.Name))
+            {
+                await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null,
+                    new JsonRpcError { Code = -32602, Message = "Missing tool name" });
+                return;
+            }
+
+            if (!_toolHandlers.TryGetValue(rpcParams.Name, out var handler))
+            {
+                await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null,
+                    new JsonRpcError { Code = -32601, Message = $"Unknown tool: {rpcParams.Name}" });
+                return;
+            }
+
+            var result = await handler(rpcParams.Arguments);
+            if (result is JsonRpcError err)
+            {
+                await WriteJsonRpcResponseAsync(response, rpcRequest.Id, null, err);
+            }
+            else
+            {
+                await WriteJsonRpcResponseAsync(response, rpcRequest.Id, result, null);
+            }
         }
 
         private async Task<object> HandleWebSessionCreateAsync(JsonElement? args)

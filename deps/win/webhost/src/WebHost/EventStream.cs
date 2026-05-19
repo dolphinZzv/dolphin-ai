@@ -18,9 +18,11 @@ namespace Dolphin.WebHost
 
         public long LastTimestamp => Interlocked.Read(ref _lastTimestamp);
 
+        private static long NowMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
         public void Publish(string method, string? paramsJson = null)
         {
-            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            var timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             Interlocked.Exchange(ref _lastTimestamp, timestamp);
 
             string json;
@@ -38,6 +40,7 @@ namespace Dolphin.WebHost
                     writer.WriteNumber("t", timestamp);
                     foreach (var prop in doc.RootElement.EnumerateObject())
                     {
+                        writer.WritePropertyName(prop.Name);
                         prop.Value.WriteTo(writer);
                     }
                     writer.WriteEndObject();
@@ -45,8 +48,9 @@ namespace Dolphin.WebHost
                     writer.Flush();
                     json = Encoding.UTF8.GetString(stream.ToArray());
                 }
-                catch
+                catch (JsonException ex)
                 {
+                    Logger.Warn($"EventStream publish error: {ex.Message}");
                     json = $"{{\"jsonrpc\":\"2.0\",\"method\":\"{EscapeJson(method)}\",\"params\":{{\"t\":{timestamp},\"raw\":{paramsJson}}}}}";
                 }
             }
@@ -81,7 +85,7 @@ namespace Dolphin.WebHost
             using var writer = new StreamWriter(responseStream, Encoding.UTF8, 1024, leaveOpen: true);
 
             await writer.WriteAsync("data: {\"jsonrpc\":\"2.0\",\"method\":\"web/stream_connected\",\"params\":{\"t\":" +
-                DateTimeOffset.UtcNow.ToUnixTimeSeconds() + ",\"since\":" + since + "}}\n\n");
+                NowMs() + ",\"since\":" + since + "}}\n\n");
             await writer.FlushAsync();
 
             var pendingEvents = new List<EventItem>();
@@ -107,7 +111,7 @@ namespace Dolphin.WebHost
                     if (!signaled)
                     {
                         await writer.WriteAsync("data: {\"jsonrpc\":\"2.0\",\"method\":\"web/ping\",\"params\":{\"t\":" +
-                            DateTimeOffset.UtcNow.ToUnixTimeSeconds() + "}}\n\n");
+                            NowMs() + "}}\n\n");
                         await writer.FlushAsync();
                         continue;
                     }
