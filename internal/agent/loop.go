@@ -919,7 +919,7 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	if !caps.Streaming && blockBuf.Len() > 0 {
 		blockBuf.WriteString("\n")
 		flushBlock()
-	} else if caps.Streaming {
+	} else if caps.Streaming && textBuf.Len() > 0 {
 		io.WriteLine("")
 	}
 
