@@ -139,10 +139,13 @@ var zhMessages = map[string]string{
 	KeyContextCron:       "定时任务：    %d 个已调度",
 	KeyContextSelfEvolve: "自进化：      %v",
 	KeyContextSectionsHd: "--- 上下文章节（优先级 · 大小 · 路径）---",
+	KeyWelcomeBanner:     "dolphin — AI Agent",
 
 	// pprof
 	KeyPprofBanner: "\n=== pprof 服务监听在 %s ===\n",
 	KeyPprofURL:    "  http://%s/debug/pprof/\n",
+	KeyMetricsBanner: "\n=== Metrics 服务监听在 %s ===\n",
+	KeyMetricsURL:    "  http://%s/metrics\n",
 
 	// Cobra command descriptions
 	KeyCmdDolphinUse:   "dolphin",

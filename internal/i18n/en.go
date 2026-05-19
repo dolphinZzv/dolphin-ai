@@ -139,10 +139,13 @@ var enMessages = map[string]string{
 	KeyContextCron:       "Cron Tasks:   %d scheduled",
 	KeyContextSelfEvolve: "Self-Evolve:  %v",
 	KeyContextSectionsHd: "--- Context Sections (priority · size · path) ---",
+	KeyWelcomeBanner:     "dolphin — AI Agent",
 
 	// pprof
 	KeyPprofBanner: "\n=== pprof server on %s ===\n",
 	KeyPprofURL:    "  http://%s/debug/pprof/\n",
+	KeyMetricsBanner: "\n=== Metrics server on %s ===\n",
+	KeyMetricsURL:    "  http://%s/metrics\n",
 
 	// Cobra command descriptions
 	KeyCmdDolphinUse:   "dolphin",

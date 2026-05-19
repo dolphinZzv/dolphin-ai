@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -264,6 +265,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		return coord
 	}
 
+	printBanner(cfg)
 	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, bus, newCoordinator)
 }
 
@@ -452,6 +454,62 @@ func initCronManager(cfg *config.Config) *scheduler.Manager {
 }
 
 // runActorGroup builds and runs the actor group for all enabled transports and services.
+
+func printBanner(cfg *config.Config) {
+	providers := cfg.LLM.EffectiveProviders()
+	providerName := ""
+	providerModel := ""
+	if len(providers) > 0 {
+		providerName = providers[0].Name
+		if providerName == "" {
+			providerName = providers[0].Type
+		}
+		providerModel = providers[0].Model
+		if providerModel == "" {
+			providerModel = cfg.LLM.Model
+		}
+	}
+
+	// Collect enabled transports
+	var transports []string
+	if cfg.Transport.Stdio.Enabled {
+		transports = append(transports, "stdio")
+	}
+	if cfg.Transport.SSH.Enabled {
+		transports = append(transports, "ssh")
+	}
+	if cfg.Transport.MQTT.Enabled {
+		transports = append(transports, "mqtt")
+	}
+	if cfg.Transport.Email.Enabled {
+		transports = append(transports, "email")
+	}
+	if cfg.Transport.DingTalk.Enabled {
+		transports = append(transports, "dingtalk")
+	}
+	transportStr := strings.Join(transports, " ")
+	if transportStr == "" {
+		transportStr = "none"
+	}
+
+	// Check commit hash length for display
+	commit := CommitHash
+	if len(commit) > 7 {
+		commit = commit[:7]
+	}
+
+	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(os.Stderr, "==============================================================================")
+	fmt.Fprintf(os.Stderr, "  %s\n", i18n.TL(i18n.KeyWelcomeBanner))
+	fmt.Fprintf(os.Stderr, "  Version: %s (%s)  %s %s/%s\n", Version, commit, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	if providerModel != "" {
+		fmt.Fprintf(os.Stderr, "  Model:   %s  %s\n", providerModel, providerName)
+	}
+	fmt.Fprintf(os.Stderr, "  Transport: %s\n", transportStr)
+	fmt.Fprintln(os.Stderr, "==============================================================================")
+	fmt.Fprintln(os.Stderr)
+}
+
 func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.Tool, sessMgr *session.Manager, bus *event.EventBus, newCoordinator func() *agent.Coordinator) error {
 	var g run.Group
 	actorCount := 0
@@ -714,6 +772,8 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// Metrics HTTP server
 	if cfg.Metrics.Enabled {
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyMetricsBanner), cfg.Metrics.Addr))
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyMetricsURL), cfg.Metrics.Addr))
 		mux := http.NewServeMux()
 		mux.Handle("/metrics", metrics.Handler())
 		srv := &http.Server{
