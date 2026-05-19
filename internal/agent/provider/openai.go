@@ -314,6 +314,7 @@ func (p *OpenAIProvider) CompleteStream(ctx context.Context, req ProviderRequest
 						InputTokens:       chunk.Usage.PromptTokens,
 						OutputTokens:      chunk.Usage.CompletionTokens,
 						CachedInputTokens: cached,
+						MissedInputTokens: chunk.Usage.PromptTokens - cached,
 					},
 				}
 			}
