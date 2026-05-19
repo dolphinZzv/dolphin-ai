@@ -96,11 +96,23 @@ func (t *StdioTransport) Start(ctx context.Context) error {
 }
 
 func (t *StdioTransport) ReadLine() (string, error) {
-	line, err := t.rl.Readline()
-	if err == nil {
+	for {
+		line, err := t.rl.Readline()
+		if err != nil {
+			return line, err
+		}
 		msgsReceived.Inc()
+
+		switch line {
+		case "/clear":
+			fmt.Print("\033[H\033[2J")
+			continue
+		case "/exit", "/quit":
+			fmt.Println("bye")
+			os.Exit(0)
+		}
+		return line, nil
 	}
-	return line, err
 }
 
 func (t *StdioTransport) WriteString(s string) error {
