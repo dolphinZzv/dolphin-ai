@@ -165,13 +165,17 @@ func (p *AnthropicProvider) Complete(ctx context.Context, req ProviderRequest) (
 	}
 	if anthResp.Usage != nil {
 		cached := anthResp.Usage.CacheReadInputTokens
+		input := anthResp.Usage.InputTokens
+		if cached > input {
+			cached = input
+		}
 		llmCacheHitTokens.With("anthropic").Add(int64(cached))
-		llmCacheMissTokens.With("anthropic").Add(int64(anthResp.Usage.InputTokens - cached))
+		llmCacheMissTokens.With("anthropic").Add(int64(input - cached))
 		pr.Usage = &Usage{
-			InputTokens:       anthResp.Usage.InputTokens,
+			InputTokens:       input,
 			OutputTokens:      anthResp.Usage.OutputTokens,
 			CachedInputTokens: cached,
-			MissedInputTokens: anthResp.Usage.InputTokens - cached,
+			MissedInputTokens: input - cached,
 		}
 		llmInputTokens.With("anthropic").Add(int64(anthResp.Usage.InputTokens))
 		llmOutputTokens.With("anthropic").Add(int64(anthResp.Usage.OutputTokens))
@@ -311,12 +315,17 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 					} `json:"message"`
 				}
 				if err := json.Unmarshal([]byte(data), &msgStart); err == nil && msgStart.Message != nil && msgStart.Message.Usage != nil {
+					cached := msgStart.Message.Usage.CacheReadInputTokens
+					input := msgStart.Message.Usage.InputTokens
+					if cached > input {
+						cached = input
+					}
 					ch <- StreamChunk{
 						Usage: &Usage{
-							InputTokens:       msgStart.Message.Usage.InputTokens,
+							InputTokens:       input,
 							OutputTokens:      msgStart.Message.Usage.OutputTokens,
-							CachedInputTokens: msgStart.Message.Usage.CacheReadInputTokens,
-							MissedInputTokens: msgStart.Message.Usage.InputTokens - msgStart.Message.Usage.CacheReadInputTokens,
+							CachedInputTokens: cached,
+							MissedInputTokens: input - cached,
 						},
 					}
 				}
@@ -357,10 +366,7 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 				if evt.Usage != nil {
 					ch <- StreamChunk{
 						Usage: &Usage{
-							InputTokens:       evt.Usage.InputTokens,
-							OutputTokens:      evt.Usage.OutputTokens,
-							CachedInputTokens: evt.Usage.CacheReadInputTokens,
-							MissedInputTokens: evt.Usage.InputTokens - evt.Usage.CacheReadInputTokens,
+							OutputTokens: evt.Usage.OutputTokens,
 						},
 					}
 				}

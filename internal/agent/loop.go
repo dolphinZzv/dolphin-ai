@@ -905,7 +905,14 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 		}
 
 		if chunk.Usage != nil {
-			finalUsage = chunk.Usage
+			if finalUsage == nil {
+				finalUsage = chunk.Usage
+			} else {
+				// Merge: message_start has input+cache, message_delta has output
+				if chunk.Usage.OutputTokens > 0 {
+					finalUsage.OutputTokens = chunk.Usage.OutputTokens
+				}
+			}
 		}
 	}
 
