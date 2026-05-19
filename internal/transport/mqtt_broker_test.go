@@ -124,9 +124,13 @@ func TestEmbeddedBrokerPubSub(t *testing.T) {
 		o.SetClientID(id)
 		o.SetUsername("test")
 		o.SetPassword("secret")
+		o.SetConnectTimeout(5 * time.Second)
 		o.SetAutoReconnect(false)
 		return o
 	}
+
+	// Give the server goroutine time to start accepting connections.
+	time.Sleep(100 * time.Millisecond)
 
 	sub := mqtt.NewClient(clientOpts("sub-client"))
 	if token := sub.Connect(); token.WaitTimeout(10*time.Second) && token.Error() != nil {

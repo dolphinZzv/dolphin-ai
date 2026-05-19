@@ -26,9 +26,9 @@ type mqttMsg struct {
 // The response topic is derived from each incoming message's topic so that
 // multiple publishers on sub-topics each get their own response channel:
 //
-//	subscribe:   dolphin/agent/command/+
-//	receive on:  dolphin/agent/command/agent-1
-//	respond to:  dolphin/agent/response/agent-1
+//	subscribe:   /agent/+/message
+//	receive on:  /agent/agent-1/message
+//	respond to:  /agent/agent-1/response
 //
 // When the incoming topic is an exact match (no wildcard suffix), the
 // configured response_topic is used as-is (backward compatible).
@@ -99,7 +99,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	)
 
 	// Subscribe to command topic — push payloads with response topic to msgCh
-	token = t.client.Subscribe(t.cfg.Topic, 0, func(c mqtt.Client, msg mqtt.Message) {
+	token = t.client.Subscribe(t.cfg.Topic, 1, func(c mqtt.Client, msg mqtt.Message) {
 		respTopic := deriveResponseTopic(t.cfg.Topic, t.cfg.ResponseTopic, msg.Topic())
 		payload := string(msg.Payload())
 		zap.S().Debugw("mqtt command received",
@@ -181,15 +181,6 @@ func (t *MQTTTransport) Close() error {
 	return nil
 }
 
-// deriveResponseTopic maps an incoming command topic to the response topic.
-//
-//	cmdTopic:   "dolphin/agent/command/+"
-//	incoming:   "dolphin/agent/command/agent-1"
-//	result:     "dolphin/agent/response/agent-1"
-//
-// The MQTT wildcard suffix (/+ /#) is stripped from cmdTopic to find the
-// prefix. The remainder of the incoming topic after that prefix is appended
-// to the response topic base.
 func deriveResponseTopic(cmdTopic, respTopic, incomingTopic string) string {
 	prefix := cmdTopic
 	prefix = strings.TrimSuffix(prefix, "/+")
@@ -198,10 +189,16 @@ func deriveResponseTopic(cmdTopic, respTopic, incomingTopic string) string {
 
 	suffix := strings.TrimPrefix(incomingTopic, prefix)
 	if suffix == "" {
-		// Exact match — use configured response topic as-is
 		return respTopic
 	}
-	return strings.TrimRight(respTopic, "/") + suffix
+	// Build response topic by replacing "message" suffix with "response"
+	// e.g., /agent/panda-test/message -> /agent/panda-test/response
+	base := strings.TrimSuffix(incomingTopic, "/message")
+	if base == incomingTopic {
+		// No "/message" suffix, just append response topic suffix
+		return strings.TrimRight(respTopic, "/") + suffix
+	}
+	return base + "/response"
 }
 
 func truncate(s string, max int) string {
