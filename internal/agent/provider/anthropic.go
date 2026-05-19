@@ -313,8 +313,10 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 				if err := json.Unmarshal([]byte(data), &msgStart); err == nil && msgStart.Message != nil && msgStart.Message.Usage != nil {
 					ch <- StreamChunk{
 						Usage: &Usage{
-							InputTokens:  msgStart.Message.Usage.InputTokens,
-							OutputTokens: msgStart.Message.Usage.OutputTokens,
+							InputTokens:       msgStart.Message.Usage.InputTokens,
+							OutputTokens:      msgStart.Message.Usage.OutputTokens,
+							CachedInputTokens: msgStart.Message.Usage.CacheReadInputTokens,
+							MissedInputTokens: msgStart.Message.Usage.InputTokens - msgStart.Message.Usage.CacheReadInputTokens,
 						},
 					}
 				}
@@ -355,8 +357,10 @@ func (p *AnthropicProvider) CompleteStream(ctx context.Context, req ProviderRequ
 				if evt.Usage != nil {
 					ch <- StreamChunk{
 						Usage: &Usage{
-							InputTokens:  evt.Usage.InputTokens,
-							OutputTokens: evt.Usage.OutputTokens,
+							InputTokens:       evt.Usage.InputTokens,
+							OutputTokens:      evt.Usage.OutputTokens,
+							CachedInputTokens: evt.Usage.CacheReadInputTokens,
+							MissedInputTokens: evt.Usage.InputTokens - evt.Usage.CacheReadInputTokens,
 						},
 					}
 				}
