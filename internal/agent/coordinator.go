@@ -44,6 +44,16 @@ type Coordinator struct {
 	buildinCancelFns map[string][]func() // per-agent unsubscribe funcs
 	currentSess      *session.Session    // current session for buildin logging
 	reloadRequested  bool                // set by reload tool to trigger clean exit
+
+	// cumulative token usage across the entire session (for /context display)
+	totalInputTokens  int
+	totalOutputTokens int
+	totalCachedTokens int
+	totalMissedTokens int
+
+	// last LLM request content (for /context current display)
+	lastLLMSystemPrompt string
+	lastLLMMessages     []provider.Message
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -431,6 +441,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		sess.LogMessage("user", userContent)
 
 		// Run agent sub-loop
+		// Save LLM request content for /context current
+		c.lastLLMSystemPrompt = dynamicPrompt
+		c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
 		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), err))
@@ -443,6 +456,12 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// transports are not affected because Collect() is non-blocking and
 		// returns immediately when no agents are busy.
 		c.collectAgentResults(ctx, state, io)
+
+		// Capture cumulative token usage for /context display
+		c.totalInputTokens = state.TotalInputTokens
+		c.totalOutputTokens = state.TotalOutputTokens
+		c.totalCachedTokens = state.TotalCachedTokens
+		c.totalMissedTokens = state.TotalMissedTokens
 
 		// Check for reload request
 		if c.reloadRequested {
@@ -485,6 +504,8 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 				Content: provider.TextContent("[Agent task results are now available. Synthesize them into your response.]"),
 			})
 
+			c.lastLLMSystemPrompt = dynamicPrompt
+			c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
 			if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
 				zap.S().Debugw("agent result follow-up turn", "error", err)
 				return
@@ -528,6 +549,8 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 			Role:    "user",
 			Content: provider.TextContent("[Some agent task results are available (timed out waiting for others). Synthesize what you have.]"),
 		})
+		c.lastLLMSystemPrompt = dynamicPrompt
+		c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
 		c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools)
 	}
 }

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/smtp"
 	"os"
@@ -537,6 +538,12 @@ func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io t
 }
 
 func (c *Coordinator) printContext(args []string, io transport.UserIO) {
+	// Special keywords
+	if len(args) > 0 && args[0] == "current" {
+		c.printCurrentContext(io)
+		return
+	}
+
 	// If a section name is given, display its content
 	if len(args) > 0 {
 		sectionName := args[0]
@@ -560,6 +567,7 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 		sessionID = string(c.currentSess.ID)
 	}
 	io.WriteLine(fmt.Sprintf("Session:      %s", sessionID))
+	io.WriteLine(fmt.Sprintf("Tokens:       in=%d [cache=%d miss=%d] out=%d", c.totalInputTokens, c.totalCachedTokens, c.totalMissedTokens, c.totalOutputTokens))
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextProvider), c.cfg.LLM.Model, c.provider.Name()))
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextConfigPath), len(configurablePaths)))
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextMCPTools), len(c.toolReg.List())))
@@ -601,6 +609,41 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 				path = "(embedded)"
 			}
 			io.WriteLine(fmt.Sprintf("  %-20s %d  %s  %s", s.Name, s.Priority, size, path))
+		}
+		io.WriteLine("")
+	}
+}
+
+
+func (c *Coordinator) printCurrentContext(io transport.UserIO) {
+	io.WriteLine("=== System Prompt ===")
+	if c.lastLLMSystemPrompt == "" {
+		io.WriteLine("(no LLM request has been made yet)")
+		return
+	}
+	io.WriteLine(c.lastLLMSystemPrompt)
+	io.WriteLine("")
+
+	io.WriteLine(fmt.Sprintf("=== Messages (%d) ===", len(c.lastLLMMessages)))
+	for i, msg := range c.lastLLMMessages {
+		io.WriteLine(fmt.Sprintf("--- [%d] %s ---", i, msg.Role))
+		content := string(msg.Content)
+		// Try to pretty-print JSON content
+		if len(content) > 0 && content[0] == '[' {
+			var blocks []map[string]any
+			if err := json.Unmarshal([]byte(content), &blocks); err == nil {
+				for _, block := range blocks {
+					if txt, ok := block["text"]; ok {
+						io.WriteLine(fmt.Sprintf("  text: %s", txt))
+					} else if typ, ok := block["type"]; ok {
+						io.WriteLine(fmt.Sprintf("  [type: %s]", typ))
+					}
+				}
+			} else {
+				io.WriteLine(content)
+			}
+		} else {
+			io.WriteLine(content)
 		}
 		io.WriteLine("")
 	}
