@@ -60,7 +60,7 @@ func setupIntegration(t *testing.T) *integrationFixture {
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	bus := events.NewBus()
-	notifSvc := notifications.NewService(nil)
+	notifSvc := notifications.NewService(nil, nil)
 	notifSvc.Subscribe(bus)
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)

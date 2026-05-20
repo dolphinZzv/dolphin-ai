@@ -56,6 +56,9 @@ func ArrayParam(description, itemsType string) map[string]interface{} {
 }
 
 func ObjectSchema(properties map[string]interface{}, required []string) map[string]interface{} {
+	if properties == nil {
+		properties = make(map[string]interface{})
+	}
 	schema := map[string]interface{}{
 		"type":       "object",
 		"properties": properties,

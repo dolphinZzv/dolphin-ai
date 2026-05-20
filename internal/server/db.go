@@ -61,6 +61,9 @@ func AutoMigrate(db *gorm.DB) error {
 		db.Exec("DROP INDEX IF EXISTS idx_issues_project_number")
 	}
 
+	// Drop old single-column unique index on tasks.number (must include proposal_id)
+	db.Exec("DROP INDEX IF EXISTS idx_tasks_proposal_number")
+
 	err := db.AutoMigrate(
 		&models.Project{},
 		&models.ProjectMember{},
@@ -74,6 +77,7 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Feedback{},
 		&models.Proposal{},
 		&models.Task{},
+			&models.NotificationSetting{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto migrate: %w", err)

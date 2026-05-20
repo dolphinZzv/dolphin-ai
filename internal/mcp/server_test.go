@@ -63,7 +63,7 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
 	// Init MCP
-	notifSvc := notifications.NewService(nil)
+	notifSvc := notifications.NewService(nil, nil)
 	notifSvc.Subscribe(bus)
 	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, proposalSvc, taskSvc, workflowSvc, feedbackSvc, notifSvc, 0)
 	mcpServer := mcp.NewServer(handlers)
@@ -395,7 +395,7 @@ func TestSubmitRequirement(t *testing.T) {
 	proposalRepo := gormrepo.NewProposalRepo(db)
 	taskRepo := gormrepo.NewTaskRepo(db)
 	bus := events.NewBus()
-	notifSvc := notifications.NewService(nil)
+	notifSvc := notifications.NewService(nil, nil)
 	notifSvc.Subscribe(bus)
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)

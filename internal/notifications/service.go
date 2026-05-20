@@ -12,32 +12,43 @@ import (
 	"chick/internal/events"
 
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 )
 
 type NotificationType string
 
 const (
-	NotifIssueAssigned       NotificationType = "issue_assigned"
-	NotifCommentMention      NotificationType = "comment_mention"
-	NotifIssueStateChanged   NotificationType = "issue_state_changed"
-	NotifStatusChangeRequest NotificationType = "status_change_request"
+	NotifIssueAssigned        NotificationType = "issue_assigned"
+	NotifCommentMention       NotificationType = "comment_mention"
+	NotifIssueStateChanged    NotificationType = "issue_state_changed"
+	NotifStatusChangeRequest  NotificationType = "status_change_request"
+	NotifProposalCreated      NotificationType = "proposal_created"
+	NotifProposalStateChanged NotificationType = "proposal_state_changed"
+	NotifTaskCreated          NotificationType = "task_created"
+	NotifTaskAssigned         NotificationType = "task_assigned"
+	NotifTaskStateChanged     NotificationType = "task_state_changed"
+	NotifAgentStatusChanged   NotificationType = "agent_status_changed"
+	NotifFeedbackReceived     NotificationType = "feedback_received"
 )
 
 type Notification struct {
-	ID        uint             `json:"id"`
-	AgentID   uint             `json:"agentId"`
-	ProjectID uint             `json:"projectId,omitempty"`
-	Type      NotificationType `json:"type"`
-	IssueID   uint             `json:"issueId,omitempty"`
-	CommentID uint             `json:"commentId,omitempty"`
-	FromID    uint             `json:"fromId,omitempty"`
-	Message   string           `json:"message"`
-	Read      bool             `json:"read"`
-	CreatedAt time.Time        `json:"createdAt"`
+	ID         uint             `json:"id"`
+	AgentID    uint             `json:"agentId"`
+	ProjectID  uint             `json:"projectId,omitempty"`
+	Type       NotificationType `json:"type"`
+	IssueID    uint             `json:"issueId,omitempty"`
+	CommentID  uint             `json:"commentId,omitempty"`
+	ProposalID uint             `json:"proposalId,omitempty"`
+	TaskID     uint             `json:"taskId,omitempty"`
+	FromID     uint             `json:"fromId,omitempty"`
+	Message    string           `json:"message"`
+	Read       bool             `json:"read"`
+	CreatedAt  time.Time        `json:"createdAt"`
 }
 
 type Service struct {
 	rdb *redis.Client
+	db  *gorm.DB
 
 	// fallback in-memory storage when rdb is nil
 	mu            sync.RWMutex
@@ -47,18 +58,19 @@ type Service struct {
 
 const broadcastAgentID uint = 0
 
-func NewService(rdb *redis.Client) *Service {
+func NewService(rdb *redis.Client, db *gorm.DB) *Service {
 	return &Service{
 		rdb:           rdb,
+		db:            db,
 		notifications: make([]Notification, 0),
 		nextID:        1,
 	}
 }
 
-func notifDataKey(id uint) string   { return fmt.Sprintf("notif:d:%d", id) }
-func agentSetKey(agentID uint) string  { return fmt.Sprintf("notif:s:agent:%d", agentID) }
-func broadcastSetKey() string          { return "notif:s:broadcast" }
-func notifIDKey() string               { return "notif:id" }
+func notifDataKey(id uint) string     { return fmt.Sprintf("notif:d:%d", id) }
+func agentSetKey(agentID uint) string { return fmt.Sprintf("notif:s:agent:%d", agentID) }
+func broadcastSetKey() string         { return "notif:s:broadcast" }
+func notifIDKey() string              { return "notif:id" }
 
 // Subscribe registers all notification handlers on the event bus.
 func (s *Service) Subscribe(bus *events.Bus) {
@@ -66,6 +78,12 @@ func (s *Service) Subscribe(bus *events.Bus) {
 	bus.Subscribe(events.EventIssueAssigneeChanged, s.handleAssigneeChanged)
 	bus.Subscribe(events.EventIssueStateChanged, s.handleStateChanged)
 	bus.Subscribe(events.EventCommentAdded, s.handleCommentAdded)
+	bus.Subscribe(events.EventProposalCreated, s.handleProposalCreated)
+	bus.Subscribe(events.EventProposalStateChanged, s.handleProposalStateChanged)
+	bus.Subscribe(events.EventTaskCreated, s.handleTaskCreated)
+	bus.Subscribe(events.EventTaskStateChanged, s.handleTaskStateChanged)
+	bus.Subscribe(events.EventAgentStatusChanged, s.handleAgentStatusChanged)
+	bus.Subscribe(events.EventFeedbackCreated, s.handleFeedbackCreated)
 	log.Println("[notifications] subscribed to events")
 }
 
@@ -143,6 +161,157 @@ func (s *Service) handleCommentAdded(evt events.Event) {
 		Message:   fmt.Sprintf("New comment on issue %d", payload.IssueID),
 		CreatedAt: time.Now(),
 	})
+}
+
+func (s *Service) handleProposalCreated(evt events.Event) {
+	payload, ok := evt.Payload.(events.ProposalCreatedPayload)
+	if !ok {
+		return
+	}
+	s.add(Notification{
+		ProjectID:  payload.ProjectID,
+		AgentID:    broadcastAgentID,
+		Type:       NotifProposalCreated,
+		ProposalID: payload.ProposalID,
+		Message:    fmt.Sprintf("New proposal #%d created in project %d", payload.ProposalID, payload.ProjectID),
+	})
+}
+
+func (s *Service) handleProposalStateChanged(evt events.Event) {
+	payload, ok := evt.Payload.(events.ProposalStateChangedPayload)
+	if !ok {
+		return
+	}
+	s.add(Notification{
+		ProjectID:  payload.ProjectID,
+		AgentID:    broadcastAgentID,
+		Type:       NotifProposalStateChanged,
+		ProposalID: payload.ProposalID,
+		Message:    fmt.Sprintf("Proposal #%d changed state: %s → %s", payload.ProposalID, payload.From, payload.To),
+	})
+}
+
+func (s *Service) handleTaskCreated(evt events.Event) {
+	payload, ok := evt.Payload.(events.TaskCreatedPayload)
+	if !ok {
+		return
+	}
+	s.add(Notification{
+		ProjectID:  payload.ProjectID,
+		AgentID:    broadcastAgentID,
+		Type:       NotifTaskCreated,
+		TaskID:     payload.TaskID,
+		ProposalID: payload.ProposalID,
+		Message:    fmt.Sprintf("New task #%d created under proposal %d", payload.TaskID, payload.ProposalID),
+	})
+}
+
+func (s *Service) handleTaskStateChanged(evt events.Event) {
+	payload, ok := evt.Payload.(events.TaskStateChangedPayload)
+	if !ok {
+		return
+	}
+	s.add(Notification{
+		ProjectID:  payload.ProjectID,
+		AgentID:    broadcastAgentID,
+		Type:       NotifTaskStateChanged,
+		TaskID:     payload.TaskID,
+		ProposalID: payload.ProposalID,
+		Message:    fmt.Sprintf("Task #%d changed state: %s → %s", payload.TaskID, payload.From, payload.To),
+	})
+}
+
+func (s *Service) handleAgentStatusChanged(evt events.Event) {
+	payload, ok := evt.Payload.(events.AgentStatusChangedPayload)
+	if !ok {
+		return
+	}
+	s.add(Notification{
+		AgentID:   broadcastAgentID,
+		Type:      NotifAgentStatusChanged,
+		Message:   fmt.Sprintf("Agent %d is now %s", payload.AgentID, payload.Status),
+		CreatedAt: time.Now(),
+	})
+}
+
+func (s *Service) handleFeedbackCreated(evt events.Event) {
+	payload, ok := evt.Payload.(events.FeedbackCreatedPayload)
+	if !ok {
+		return
+	}
+	s.add(Notification{
+		AgentID:   broadcastAgentID,
+		Type:      NotifFeedbackReceived,
+		Message:   fmt.Sprintf("New feedback on %s #%d", payload.TargetType, payload.TargetID),
+		CreatedAt: time.Now(),
+	})
+}
+
+// UnreadCount returns the number of unread notifications for an agent.
+func (s *Service) UnreadCount(agentID uint) int {
+	notifs := s.ListByAgent(agentID)
+	count := 0
+	for _, n := range notifs {
+		if !n.Read {
+			count++
+		}
+	}
+	return count
+}
+
+// MarkAllRead marks all notifications as read for the given agent.
+func (s *Service) MarkAllRead(agentID uint) error {
+	if s.rdb != nil {
+		return s.markAllReadRedis(agentID)
+	}
+	return s.markAllReadMem(agentID)
+}
+
+func (s *Service) markAllReadMem(agentID uint) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.notifications {
+		if s.notifications[i].AgentID == agentID || s.notifications[i].AgentID == broadcastAgentID {
+			s.notifications[i].Read = true
+		}
+	}
+	return nil
+}
+
+func (s *Service) markAllReadRedis(agentID uint) error {
+	ctx := context.Background()
+	agentIDs, _ := s.rdb.ZRevRange(ctx, agentSetKey(agentID), 0, -1).Result()
+	bcastIDs, _ := s.rdb.ZRevRange(ctx, broadcastSetKey(), 0, -1).Result()
+	allIDs := append(agentIDs, bcastIDs...)
+	if len(allIDs) == 0 {
+		return nil
+	}
+
+	// Batch-read all notification data
+	pipe := s.rdb.Pipeline()
+	getCmds := make([]*redis.StringCmd, len(allIDs))
+	for i, idStr := range allIDs {
+		getCmds[i] = pipe.Get(ctx, notifDataKey(parseID(idStr)))
+	}
+	pipe.Exec(ctx)
+
+	// Batch-write updated (read=true) data
+	writePipe := s.rdb.Pipeline()
+	for _, cmd := range getCmds {
+		data, err := cmd.Bytes()
+		if err != nil {
+			continue
+		}
+		var n Notification
+		if err := json.Unmarshal(data, &n); err != nil {
+			continue
+		}
+		n.Read = true
+		updated, _ := json.Marshal(n)
+		writePipe.Set(ctx, notifDataKey(n.ID), updated, 0)
+	}
+	_, err := writePipe.Exec(ctx)
+	return err
 }
 
 // ListByAgent returns notifications for a specific agent, optionally filtered by project.
@@ -223,6 +392,38 @@ func (s *Service) listByAgentRedis(agentID uint, projectID ...uint) []Notificati
 	return notifs
 }
 
+// GetByID returns a single notification by its ID.
+func (s *Service) GetByID(id uint) (Notification, error) {
+	if s.rdb != nil {
+		return s.getByIDRedis(id)
+	}
+	return s.getByIDMem(id)
+}
+
+func (s *Service) getByIDMem(id uint) (Notification, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, n := range s.notifications {
+		if n.ID == id {
+			return n, nil
+		}
+	}
+	return Notification{}, fmt.Errorf("notification %d not found", id)
+}
+
+func (s *Service) getByIDRedis(id uint) (Notification, error) {
+	ctx := context.Background()
+	data, err := s.rdb.Get(ctx, notifDataKey(id)).Result()
+	if err != nil {
+		return Notification{}, fmt.Errorf("notification %d not found", id)
+	}
+	var n Notification
+	if err := json.Unmarshal([]byte(data), &n); err != nil {
+		return Notification{}, fmt.Errorf("unmarshal: %w", err)
+	}
+	return n, nil
+}
+
 // MarkRead marks a notification as read.
 func (s *Service) MarkRead(id uint) error {
 	if s.rdb != nil {
@@ -260,7 +461,11 @@ func (s *Service) markReadRedis(id uint) error {
 }
 
 // add stores a notification.
+// If the notification targets a specific agent, their preferences are respected.
 func (s *Service) add(n Notification) {
+	if n.AgentID != broadcastAgentID && !s.IsEnabled(n.AgentID, n.Type) {
+		return
+	}
 	n.CreatedAt = time.Now()
 	if s.rdb != nil {
 		s.addRedis(n)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"chick/internal/models"
@@ -100,39 +101,39 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"environment": StringParam("Environment name, e.g. staging, production"),
 			"branch":      StringParam("Branch name"),
 			"link":        StringParam("Related links (one per line for multiple)"),
-				"difficulty":  NumberParam("Implementation difficulty (1-5)"),
-				"startedAt":   StringParam("Start processing time (RFC3339)"),
-				"completedAt": StringParam("End processing time (RFC3339)"),
+			"difficulty":  NumberParam("Implementation difficulty (1-5)"),
+			"startedAt":   StringParam("Start processing time (RFC3339)"),
+			"completedAt": StringParam("End processing time (RFC3339)"),
 			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
 		}, []string{"title"}),
 		Handler: h.handleCreateIssue,
 	})
 
-		registry.Register(&ToolDefinition{
-			Name:        "create_issues_batch",
-			Description: "Batch create multiple issues at once",
-			InputSchema: ObjectSchema(map[string]interface{}{
-				"projectId": StringParam("Project ID (required if member of multiple projects)"),
-				"issues": map[string]interface{}{
-					"type":        "array",
-					"description": "Array of issues to create",
-					"items": map[string]interface{}{
-						"type": "object",
-						"properties": map[string]interface{}{
-							"title":       StringRequiredParam("Issue title"),
-							"description": StringParam("Issue description in Markdown"),
-							"priority":    StringParam("Priority: critical / high / medium / low"),
-							"assigneeIds": ArrayParam("Agent IDs to assign", "string"),
-							"environment": StringParam("Environment name, e.g. staging, production"),
-							"branch":      StringParam("Branch name"),
-							"link":        StringParam("Related links (one per line for multiple)"),
-						},
-						"required": []string{"title"},
+	registry.Register(&ToolDefinition{
+		Name:        "create_issues_batch",
+		Description: "Batch create multiple issues at once",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"projectId": StringParam("Project ID (required if member of multiple projects)"),
+			"issues": map[string]interface{}{
+				"type":        "array",
+				"description": "Array of issues to create",
+				"items": map[string]interface{}{
+					"type": "object",
+					"properties": map[string]interface{}{
+						"title":       StringRequiredParam("Issue title"),
+						"description": StringParam("Issue description in Markdown"),
+						"priority":    StringParam("Priority: critical / high / medium / low"),
+						"assigneeIds": ArrayParam("Agent IDs to assign", "string"),
+						"environment": StringParam("Environment name, e.g. staging, production"),
+						"branch":      StringParam("Branch name"),
+						"link":        StringParam("Related links (one per line for multiple)"),
 					},
+					"required": []string{"title"},
 				},
-			}, []string{"issues"}),
-			Handler: h.handleCreateIssuesBatch,
-		})
+			},
+		}, []string{"issues"}),
+		Handler: h.handleCreateIssuesBatch,
+	})
 
 	registry.Register(&ToolDefinition{
 		Name:        "edit_issue",
@@ -145,9 +146,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 			"environment": StringParam("Environment name, e.g. staging, production"),
 			"branch":      StringParam("Branch name"),
 			"link":        StringParam("Related links (one per line for multiple)"),
-				"difficulty":  NumberParam("Implementation difficulty (1-5)"),
-				"startedAt":   StringParam("Start processing time (RFC3339)"),
-				"completedAt": StringParam("End processing time (RFC3339)"),
+			"difficulty":  NumberParam("Implementation difficulty (1-5)"),
+			"startedAt":   StringParam("Start processing time (RFC3339)"),
+			"completedAt": StringParam("End processing time (RFC3339)"),
 		}, []string{"issueId"}),
 		Handler: h.handleEditIssue,
 	})
@@ -156,8 +157,8 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		Name:        "add_comment",
 		Description: "Add a comment to an issue",
 		InputSchema: ObjectSchema(map[string]interface{}{
-			"issueId":  StringRequiredParam("Issue ID"),
-			"body":     StringRequiredParam("Comment body (Markdown)"),
+			"issueId": StringRequiredParam("Issue ID"),
+			"body":    StringRequiredParam("Comment body (Markdown)"),
 		}, []string{"issueId", "body"}),
 		Handler: h.handleAddComment,
 	})
@@ -210,18 +211,58 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 	registry.Register(&ToolDefinition{
 		Name:        "agent_heartbeat",
 		Description: "Update agent heartbeat timestamp",
-		InputSchema: ObjectSchema(map[string]interface{}{
-		}, nil),
-		Handler: h.handleHeartbeat,
+		InputSchema: ObjectSchema(map[string]interface{}{}, nil),
+		Handler:     h.handleHeartbeat,
 	})
 
 	registry.Register(&ToolDefinition{
 		Name:        "check_notifications",
 		Description: "Check notifications for the authenticated agent",
-		InputSchema:  ObjectSchema(map[string]interface{}{
+		InputSchema: ObjectSchema(map[string]interface{}{
 			"projectId": StringParam("Optional: filter notifications by project ID"),
-			}, nil),
+		}, nil),
 		Handler: h.handleCheckNotifications,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "mark_notifications_read",
+		Description: "Mark notifications as read. Provide notification IDs or omit to mark all as read.",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"ids": StringParam("Comma-separated notification IDs to mark as read. If empty, marks all as read."),
+		}, nil),
+		Handler: h.handleMarkNotificationsRead,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "get_unread_count",
+		Description: "Get the number of unread notifications for the authenticated agent",
+		InputSchema: ObjectSchema(map[string]interface{}{}, nil),
+		Handler:     h.handleGetUnreadCount,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "get_notification_settings",
+		Description: "Get notification settings for the authenticated agent",
+		InputSchema: ObjectSchema(nil, nil),
+		Handler:     h.handleGetNotificationSettings,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "update_notification_setting",
+		Description: "Update a notification setting for the authenticated agent",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"notificationType": StringRequiredParam("Notification type (e.g. issue_assigned, proposal_created)"),
+			"enabled":          StringRequiredParam("Enable or disable: true / false"),
+			"channel":          StringParam("Notification channel: in_app (default), email, webhook"),
+		}, []string{"notificationType", "enabled"}),
+		Handler: h.handleUpdateNotificationSetting,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "list_notification_types",
+		Description: "List all available notification types",
+		InputSchema: ObjectSchema(nil, nil),
+		Handler:     h.handleListNotificationTypes,
 	})
 
 	registry.Register(&ToolDefinition{
@@ -388,11 +429,9 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		Handler: h.handleSearchTasks,
 	})
 
-
 }
 
 // ─── Handler Implementations ───────────────────────────────
-
 
 // ─── Proposal MCP Handlers ──────────────────────────────────
 
@@ -990,9 +1029,9 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 		Environment string   `json:"environment"`
 		Branch      string   `json:"branch"`
 		Link        string   `json:"link"`
-		Difficulty  int    `json:"difficulty"`
-		StartedAt   string `json:"startedAt"`
-		CompletedAt string `json:"completedAt"`
+		Difficulty  int      `json:"difficulty"`
+		StartedAt   string   `json:"startedAt"`
+		CompletedAt string   `json:"completedAt"`
 		ProjectID   string   `json:"projectId"`
 	}
 	if err := json.Unmarshal(params, &p); err != nil {
@@ -1026,14 +1065,13 @@ func (h *Handlers) handleCreateIssue(id json.RawMessage, params json.RawMessage,
 		}
 	}
 
-
-		var milestoneID *uint
-		if p.MilestoneID != "" {
-			if mid, err := strconv.ParseUint(p.MilestoneID, 10, 64); err == nil {
-				v := uint(mid)
-				milestoneID = &v
-			}
+	var milestoneID *uint
+	if p.MilestoneID != "" {
+		if mid, err := strconv.ParseUint(p.MilestoneID, 10, 64); err == nil {
+			v := uint(mid)
+			milestoneID = &v
 		}
+	}
 	var diff *int
 	if p.Difficulty != 0 {
 		if p.Difficulty < 1 || p.Difficulty > 5 {
@@ -1142,8 +1180,8 @@ func (h *Handlers) handleCreateIssuesBatch(id json.RawMessage, params json.RawMe
 	}
 
 	return NewResponse(id, map[string]interface{}{
-		"items":  results,
-		"total":  len(results),
+		"items": results,
+		"total": len(results),
 	})
 }
 
@@ -1422,13 +1460,16 @@ func (h *Handlers) handleCheckNotifications(id json.RawMessage, params json.RawM
 	items := make([]map[string]interface{}, len(notifs))
 	for i, n := range notifs {
 		items[i] = map[string]interface{}{
-			"id":        n.ID,
-			"type":      string(n.Type),
-			"issueId":   n.IssueID,
-			"projectId": n.ProjectID,
-			"message":   n.Message,
-			"read":      n.Read,
-			"createdAt": n.CreatedAt,
+			"id":         n.ID,
+			"type":       string(n.Type),
+			"issueId":    n.IssueID,
+			"commentId":  n.CommentID,
+			"proposalId": n.ProposalID,
+			"taskId":     n.TaskID,
+			"projectId":  n.ProjectID,
+			"message":    n.Message,
+			"read":       n.Read,
+			"createdAt":  n.CreatedAt,
 		}
 	}
 	return NewResponse(id, map[string]interface{}{"notifications": items})
@@ -1579,14 +1620,12 @@ func (h *Handlers) handleSubmitRequirement(id json.RawMessage, params json.RawMe
 	})
 }
 
-
 func strPtr(s string) *string {
 	if s == "" {
 		return nil
 	}
 	return &s
 }
-
 
 func nilStr(s *string) string {
 	if s == nil {
@@ -1614,4 +1653,100 @@ func maskToken(token string) string {
 		return token
 	}
 	return token[:6] + "…" + token[len(token)-4:]
+}
+
+func (h *Handlers) handleMarkNotificationsRead(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	if h.notifSvc == nil {
+		return NewResponse(id, map[string]interface{}{"success": true})
+	}
+
+	var p struct {
+		IDs string `json:"ids"`
+	}
+	json.Unmarshal(params, &p)
+
+	if p.IDs == "" {
+		if err := h.notifSvc.MarkAllRead(agentID); err != nil {
+			return NewInternalError(id, err.Error())
+		}
+		return NewResponse(id, map[string]interface{}{"success": true, "markedAll": true})
+	}
+
+	for _, s := range strings.Split(p.IDs, ",") {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		nid, err := strconv.ParseUint(s, 10, 64)
+		if err != nil {
+			continue
+		}
+		h.notifSvc.MarkRead(uint(nid))
+	}
+	return NewResponse(id, map[string]interface{}{"success": true})
+}
+
+func (h *Handlers) handleGetUnreadCount(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	if h.notifSvc == nil {
+		return NewResponse(id, map[string]interface{}{"count": 0})
+	}
+	count := h.notifSvc.UnreadCount(agentID)
+	return NewResponse(id, map[string]interface{}{"count": count})
+}
+
+func (h *Handlers) handleGetNotificationSettings(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	if h.notifSvc == nil {
+		return NewResponse(id, map[string]interface{}{"settings": []interface{}{}})
+	}
+	settings, err := h.notifSvc.GetSettings(agentID)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	items := make([]map[string]interface{}, len(settings))
+	for i, s := range settings {
+		items[i] = map[string]interface{}{
+			"id":               s.ID,
+			"agentId":          s.AgentID,
+			"notificationType": s.NotificationType,
+			"enabled":          s.Enabled,
+			"channel":          s.Channel,
+		}
+	}
+	return NewResponse(id, map[string]interface{}{"settings": items})
+}
+
+func (h *Handlers) handleUpdateNotificationSetting(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	var p struct {
+		NotificationType string `json:"notificationType"`
+		Enabled          string `json:"enabled"`
+		Channel          string `json:"channel"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if p.NotificationType == "" {
+		return NewError(id, -32602, "notificationType is required")
+	}
+	enabled := p.Enabled == "true"
+	if err := h.notifSvc.UpdateSetting(agentID, p.NotificationType, enabled, p.Channel); err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{"success": true})
+}
+
+func (h *Handlers) handleListNotificationTypes(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	types := notifications.AllNotificationTypes()
+	return NewResponse(id, map[string]interface{}{"types": types})
 }

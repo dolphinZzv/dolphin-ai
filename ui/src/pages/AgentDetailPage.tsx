@@ -5,7 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
-import { Bot, ToggleLeft, ToggleRight, AlertTriangle } from "lucide-react";
+import { Bot, ToggleLeft, ToggleRight, AlertTriangle, Bell } from "lucide-react";
 import { gql } from "@/lib/graphql";
 import { toast } from "sonner";
 
@@ -24,6 +24,19 @@ interface AgentDetail {
   lastIP?: string;
   lastSeenAt?: string;
   createdAt: string;
+}
+
+interface NotifTypeInfo {
+  type: string;
+  description: string;
+}
+
+interface NotifSetting {
+  id: string;
+  agentID: string;
+  notificationType: string;
+  enabled: boolean;
+  channel: string;
 }
 
 const statusConfig: Record<string, { label: string; dot: string }> = {
@@ -47,6 +60,12 @@ export function AgentDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [toggling, setToggling] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // notification settings
+  const [notifTypes, setNotifTypes] = useState<NotifTypeInfo[]>([]);
+  const [notifSettings, setNotifSettings] = useState<NotifSetting[]>([]);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifUpdating, setNotifUpdating] = useState<string | null>(null);
 
   const fetchAgent = useCallback(() => {
     if (!id) return;
@@ -96,7 +115,52 @@ export function AgentDetailPage() {
     }
   }, [id, agent, navigate]);
 
+  const fetchNotifTypes = useCallback(async () => {
+    try {
+      const json = await gql(`query { notificationTypes { type description } }`);
+      if (json.errors) { return; }
+      setNotifTypes(json.data?.notificationTypes || []);
+    } catch { /* ignore */ }
+  }, []);
+
+  const fetchNotifSettings = useCallback(async () => {
+    if (!id) return;
+    setNotifLoading(true);
+    try {
+      const json = await gql(
+        `query notifSettings($aid: ID!) { notificationSettings(agentID: $aid) { id agentID notificationType enabled channel } }`,
+        { aid: id }
+      );
+      if (json.errors) { return; }
+      setNotifSettings(json.data?.notificationSettings || []);
+    } catch { /* ignore */ }
+    finally { setNotifLoading(false); }
+  }, [id]);
+
+  const handleToggleNotif = useCallback(async (notifType: string, enabled: boolean) => {
+    if (!id) return;
+    setNotifUpdating(notifType);
+    try {
+      const json = await gql(
+        `mutation updateNotifSetting($aid: ID!, $type: String!, $enabled: Boolean!) {
+          updateNotificationSetting(agentID: $aid, notificationType: $type, enabled: $enabled) { id enabled }
+        }`,
+        { aid: id, type: notifType, enabled }
+      );
+      if (json.errors) { toast.error(json.errors[0].message); return; }
+      setNotifSettings(prev => {
+        const existing = prev.find(s => s.notificationType === notifType);
+        if (existing) {
+          return prev.map(s => s.notificationType === notifType ? { ...s, enabled } : s);
+        }
+        return [...prev, { id: "", agentID: id, notificationType: notifType, enabled, channel: "in_app" }];
+      });
+    } catch { toast.error("网络错误"); }
+    finally { setNotifUpdating(null); }
+  }, [id]);
+
   useEffect(() => { fetchAgent(); }, [fetchAgent]);
+  useEffect(() => { if (agent) { fetchNotifTypes(); fetchNotifSettings(); } }, [agent, fetchNotifTypes, fetchNotifSettings]);
 
   if (loading) return <Skeleton className="h-48 w-full" />;
   if (error) return <ErrorFallback message={error} onRetry={fetchAgent} />;
@@ -216,6 +280,57 @@ export function AgentDetailPage() {
             <p className="text-sm text-muted-foreground mb-0.5">设备信息</p>
             <p className="text-sm font-mono whitespace-pre-wrap">{agent.deviceInfo || "未提供"}</p>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Notification Settings */}
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <div className="flex items-center gap-2">
+            <Bell className="h-5 w-5 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">通知设置</h2>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            选择需要接收的通知类型。未配置的类型默认开启。
+          </p>
+
+          {notifLoading && notifTypes.length === 0 ? (
+            <div className="space-y-2">
+              {[1,2,3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : notifTypes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">暂无通知类型</p>
+          ) : (
+            <div className="divide-y rounded-lg border">
+              {notifTypes.map((nt) => {
+                const setting = notifSettings.find(s => s.notificationType === nt.type);
+                const enabled = setting ? setting.enabled : true;
+                const updating = notifUpdating === nt.type;
+                return (
+                  <div key={nt.type} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{nt.description}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{nt.type}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={enabled}
+                        disabled={!!updating}
+                        onChange={() => handleToggleNotif(nt.type, !enabled)}
+                      />
+                      <div className={`w-10 h-5 rounded-full peer-focus:outline-none after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-card after:rounded-full after:h-4 after:w-4 after:transition-all ${
+                        updating
+                          ? "bg-muted cursor-wait"
+                          : "bg-muted peer-checked:bg-primary cursor-pointer"
+                      } peer-checked:after:translate-x-5`} />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 

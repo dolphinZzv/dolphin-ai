@@ -67,7 +67,7 @@ func New(cfg *config.Config) (*Server, error) {
 
 	// Init Redis and notification service
 	rdb := NewRedis(cfg)
-	notifSvc := notifications.NewService(rdb)
+	notifSvc := notifications.NewService(rdb, db)
 	notifSvc.Subscribe(bus)
 
 	// Init services

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"chick/internal/events"
+	"chick/internal/notifications"
 	"chick/internal/service"
 	"time"
 )
@@ -20,6 +21,7 @@ type Resolver struct {
 	TaskSvc               *service.TaskService
 	WorkflowSvc           *service.WorkflowService
 	FeedbackSvc           *service.FeedbackService
+	NotifSvc              *notifications.Service
 	EventBus              *events.Bus
 	HumanReg bool
 	LoginLimiter          *rateLimiter
@@ -34,6 +36,7 @@ func NewResolver(
 	taskSvc *service.TaskService,
 	workflowSvc *service.WorkflowService,
 	feedbackSvc *service.FeedbackService,
+	notifSvc *notifications.Service,
 	eventBus *events.Bus,
 		allowHumanRegistration bool,
 ) *Resolver {
@@ -46,6 +49,7 @@ func NewResolver(
 		TaskSvc:      taskSvc,
 		WorkflowSvc:  workflowSvc,
 		FeedbackSvc:  feedbackSvc,
+		NotifSvc:     notifSvc,
 		EventBus:     eventBus,
 		HumanReg: allowHumanRegistration,
 		LoginLimiter: newRateLimiter(10, 15*time.Minute),

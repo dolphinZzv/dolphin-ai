@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { Plus, Trash2, AlertTriangle, Copy, Check } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, Copy, Check, Bell } from "lucide-react";
 import { toast } from "sonner";
 
 interface Label {
@@ -86,7 +86,7 @@ const PRESET_COLORS = ["#0366d6", "#28a745", "#d73a49", "#ffd33d", "#6f42c1", "#
 export function ProjectSettingsPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"basic" | "workflow" | "agents" | "labels" | "milestones">("basic");
+  const [tab, setTab] = useState<"basic" | "workflow" | "agents" | "labels" | "milestones" | "notifications">("basic");
   const [labels, setLabels] = useState<Label[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
@@ -131,7 +131,7 @@ export function ProjectSettingsPage() {
   const [createdToken, setCreatedToken] = useState<string | null>(null);
   const [tokenCopied, setTokenCopied] = useState(false);
   const [cmdCopied, setCmdCopied] = useState(false);
-  const [installTool, setInstallTool] = useState<"claude" | "opencode">("claude");
+  const [installTool, setInstallTool] = useState<"claude" | "opencode" | "dolphin">("dolphin");
   const [installTab, setInstallTab] = useState<"cli" | "project" | "manual">("cli");
   const [agentCreating, setAgentCreating] = useState(false);
 
@@ -382,6 +382,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
     { key: "agents" as const, label: "Agent" },
     { key: "labels" as const, label: "标签" },
     { key: "milestones" as const, label: "里程碑" },
+    { key: "notifications" as const, label: "通知" },
   ];
 
   if (loading) return <Skeleton className="h-48 w-full" />;
@@ -655,6 +656,16 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                   <div className="flex gap-0 mb-3">
                     <button
                       className={`px-3 py-1.5 text-xs font-medium rounded-l-md border transition-colors ${
+                        installTool === "dolphin"
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                      }`}
+                      onClick={() => { setInstallTool("dolphin"); setInstallTab("cli"); }}
+                    >
+                      Dolphin
+                    </button>
+                    <button
+                      className={`px-3 py-1.5 text-xs font-medium border border-l-0 transition-colors ${
                         installTool === "claude"
                           ? "bg-primary text-primary-foreground border-primary"
                           : "bg-muted text-muted-foreground border-border hover:bg-accent"
@@ -676,6 +687,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                   </div>
 
                   {/* Inner tabs: install method */}
+                  {installTool !== "dolphin" && (
                   <div className="flex gap-0 mb-3">
                     <button
                       className={`px-2.5 py-1 text-xs font-medium rounded-l-md border transition-colors ${
@@ -708,6 +720,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                       手动配置
                     </button>
                   </div>
+                  )}
 
                   {installTool === "claude" && installTab === "cli" && (
                     <ClaudeCLICmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
@@ -727,6 +740,9 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                   {installTool === "opencode" && installTab === "manual" && (
                     <OpenCodeManualCmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
                   )}
+                  {installTool === "dolphin" && (
+                    <DolphinCmd createdToken={createdToken!} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />
+                  )}
 
                   <p className="text-xs text-muted-foreground mt-1.5">
                     {installTool === "claude" && installTab === "cli" && "复制后在 Claude Code 终端运行，注册到当前用户全局配置"}
@@ -735,6 +751,7 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
                     {installTool === "opencode" && installTab === "cli" && "复制后在 OpenCode 终端运行，注册 MCP 服务器"}
                     {installTool === "opencode" && installTab === "project" && "复制后在 OpenCode 终端运行，注册到项目级配置"}
                     {installTool === "opencode" && installTab === "manual" && "复制后在终端运行，OpenCode 会自动加载配置"}
+                    {installTool === "dolphin" && "将配置添加到你的 MCP 客户端配置文件中"}
                   </p>
                 </div>
 
@@ -956,6 +973,11 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Notifications tab */}
+      {tab === "notifications" && (
+        <ProjectNotificationsTab projectId={id!} members={members} />
+      )}
+
       {/* Delete project confirmation */}
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
@@ -1050,4 +1072,141 @@ function OpenCodeProjectCmd({ createdToken, cmdCopied, setCmdCopied }: CmdProps)
   }, null, 2);
   const cmd = `echo '${config}' > .mcp.json`;
   return <CopyBlock cmd={cmd} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+function DolphinCmd({ cmdCopied, setCmdCopied, createdToken }: CmdProps) {
+  const url = `${window.location.origin}/mcp`;
+  const config = `servers:
+  chick:
+    type: http-stream
+    url: ${url}
+    headers:
+      Authorization: Bearer ${createdToken}`;
+  return <CopyBlock cmd={config} cmdCopied={cmdCopied} setCmdCopied={setCmdCopied} />;
+}
+
+interface NotifTypeInfo {
+  type: string;
+  description: string;
+}
+
+interface NotifSetting {
+  id: string;
+  agentID: string;
+  notificationType: string;
+  enabled: boolean;
+  channel: string;
+}
+
+function ProjectNotificationsTab({ projectId, members }: { projectId: string; members: Member[] }) {
+  const [notifTypes, setNotifTypes] = useState<NotifTypeInfo[]>([]);
+  const [notifSettings, setNotifSettings] = useState<NotifSetting[]>([]);
+  const [selectedMember, setSelectedMember] = useState<string | null>(null);
+  const [notifLoading, setNotifLoading] = useState(false);
+  const [settingsLoading, setSettingsLoading] = useState(false);
+  const [notifUpdating, setNotifUpdating] = useState<string | null>(null);
+
+  useEffect(() => {
+    gql(`query { notificationTypes { type description } }`)
+      .then(json => { if (!json.errors) setNotifTypes(json.data?.notificationTypes || []); })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!selectedMember) { setNotifSettings([]); return; }
+    setSettingsLoading(true);
+    gql(
+      `query notifSettings($aid: ID!) { notificationSettings(agentID: $aid) { id agentID notificationType enabled channel } }`,
+      { aid: selectedMember }
+    )
+      .then(json => { if (!json.errors) setNotifSettings(json.data?.notificationSettings || []); })
+      .catch(() => {})
+      .finally(() => setSettingsLoading(false));
+  }, [selectedMember]);
+
+  const handleToggle = useCallback(async (notifType: string, enabled: boolean) => {
+    if (!selectedMember) return;
+    setNotifUpdating(notifType);
+    try {
+      const json = await gql(
+        `mutation updateNotifSetting($aid: ID!, $type: String!, $enabled: Boolean!) {
+          updateNotificationSetting(agentID: $aid, notificationType: $type, enabled: $enabled) { id enabled }
+        }`,
+        { aid: selectedMember, type: notifType, enabled }
+      );
+      if (json.errors) { toast.error(json.errors[0].message); return; }
+      setNotifSettings(prev => {
+        const existing = prev.find(s => s.notificationType === notifType);
+        if (existing) return prev.map(s => s.notificationType === notifType ? { ...s, enabled } : s);
+        return [...prev, { id: "", agentID: selectedMember, notificationType: notifType, enabled, channel: "in_app" }];
+      });
+    } catch { toast.error("网络错误"); }
+    finally { setNotifUpdating(null); }
+  }, [selectedMember]);
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="p-6 space-y-4">
+          <h2 className="text-lg font-semibold">通知设置</h2>
+          <p className="text-sm text-muted-foreground">选择项目成员，配置其通知偏好。未配置的类型默认开启。</p>
+
+          {/* Member selector */}
+          <div className="flex flex-wrap gap-2">
+            {members.map(m => (
+              <button
+                key={m.agent.id}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                  selectedMember === m.agent.id
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted text-muted-foreground border-border hover:bg-accent"
+                }`}
+                onClick={() => setSelectedMember(m.agent.id)}
+              >
+                #{m.agent.number} {m.agent.name}
+              </button>
+            ))}
+          </div>
+
+          {!selectedMember ? (
+            <p className="text-sm text-muted-foreground py-4">请选择一个成员查看通知设置</p>
+          ) : settingsLoading || notifTypes.length === 0 && notifLoading ? (
+            <div className="space-y-2">{[1,2,3].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
+          ) : notifTypes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">暂无通知类型</p>
+          ) : (
+            <div className="divide-y rounded-lg border">
+              {notifTypes.map(nt => {
+                const setting = notifSettings.find(s => s.notificationType === nt.type);
+                const enabled = setting ? setting.enabled : true;
+                const updating = notifUpdating === nt.type;
+                return (
+                  <div key={nt.type} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{nt.description}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{nt.type}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={enabled}
+                        disabled={!!updating}
+                        onChange={() => handleToggle(nt.type, !enabled)}
+                      />
+                      <div className={`w-10 h-5 rounded-full peer-focus:outline-none after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-card after:rounded-full after:h-4 after:w-4 after:transition-all ${
+                        updating
+                          ? "bg-muted cursor-wait"
+                          : "bg-muted peer-checked:bg-primary cursor-pointer"
+                      } peer-checked:after:translate-x-5`} />
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

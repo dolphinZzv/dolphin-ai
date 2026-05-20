@@ -339,6 +339,9 @@ type Query {
   timeline(issueID: ID, proposalID: ID, taskID: ID): [TimelineEvent!]!
   validTransitions(state: IssueState!): [IssueState!]!
   feedback(targetType: FeedbackTargetType!, targetID: ID!): [Feedback!]!
+  notificationSettings(agentID: ID!): [NotificationSetting!]!
+  notificationTypes: [NotificationTypeInfo!]!
+  notifications(agentID: ID!): [NotificationEvent!]!
 }
 
 type Mutation {
@@ -399,6 +402,9 @@ type Mutation {
   linkIssuesToTask(taskID: ID!, issueIDs: [ID!]!): Task!
   unlinkIssueFromTask(taskID: ID!, issueID: ID!): Task!
   deleteTask(id: ID!): Boolean!
+  updateNotificationSetting(agentID: ID!, notificationType: String!, enabled: Boolean!, channel: String): NotificationSetting!
+  markNotificationRead(id: ID!): NotificationEvent!
+  markAllNotificationsRead(agentID: ID!): Boolean!
 }
 
 type Subscription {
@@ -410,11 +416,28 @@ type Subscription {
 type NotificationEvent {
   id: ID!
   number: Int!
+  agentID: ID!
   notificationType: String!
   issueID: ID
+  proposalID: ID
+  taskID: ID
+  projectID: ID
   message: String!
   read: Boolean!
   createdAt: Time!
+}
+
+type NotificationSetting {
+  id: ID!
+  agentID: ID!
+  notificationType: String!
+  enabled: Boolean!
+  channel: String!
+}
+
+type NotificationTypeInfo {
+  type: String!
+  description: String!
 }
 
 type AgentStatusEvent {

@@ -15,7 +15,7 @@ const (
 type Task struct {
 	ID          uint      `gorm:"primaryKey;autoIncrement"`
 	Number      uint      `gorm:"not null;uniqueIndex:idx_tasks_proposal_number"`
-	ProposalID  uint      `gorm:"not null;index"`
+	ProposalID  uint      `gorm:"not null;uniqueIndex:idx_tasks_proposal_number;index"`
 	Title       string    `gorm:"type:varchar(500);not null"`
 	Description string    `gorm:"type:text"`
 	State       TaskState `gorm:"type:varchar(30);not null;default:pending"`

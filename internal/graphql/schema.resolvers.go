@@ -9,9 +9,11 @@ import (
 	"chick/internal/auth"
 	"chick/internal/events"
 	"chick/internal/models"
+	"chick/internal/notifications"
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -925,6 +927,28 @@ func (r *mutationResolver) DeleteTask(ctx context.Context, id string) (bool, err
 	return true, nil
 }
 
+// MarkNotificationRead is the resolver for the markNotificationRead field.
+func (r *mutationResolver) MarkNotificationRead(ctx context.Context, id string) (*NotificationEvent, error) {
+	pid := parseID(id)
+	if err := r.NotifSvc.MarkRead(pid); err != nil {
+		return nil, fmt.Errorf("mark read: %w", err)
+	}
+	n, err := r.NotifSvc.GetByID(pid)
+	if err != nil {
+		return nil, fmt.Errorf("get notification: %w", err)
+	}
+	return notificationToEvent(n), nil
+}
+
+// MarkAllNotificationsRead is the resolver for the markAllNotificationsRead field.
+func (r *mutationResolver) MarkAllNotificationsRead(ctx context.Context, agentID string) (bool, error) {
+	pid := parseID(agentID)
+	if err := r.NotifSvc.MarkAllRead(pid); err != nil {
+		return false, fmt.Errorf("mark all read: %w", err)
+	}
+	return true, nil
+}
+
 // SupportedModels is the resolver for the supportedModels field.
 func (r *queryResolver) SupportedModels(ctx context.Context) ([]string, error) {
 	return models.SupportedModels, nil
@@ -1384,6 +1408,49 @@ func (r *queryResolver) Feedback(ctx context.Context, targetType FeedbackTargetT
 	return nil, errors.New("unknown target type")
 }
 
+
+// Notifications is the resolver for the notifications field.
+func (r *queryResolver) Notifications(ctx context.Context, agentID string) ([]*NotificationEvent, error) {
+	pid := parseID(agentID)
+	notifs := r.NotifSvc.ListByAgent(pid)
+	result := make([]*NotificationEvent, len(notifs))
+	for i, n := range notifs {
+		result[i] = notificationToEvent(n)
+	}
+	return result, nil
+}
+
+// notificationToEvent converts an internal Notification to a GraphQL NotificationEvent.
+func notificationToEvent(n notifications.Notification) *NotificationEvent {
+	idStr := strconv.FormatUint(uint64(n.ID), 10)
+	notif := &NotificationEvent{
+		ID:               idStr,
+		Number:           int32(n.ID),
+		AgentID:          strconv.FormatUint(uint64(n.AgentID), 10),
+		NotificationType: string(n.Type),
+		Message:          n.Message,
+		Read:             n.Read,
+		CreatedAt:        n.CreatedAt,
+	}
+	if n.IssueID != 0 {
+		v := strconv.FormatUint(uint64(n.IssueID), 10)
+		notif.IssueID = &v
+	}
+	if n.ProposalID != 0 {
+		v := strconv.FormatUint(uint64(n.ProposalID), 10)
+		notif.ProposalID = &v
+	}
+	if n.TaskID != 0 {
+		v := strconv.FormatUint(uint64(n.TaskID), 10)
+		notif.TaskID = &v
+	}
+	if n.ProjectID != 0 {
+		v := strconv.FormatUint(uint64(n.ProjectID), 10)
+		notif.ProjectID = &v
+	}
+	return notif
+}
+
 // IssueUpdated is the resolver for the issueUpdated field.
 func (r *subscriptionResolver) IssueUpdated(ctx context.Context, issueID string) (<-chan *Issue, error) {
 	id := parseID(issueID)
@@ -1436,12 +1503,11 @@ func (r *subscriptionResolver) AgentNotifications(ctx context.Context, agentID s
 		return nil, err
 	}
 
-	ch := make(chan *NotificationEvent, 5)
+	ch := make(chan *NotificationEvent, 20)
 
-	cancel1 := func() {}
-	cancel2 := func() {}
+	var cancels []func()
 	if r.EventBus != nil {
-		cancel1 = r.EventBus.Subscribe(events.EventIssueAssigneeChanged, func(evt events.Event) {
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventIssueAssigneeChanged, func(evt events.Event) {
 			payload, ok := evt.Payload.(events.IssueAssigneeChangedPayload)
 			if !ok {
 				return
@@ -1462,9 +1528,9 @@ func (r *subscriptionResolver) AgentNotifications(ctx context.Context, agentID s
 				default:
 				}
 			}
-		})
+		}))
 
-		cancel2 = r.EventBus.Subscribe(events.EventCommentAdded, func(evt events.Event) {
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventCommentAdded, func(evt events.Event) {
 			_, ok := evt.Payload.(events.CommentAddedPayload)
 			if !ok {
 				return
@@ -1479,13 +1545,116 @@ func (r *subscriptionResolver) AgentNotifications(ctx context.Context, agentID s
 			}:
 			default:
 			}
-		})
+		}))
+
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventProposalCreated, func(evt events.Event) {
+			payload, ok := evt.Payload.(events.ProposalCreatedPayload)
+			if !ok {
+				return
+			}
+			select {
+			case ch <- &NotificationEvent{
+				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+				NotificationType: "proposal_created",
+				Message:          fmt.Sprintf("New proposal #%d created", payload.ProposalID),
+				Read:             false,
+				CreatedAt:        time.Now(),
+			}:
+			default:
+			}
+		}))
+
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventProposalStateChanged, func(evt events.Event) {
+			payload, ok := evt.Payload.(events.ProposalStateChangedPayload)
+			if !ok {
+				return
+			}
+			select {
+			case ch <- &NotificationEvent{
+				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+				NotificationType: "proposal_state_changed",
+				Message:          fmt.Sprintf("Proposal #%d: %s → %s", payload.ProposalID, payload.From, payload.To),
+				Read:             false,
+				CreatedAt:        time.Now(),
+			}:
+			default:
+			}
+		}))
+
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventTaskCreated, func(evt events.Event) {
+			payload, ok := evt.Payload.(events.TaskCreatedPayload)
+			if !ok {
+				return
+			}
+			select {
+			case ch <- &NotificationEvent{
+				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+				NotificationType: "task_created",
+				Message:          fmt.Sprintf("New task #%d created under proposal #%d", payload.TaskID, payload.ProposalID),
+				Read:             false,
+				CreatedAt:        time.Now(),
+			}:
+			default:
+			}
+		}))
+
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventTaskStateChanged, func(evt events.Event) {
+			payload, ok := evt.Payload.(events.TaskStateChangedPayload)
+			if !ok {
+				return
+			}
+			select {
+			case ch <- &NotificationEvent{
+				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+				NotificationType: "task_state_changed",
+				Message:          fmt.Sprintf("Task #%d: %s → %s", payload.TaskID, payload.From, payload.To),
+				Read:             false,
+				CreatedAt:        time.Now(),
+			}:
+			default:
+			}
+		}))
+
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventAgentStatusChanged, func(evt events.Event) {
+			payload, ok := evt.Payload.(events.AgentStatusChangedPayload)
+			if !ok {
+				return
+			}
+			select {
+			case ch <- &NotificationEvent{
+				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+				NotificationType: "agent_status_changed",
+				Message:          fmt.Sprintf("Agent #%d is now %s", payload.AgentID, payload.Status),
+				Read:             false,
+				CreatedAt:        time.Now(),
+			}:
+			default:
+			}
+		}))
+
+		cancels = append(cancels, r.EventBus.Subscribe(events.EventFeedbackCreated, func(evt events.Event) {
+			payload, ok := evt.Payload.(events.FeedbackCreatedPayload)
+			if !ok {
+				return
+			}
+			select {
+			case ch <- &NotificationEvent{
+				ID:               fmt.Sprintf("notif-%d", time.Now().UnixNano()),
+				NotificationType: "feedback_received",
+				Message:          fmt.Sprintf("New feedback on %s #%d", payload.TargetType, payload.TargetID),
+				Read:             false,
+				CreatedAt:        time.Now(),
+			}:
+			default:
+			}
+		}))
 	}
 
 	go func() {
 		<-ctx.Done()
-		cancel1()
-		cancel2()
+		for _, c := range cancels {
+			c()
+		}
 		close(ch)
 	}()
 
@@ -1535,3 +1704,71 @@ func (r *Resolver) Subscription() SubscriptionResolver { return &subscriptionRes
 type mutationResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
 type subscriptionResolver struct{ *Resolver }
+
+// !!! WARNING !!!
+// The code below was going to be deleted when updating resolvers. It has been copied here so you have
+// one last chance to move it out of harms way if you want. There are two reasons this happens:
+//  - When renaming or deleting a resolver the old code will be put in here. You can safely delete
+//    it when you're done.
+//  - You have helper methods in this file. Move them out to keep these resolver files clean.
+/*
+	func (r *mutationResolver) UpdateNotificationSetting(ctx context.Context, agentID string, notificationType string, enabled bool, channel *string) (*NotificationSetting, error) {
+	pid := parseID(agentID)
+	ch := ""
+	if channel != nil {
+		ch = *channel
+	}
+	if err := r.NotifSvc.UpdateSetting(pid, notificationType, enabled, ch); err != nil {
+		return nil, fmt.Errorf("update notification setting: %w", err)
+	}
+
+	// Read back the saved setting
+	settings, err := r.NotifSvc.GetSettings(pid)
+	if err != nil {
+		return nil, fmt.Errorf("get notification settings: %w", err)
+	}
+	for _, s := range settings {
+		if s.NotificationType == notificationType {
+			return &NotificationSetting{
+				ID:               strconv.FormatUint(uint64(s.ID), 10),
+				AgentID:          strconv.FormatUint(uint64(s.AgentID), 10),
+				NotificationType: s.NotificationType,
+				Enabled:          s.Enabled,
+				Channel:          s.Channel,
+			}, nil
+		}
+	}
+
+	return nil, fmt.Errorf("notification setting not found after update")
+}
+func (r *queryResolver) NotificationSettings(ctx context.Context, agentID string) ([]*NotificationSetting, error) {
+	pid := parseID(agentID)
+	settings, err := r.NotifSvc.GetSettings(pid)
+	if err != nil {
+		return nil, fmt.Errorf("get notification settings: %w", err)
+	}
+
+	result := make([]*NotificationSetting, len(settings))
+	for i, s := range settings {
+		result[i] = &NotificationSetting{
+			ID:               strconv.FormatUint(uint64(s.ID), 10),
+			AgentID:          strconv.FormatUint(uint64(s.AgentID), 10),
+			NotificationType: s.NotificationType,
+			Enabled:          s.Enabled,
+			Channel:          s.Channel,
+		}
+	}
+	return result, nil
+}
+func (r *queryResolver) NotificationTypes(ctx context.Context) ([]*NotificationTypeInfo, error) {
+	types := notifications.AllNotificationTypes()
+	result := make([]*NotificationTypeInfo, len(types))
+	for i, t := range types {
+		result[i] = &NotificationTypeInfo{
+			Type:        t["type"],
+			Description: t["description"],
+		}
+	}
+	return result, nil
+}
+*/

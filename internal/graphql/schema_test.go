@@ -51,7 +51,7 @@ func setupTestResolver(t *testing.T) *Resolver {
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
-	return NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, proposalSvc, taskSvc, workflowSvc, feedbackSvc, bus, false)
+	return NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, proposalSvc, taskSvc, workflowSvc, feedbackSvc, nil, bus, false)
 }
 
 // registerSystemAgent registers a human agent via the public registerAgent resolver and returns its parsed ID.
@@ -409,7 +409,7 @@ func TestGraphQL_CommentsQuery(t *testing.T) {
 
 func TestGraphQL_NewHandlerCreatesHTTPHandler(t *testing.T) {
 	r := setupTestResolver(t)
-	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.ProposalSvc, r.TaskSvc, r.WorkflowSvc, r.FeedbackSvc, r.EventBus, false)
+	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.ProposalSvc, r.TaskSvc, r.WorkflowSvc, r.FeedbackSvc, r.NotifSvc, r.EventBus, false)
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}
