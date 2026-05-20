@@ -287,7 +287,14 @@ export function IssueDetailPage() {
         if (cJson.errors) { setError(cJson.errors[0].message); return; }
         if (tJson.errors) { setError(tJson.errors[0].message); return; }
         setIssue(iJson.data.issue);
-        setComments(cJson.data.comments);
+        setComments((cJson.data.comments || []).map((c: Comment) => ({
+          ...c,
+          replies: [...(c.replies || [])].sort(
+            (a: Comment, b: Comment) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+          ),
+        })).sort(
+          (a: Comment, b: Comment) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        ));
         setEvents(tJson.data.timeline);
 
         // Fetch valid transitions for the current state

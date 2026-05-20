@@ -39,15 +39,19 @@ func setupTestResolver(t *testing.T) *Resolver {
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	proposalRepo := gormrepo.NewProposalRepo(db)
+	taskRepo := gormrepo.NewTaskRepo(db)
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
-	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	proposalSvc := service.NewProposalService(db, proposalRepo, taskRepo, timelineRepo, bus)
+	taskSvc := service.NewTaskService(db, taskRepo, timelineRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
-	return NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, bus, false)
+	return NewResolver(projectSvc, agentSvc, issueSvc, commentSvc, proposalSvc, taskSvc, workflowSvc, feedbackSvc, bus, false)
 }
 
 // registerSystemAgent registers a human agent via the public registerAgent resolver and returns its parsed ID.
@@ -294,7 +298,8 @@ func TestGraphQL_Timeline(t *testing.T) {
 		t.Fatalf("create issue: %v", err)
 	}
 
-	events, err := r.Query().Timeline(ctx, issue.ID)
+	issueID := issue.ID
+	events, err := r.Query().Timeline(ctx, &issueID, nil, nil)
 	if err != nil {
 		t.Fatalf("timeline: %v", err)
 	}
@@ -393,7 +398,7 @@ func TestGraphQL_CommentsQuery(t *testing.T) {
 	r.Mutation().AddComment(ctx, issue.ID, formatID(sysID), "First", CommentContentTypeMarkdown, nil)
 	r.Mutation().AddComment(ctx, issue.ID, formatID(sysID), "Second", CommentContentTypeMarkdown, nil)
 
-	comments, err := r.Query().Comments(ctx, issue.ID)
+	comments, err := r.Query().Comments(ctx, &issue.ID, nil, nil)
 	if err != nil {
 		t.Fatalf("comments: %v", err)
 	}
@@ -404,7 +409,7 @@ func TestGraphQL_CommentsQuery(t *testing.T) {
 
 func TestGraphQL_NewHandlerCreatesHTTPHandler(t *testing.T) {
 	r := setupTestResolver(t)
-	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.WorkflowSvc, r.FeedbackSvc, r.EventBus, false)
+	h := NewHandler(r.ProjectSvc, r.AgentSvc, r.IssueSvc, r.CommentSvc, r.ProposalSvc, r.TaskSvc, r.WorkflowSvc, r.FeedbackSvc, r.EventBus, false)
 	if h == nil {
 		t.Fatal("expected non-nil handler")
 	}

@@ -15,6 +15,10 @@ const (
 	EventAgentStatusChanged   EventType = "agent.status_changed"
 	EventIssueAssigneeChanged EventType = "issue.assignee_changed"
 	EventFeedbackCreated      EventType = "feedback.created"
+	EventProposalCreated      EventType = "proposal.created"
+	EventProposalStateChanged EventType = "proposal.state_changed"
+	EventTaskCreated          EventType = "task.created"
+	EventTaskStateChanged     EventType = "task.state_changed"
 )
 
 type Event struct {

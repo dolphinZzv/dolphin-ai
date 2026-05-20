@@ -19,10 +19,12 @@ type IssueStateChangedPayload struct {
 }
 
 type CommentAddedPayload struct {
-	CommentID uint
-	IssueID   uint
-	ProjectID uint
-	AuthorID  uint
+	CommentID  uint
+	IssueID    uint
+	ProposalID *uint
+	TaskID     *uint
+	ProjectID  uint
+	AuthorID   uint
 }
 
 type IssueAssigneeChangedPayload struct {
@@ -42,4 +44,33 @@ type FeedbackCreatedPayload struct {
 	TargetType string
 	TargetID   uint
 	AuthorID   uint
+}
+
+type ProposalCreatedPayload struct {
+	ProposalID uint
+	ProjectID  uint
+	AuthorID   uint
+}
+
+type ProposalStateChangedPayload struct {
+	ProposalID uint
+	ProjectID  uint
+	From       string
+	To         string
+	ActorID    uint
+}
+
+type TaskCreatedPayload struct {
+	TaskID     uint
+	ProposalID uint
+	ProjectID  uint
+}
+
+type TaskStateChangedPayload struct {
+	TaskID     uint
+	ProposalID uint
+	ProjectID  uint
+	From       string
+	To         string
+	ActorID    uint
 }

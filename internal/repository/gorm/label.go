@@ -100,6 +100,24 @@ func (r *TimelineRepo) ListByIssue(issueID uint) ([]models.TimelineEvent, error)
 	return list, err
 }
 
+func (r *TimelineRepo) ListByProposal(proposalID uint) ([]models.TimelineEvent, error) {
+	var list []models.TimelineEvent
+	err := r.db.Where("proposal_id = ?", proposalID).
+		Order("created_at ASC").
+		Preload("Actor").
+		Find(&list).Error
+	return list, err
+}
+
+func (r *TimelineRepo) ListByTask(taskID uint) ([]models.TimelineEvent, error) {
+	var list []models.TimelineEvent
+	err := r.db.Where("task_id = ?", taskID).
+		Order("created_at ASC").
+		Preload("Actor").
+		Find(&list).Error
+	return list, err
+}
+
 type FeedbackRepo struct {
 	db *gorm.DB
 }

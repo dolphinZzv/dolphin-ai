@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { CreateIssueDialog } from "@/components/project/CreateIssueDialog";
 import { IssueBoard } from "@/components/project/IssueBoard";
+import { ProposalBoard } from "@/components/project/ProposalBoard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -92,6 +93,8 @@ export function ProjectDetailPage() {
   const [projectLabels, setProjectLabels] = useState<Label[]>([]);
   const [projectMilestones, setProjectMilestones] = useState<Milestone[]>([]);
   const [validTransitions, setValidTransitions] = useState<Record<string, string[]>>({});
+  const [activeTab, setActiveTab] = useState<"issues" | "proposals">("issues");
+  const [proposals, setProposals] = useState<any[]>([]);
 
   // Debounce search input before sending to backend
   useEffect(() => {
@@ -122,19 +125,25 @@ export function ProjectDetailPage() {
       ),
       gql(`query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`, { projectId: id }),
       gql(`query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title } }`, { projectId: id }),
+      gql(
+        `query proposals($projectId: ID!) { proposals(projectID: $projectId) { edges { id number title state priority author { id name } reviewer { id name } tasks { id number title state priority assignee { id name } } } } }`,
+        { projectId: id }
+      ),
       ...columns.map((c) =>
         gql(`query validTransitions($state: IssueState!) { validTransitions(state: $state) }`, { state: c.state })
       ),
     ])
       .then((results) => {
         const pJson = results[0]; const iJson = results[1]; const lJson = results[2]; const mJson = results[3];
-        const transitionResults = results.slice(4) as Array<{ data?: { validTransitions: string[] }; errors?: any }>;
+        const propJson = results[4];
+        const transitionResults = results.slice(5) as Array<{ data?: { validTransitions: string[] }; errors?: any }>;
         if (pJson.errors) { setError(pJson.errors[0].message); return; }
         if (iJson.errors) { setError(iJson.errors[0].message); return; }
         setProject(pJson.data.project);
         setIssues(iJson.data.issues.edges);
         if (!lJson.errors) setProjectLabels(lJson.data.labels);
         if (!mJson.errors) setProjectMilestones(mJson.data.milestones);
+        if (!propJson.errors) setProposals(propJson.data.proposals.edges);
         const vt: Record<string, string[]> = {};
         transitionResults.forEach((r, i) => {
           if (r.data?.validTransitions) vt[columns[i].state] = r.data.validTransitions;
@@ -291,17 +300,34 @@ export function ProjectDetailPage() {
           <Link to={`/projects/${id}/settings`}>
             <Button variant="outline" size="sm" className="text-xs sm:text-sm">设置</Button>
           </Link>
-          {agent && (
-            <CreateIssueDialog
-              projectId={id!}
-              onCreated={fetchData}
-            />
-          )}
         </div>
       </div>
 
-      {/* FilterBar */}
+      {/* Tabs */}
+      <div className="flex items-center gap-4 border-b">
+        <button
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "issues" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("issues")}
+        >
+          Issue
+        </button>
+        <button
+          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "proposals" ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setActiveTab("proposals")}
+        >
+          提案
+        </button>
+      </div>
+
+      {activeTab === "issues" && (
+        <>
       <div className="flex flex-wrap items-center gap-2">
+        {agent && (
+          <CreateIssueDialog
+            projectId={id!}
+            onCreated={fetchData}
+          />
+        )}
         <Input
           placeholder="搜索 Issue..."
           value={searchInput}
@@ -404,6 +430,12 @@ export function ProjectDetailPage() {
             ))}
           </div>
         </details>
+      )}
+        </>
+      )}
+
+      {activeTab === "proposals" && (
+        <ProposalBoard projectId={id!} proposals={proposals} onRefresh={fetchData} />
       )}
     </div>
   );

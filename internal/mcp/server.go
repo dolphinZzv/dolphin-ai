@@ -17,7 +17,7 @@ func NewServer(handlers *Handlers) *Server {
 	s := &Server{
 		registry:  NewToolRegistry(),
 		handlers:  handlers,
-		resources: NewResources(handlers.projectSvc, handlers.agentSvc, handlers.issueSvc),
+		resources: NewResources(handlers.projectSvc, handlers.agentSvc, handlers.issueSvc, handlers.proposalSvc, handlers.taskSvc),
 		prompts:   NewPrompts(),
 	}
 	handlers.RegisterAll(s.registry)

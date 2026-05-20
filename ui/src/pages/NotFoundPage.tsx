@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 
 export function NotFoundPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+    <div className="flex flex-col items-center justify-center gap-4 py-16">
       <h1 className="text-4xl font-bold text-muted-foreground">404</h1>
       <p className="text-sm text-muted-foreground">页面不存在</p>
       <Link

@@ -36,6 +36,28 @@ func (r *CommentRepo) ListByIssue(issueID uint) ([]models.Comment, error) {
 	return list, err
 }
 
+func (r *CommentRepo) ListByProposal(proposalID uint) ([]models.Comment, error) {
+	var list []models.Comment
+	err := r.db.Where("proposal_id = ?", proposalID).
+		Order("created_at ASC").
+		Preload("Author").
+		Preload("Replies").
+		Preload("Replies.Author").
+		Find(&list).Error
+	return list, err
+}
+
+func (r *CommentRepo) ListByTask(taskID uint) ([]models.Comment, error) {
+	var list []models.Comment
+	err := r.db.Where("task_id = ?", taskID).
+		Order("created_at ASC").
+		Preload("Author").
+		Preload("Replies").
+		Preload("Replies.Author").
+		Find(&list).Error
+	return list, err
+}
+
 func (r *CommentRepo) ListByParent(parentID uint) ([]models.Comment, error) {
 	var list []models.Comment
 	err := r.db.Where("parent_id = ?", parentID).

@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { gql } from "@/lib/graphql";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -65,8 +64,10 @@ export function ProjectsPage() {
 
       {/* Create dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>创建项目</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-2xl gap-0 p-0">
+          <DialogHeader className="px-6 pt-6 pb-0">
+            <DialogTitle className="sr-only">创建项目</DialogTitle>
+          </DialogHeader>
           <form onSubmit={async (e) => {
             e.preventDefault();
             if (!newName.trim()) return;
@@ -86,18 +87,36 @@ export function ProjectsPage() {
               fetchProjects();
             } catch { toast.error("网络错误"); }
             finally { setCreating(false); }
-          }} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">项目名称</label>
-              <Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="输入项目名称" required />
+          }} className="max-h-[80vh] overflow-y-auto">
+            {/* Title — hero */}
+            <div className="px-6 pt-4 pb-3">
+              <input
+                autoFocus
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="项目名称"
+                required
+                className="w-full text-xl font-semibold placeholder:text-muted-foreground/40 bg-transparent border-none outline-none focus:ring-0"
+              />
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">描述（可选）</label>
-              <Input value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="项目描述" />
+
+            {/* Description */}
+            <div className="px-6 pb-4">
+              <textarea
+                value={newDesc}
+                onChange={e => setNewDesc(e.target.value)}
+                placeholder="描述 — 项目的简要说明..."
+                rows={4}
+                className="w-full resize-none text-sm leading-relaxed placeholder:text-muted-foreground/40 bg-transparent border-none outline-none focus:ring-0"
+              />
             </div>
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>取消</Button>
-              <Button type="submit" disabled={creating}>{creating ? "创建中..." : "创建"}</Button>
+
+            <div className="border-t" />
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-2 px-6 py-3">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setCreateOpen(false)}>取消</Button>
+              <Button type="submit" size="sm" disabled={creating}>{creating ? "创建中..." : "创建项目"}</Button>
             </div>
           </form>
         </DialogContent>

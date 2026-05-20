@@ -45,6 +45,8 @@ func main() {
 		srv.AgentService,
 		srv.IssueService,
 		srv.CommentService,
+		srv.ProposalService,
+		srv.TaskService,
 		srv.WorkflowService,
 		srv.FeedbackService,
 		srv.NotifService,
@@ -61,7 +63,7 @@ func main() {
 	// GraphQL handler with auth (except loginAgent/registerAgent) + CORS
 	graphqlHandler := graphql.NewHandler(
 		srv.ProjectService, srv.AgentService, srv.IssueService,
-		srv.CommentService, srv.WorkflowService, srv.FeedbackService, srv.EventBus,
+		srv.CommentService, srv.ProposalService, srv.TaskService, srv.WorkflowService, srv.FeedbackService, srv.EventBus,
 		cfg.AllowHumanRegistration)
 	http.Handle("/graphql", corsMW(authMW(graphqlHandler)))
 

@@ -85,6 +85,8 @@ type CommentRepository interface {
 	Create(comment *models.Comment) error
 	GetByID(id uint) (*models.Comment, error)
 	ListByIssue(issueID uint) ([]models.Comment, error)
+	ListByProposal(proposalID uint) ([]models.Comment, error)
+	ListByTask(taskID uint) ([]models.Comment, error)
 	ListByParent(parentID uint) ([]models.Comment, error)
 	Update(id uint, body string) error
 	Delete(id uint) error
@@ -115,6 +117,8 @@ type MilestoneRepository interface {
 type TimelineRepository interface {
 	Create(event *models.TimelineEvent) error
 	ListByIssue(issueID uint) ([]models.TimelineEvent, error)
+	ListByProposal(proposalID uint) ([]models.TimelineEvent, error)
+	ListByTask(taskID uint) ([]models.TimelineEvent, error)
 }
 
 // ─── Feedback ──────────────────────────────────────────────
@@ -122,6 +126,32 @@ type TimelineRepository interface {
 type FeedbackRepository interface {
 	Create(feedback *models.Feedback) error
 	ListByTarget(targetType models.FeedbackTargetType, targetID uint) ([]models.Feedback, error)
+}
+
+// ─── Proposal ──────────────────────────────────────────────
+
+type ProposalRepository interface {
+	Create(proposal *models.Proposal) error
+	GetByID(id uint) (*models.Proposal, error)
+	List(filter models.ProposalFilter) ([]models.Proposal, int64, error)
+	UpdateState(id uint, state models.ProposalState) error
+	Update(id uint, changes map[string]interface{}) error
+	Delete(id uint) error
+	NextNumber(projectID uint) (uint, error)
+}
+
+// ─── Task ──────────────────────────────────────────────────
+
+type TaskRepository interface {
+	Create(task *models.Task) error
+	GetByID(id uint) (*models.Task, error)
+	List(filter models.TaskFilter) ([]models.Task, int64, error)
+	UpdateState(id uint, state models.TaskState) error
+	Update(id uint, changes map[string]interface{}) error
+	Delete(id uint) error
+	NextNumber(proposalID uint) (uint, error)
+	LinkIssue(taskID, issueID uint) error
+	UnlinkIssue(taskID, issueID uint) error
 }
 
 // ─── Aggregate ─────────────────────────────────────────────
@@ -137,5 +167,7 @@ type Repositories struct {
 	Milestone      MilestoneRepository
 	Timeline       TimelineRepository
 	Feedback       FeedbackRepository
+	Proposal       ProposalRepository
+	Task           TaskRepository
 	DB             *gorm.DB
 }

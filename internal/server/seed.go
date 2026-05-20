@@ -159,6 +159,31 @@ func SeedData(db *gorm.DB) error {
 		}
 	}
 
+	// ── Demo proposals ────────────────────────────────────────
+	proposal := &models.Proposal{
+		ProjectID:   project.ID,
+		Title:       "示例提案：改进 Agent 协作流程",
+		Description: "这是一个示例提案，展示 Proposal → Task → Issue 工作流。\n\n- 第一步：创建任务\n- 第二步：关联 Issue\n- 第三步：完成执行",
+		State:       models.ProposalStateDraft,
+		Priority:    models.PriorityMedium,
+		AuthorID:    admin.ID,
+	}
+	if err := db.Create(proposal).Error; err != nil {
+		return fmt.Errorf("seed: create proposal: %w", err)
+	}
+
+	// ── Demo tasks ─────────────────────────────────────────────
+	task := &models.Task{
+		ProposalID:  proposal.ID,
+		Title:       "设计 Proposal 文档模板",
+		Description: "定义 Proposal 的标准模板结构",
+		State:       models.TaskStatePending,
+		Priority:    models.PriorityMedium,
+	}
+	if err := db.Create(task).Error; err != nil {
+		return fmt.Errorf("seed: create task: %w", err)
+	}
+
 	log.Println("[seed] seed data created successfully")
 	return nil
 }

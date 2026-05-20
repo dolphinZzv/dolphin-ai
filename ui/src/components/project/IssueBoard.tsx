@@ -594,7 +594,7 @@ export function IssueBoard({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-3 overflow-x-auto pb-2">
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
           {grouped.map((col) => (
             <div key={col.state} className="min-w-[260px] w-72 shrink-0">
               <DroppableColumn

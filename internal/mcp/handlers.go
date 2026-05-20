@@ -16,6 +16,8 @@ type Handlers struct {
 	agentSvc                    *service.AgentService
 	issueSvc                    *service.IssueService
 	commentSvc                  *service.CommentService
+	proposalSvc                 *service.ProposalService
+	taskSvc                     *service.TaskService
 	workflowSvc                 *service.WorkflowService
 	feedbackSvc                 *service.FeedbackService
 	notifSvc                    *notifications.Service
@@ -27,6 +29,8 @@ func NewHandlers(
 	agentSvc *service.AgentService,
 	issueSvc *service.IssueService,
 	commentSvc *service.CommentService,
+	proposalSvc *service.ProposalService,
+	taskSvc *service.TaskService,
 	workflowSvc *service.WorkflowService,
 	feedbackSvc *service.FeedbackService,
 	notifSvc *notifications.Service,
@@ -37,6 +41,8 @@ func NewHandlers(
 		agentSvc:                    agentSvc,
 		issueSvc:                    issueSvc,
 		commentSvc:                  commentSvc,
+		proposalSvc:                 proposalSvc,
+		taskSvc:                     taskSvc,
 		workflowSvc:                 workflowSvc,
 		feedbackSvc:                 feedbackSvc,
 		notifSvc:                    notifSvc,
@@ -249,11 +255,576 @@ func (h *Handlers) RegisterAll(registry *ToolRegistry) {
 		}, []string{"title", "description"}),
 		Handler: h.handleSubmitRequirement,
 	})
+	registry.Register(&ToolDefinition{
+		Name:        "create_proposal",
+		Description: "Create a new proposal in draft state",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"projectId":   StringParam("Project ID (required if member of multiple projects)"),
+			"title":       StringRequiredParam("Proposal title"),
+			"description": StringParam("Proposal description in Markdown"),
+			"priority":    StringParam("Priority: critical / high / medium / low"),
+			"labelIds":    ArrayParam("Label IDs", "string"),
+		}, []string{"title"}),
+		Handler: h.handleCreateProposal,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "transition_proposal",
+		Description: "Transition a proposal to a new state",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"proposalId": StringRequiredParam("Proposal ID"),
+			"toState":    StringRequiredParam("Target state: draft / submitted / under_review / approved / rejected / in_execution / completed / cancelled"),
+		}, []string{"proposalId", "toState"}),
+		Handler: h.handleTransitionProposal,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "review_proposal",
+		Description: "Review a proposal (approve or reject)",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"proposalId": StringRequiredParam("Proposal ID"),
+			"approved":   StringRequiredParam("true to approve, false to reject"),
+			"note":       StringParam("Review note"),
+		}, []string{"proposalId", "approved"}),
+		Handler: h.handleReviewProposal,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "add_comment_to_proposal",
+		Description: "Add a comment to a proposal",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"proposalId": StringRequiredParam("Proposal ID"),
+			"body":       StringRequiredParam("Comment body (Markdown)"),
+		}, []string{"proposalId", "body"}),
+		Handler: h.handleAddCommentToProposal,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "search_proposals",
+		Description: "Search proposals with filters",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"projectId": StringParam("Project ID (required if member of multiple projects)"),
+			"state":     StringParam("Filter by state: draft / submitted / under_review / approved / rejected / in_execution / completed / cancelled"),
+			"search":    StringParam("Full text search"),
+			"limit":     NumberParam("Max results (default 20)"),
+			"offset":    NumberParam("Offset for pagination"),
+		}, nil),
+		Handler: h.handleSearchProposals,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "create_task",
+		Description: "Create a task under a proposal",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"proposalId":  StringRequiredParam("Proposal ID"),
+			"title":       StringRequiredParam("Task title"),
+			"description": StringParam("Task description in Markdown"),
+			"priority":    StringParam("Priority: critical / high / medium / low"),
+			"assigneeId":  StringParam("Agent ID to assign"),
+		}, []string{"proposalId", "title"}),
+		Handler: h.handleCreateTask,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "transition_task",
+		Description: "Transition a task to a new state",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"taskId":  StringRequiredParam("Task ID"),
+			"toState": StringRequiredParam("Target state: pending / in_progress / completed / blocked / cancelled"),
+		}, []string{"taskId", "toState"}),
+		Handler: h.handleTransitionTask,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "assign_task",
+		Description: "Assign an agent to a task",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"taskId":     StringRequiredParam("Task ID"),
+			"assigneeId": StringRequiredParam("Agent ID to assign"),
+		}, []string{"taskId", "assigneeId"}),
+		Handler: h.handleAssignTask,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "link_issues_to_task",
+		Description: "Link issues to a task",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"taskId":   StringRequiredParam("Task ID"),
+			"issueIds": ArrayParam("Issue IDs to link", "string"),
+		}, []string{"taskId", "issueIds"}),
+		Handler: h.handleLinkIssuesToTask,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "unlink_issue_from_task",
+		Description: "Unlink an issue from a task",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"taskId":  StringRequiredParam("Task ID"),
+			"issueId": StringRequiredParam("Issue ID to unlink"),
+		}, []string{"taskId", "issueId"}),
+		Handler: h.handleUnlinkIssueFromTask,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "add_comment_to_task",
+		Description: "Add a comment to a task",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"taskId": StringRequiredParam("Task ID"),
+			"body":   StringRequiredParam("Comment body (Markdown)"),
+		}, []string{"taskId", "body"}),
+		Handler: h.handleAddCommentToTask,
+	})
+
+	registry.Register(&ToolDefinition{
+		Name:        "search_tasks",
+		Description: "Search tasks with filters",
+		InputSchema: ObjectSchema(map[string]interface{}{
+			"proposalId": StringParam("Filter by proposal ID"),
+			"state":      StringParam("Filter by state: pending / in_progress / completed / blocked / cancelled"),
+			"assigneeId": StringParam("Filter by assignee agent ID"),
+			"limit":      NumberParam("Max results (default 20)"),
+			"offset":     NumberParam("Offset for pagination"),
+		}, nil),
+		Handler: h.handleSearchTasks,
+	})
 
 
 }
 
 // ─── Handler Implementations ───────────────────────────────
+
+
+// ─── Proposal MCP Handlers ──────────────────────────────────
+
+func (h *Handlers) handleCreateProposal(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
+	var p struct {
+		ProjectID   string   `json:"projectId"`
+		Title       string   `json:"title"`
+		Description string   `json:"description"`
+		Priority    string   `json:"priority"`
+		LabelIDs    []string `json:"labelIds"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	if p.Title == "" {
+		return NewError(id, -32602, "Missing required param: title")
+	}
+	projectID, err := h.resolveProject(p.ProjectID, authorID)
+	if err != nil {
+		return NewError(id, -32602, err.Error())
+	}
+	priority := models.PriorityMedium
+	if p.Priority != "" {
+		switch p.Priority {
+		case "critical", "high", "medium", "low":
+			priority = models.Priority(p.Priority)
+		default:
+			return NewError(id, -32602, "Invalid priority: must be critical/high/medium/low")
+		}
+	}
+	var labelIDs []uint
+	for _, lid := range p.LabelIDs {
+		if id, err := strconv.ParseUint(lid, 10, 64); err == nil {
+			labelIDs = append(labelIDs, uint(id))
+		}
+	}
+	proposal, err := h.proposalSvc.Create(projectID, authorID, p.Title, p.Description, priority, labelIDs)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":        fmt.Sprintf("%d", proposal.ID),
+		"number":    proposal.Number,
+		"title":     proposal.Title,
+		"state":     string(proposal.State),
+		"priority":  string(proposal.Priority),
+		"projectId": fmt.Sprintf("%d", projectID),
+	})
+}
+
+func (h *Handlers) handleTransitionProposal(id json.RawMessage, params json.RawMessage, actorID uint, remoteAddr string) Response {
+	var p struct {
+		ProposalID string `json:"proposalId"`
+		ToState    string `json:"toState"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if actorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	proposalID, err := strconv.ParseUint(p.ProposalID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid proposalId: "+p.ProposalID)
+	}
+	updated, err := h.proposalSvc.TransitionState(uint(proposalID), models.ProposalState(p.ToState), actorID, nil)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":    fmt.Sprintf("%d", updated.ID),
+		"state": string(updated.State),
+	})
+}
+
+func (h *Handlers) handleReviewProposal(id json.RawMessage, params json.RawMessage, reviewerID uint, remoteAddr string) Response {
+	var p struct {
+		ProposalID string `json:"proposalId"`
+		Approved   string `json:"approved"`
+		Note       string `json:"note"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if reviewerID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	proposalID, err := strconv.ParseUint(p.ProposalID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid proposalId: "+p.ProposalID)
+	}
+	approved := p.Approved == "true"
+	var note *string
+	if p.Note != "" {
+		note = &p.Note
+	}
+	updated, err := h.proposalSvc.Review(uint(proposalID), reviewerID, approved, note)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":    fmt.Sprintf("%d", updated.ID),
+		"state": string(updated.State),
+	})
+}
+
+func (h *Handlers) handleAddCommentToProposal(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
+	var p struct {
+		ProposalID string `json:"proposalId"`
+		Body       string `json:"body"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	proposalID, err := strconv.ParseUint(p.ProposalID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid proposalId: "+p.ProposalID)
+	}
+	comment, err := h.commentSvc.CreateForProposal(uint(proposalID), authorID, p.Body, models.CommentMarkdown, nil)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":   fmt.Sprintf("%d", comment.ID),
+		"body": comment.Body,
+	})
+}
+
+func (h *Handlers) handleSearchProposals(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	var p struct {
+		ProjectID string `json:"projectId"`
+		State     string `json:"state"`
+		Search    string `json:"search"`
+		Limit     int    `json:"limit"`
+		Offset    int    `json:"offset"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	projectID, err := h.resolveProject(p.ProjectID, agentID)
+	if err != nil {
+		return NewError(id, -32602, err.Error())
+	}
+	filter := models.ProposalFilter{
+		ProjectID: &projectID,
+		Search:    p.Search,
+		Limit:     p.Limit,
+		Offset:    p.Offset,
+	}
+	if p.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if p.State != "" {
+		filter.State = []models.ProposalState{models.ProposalState(p.State)}
+	}
+	proposals, total, err := h.proposalSvc.List(filter)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	items := make([]map[string]interface{}, len(proposals))
+	for i, prop := range proposals {
+		items[i] = map[string]interface{}{
+			"id":     fmt.Sprintf("%d", prop.ID),
+			"number": prop.Number,
+			"title":  prop.Title,
+			"state":  string(prop.State),
+		}
+	}
+	return NewResponse(id, map[string]interface{}{
+		"items": items,
+		"total": total,
+	})
+}
+
+// ─── Task MCP Handlers ──────────────────────────────────────
+
+func (h *Handlers) handleCreateTask(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
+	var p struct {
+		ProposalID  string `json:"proposalId"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		Priority    string `json:"priority"`
+		AssigneeID  string `json:"assigneeId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	if p.Title == "" {
+		return NewError(id, -32602, "Missing required param: title")
+	}
+	proposalID, err := strconv.ParseUint(p.ProposalID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid proposalId: "+p.ProposalID)
+	}
+	priority := models.PriorityMedium
+	if p.Priority != "" {
+		switch p.Priority {
+		case "critical", "high", "medium", "low":
+			priority = models.Priority(p.Priority)
+		default:
+			return NewError(id, -32602, "Invalid priority: must be critical/high/medium/low")
+		}
+	}
+	var assigneeID *uint
+	if p.AssigneeID != "" {
+		aid, err := strconv.ParseUint(p.AssigneeID, 10, 64)
+		if err != nil {
+			return NewError(id, -32602, "Invalid assigneeId: "+p.AssigneeID)
+		}
+		v := uint(aid)
+		assigneeID = &v
+	}
+	// Get proposal for projectID
+	proposal, err := h.proposalSvc.GetByID(uint(proposalID))
+	if err != nil {
+		return NewInternalError(id, "proposal not found: "+err.Error())
+	}
+	task, err := h.taskSvc.Create(uint(proposalID), proposal.ProjectID, authorID, p.Title, p.Description, priority, assigneeID)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":         fmt.Sprintf("%d", task.ID),
+		"number":     task.Number,
+		"title":      task.Title,
+		"state":      string(task.State),
+		"priority":   string(task.Priority),
+		"proposalId": fmt.Sprintf("%d", proposalID),
+	})
+}
+
+func (h *Handlers) handleTransitionTask(id json.RawMessage, params json.RawMessage, actorID uint, remoteAddr string) Response {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		ToState string `json:"toState"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if actorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	taskID, err := strconv.ParseUint(p.TaskID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid taskId: "+p.TaskID)
+	}
+	updated, err := h.taskSvc.TransitionState(uint(taskID), models.TaskState(p.ToState), actorID)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":    fmt.Sprintf("%d", updated.ID),
+		"state": string(updated.State),
+	})
+}
+
+func (h *Handlers) handleAssignTask(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	var p struct {
+		TaskID     string `json:"taskId"`
+		AssigneeID string `json:"assigneeId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	taskID, err := strconv.ParseUint(p.TaskID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid taskId: "+p.TaskID)
+	}
+	assigneeID, err := strconv.ParseUint(p.AssigneeID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid assigneeId: "+p.AssigneeID)
+	}
+	updated, err := h.taskSvc.Assign(uint(taskID), uint(assigneeID))
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":    fmt.Sprintf("%d", updated.ID),
+		"state": string(updated.State),
+	})
+}
+
+func (h *Handlers) handleLinkIssuesToTask(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	var p struct {
+		TaskID   string   `json:"taskId"`
+		IssueIDs []string `json:"issueIds"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	taskID, err := strconv.ParseUint(p.TaskID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid taskId: "+p.TaskID)
+	}
+	for _, iid := range p.IssueIDs {
+		issueID, err := strconv.ParseUint(iid, 10, 64)
+		if err != nil {
+			return NewError(id, -32602, "Invalid issueId: "+iid)
+		}
+		if err := h.taskSvc.LinkIssue(uint(taskID), uint(issueID)); err != nil {
+			return NewInternalError(id, err.Error())
+		}
+	}
+	return NewResponse(id, map[string]interface{}{"success": true})
+}
+
+func (h *Handlers) handleUnlinkIssueFromTask(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	var p struct {
+		TaskID  string `json:"taskId"`
+		IssueID string `json:"issueId"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	taskID, err := strconv.ParseUint(p.TaskID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid taskId: "+p.TaskID)
+	}
+	issueID, err := strconv.ParseUint(p.IssueID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid issueId: "+p.IssueID)
+	}
+	if err := h.taskSvc.UnlinkIssue(uint(taskID), uint(issueID)); err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{"success": true})
+}
+
+func (h *Handlers) handleAddCommentToTask(id json.RawMessage, params json.RawMessage, authorID uint, remoteAddr string) Response {
+	var p struct {
+		TaskID string `json:"taskId"`
+		Body   string `json:"body"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if authorID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	taskID, err := strconv.ParseUint(p.TaskID, 10, 64)
+	if err != nil {
+		return NewError(id, -32602, "Invalid taskId: "+p.TaskID)
+	}
+	comment, err := h.commentSvc.CreateForTask(uint(taskID), authorID, p.Body, models.CommentMarkdown, nil)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	return NewResponse(id, map[string]interface{}{
+		"id":   fmt.Sprintf("%d", comment.ID),
+		"body": comment.Body,
+	})
+}
+
+func (h *Handlers) handleSearchTasks(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
+	var p struct {
+		ProposalID string `json:"proposalId"`
+		State      string `json:"state"`
+		Search     string `json:"search"`
+		AssigneeID string `json:"assigneeId"`
+		Limit      int    `json:"limit"`
+		Offset     int    `json:"offset"`
+	}
+	if err := json.Unmarshal(params, &p); err != nil {
+		return NewError(id, -32602, "Invalid params: "+err.Error())
+	}
+	if agentID == 0 {
+		return NewError(id, -32602, "Not authenticated")
+	}
+	filter := models.TaskFilter{
+		Search: p.Search,
+		Limit:  p.Limit,
+		Offset: p.Offset,
+	}
+	if p.Limit <= 0 {
+		filter.Limit = 20
+	}
+	if p.State != "" {
+		filter.State = []models.TaskState{models.TaskState(p.State)}
+	}
+	if p.ProposalID != "" {
+		pid, err := strconv.ParseUint(p.ProposalID, 10, 64)
+		if err == nil {
+			v := uint(pid)
+			filter.ProposalID = &v
+		}
+	}
+	if p.AssigneeID != "" {
+		aid, err := strconv.ParseUint(p.AssigneeID, 10, 64)
+		if err == nil {
+			v := uint(aid)
+			filter.AssigneeID = &v
+		}
+	}
+	tasks, total, err := h.taskSvc.List(filter)
+	if err != nil {
+		return NewInternalError(id, err.Error())
+	}
+	items := make([]map[string]interface{}, len(tasks))
+	for i, t := range tasks {
+		items[i] = map[string]interface{}{
+			"id":     fmt.Sprintf("%d", t.ID),
+			"number": t.Number,
+			"title":  t.Title,
+			"state":  string(t.State),
+		}
+	}
+	return NewResponse(id, map[string]interface{}{
+		"items": items,
+		"total": total,
+	})
+}
 
 func (h *Handlers) handleGetAgentInfo(id json.RawMessage, params json.RawMessage, agentID uint, remoteAddr string) Response {
 	var p struct {

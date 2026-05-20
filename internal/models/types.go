@@ -34,6 +34,30 @@ type FeedbackFilter struct {
 	Offset     int
 }
 
+type ProposalFilter struct {
+	ProjectID *uint
+	State     []ProposalState
+	Priority  *Priority
+	AuthorID  *uint
+	Search    string
+	Limit     int
+	Offset    int
+	OrderBy   string
+	OrderDir  string
+}
+
+type TaskFilter struct {
+	ProposalID *uint
+	State      []TaskState
+	AssigneeID *uint
+	Priority   *Priority
+	Search     string
+	Limit      int
+	Offset     int
+	OrderBy    string
+	OrderDir   string
+}
+
 // TimelineEvent type constants
 const (
 	EventIssueCreated         = "issue_created"
@@ -44,6 +68,10 @@ const (
 	EventAssigneeStateChanged = "assignee_state_changed"
 	EventFeedbackCreated      = "feedback_created"
 	EventIssueTimedOut        = "issue_timeout"
+	EventProposalCreated      = "proposal_created"
+	EventProposalStateChanged = "proposal_state_changed"
+	EventTaskCreated          = "task_created"
+	EventTaskStateChanged     = "task_state_changed"
 )
 
 // UnixNullTime helps with nullable timestamps in SQLite

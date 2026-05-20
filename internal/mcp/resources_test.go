@@ -32,8 +32,8 @@ func TestResourcesList(t *testing.T) {
 	if !ok {
 		t.Fatal("expected resources array of ResourceDefinition")
 	}
-	if len(resources) != 3 {
-		t.Fatalf("expected 3 resources, got %d", len(resources))
+	if len(resources) != 5 {
+		t.Fatalf("expected 5 resources, got %d", len(resources))
 	}
 
 	// Check all three resource types are listed
@@ -78,8 +78,8 @@ func TestResourcesTemplatesList(t *testing.T) {
 		}
 		templates = templatesList
 	}
-	if len(templates) != 3 {
-		t.Fatalf("expected 3 resource templates, got %d", len(templates))
+	if len(templates) != 5 {
+		t.Fatalf("expected 5 resource templates, got %d", len(templates))
 	}
 
 	tpls := make(map[string]bool)

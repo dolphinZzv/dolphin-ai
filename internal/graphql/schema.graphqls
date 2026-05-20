@@ -181,10 +181,86 @@ enum CommentContentType {
   structured
 }
 
+enum ProposalState {
+  draft
+  submitted
+  under_review
+  approved
+  rejected
+  in_execution
+  completed
+  cancelled
+}
+
+enum TaskState {
+  pending
+  in_progress
+  completed
+  blocked
+  cancelled
+}
+
+type Proposal {
+  id: ID!
+  number: Int!
+  projectID: ID!
+  title: String!
+  description: String
+  state: ProposalState!
+  priority: Priority!
+  authorID: ID!
+  reviewerID: ID
+  reviewNote: String
+  reviewedAt: Time
+  submittedAt: Time
+  approvedAt: Time
+  startedAt: Time
+  completedAt: Time
+  cancelledAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+  author: Agent!
+  reviewer: Agent
+  labels: [Label!]
+  tasks: [Task!]
+  comments: [Comment!]
+}
+
+type Task {
+  id: ID!
+  number: Int!
+  proposalID: ID!
+  title: String!
+  description: String
+  state: TaskState!
+  priority: Priority!
+  assigneeID: ID
+  startedAt: Time
+  completedAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+  proposal: Proposal!
+  assignee: Agent
+  issues: [Issue!]
+  comments: [Comment!]
+}
+
+type ProposalConnection {
+  edges: [Proposal!]!
+  total: Int!
+}
+
+type TaskConnection {
+  edges: [Task!]!
+  total: Int!
+}
+
 type Comment {
   id: ID!
   number: Int!
-  issueID: ID!
+  issueID: ID
+  proposalID: ID
+  taskID: ID
   authorID: ID!
   parentID: ID
   body: String!
@@ -199,7 +275,9 @@ type Comment {
 type TimelineEvent {
   id: ID!
   number: Int!
-  issueID: ID!
+  issueID: ID
+  proposalID: ID
+  taskID: ID
   actorID: ID!
   eventType: String!
   payload: Map
@@ -251,8 +329,14 @@ type Query {
   milestones(projectID: ID!, state: MilestoneState): [Milestone!]!
   issue(id: ID!): Issue
   issues(projectID: ID!, state: IssueState, priority: Priority, assigneeID: ID, labelIDs: [ID!], search: String, limit: Int, offset: Int): IssueConnection!
-  comments(issueID: ID!): [Comment!]!
-  timeline(issueID: ID!): [TimelineEvent!]!
+  proposal(id: ID!): Proposal
+  proposals(projectID: ID!, state: ProposalState, priority: Priority, search: String, limit: Int, offset: Int): ProposalConnection!
+  validProposalTransitions(state: ProposalState!): [ProposalState!]!
+  task(id: ID!): Task
+  tasks(proposalID: ID!, state: TaskState, assigneeID: ID, search: String, limit: Int, offset: Int): TaskConnection!
+  validTaskTransitions(state: TaskState!): [TaskState!]!
+  comments(issueID: ID, proposalID: ID, taskID: ID): [Comment!]!
+  timeline(issueID: ID, proposalID: ID, taskID: ID): [TimelineEvent!]!
   validTransitions(state: IssueState!): [IssueState!]!
   feedback(targetType: FeedbackTargetType!, targetID: ID!): [Feedback!]!
 }
@@ -286,6 +370,8 @@ type Mutation {
   updateAssigneeState(issueID: ID!, agentID: ID!, state: AssigneeState!): IssueAssignee!
 
   addComment(issueID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!, parentID: ID): Comment!
+  addProposalComment(proposalID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!): Comment!
+  addTaskComment(taskID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!): Comment!
   updateComment(id: ID!, body: String!): Comment!
   deleteComment(id: ID!): Boolean!
 
@@ -300,6 +386,19 @@ type Mutation {
   deleteMilestone(id: ID!): Boolean!
 
   createFeedback(targetType: FeedbackTargetType!, targetID: ID!, authorID: ID!, rating: FeedbackRating!, body: String): Feedback!
+
+  createProposal(projectID: ID!, title: String!, description: String, priority: Priority!, labelIDs: [ID!]): Proposal!
+  updateProposal(id: ID!, title: String, description: String, priority: Priority): Proposal!
+  transitionProposal(id: ID!, newState: ProposalState!, actorID: ID!, note: String): Proposal!
+  reviewProposal(id: ID!, reviewerID: ID!, approved: Boolean!, note: String): Proposal!
+  deleteProposal(id: ID!): Boolean!
+
+  createTask(proposalID: ID!, title: String!, description: String, priority: Priority, assigneeID: ID): Task!
+  updateTask(id: ID!, title: String, description: String, priority: Priority, state: TaskState): Task!
+  assignTask(id: ID!, assigneeID: ID!): Task!
+  linkIssuesToTask(taskID: ID!, issueIDs: [ID!]!): Task!
+  unlinkIssueFromTask(taskID: ID!, issueID: ID!): Task!
+  deleteTask(id: ID!): Boolean!
 }
 
 type Subscription {

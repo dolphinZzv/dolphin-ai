@@ -16,6 +16,8 @@ type Resolver struct {
 	AgentSvc              *service.AgentService
 	IssueSvc              *service.IssueService
 	CommentSvc            *service.CommentService
+	ProposalSvc           *service.ProposalService
+	TaskSvc               *service.TaskService
 	WorkflowSvc           *service.WorkflowService
 	FeedbackSvc           *service.FeedbackService
 	EventBus              *events.Bus
@@ -28,6 +30,8 @@ func NewResolver(
 	agentSvc *service.AgentService,
 	issueSvc *service.IssueService,
 	commentSvc *service.CommentService,
+	proposalSvc *service.ProposalService,
+	taskSvc *service.TaskService,
 	workflowSvc *service.WorkflowService,
 	feedbackSvc *service.FeedbackService,
 	eventBus *events.Bus,
@@ -38,6 +42,8 @@ func NewResolver(
 		AgentSvc:     agentSvc,
 		IssueSvc:     issueSvc,
 		CommentSvc:   commentSvc,
+		ProposalSvc:  proposalSvc,
+		TaskSvc:      taskSvc,
 		WorkflowSvc:  workflowSvc,
 		FeedbackSvc:  feedbackSvc,
 		EventBus:     eventBus,

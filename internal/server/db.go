@@ -72,6 +72,8 @@ func AutoMigrate(db *gorm.DB) error {
 		&models.Milestone{},
 		&models.TimelineEvent{},
 		&models.Feedback{},
+		&models.Proposal{},
+		&models.Task{},
 	)
 	if err != nil {
 		return fmt.Errorf("auto migrate: %w", err)

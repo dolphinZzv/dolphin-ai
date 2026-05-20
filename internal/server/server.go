@@ -23,6 +23,8 @@ type Server struct {
 	AgentService     *service.AgentService
 	IssueService     *service.IssueService
 	CommentService   *service.CommentService
+	ProposalService  *service.ProposalService
+	TaskService      *service.TaskService
 	WorkflowService  *service.WorkflowService
 	FeedbackService  *service.FeedbackService
 	Authenticator    *auth.Authenticator
@@ -53,6 +55,8 @@ func New(cfg *config.Config) (*Server, error) {
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	proposalRepo := gormrepo.NewProposalRepo(db)
+	taskRepo := gormrepo.NewTaskRepo(db)
 
 	// Init auth
 	authn := auth.New(cfg.JWTSecret)
@@ -69,8 +73,10 @@ func New(cfg *config.Config) (*Server, error) {
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, authn, cfg.AllowHumanRegistration)
-	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	proposalSvc := service.NewProposalService(db, proposalRepo, taskRepo, timelineRepo, bus)
+	taskSvc := service.NewTaskService(db, taskRepo, timelineRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
@@ -82,6 +88,8 @@ func New(cfg *config.Config) (*Server, error) {
 		AgentService:     agentSvc,
 		IssueService:     issueSvc,
 		CommentService:   commentSvc,
+		ProposalService:  proposalSvc,
+		TaskService:      taskSvc,
 		WorkflowService:  workflowSvc,
 		FeedbackService:  feedbackSvc,
 		Authenticator:    authn,

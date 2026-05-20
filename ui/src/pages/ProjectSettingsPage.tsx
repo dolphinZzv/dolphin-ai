@@ -413,35 +413,41 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
 
       {/* Basic info tab */}
       {tab === "basic" && (
-        <div className="rounded-lg border bg-card p-4 space-y-3">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">项目名称</label>
-            <Input
-              value={projectName}
-              onChange={e => setProjectName(e.target.value)}
-              placeholder="项目名称"
-            />
-          </div>
-          <div className="space-y-2">
-            <label className="text-sm font-medium">项目描述</label>
-            <Input
-              value={projectDesc}
-              onChange={e => setProjectDesc(e.target.value)}
-              placeholder="项目描述"
-            />
-          </div>
-          <div className="flex justify-end">
-            <Button onClick={handleSaveProject} disabled={saving}>
-              {saving ? "保存中..." : "保存"}
-            </Button>
-          </div>
-        </div>
+        <Card>
+          <CardContent className="p-0 divide-y">
+            <div className="p-4">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">项目名称</label>
+              <input
+                value={projectName}
+                onChange={e => setProjectName(e.target.value)}
+                placeholder="项目名称"
+                className="w-full text-xl font-semibold placeholder:text-muted-foreground/40 bg-transparent border-none outline-none focus:ring-0"
+              />
+            </div>
+            <div className="p-4">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">项目描述</label>
+              <textarea
+                value={projectDesc}
+                onChange={e => setProjectDesc(e.target.value)}
+                placeholder="项目的简要说明..."
+                rows={3}
+                className="w-full resize-none text-sm leading-relaxed placeholder:text-muted-foreground/40 bg-transparent border-none outline-none focus:ring-0"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 px-4 py-3">
+              <Button onClick={handleSaveProject} size="sm" disabled={saving}>
+                {saving ? "保存中..." : "保存"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Workflow config tab */}
       {tab === "workflow" && (
-        <div className="rounded-lg border bg-card p-4 space-y-4">
-          <h2 className="text-base font-semibold">工作流配置</h2>
+        <Card>
+          <CardContent className="p-4 space-y-4">
+            <h2 className="text-base font-semibold">工作流配置</h2>
           <p className="text-sm text-muted-foreground">配置 Issue 的状态流转权限。</p>
 
           <div className="flex items-center justify-between gap-4">
@@ -481,7 +487,8 @@ members { agent { id number name kind status capabilities deviceInfo modelInfo l
               {saving ? "保存中..." : "保存"}
             </Button>
           </div>
-        </div>
+        </CardContent>
+      </Card>
       )}
 
       {/* Agents tab */}

@@ -92,7 +92,7 @@ func (s *IssueService) Create(projectID, creatorID uint, title, description stri
 
 	// Timeline event (best-effort, outside transaction)
 	event := &models.TimelineEvent{
-		IssueID:   issue.ID,
+		IssueID:   &issue.ID,
 		ActorID:   creatorID,
 		EventType: models.EventIssueCreated,
 		Payload:   nil,
@@ -233,7 +233,7 @@ func (s *IssueService) TransitionState(id uint, newState models.IssueState, acto
 		payload["note"] = *note
 	}
 	event := &models.TimelineEvent{
-		IssueID:   id,
+		IssueID:   &id,
 		ActorID:   actorID,
 		EventType: models.EventIssueStateChanged,
 		Payload:   payload,

@@ -47,13 +47,17 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	proposalRepo := gormrepo.NewProposalRepo(db)
+	taskRepo := gormrepo.NewTaskRepo(db)
 	bus := events.NewBus()
 
 	// Init services
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
-	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
+	proposalSvc := service.NewProposalService(db, proposalRepo, taskRepo, timelineRepo, bus)
+	taskSvc := service.NewTaskService(db, taskRepo, timelineRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
@@ -61,7 +65,7 @@ func setupTest(t *testing.T) (*mcp.Server, *service.ProjectService, *service.Age
 	// Init MCP
 	notifSvc := notifications.NewService(nil)
 	notifSvc.Subscribe(bus)
-	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, notifSvc, 0)
+	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, proposalSvc, taskSvc, workflowSvc, feedbackSvc, notifSvc, 0)
 	mcpServer := mcp.NewServer(handlers)
 
 	return mcpServer, projectSvc, agentSvc, issueSvc
@@ -388,6 +392,8 @@ func TestSubmitRequirement(t *testing.T) {
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
 	feedbackRepo := gormrepo.NewFeedbackRepo(db)
+	proposalRepo := gormrepo.NewProposalRepo(db)
+	taskRepo := gormrepo.NewTaskRepo(db)
 	bus := events.NewBus()
 	notifSvc := notifications.NewService(nil)
 	notifSvc.Subscribe(bus)
@@ -395,7 +401,9 @@ func TestSubmitRequirement(t *testing.T) {
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
-	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	proposalSvc := service.NewProposalService(db, proposalRepo, taskRepo, timelineRepo, bus)
+	taskSvc := service.NewTaskService(db, taskRepo, timelineRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
@@ -407,7 +415,7 @@ func TestSubmitRequirement(t *testing.T) {
 	proj, _ := projectSvc.Create("ReqProject", "")
 	projectSvc.AddMember(proj.ID, agent.ID, models.ProjectRoleMember)
 
-	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, workflowSvc, feedbackSvc, notifSvc, proj.ID)
+	handlers := mcp.NewHandlers(projectSvc, agentSvc, issueSvc, commentSvc, proposalSvc, taskSvc, workflowSvc, feedbackSvc, notifSvc, proj.ID)
 	srv := mcp.NewServer(handlers)
 
 	result := call(t, srv, "tools/call", map[string]interface{}{

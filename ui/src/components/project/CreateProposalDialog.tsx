@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Plus, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 import { gql } from "@/lib/graphql";
 
@@ -14,15 +14,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
 interface Label {
@@ -31,23 +22,15 @@ interface Label {
   color: string | null;
 }
 
-interface Milestone {
-  id: string;
-  title: string;
-}
-
-const createIssueSchema = z.object({
-  title: z.string().min(1, "标题不能为空").max(200, "标题不能超过 200 字"),
+const schema = z.object({
+  title: z.string().min(1, "标题不能为空").max(500, "标题不能超过 500 字"),
   description: z.string().optional(),
   priority: z.string().min(1, "请选择优先级"),
-  environment: z.string().optional(),
-  branch: z.string().optional(),
-  link: z.string().optional(),
 });
 
-type CreateIssueForm = z.infer<typeof createIssueSchema>;
+type FormData = z.infer<typeof schema>;
 
-interface CreateIssueDialogProps {
+interface Props {
   projectId: string;
   onCreated: () => void;
 }
@@ -59,18 +42,12 @@ const priorityOptions = [
   { value: "low", label: "低", color: "text-green-600 dark:text-green-400" },
 ] as const;
 
-export function CreateIssueDialog({
-  projectId,
-  onCreated,
-}: CreateIssueDialogProps) {
+export function CreateProposalDialog({ projectId, onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [labels, setLabels] = useState<Label[]>([]);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
   const [selectedLabelIds, setSelectedLabelIds] = useState<string[]>([]);
-  const [selectedMilestoneId, setSelectedMilestoneId] = useState<string>("");
-  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const {
     register,
@@ -79,9 +56,9 @@ export function CreateIssueDialog({
     setValue,
     reset,
     formState: { errors },
-  } = useForm<CreateIssueForm>({
-    resolver: zodResolver(createIssueSchema),
-    defaultValues: { title: "", description: "", priority: "medium", environment: "", branch: "", link: "" },
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
+    defaultValues: { title: "", description: "", priority: "medium" },
   });
 
   const currentPriority = watch("priority");
@@ -89,21 +66,12 @@ export function CreateIssueDialog({
   useEffect(() => {
     if (!open) return;
     setSelectedLabelIds([]);
-    setSelectedMilestoneId("");
-    setShowAdvanced(false);
     setError("");
-    Promise.all([
-      gql(
-        `query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`,
-        { projectId }
-      ),
-      gql(
-        `query milestones($projectId: ID!) { milestones(projectID: $projectId) { id title } }`,
-        { projectId }
-      ),
-    ]).then(([lJson, mJson]) => {
-      if (!lJson.errors) setLabels(lJson.data.labels);
-      if (!mJson.errors) setMilestones(mJson.data.milestones);
+    gql(
+      `query labels($projectId: ID!) { labels(projectID: $projectId) { id name color } }`,
+      { projectId }
+    ).then((json) => {
+      if (!json.errors) setLabels(json.data.labels);
     });
   }, [open, projectId]);
 
@@ -113,25 +81,20 @@ export function CreateIssueDialog({
     );
   };
 
-  const onSubmit = async (data: CreateIssueForm) => {
+  const onSubmit = async (data: FormData) => {
     setSubmitting(true);
     setError("");
-
     try {
       const json = await gql(
-        `mutation createIssue($pid: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!], $milestoneId: ID, $environment: String, $branch: String, $link: String) {
-          createIssue(projectID: $pid, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs, milestoneId: $milestoneId, environment: $environment, branch: $branch, link: $link) { id number title }
+        `mutation createProposal($projectId: ID!, $title: String!, $description: String, $priority: Priority!, $labelIDs: [ID!]) {
+          createProposal(projectID: $projectId, title: $title, description: $description, priority: $priority, labelIDs: $labelIDs) { id number title state }
         }`,
         {
-          pid: projectId,
+          projectId,
           title: data.title,
           description: data.description || null,
           priority: data.priority,
           labelIDs: selectedLabelIds.length > 0 ? selectedLabelIds : null,
-          milestoneId: selectedMilestoneId || null,
-          environment: data.environment || null,
-          branch: data.branch || null,
-          link: data.link || null,
         }
       );
       if (json.errors) {
@@ -141,7 +104,7 @@ export function CreateIssueDialog({
       }
       reset();
       setOpen(false);
-      toast.success("Issue 创建成功");
+      toast.success("提案创建成功");
       onCreated();
     } catch {
       setError("网络错误，请重试");
@@ -155,12 +118,12 @@ export function CreateIssueDialog({
       <DialogTrigger asChild>
         <Button>
           <Plus className="mr-1 h-4 w-4" />
-          创建 Issue
+          创建提案
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-2xl gap-0 p-0">
         <DialogHeader className="px-6 pt-6 pb-0">
-          <DialogTitle className="sr-only">创建 Issue</DialogTitle>
+          <DialogTitle className="sr-only">创建提案</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="max-h-[80vh] overflow-y-auto">
           {/* Title — hero */}
@@ -168,7 +131,7 @@ export function CreateIssueDialog({
             <input
               id="title"
               autoFocus
-              placeholder="Issue 标题"
+              placeholder="提案标题"
               className="w-full text-xl font-semibold placeholder:text-muted-foreground/40 bg-transparent border-none outline-none focus:ring-0"
               {...register("title")}
             />
@@ -251,50 +214,6 @@ export function CreateIssueDialog({
                 )}
               </div>
             </div>
-
-            {/* Milestone */}
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-medium text-muted-foreground w-12 shrink-0">里程碑</span>
-              <Select value={selectedMilestoneId || "_none"} onValueChange={(v) => setSelectedMilestoneId(v === "_none" ? "" : v)}>
-                <SelectTrigger className="h-8 text-xs w-48">
-                  <SelectValue placeholder="不关联" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="_none">不关联</SelectItem>
-                  {milestones.map((m) => (
-                    <SelectItem key={m.id} value={m.id}>{m.title}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Advanced options toggle */}
-            <div>
-              <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-              >
-                {showAdvanced ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
-                高级选项
-              </button>
-              {showAdvanced && (
-                <div className="mt-3 space-y-3 pl-0">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-muted-foreground w-12 shrink-0">环境</span>
-                    <Input placeholder="例如: staging, production" className="h-8 text-xs" {...register("environment")} />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-muted-foreground w-12 shrink-0">分支</span>
-                    <Input placeholder="分支名称" className="h-8 text-xs" {...register("branch")} />
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-medium text-muted-foreground w-12 shrink-0">链接</span>
-                    <Input placeholder="相关链接" className="h-8 text-xs" {...register("link")} />
-                  </div>
-                </div>
-              )}
-            </div>
           </div>
 
           {error && (
@@ -309,7 +228,7 @@ export function CreateIssueDialog({
               取消
             </Button>
             <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? "创建中..." : "创建 Issue"}
+              {submitting ? "创建中..." : "创建提案"}
             </Button>
           </div>
         </form>

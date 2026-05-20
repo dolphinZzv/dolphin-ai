@@ -35,7 +35,9 @@ func setupIssueTest(t *testing.T) (*service.IssueService, *service.AgentService,
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
-	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+	proposalRepo := gormrepo.NewProposalRepo(db)
+	taskRepo := gormrepo.NewTaskRepo(db)
+		commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
@@ -258,12 +260,14 @@ func TestAddComment(t *testing.T) {
 	timelineRepo := gormrepo.NewTimelineRepo(db)
 	labelRepo := gormrepo.NewLabelRepo(db)
 	milestoneRepo := gormrepo.NewMilestoneRepo(db)
+	proposalRepo := gormrepo.NewProposalRepo(db)
+	taskRepo := gormrepo.NewTaskRepo(db)
 	bus := events.NewBus()
 
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
-	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, bus)
+commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 
 	p, _ := projectSvc.Create("Test", "")
 	agent, _ := agentSvc.Register("user", models.AgentKindHuman, "user-1", "secret", nil, "", "")

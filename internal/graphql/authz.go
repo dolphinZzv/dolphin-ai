@@ -61,6 +61,30 @@ func (r *Resolver) requireIssueProjectMemberByProject(ctx context.Context, proje
 	return r.requireProjectMember(ctx, projectID)
 }
 
+// requireProposalProjectMember checks that the caller is a member of the project that owns the proposal.
+func (r *Resolver) requireProposalProjectMember(ctx context.Context, proposalID uint) (uint, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return 0, err
+	}
+	proposal, err := r.ProposalSvc.GetByID(proposalID)
+	if err != nil {
+		return 0, errors.New("proposal not found")
+	}
+	return r.requireProjectMember(ctx, proposal.ProjectID)
+}
+
+// requireTaskProjectMember checks that the caller is a member of the project that owns the task.
+func (r *Resolver) requireTaskProjectMember(ctx context.Context, taskID uint) (uint, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return 0, err
+	}
+	task, err := r.TaskSvc.GetByID(taskID)
+	if err != nil {
+		return 0, errors.New("task not found")
+	}
+	return r.requireProjectMember(ctx, task.Proposal.ProjectID)
+}
+
 // requireAgentAccess checks that the caller can access the target agent's data.
 // Access is granted if the caller is the target agent themselves, or if they share
 // at least one project with the target agent.

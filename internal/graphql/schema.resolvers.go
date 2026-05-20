@@ -458,6 +458,40 @@ func (r *mutationResolver) AddComment(ctx context.Context, issueID string, autho
 	return commentFromModel(c), nil
 }
 
+// AddProposalComment is the resolver for the addProposalComment field.
+func (r *mutationResolver) AddProposalComment(ctx context.Context, proposalID string, authorID string, body string, contentType CommentContentType) (*Comment, error) {
+	pid := parseID(proposalID)
+	agentID, err := r.requireProposalProjectMember(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	if parseID(authorID) != agentID {
+		return nil, errors.New("authorID 与认证身份不匹配")
+	}
+	c, err := r.CommentSvc.CreateForProposal(pid, agentID, body, models.CommentContentType(contentType), nil)
+	if err != nil {
+		return nil, fmt.Errorf("add proposal comment: %w", err)
+	}
+	return commentFromModel(c), nil
+}
+
+// AddTaskComment is the resolver for the addTaskComment field.
+func (r *mutationResolver) AddTaskComment(ctx context.Context, taskID string, authorID string, body string, contentType CommentContentType) (*Comment, error) {
+	tid := parseID(taskID)
+	agentID, err := r.requireTaskProjectMember(ctx, tid)
+	if err != nil {
+		return nil, err
+	}
+	if parseID(authorID) != agentID {
+		return nil, errors.New("authorID 与认证身份不匹配")
+	}
+	c, err := r.CommentSvc.CreateForTask(tid, agentID, body, models.CommentContentType(contentType), nil)
+	if err != nil {
+		return nil, fmt.Errorf("add task comment: %w", err)
+	}
+	return commentFromModel(c), nil
+}
+
 // UpdateComment is the resolver for the updateComment field.
 func (r *mutationResolver) UpdateComment(ctx context.Context, id string, body string) (*Comment, error) {
 	agentID, err := requireAuth(ctx)
@@ -685,6 +719,212 @@ func (r *mutationResolver) CreateFeedback(ctx context.Context, targetType Feedba
 	return feedbackFromModel(f), nil
 }
 
+// CreateProposal is the resolver for the createProposal field.
+func (r *mutationResolver) CreateProposal(ctx context.Context, projectID string, title string, description *string, priority Priority, labelIDs []string) (*Proposal, error) {
+	agentID, err := requireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pid := parseID(projectID)
+	if _, err := r.requireProjectMember(ctx, pid); err != nil {
+		return nil, err
+	}
+	desc := ""
+	if description != nil {
+		desc = *description
+	}
+	labelUintIDs := make([]uint, len(labelIDs))
+	for i, id := range labelIDs {
+		labelUintIDs[i] = parseID(id)
+	}
+	proposal, err := r.ProposalSvc.Create(pid, agentID, title, desc, models.Priority(priority), labelUintIDs)
+	if err != nil {
+		return nil, fmt.Errorf("create proposal: %w", err)
+	}
+	return proposalFromModel(proposal), nil
+}
+
+// UpdateProposal is the resolver for the updateProposal field.
+func (r *mutationResolver) UpdateProposal(ctx context.Context, id string, title *string, description *string, priority *Priority) (*Proposal, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	pid := parseID(id)
+	changes := map[string]interface{}{}
+	if title != nil {
+		changes["title"] = *title
+	}
+	if description != nil {
+		changes["description"] = *description
+	}
+	if priority != nil {
+		changes["priority"] = string(*priority)
+	}
+	if err := r.ProposalSvc.Update(pid, changes); err != nil {
+		return nil, fmt.Errorf("update proposal: %w", err)
+	}
+	p, err := r.ProposalSvc.GetByID(pid)
+	if err != nil {
+		return nil, err
+	}
+	return proposalFromModel(p), nil
+}
+
+// TransitionProposal is the resolver for the transitionProposal field.
+func (r *mutationResolver) TransitionProposal(ctx context.Context, id string, newState ProposalState, actorID string, note *string) (*Proposal, error) {
+	agentID, err := requireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if parseID(actorID) != agentID {
+		return nil, errors.New("actorID 与认证身份不匹配")
+	}
+	prop, err := r.ProposalSvc.TransitionState(parseID(id), models.ProposalState(newState), agentID, note)
+	if err != nil {
+		return nil, fmt.Errorf("transition proposal: %w", err)
+	}
+	return proposalFromModel(prop), nil
+}
+
+// ReviewProposal is the resolver for the reviewProposal field.
+func (r *mutationResolver) ReviewProposal(ctx context.Context, id string, reviewerID string, approved bool, note *string) (*Proposal, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	prop, err := r.ProposalSvc.Review(parseID(id), parseID(reviewerID), approved, note)
+	if err != nil {
+		return nil, fmt.Errorf("review proposal: %w", err)
+	}
+	return proposalFromModel(prop), nil
+}
+
+// DeleteProposal is the resolver for the deleteProposal field.
+func (r *mutationResolver) DeleteProposal(ctx context.Context, id string) (bool, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return false, err
+	}
+	if err := r.ProposalSvc.Delete(parseID(id)); err != nil {
+		return false, fmt.Errorf("delete proposal: %w", err)
+	}
+	return true, nil
+}
+
+// CreateTask is the resolver for the createTask field.
+func (r *mutationResolver) CreateTask(ctx context.Context, proposalID string, title string, description *string, priority *Priority, assigneeID *string) (*Task, error) {
+	agentID, err := requireAuth(ctx)
+	if err != nil {
+		return nil, err
+	}
+	pid := parseID(proposalID)
+	desc := ""
+	if description != nil {
+		desc = *description
+	}
+	prio := models.PriorityMedium
+	if priority != nil {
+		prio = models.Priority(*priority)
+	}
+	var aID *uint
+	if assigneeID != nil && *assigneeID != "" {
+		v := parseID(*assigneeID)
+		aID = &v
+	}
+	proposal, err := r.ProposalSvc.GetByID(pid)
+	if err != nil {
+		return nil, fmt.Errorf("get proposal: %w", err)
+	}
+	task, err := r.TaskSvc.Create(pid, proposal.ProjectID, agentID, title, desc, prio, aID)
+	if err != nil {
+		return nil, fmt.Errorf("create task: %w", err)
+	}
+	return taskFromModel(task), nil
+}
+
+// UpdateTask is the resolver for the updateTask field.
+func (r *mutationResolver) UpdateTask(ctx context.Context, id string, title *string, description *string, priority *Priority, state *TaskState) (*Task, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	tid := parseID(id)
+	changes := map[string]interface{}{}
+	if title != nil {
+		changes["title"] = *title
+	}
+	if description != nil {
+		changes["description"] = *description
+	}
+	if priority != nil {
+		changes["priority"] = string(*priority)
+	}
+	if state != nil {
+		changes["state"] = string(*state)
+	}
+	if err := r.TaskSvc.Update(tid, changes); err != nil {
+		return nil, fmt.Errorf("update task: %w", err)
+	}
+	t, err := r.TaskSvc.GetByID(tid)
+	if err != nil {
+		return nil, err
+	}
+	return taskFromModel(t), nil
+}
+
+// AssignTask is the resolver for the assignTask field.
+func (r *mutationResolver) AssignTask(ctx context.Context, id string, assigneeID string) (*Task, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	t, err := r.TaskSvc.Assign(parseID(id), parseID(assigneeID))
+	if err != nil {
+		return nil, fmt.Errorf("assign task: %w", err)
+	}
+	return taskFromModel(t), nil
+}
+
+// LinkIssuesToTask is the resolver for the linkIssuesToTask field.
+func (r *mutationResolver) LinkIssuesToTask(ctx context.Context, taskID string, issueIDs []string) (*Task, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	tid := parseID(taskID)
+	for _, iid := range issueIDs {
+		if err := r.TaskSvc.LinkIssue(tid, parseID(iid)); err != nil {
+			return nil, fmt.Errorf("link issue: %w", err)
+		}
+	}
+	t, err := r.TaskSvc.GetByID(tid)
+	if err != nil {
+		return nil, err
+	}
+	return taskFromModel(t), nil
+}
+
+// UnlinkIssueFromTask is the resolver for the unlinkIssueFromTask field.
+func (r *mutationResolver) UnlinkIssueFromTask(ctx context.Context, taskID string, issueID string) (*Task, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.TaskSvc.UnlinkIssue(parseID(taskID), parseID(issueID)); err != nil {
+		return nil, fmt.Errorf("unlink issue: %w", err)
+	}
+	t, err := r.TaskSvc.GetByID(parseID(taskID))
+	if err != nil {
+		return nil, err
+	}
+	return taskFromModel(t), nil
+}
+
+// DeleteTask is the resolver for the deleteTask field.
+func (r *mutationResolver) DeleteTask(ctx context.Context, id string) (bool, error) {
+	if _, err := requireAuth(ctx); err != nil {
+		return false, err
+	}
+	if err := r.TaskSvc.Delete(parseID(id)); err != nil {
+		return false, fmt.Errorf("delete task: %w", err)
+	}
+	return true, nil
+}
+
 // SupportedModels is the resolver for the supportedModels field.
 func (r *queryResolver) SupportedModels(ctx context.Context) ([]string, error) {
 	return models.SupportedModels, nil
@@ -881,38 +1121,210 @@ func (r *queryResolver) Issues(ctx context.Context, projectID string, state *Iss
 	}, nil
 }
 
-// Comments is the resolver for the comments field.
-func (r *queryResolver) Comments(ctx context.Context, issueID string) ([]*Comment, error) {
-	iid := parseID(issueID)
-	if _, err := r.requireIssueProjectMember(ctx, iid); err != nil {
+// Proposal is the resolver for the proposal field.
+func (r *queryResolver) Proposal(ctx context.Context, id string) (*Proposal, error) {
+	if _, err := requireAuth(ctx); err != nil {
 		return nil, err
 	}
-	comments, err := r.CommentSvc.ListByIssue(iid)
+	p, err := r.ProposalSvc.GetByID(parseID(id))
 	if err != nil {
-		return nil, fmt.Errorf("list comments: %w", err)
+		return nil, fmt.Errorf("get proposal: %w", err)
 	}
-	result := make([]*Comment, len(comments))
-	for i, c := range comments {
-		result[i] = commentFromModel(&c)
+	return proposalFromModel(p), nil
+}
+
+// Proposals is the resolver for the proposals field.
+func (r *queryResolver) Proposals(ctx context.Context, projectID string, state *ProposalState, priority *Priority, search *string, limit *int32, offset *int32) (*ProposalConnection, error) {
+	pid := parseID(projectID)
+	if _, err := r.requireProjectMember(ctx, pid); err != nil {
+		return nil, err
+	}
+	filter := models.ProposalFilter{ProjectID: uintPtr(pid)}
+	if state != nil {
+		filter.State = []models.ProposalState{models.ProposalState(*state)}
+	}
+	if priority != nil {
+		p := models.Priority(*priority)
+		filter.Priority = &p
+	}
+	if search != nil {
+		filter.Search = *search
+	}
+	if limit != nil {
+		filter.Limit = int(*limit)
+	}
+	if offset != nil {
+		filter.Offset = int(*offset)
+	}
+	proposals, total, err := r.ProposalSvc.List(filter)
+	if err != nil {
+		return nil, fmt.Errorf("list proposals: %w", err)
+	}
+	result := make([]*Proposal, len(proposals))
+	for i, p := range proposals {
+		result[i] = proposalFromModel(&p)
+	}
+	return &ProposalConnection{Edges: result, Total: int32(total)}, nil
+}
+
+// ValidProposalTransitions is the resolver for the validProposalTransitions field.
+func (r *queryResolver) ValidProposalTransitions(ctx context.Context, state ProposalState) ([]ProposalState, error) {
+	states, err := r.ProposalSvc.ValidTransitions(models.ProposalState(state))
+	if err != nil {
+		return nil, fmt.Errorf("valid proposal transitions: %w", err)
+	}
+	result := make([]ProposalState, len(states))
+	for i, s := range states {
+		result[i] = ProposalState(s)
 	}
 	return result, nil
 }
 
-// Timeline is the resolver for the timeline field.
-func (r *queryResolver) Timeline(ctx context.Context, issueID string) ([]*TimelineEvent, error) {
-	iid := parseID(issueID)
-	if _, err := r.requireIssueProjectMember(ctx, iid); err != nil {
+// Task is the resolver for the task field.
+func (r *queryResolver) Task(ctx context.Context, id string) (*Task, error) {
+	if _, err := requireAuth(ctx); err != nil {
 		return nil, err
 	}
-	events, err := r.IssueSvc.ListTimeline(iid)
+	t, err := r.TaskSvc.GetByID(parseID(id))
 	if err != nil {
-		return nil, fmt.Errorf("list timeline: %w", err)
+		return nil, fmt.Errorf("get task: %w", err)
 	}
-	result := make([]*TimelineEvent, len(events))
-	for i, e := range events {
-		result[i] = timelineFromModel(&e)
+	return taskFromModel(t), nil
+}
+
+// Tasks is the resolver for the tasks field.
+func (r *queryResolver) Tasks(ctx context.Context, proposalID string, state *TaskState, assigneeID *string, search *string, limit *int32, offset *int32) (*TaskConnection, error) {
+	pid := parseID(proposalID)
+	if _, err := requireAuth(ctx); err != nil {
+		return nil, err
+	}
+	filter := models.TaskFilter{ProposalID: uintPtr(pid)}
+	if state != nil {
+		filter.State = []models.TaskState{models.TaskState(*state)}
+	}
+	if assigneeID != nil && *assigneeID != "" {
+		v := parseID(*assigneeID)
+		filter.AssigneeID = &v
+	}
+	if search != nil {
+		filter.Search = *search
+	}
+	if limit != nil {
+		filter.Limit = int(*limit)
+	}
+	if offset != nil {
+		filter.Offset = int(*offset)
+	}
+	tasks, total, err := r.TaskSvc.List(filter)
+	if err != nil {
+		return nil, fmt.Errorf("list tasks: %w", err)
+	}
+	result := make([]*Task, len(tasks))
+	for i, t := range tasks {
+		result[i] = taskFromModel(&t)
+	}
+	return &TaskConnection{Edges: result, Total: int32(total)}, nil
+}
+
+// ValidTaskTransitions is the resolver for the validTaskTransitions field.
+func (r *queryResolver) ValidTaskTransitions(ctx context.Context, state TaskState) ([]TaskState, error) {
+	states, err := r.TaskSvc.ValidTransitions(models.TaskState(state))
+	if err != nil {
+		return nil, fmt.Errorf("valid task transitions: %w", err)
+	}
+	result := make([]TaskState, len(states))
+	for i, s := range states {
+		result[i] = TaskState(s)
 	}
 	return result, nil
+}
+
+// Comments is the resolver for the comments field.
+func (r *queryResolver) Comments(ctx context.Context, issueID *string, proposalID *string, taskID *string) ([]*Comment, error) {
+	switch {
+	case issueID != nil:
+		iid := parseID(*issueID)
+		if _, err := r.requireIssueProjectMember(ctx, iid); err != nil {
+			return nil, err
+		}
+		comments, err := r.CommentSvc.ListByIssue(iid)
+		if err != nil {
+			return nil, fmt.Errorf("list comments: %w", err)
+		}
+		result := make([]*Comment, len(comments))
+		for i, c := range comments {
+			result[i] = commentFromModel(&c)
+		}
+		return result, nil
+	case proposalID != nil:
+		pid := parseID(*proposalID)
+		comments, err := r.CommentSvc.ListByProposal(pid)
+		if err != nil {
+			return nil, fmt.Errorf("list comments: %w", err)
+		}
+		result := make([]*Comment, len(comments))
+		for i, c := range comments {
+			result[i] = commentFromModel(&c)
+		}
+		return result, nil
+	case taskID != nil:
+		tid := parseID(*taskID)
+		comments, err := r.CommentSvc.ListByTask(tid)
+		if err != nil {
+			return nil, fmt.Errorf("list comments: %w", err)
+		}
+		result := make([]*Comment, len(comments))
+		for i, c := range comments {
+			result[i] = commentFromModel(&c)
+		}
+		return result, nil
+	default:
+		return nil, errors.New("one of issueID, proposalID, or taskID is required")
+	}
+}
+
+// Timeline is the resolver for the timeline field.
+func (r *queryResolver) Timeline(ctx context.Context, issueID *string, proposalID *string, taskID *string) ([]*TimelineEvent, error) {
+	switch {
+	case issueID != nil:
+		iid := parseID(*issueID)
+		if _, err := r.requireIssueProjectMember(ctx, iid); err != nil {
+			return nil, err
+		}
+		events, err := r.IssueSvc.ListTimeline(iid)
+		if err != nil {
+			return nil, fmt.Errorf("list timeline: %w", err)
+		}
+		result := make([]*TimelineEvent, len(events))
+		for i, e := range events {
+			result[i] = timelineFromModel(&e)
+		}
+		return result, nil
+	case proposalID != nil:
+		pid := parseID(*proposalID)
+		events, err := r.ProposalSvc.ListTimeline(pid)
+		if err != nil {
+			return nil, fmt.Errorf("list timeline: %w", err)
+		}
+		result := make([]*TimelineEvent, len(events))
+		for i, e := range events {
+			result[i] = timelineFromModel(&e)
+		}
+		return result, nil
+	case taskID != nil:
+		tid := parseID(*taskID)
+		events, err := r.TaskSvc.ListTimeline(tid)
+		if err != nil {
+			return nil, fmt.Errorf("list timeline: %w", err)
+		}
+		result := make([]*TimelineEvent, len(events))
+		for i, e := range events {
+			result[i] = timelineFromModel(&e)
+		}
+		return result, nil
+	default:
+		return nil, errors.New("one of issueID, proposalID, or taskID is required")
+	}
 }
 
 // ValidTransitions is the resolver for the validTransitions field.
@@ -954,19 +1366,22 @@ func (r *queryResolver) Feedback(ctx context.Context, targetType FeedbackTargetT
 		if err != nil {
 			return nil, fmt.Errorf("comment not found")
 		}
-		if _, err := r.requireIssueProjectMember(ctx, comment.IssueID); err != nil {
-			return nil, err
+		if comment.IssueID != nil {
+			if _, err := r.requireIssueProjectMember(ctx, parseID(formatID(*comment.IssueID))); err != nil {
+				return nil, err
+			}
 		}
+		list, err := r.FeedbackSvc.ListByTarget(models.FeedbackTargetType(targetType), tid)
+		if err != nil {
+			return nil, fmt.Errorf("list feedback: %w", err)
+		}
+		result := make([]*Feedback, len(list))
+		for i, f := range list {
+			result[i] = feedbackFromModel(&f)
+		}
+		return result, nil
 	}
-	list, err := r.FeedbackSvc.ListByTarget(models.FeedbackTargetType(targetType), tid)
-	if err != nil {
-		return nil, fmt.Errorf("list feedback: %w", err)
-	}
-	result := make([]*Feedback, len(list))
-	for i, f := range list {
-		result[i] = feedbackFromModel(&f)
-	}
-	return result, nil
+	return nil, errors.New("unknown target type")
 }
 
 // IssueUpdated is the resolver for the issueUpdated field.

@@ -19,7 +19,9 @@ const (
 
 type Comment struct {
 	ID              uint               `gorm:"primaryKey;autoIncrement"`
-	IssueID         uint               `gorm:"not null;index"`
+	IssueID         *uint              `gorm:"index"`
+	ProposalID      *uint              `gorm:"index"`
+	TaskID          *uint              `gorm:"index"`
 	AuthorID        uint               `gorm:"not null;index"`
 	ParentID        *uint              `gorm:"index"`
 	Body            string             `gorm:"type:text;not null"`
@@ -30,8 +32,10 @@ type Comment struct {
 	CreatedAt       time.Time          `gorm:"autoCreateTime"`
 	UpdatedAt       time.Time          `gorm:"autoUpdateTime"`
 
-	Issue  Issue    `gorm:"foreignKey:IssueID;constraint:OnDelete:CASCADE"`
-	Author Agent    `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
-	Parent *Comment `gorm:"foreignKey:ParentID"`
-	Replies []Comment `gorm:"foreignKey:ParentID"`
+	Issue    *Issue    `gorm:"foreignKey:IssueID;constraint:OnDelete:CASCADE"`
+	Proposal *Proposal `gorm:"foreignKey:ProposalID;constraint:OnDelete:CASCADE"`
+	Task     *Task     `gorm:"foreignKey:TaskID;constraint:OnDelete:CASCADE"`
+	Author   Agent     `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
+	Parent   *Comment  `gorm:"foreignKey:ParentID"`
+	Replies  []Comment `gorm:"foreignKey:ParentID"`
 }

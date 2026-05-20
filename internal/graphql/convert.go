@@ -210,13 +210,24 @@ func commentFromModel(c *models.Comment) *Comment {
 	}
 	comment := &Comment{
 		ID:          formatID(c.ID),
-		IssueID:     formatID(c.IssueID),
 		AuthorID:    formatID(c.AuthorID),
 		Body:        c.Body,
 		ContentType: CommentContentType(c.ContentType),
 		CreatedAt:   c.CreatedAt,
 		UpdatedAt:   c.UpdatedAt,
 		Author:      agentFromModel(&c.Author),
+	}
+	if c.IssueID != nil {
+		id := formatID(*c.IssueID)
+		comment.IssueID = &id
+	}
+	if c.ProposalID != nil {
+		pid := formatID(*c.ProposalID)
+		comment.ProposalID = &pid
+	}
+	if c.TaskID != nil {
+		tid := formatID(*c.TaskID)
+		comment.TaskID = &tid
 	}
 	if c.ParentID != nil {
 		pid := formatID(*c.ParentID)
@@ -238,16 +249,112 @@ func commentFromModel(c *models.Comment) *Comment {
 func timelineFromModel(t *models.TimelineEvent) *TimelineEvent {
 	te := &TimelineEvent{
 		ID:        formatID(t.ID),
-		IssueID:   formatID(t.IssueID),
 		ActorID:   formatID(t.ActorID),
 		EventType: string(t.EventType),
 		CreatedAt: t.CreatedAt,
 		Actor:     agentFromModel(&t.Actor),
 	}
+	if t.IssueID != nil {
+		id := formatID(*t.IssueID)
+		te.IssueID = &id
+	}
+	if t.ProposalID != nil {
+		pid := formatID(*t.ProposalID)
+		te.ProposalID = &pid
+	}
+	if t.TaskID != nil {
+		tid := formatID(*t.TaskID)
+		te.TaskID = &tid
+	}
 	if t.Payload != nil {
 		te.Payload = map[string]any(t.Payload)
 	}
 	return te
+}
+
+func proposalFromModel(p *models.Proposal) *Proposal {
+	if p == nil {
+		return nil
+	}
+	proposal := &Proposal{
+		ID:          formatID(p.ID),
+		Number:      int32(p.Number),
+		ProjectID:   formatID(p.ProjectID),
+		Title:       p.Title,
+		Description: strPtr(p.Description),
+		State:       ProposalState(p.State),
+		Priority:    Priority(p.Priority),
+		AuthorID:    formatID(p.AuthorID),
+		SubmittedAt: p.SubmittedAt,
+		ApprovedAt:  p.ApprovedAt,
+		StartedAt:   p.StartedAt,
+		CompletedAt: p.CompletedAt,
+		CancelledAt: p.CancelledAt,
+		ReviewedAt:  p.ReviewedAt,
+		CreatedAt:   p.CreatedAt,
+		UpdatedAt:   p.UpdatedAt,
+		Author:      agentFromModel(&p.Author),
+	}
+	if p.ReviewerID != nil {
+		rid := formatID(*p.ReviewerID)
+		proposal.ReviewerID = &rid
+	}
+	if p.ReviewNote != nil {
+		proposal.ReviewNote = p.ReviewNote
+	}
+	if p.Reviewer != nil {
+		proposal.Reviewer = agentFromModel(p.Reviewer)
+	}
+	if len(p.Labels) > 0 {
+		labels := make([]*Label, len(p.Labels))
+		for i, l := range p.Labels {
+			labels[i] = labelFromModel(&l)
+		}
+		proposal.Labels = labels
+	}
+	if len(p.Tasks) > 0 {
+		tasks := make([]*Task, len(p.Tasks))
+		for i, t := range p.Tasks {
+			tasks[i] = taskFromModel(&t)
+		}
+		proposal.Tasks = tasks
+	}
+	return proposal
+}
+
+func taskFromModel(t *models.Task) *Task {
+	if t == nil {
+		return nil
+	}
+	task := &Task{
+		ID:          formatID(t.ID),
+		Number:      int32(t.Number),
+		ProposalID:  formatID(t.ProposalID),
+		Title:       t.Title,
+		Description: strPtr(t.Description),
+		State:       TaskState(t.State),
+		Priority:    Priority(t.Priority),
+		StartedAt:   t.StartedAt,
+		CompletedAt: t.CompletedAt,
+		CreatedAt:   t.CreatedAt,
+		UpdatedAt:   t.UpdatedAt,
+		Assignee:    agentFromModel(t.Assignee),
+	}
+	if t.AssigneeID != nil {
+		aid := formatID(*t.AssigneeID)
+		task.AssigneeID = &aid
+	}
+	if t.Proposal.ID != 0 {
+		task.Proposal = proposalFromModel(&t.Proposal)
+	}
+	if len(t.Issues) > 0 {
+		issues := make([]*Issue, len(t.Issues))
+		for i, iss := range t.Issues {
+			issues[i] = issueFromModel(&iss)
+		}
+		task.Issues = issues
+	}
+	return task
 }
 
 func feedbackFromModel(f *models.Feedback) *Feedback {

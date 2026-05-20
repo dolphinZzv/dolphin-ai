@@ -20,7 +20,7 @@ func TestCommentRepo_CreateAndList(t *testing.T) {
 	issueRepo.Create(&models.Issue{Number: 1, ProjectID: p.ID, Title: "T", State: models.IssueStateOpen, Priority: models.PriorityMedium, CreatorID: agent.ID})
 
 	c := &models.Comment{
-		IssueID:     1,
+		IssueID:     uintPtr(1),
 		AuthorID:    agent.ID,
 		Body:        "Hello",
 		ContentType: models.CommentMarkdown,
@@ -62,10 +62,10 @@ func TestCommentRepo_Replies(t *testing.T) {
 	projectRepo.Create(p)
 	issueRepo.Create(&models.Issue{Number: 1, ProjectID: p.ID, Title: "T2", State: models.IssueStateOpen, Priority: models.PriorityMedium, CreatorID: agent.ID})
 
-	parent := &models.Comment{IssueID: 1, AuthorID: agent.ID, Body: "Parent", ContentType: models.CommentMarkdown}
+	parent := &models.Comment{IssueID: uintPtr(1), AuthorID: agent.ID, Body: "Parent", ContentType: models.CommentMarkdown}
 	repo.Create(parent)
 
-	reply := &models.Comment{IssueID: 1, AuthorID: agent.ID, Body: "Reply", ContentType: models.CommentMarkdown, ParentID: &parent.ID}
+	reply := &models.Comment{IssueID: uintPtr(1), AuthorID: agent.ID, Body: "Reply", ContentType: models.CommentMarkdown, ParentID: &parent.ID}
 	repo.Create(reply)
 
 	replies, err := repo.ListByParent(parent.ID)
@@ -90,7 +90,7 @@ func TestCommentRepo_Delete(t *testing.T) {
 	projectRepo.Create(p)
 	issueRepo.Create(&models.Issue{Number: 1, ProjectID: p.ID, Title: "T3", State: models.IssueStateOpen, Priority: models.PriorityMedium, CreatorID: agent.ID})
 
-	c := &models.Comment{IssueID: 1, AuthorID: agent.ID, Body: "Delete me", ContentType: models.CommentMarkdown}
+	c := &models.Comment{IssueID: uintPtr(1), AuthorID: agent.ID, Body: "Delete me", ContentType: models.CommentMarkdown}
 	repo.Create(c)
 
 	if err := repo.Delete(c.ID); err != nil {
@@ -102,3 +102,5 @@ func TestCommentRepo_Delete(t *testing.T) {
 		t.Error("expected error for deleted comment")
 	}
 }
+
+func uintPtr(v uint) *uint { return &v }
