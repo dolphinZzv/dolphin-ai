@@ -10,7 +10,7 @@ import (
 func TestNewServerClientEmptyCommand(t *testing.T) {
 	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type: "stdio",
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for empty command")
 	}
@@ -20,7 +20,7 @@ func TestNewServerClientUnsupportedType(t *testing.T) {
 	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type: "http",
 		URL:  "http://example.com",
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for unsupported type")
 	}
@@ -30,7 +30,7 @@ func TestNewServerClientProcessNotFound(t *testing.T) {
 	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type:    "stdio",
 		Command: "nonexistent-binary-xyz",
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for nonexistent binary")
 	}

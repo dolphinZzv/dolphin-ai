@@ -214,6 +214,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	bus := event.NewEventBus(256)
 	pm := plugin.NewManager(hooks, bus)
+		toolRegistry.SetEventBus(bus)
 
 	// Configure webhook delivery
 	if cfg.Plugins.WebhookURL != "" {

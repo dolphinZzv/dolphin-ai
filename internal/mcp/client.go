@@ -7,6 +7,7 @@ import (
 	"sync/atomic"
 
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 	"dolphin/internal/mcp/transport"
 
 	"go.uber.org/zap"
@@ -20,7 +21,7 @@ type ServerClient struct {
 }
 
 // NewServerClient creates a transport to an external MCP server and initializes it.
-func NewServerClient(ctx context.Context, name string, cfg config.MCPServerConfig) (*ServerClient, error) {
+func NewServerClient(ctx context.Context, name string, cfg config.MCPServerConfig, bus *event.EventBus) (*ServerClient, error) {
 	var tport transport.Transport
 	var err error
 
@@ -30,7 +31,7 @@ func NewServerClient(ctx context.Context, name string, cfg config.MCPServerConfi
 	case "sse":
 		tport, err = transport.NewSSE(name, cfg)
 	case "http-stream":
-		tport, err = transport.NewHTTPStream(name, cfg)
+		tport, err = transport.NewHTTPStream(name, cfg, bus)
 	default:
 		return nil, fmt.Errorf("unsupported mcp server type: %q (supported: stdio, sse, http-stream)", cfg.Type)
 	}

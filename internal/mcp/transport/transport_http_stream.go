@@ -1,6 +1,7 @@
 package transport
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 
 	"go.uber.org/zap"
 )
@@ -21,12 +23,13 @@ type httpStreamTransport struct {
 	baseURL   string
 	sessionID string
 	client    *http.Client
+	bus       *event.EventBus
 }
 
 // NewHTTPStream creates a Streamable HTTP transport for a remote MCP server.
 //
 //nolint:revive
-func NewHTTPStream(name string, cfg config.MCPServerConfig) (*httpStreamTransport, error) {
+func NewHTTPStream(name string, cfg config.MCPServerConfig, bus *event.EventBus) (*httpStreamTransport, error) {
 	if cfg.URL == "" {
 		return nil, fmt.Errorf("mcp server %q: url is required for http-stream transport", name)
 	}
@@ -35,6 +38,7 @@ func NewHTTPStream(name string, cfg config.MCPServerConfig) (*httpStreamTranspor
 		name:    name,
 		baseURL: strings.TrimRight(cfg.URL, "/"),
 		client:  NewHTTPClient(cfg.Timeout),
+			bus: bus,
 	}, nil
 }
 
@@ -49,7 +53,7 @@ func (t *httpStreamTransport) SendRequest(ctx context.Context, reqJSON map[strin
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.baseURL+"/message", bytes.NewReader(body))
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -95,12 +99,63 @@ func (t *httpStreamTransport) SendRequest(ctx context.Context, reqJSON map[strin
 	return msg.Result, nil
 }
 
-func (t *httpStreamTransport) parseSSEResponse(r io.Reader, _ any) (json.RawMessage, error) {
-	return ParseSSEResult(r)
+func (t *httpStreamTransport) parseSSEResponse(r io.Reader, reqID any) (json.RawMessage, error) {
+	scanner := bufio.NewScanner(r)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	var dataBuf []byte
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "data:") {
+			data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+			dataBuf = append(dataBuf, []byte(data)...)
+		} else if line == "" && len(dataBuf) > 0 {
+			var msg struct {
+				ID     json.RawMessage `json:"id"`
+				Result json.RawMessage `json:"result"`
+				Method string          `json:"method"`
+				Error  *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(dataBuf, &msg); err != nil {
+				dataBuf = dataBuf[:0]
+				continue
+			}
+
+			// Server notification (no id, has method)
+			if len(msg.ID) == 0 && msg.Method != "" {
+				zap.S().Infow("mcp server notification", "server", t.name, "method", msg.Method)
+				if t.bus != nil {
+					t.bus.Emit(context.Background(), event.Event{
+						Type: event.TypeMCPServerNotification,
+						Data: map[string]any{
+							"server": t.name,
+							"method": msg.Method,
+						},
+					})
+				}
+				dataBuf = dataBuf[:0]
+				continue
+			}
+
+			// Response for our request (has id)
+			if len(msg.ID) > 0 {
+				if msg.Error != nil {
+					return nil, fmt.Errorf("jsonrpc error: %s (code %d)", msg.Error.Message, msg.Error.Code)
+				}
+				return msg.Result, nil
+			}
+
+			dataBuf = dataBuf[:0]
+		}
+	}
+	return nil, fmt.Errorf("no response event found for id %v", reqID)
 }
 
 func (t *httpStreamTransport) SendNotification(ctx context.Context, notif map[string]any) error {
-	url := t.baseURL + "/message"
+	url := t.baseURL
 	setHeaders := func(req *http.Request) {
 		t.setHeaders(req)
 		if t.sessionID != "" {

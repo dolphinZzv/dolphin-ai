@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 	"dolphin/internal/metrics"
 
 	"go.uber.org/zap"
@@ -75,6 +76,7 @@ type Registry struct {
 	toolCalls    *metrics.LabeledCounter
 	toolErrors   *metrics.LabeledCounter
 	toolDuration *metrics.LabeledHistogram
+	bus *event.EventBus
 }
 
 func NewRegistry(cfg *config.Config) *Registry {
@@ -102,6 +104,11 @@ func (r *Registry) Register(t Tool) {
 	r.mu.Unlock()
 }
 
+// SetEventBus sets the event bus for emitting MCP server notifications.
+func (r *Registry) SetEventBus(bus *event.EventBus) {
+	r.bus = bus
+}
+
 // LoadServers starts external MCP servers defined in config and registers their tools.
 // Failures for individual servers are logged as warnings and do not prevent other
 // servers from loading. The caller should still defer CloseServers() to clean up
@@ -112,7 +119,7 @@ func (r *Registry) LoadServers(ctx context.Context) error {
 
 	var loaded, failed int
 	for name, cfg := range r.cfg.Servers {
-		client, err := NewServerClient(ctx, name, cfg)
+		client, err := NewServerClient(ctx, name, cfg, r.bus)
 		if err != nil {
 			failed++
 			zap.S().Warnw("mcp server skipped — failed to create client", "server", name, "error", err)
@@ -302,6 +309,7 @@ func (r *Registry) FilteredView(names []string) *Registry {
 		toolCalls:    r.toolCalls,
 		toolErrors:   r.toolErrors,
 		toolDuration: r.toolDuration,
+		bus: r.bus,
 	}
 }
 
@@ -367,6 +375,7 @@ func (r *Registry) Clone() *Registry {
 		toolCalls:    r.toolCalls,
 		toolErrors:   r.toolErrors,
 		toolDuration: r.toolDuration,
+		bus: r.bus,
 	}
 }
 

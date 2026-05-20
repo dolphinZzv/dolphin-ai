@@ -116,7 +116,7 @@ func TestSSETransportInitialize(t *testing.T) {
 func TestSSETransportListTools(t *testing.T) {
 	cfg := sseServerConfig(t)
 
-	client, err := NewServerClient(context.Background(), "chick", cfg)
+	client, err := NewServerClient(context.Background(), "chick", cfg, nil)
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestSSETransportListTools(t *testing.T) {
 func TestSSETransportCallTool(t *testing.T) {
 	cfg := sseServerConfig(t)
 
-	client, err := NewServerClient(context.Background(), "chick", cfg)
+	client, err := NewServerClient(context.Background(), "chick", cfg, nil)
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestSSETransportCallTool(t *testing.T) {
 func TestSSETransportCallToolNoResults(t *testing.T) {
 	cfg := sseServerConfig(t)
 
-	client, err := NewServerClient(context.Background(), "chick", cfg)
+	client, err := NewServerClient(context.Background(), "chick", cfg, nil)
 	if err != nil {
 		t.Fatalf("NewServerClient: %v", err)
 	}
@@ -214,7 +214,7 @@ func TestNewServerClientRejectsSseWithoutURL(t *testing.T) {
 	_, err := NewServerClient(context.Background(), "test", config.MCPServerConfig{
 		Type: "sse",
 		URL:  "",
-	})
+	}, nil)
 	if err == nil {
 		t.Fatal("expected error for SSE without URL")
 	}

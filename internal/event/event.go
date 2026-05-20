@@ -43,6 +43,9 @@ const (
 
 	// Agent lifecycle
 	TypeAgentReload Type = "agent:reload"
+
+	// MCP server notification
+	TypeMCPServerNotification Type = "mcp:server_notification"
 )
 
 var AllTypes = []Type{
@@ -53,6 +56,7 @@ var AllTypes = []Type{
 	TypeAgentDispatched, TypeAgentCompleted, TypeSkillLoaded,
 	TypeAppStarted, TypeAppStopped,
 	TypeAgentReload,
+	TypeMCPServerNotification,
 	TypeResourceCPU, TypeResourceMemory, TypeResourceDisk, TypeResourceNetwork,
 }
 

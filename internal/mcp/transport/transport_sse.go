@@ -126,17 +126,42 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 			}
 		}
 
-		go func() {
-			<-ctx.Done()
-			resp.Body.Close()
-		}()
-		buf := make([]byte, 4096)
-		for {
-			_, err := resp.Body.Read(buf)
-			if err != nil {
-				resp.Body.Close()
-				return
+			scanner := bufio.NewScanner(resp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		var eventType string
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			if strings.HasPrefix(line, "event:") {
+				eventType = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
+			} else if strings.HasPrefix(line, "data:") {
+				data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+				if data != "" {
+					var notif struct {
+						JSONRPC string `json:"jsonrpc"`
+						Method  string `json:"method"`
+					}
+					if err := json.Unmarshal([]byte(data), &notif); err == nil && notif.Method != "" {
+						if eventType != "" {
+							zap.S().Infow("mcp server notification", "server", t.name, "event", eventType, "method", notif.Method)
+						} else {
+							zap.S().Infow("mcp server notification", "server", t.name, "method", notif.Method)
+						}
+					}
+				}
+				eventType = ""
+			} else if line == "" {
+				eventType = ""
 			}
+		}
+		resp.Body.Close()
+		if err := scanner.Err(); err != nil {
+			zap.S().Debugw("sse connection closed, reconnecting", "server", t.name, "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second):
 		}
 	}
 }
