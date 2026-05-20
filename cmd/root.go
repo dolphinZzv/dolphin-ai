@@ -487,6 +487,9 @@ func printBanner(cfg *config.Config) {
 	if cfg.Transport.DingTalk.Enabled {
 		transports = append(transports, "dingtalk")
 	}
+	if cfg.Transport.ACP.Enabled {
+		transports = append(transports, "acp")
+	}
 	transportStr := strings.Join(transports, " ")
 	if transportStr == "" {
 		transportStr = "none"
@@ -708,6 +711,32 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 		ctx, cancel := context.WithCancel(context.Background())
 		t := transport.NewDingTalkTransport(&cfg.Transport.DingTalk)
+
+		g.Add(func() error {
+			return t.Start(ctx)
+		}, func(err error) {
+			cancel()
+			t.Close()
+		})
+		g.Add(func() error {
+			go func() {
+				newCoordinator().Run(ctx, t)
+				zap.S().Errorw("coordinator exited unexpectedly")
+			}()
+			<-ctx.Done()
+			return nil
+		}, func(err error) {
+			cancel()
+		})
+		actorCount += 2
+	}
+
+	// ACP transport
+	if cfg.Transport.ACP.Enabled {
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransACPActive), cfg.Transport.ACP.ListenAddr))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		t := transport.NewACPTransport(&cfg.Transport.ACP)
 
 		g.Add(func() error {
 			return t.Start(ctx)

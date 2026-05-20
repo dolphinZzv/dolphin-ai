@@ -149,6 +149,31 @@ type TransportConfig struct {
 	MQTT     MQTTConfig     `mapstructure:"mqtt"`
 	Email    EmailConfig    `mapstructure:"email"`
 	DingTalk DingTalkConfig `mapstructure:"dingtalk"`
+	ACP      ACPConfig      `mapstructure:"acp"`
+}
+
+// ACPConfig holds configuration for the ACP (Agent Communication Protocol) transport.
+// Uses REST over HTTP, following IBM BeeAI ACP specification.
+type ACPConfig struct {
+	Enabled      bool             `mapstructure:"enabled"`
+	ListenAddr   string           `mapstructure:"listen_addr"`
+	AgentID      string           `mapstructure:"agent_id"`
+	AgentName    string           `mapstructure:"agent_name"`
+	AgentVersion string           `mapstructure:"agent_version"`
+	AgentDesc    string           `mapstructure:"agent_description"`
+	Capabilities []string         `mapstructure:"capabilities"`
+	SyncTimeout  string           `mapstructure:"sync_timeout"`
+	APIKey       string           `mapstructure:"api_key"`
+	TLSEnabled   bool             `mapstructure:"tls_enabled"`
+	TLSCertFile  string           `mapstructure:"tls_cert_file"`
+	TLSKeyFile   string           `mapstructure:"tls_key_file"`
+	Peers        []ACPPeerConfig  `mapstructure:"peers"`
+}
+
+type ACPPeerConfig struct {
+	ID     string `mapstructure:"id"`
+	URL    string `mapstructure:"url"`
+	APIKey string `mapstructure:"api_key"`
 }
 
 type StdioConfig struct {
@@ -868,6 +893,19 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.email.allowed_senders", []string{})
 
 	v.SetDefault("transport.dingtalk.enabled", false)
+
+	v.SetDefault("transport.acp.enabled", false)
+	v.SetDefault("transport.acp.listen_addr", ":8333")
+	v.SetDefault("transport.acp.agent_id", "dolphin")
+	v.SetDefault("transport.acp.agent_name", "Dolphin AI Agent")
+	v.SetDefault("transport.acp.agent_version", "0.1.0")
+	v.SetDefault("transport.acp.agent_description", "Cross-terminal/email/chat/SSH AI agent")
+	v.SetDefault("transport.acp.capabilities", []string{"task-execution", "shell-command", "web-search"})
+	v.SetDefault("transport.acp.sync_timeout", "60s")
+	v.SetDefault("transport.acp.api_key", "")
+	v.SetDefault("transport.acp.tls_enabled", false)
+	v.SetDefault("transport.acp.tls_cert_file", "")
+	v.SetDefault("transport.acp.tls_key_file", "")
 
 	v.SetDefault("session.max_age", "24h")
 	v.SetDefault("session.resume", false)

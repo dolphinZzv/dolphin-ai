@@ -16,7 +16,8 @@ dolphin is an AI agent connecting terminal, email, chat, and SSH — providing a
 |------|---------|
 | [overview.md](overview.md) | Overall architecture with versioned diagrams |
 | [modules/config.md](modules/config.md) | Configuration management |
-| [modules/transport.md](modules/transport.md) | Transport layer (stdio/SSH/MQTT/Email) |
+| [modules/transport.md](modules/transport.md) | Transport layer (stdio/SSH/MQTT/Email/DingTalk/ACP) |
+| [modules/acp-transport.md](modules/acp-transport.md) | ACP (Agent Communication Protocol) transport |
 | [modules/agent-loop.md](modules/agent-loop.md) | Agent Loop, Provider, Context compression |
 | [modules/context.md](modules/context.md) | System prompt builder |
 | [modules/session.md](modules/session.md) | Session management & summary |

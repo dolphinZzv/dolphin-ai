@@ -438,6 +438,7 @@ const (
 	KeyTransEmailSMTP   = "trans_email_smtp"
 	KeyTransEmailHint   = "trans_email_hint"
 	KeyTransDingTalk    = "trans_dingtalk"
+	KeyTransACPActive   = "trans_acp_active"
 	KeyTransNoneEnabled = "trans_none_enabled"
 
 	// Common

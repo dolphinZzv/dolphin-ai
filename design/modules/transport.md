@@ -31,10 +31,10 @@ type Capabilities struct {
 }
 ```
 
-| Flag | stdio | SSH | Email | DingTalk | MQTT |
+| Flag | stdio | SSH | Email | DingTalk | MQTT | ACP |
 |------|-------|-----|-------|----------|------|
-| Streaming | true | true | false | false | false |
-| ShowToolDetails | true | true | false | false | false |
+| Streaming | true | true | false | false | false | false |
+| ShowToolDetails | true | true | false | false | false | false |
 
 ## Session Resume
 
