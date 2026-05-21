@@ -16,6 +16,7 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
+	emailtransport "dolphin/internal/transport/email"
 
 	"github.com/smartystreets/goconvey/convey"
 	"gopkg.in/yaml.v3"
@@ -145,6 +146,7 @@ func (m *testIO) WriteLine(s string) error {
 	return nil
 }
 func (m *testIO) WriteString(s string) error { m.writes.WriteString(s); return nil }
+func (m *testIO) Flush() error               { return nil }
 func (m *testIO) Capabilities() transport.Capabilities {
 	return transport.Capabilities{Streaming: true, ShowToolDetails: true}
 }
@@ -789,6 +791,16 @@ func TestMultiProviderConfig(t *testing.T) {
 
 // ========== email interaction tests ==========
 
+// newEmailTransport creates an email.EmailTransport from an EmailConfig for testing.
+func newEmailTransport(ec *config.EmailConfig) *emailtransport.EmailTransport {
+	cfg := &config.Config{Transport: config.TransportConfig{Email: *ec}}
+	tp, err := emailtransport.New(cfg)
+	if err != nil {
+		return nil
+	}
+	return tp.(*emailtransport.EmailTransport)
+}
+
 // loadEmailFromYAML reads an email config from a YAML file at the given path.
 func loadEmailFromYAML(t *testing.T, yamlPath string) *config.EmailConfig {
 	t.Helper()
@@ -850,7 +862,7 @@ func TestEmailAssetsAccountSendReceive(t *testing.T) {
 		t.Logf("account: %s smtp=%s:%d imap=%s:%d", ec.Username, ec.SMTPHost, ec.SMTPPort, ec.IMAPHost, ec.IMAPPort)
 
 		convey.Convey("SMTP — should be able to send an email to itself", func() {
-			tp := transport.NewEmailTransport(ec)
+			tp := newEmailTransport(ec)
 			tp.SetLastSender(ec.From)
 			body := fmt.Sprintf("[dolphin self-test] send+receive verification at %s", time.Now().Format(time.RFC3339))
 			err := tp.WriteLine(body)
@@ -861,7 +873,7 @@ func TestEmailAssetsAccountSendReceive(t *testing.T) {
 		convey.Convey("IMAP — should be able to poll and find unseen messages", func() {
 			// Wait a moment for delivery
 			time.Sleep(2 * time.Second)
-			tp := transport.NewEmailTransport(ec)
+			tp := newEmailTransport(ec)
 			tp.SetStartTime(time.Now().Add(-5 * time.Minute))
 			tp.SetAllowSelfSent(true)
 			tp.SetAllowedSenders([]string{})
@@ -910,7 +922,7 @@ func TestEmailAgentOneRound(t *testing.T) {
 
 	// Step 1: Clear agent's inbox — mark all unseen as read so only our
 	// question email is found by the agent's poll.
-	clearTP := transport.NewEmailTransport(agentEmail)
+	clearTP := newEmailTransport(agentEmail)
 	clearTP.SetStartTime(time.Now().Add(-24 * time.Hour))
 	clearTP.SetAllowSelfSent(true)
 	clearTP.SetAllowedSenders([]string{})
@@ -924,7 +936,7 @@ func TestEmailAgentOneRound(t *testing.T) {
 	t.Log("agent inbox cleared")
 
 	// Step 2: Send question from user to agent (continued)
-	userTP := transport.NewEmailTransport(userEmail)
+	userTP := newEmailTransport(userEmail)
 	userTP.SetLastSender(agentEmail.From)
 
 	roundTag := fmt.Sprintf("dolphin-%s", time.Now().Format("150405"))
@@ -946,7 +958,7 @@ func TestEmailAgentOneRound(t *testing.T) {
 	toolReg := mcp.NewRegistry(cfg)
 	agt := agent.New(cfg, sessMgr, toolReg)
 
-	agentIO := transport.NewEmailTransport(agentEmail)
+	agentIO := newEmailTransport(agentEmail)
 	agentIO.SetStartTime(time.Now().Add(-5 * time.Minute))
 	agentIO.SetAllowSelfSent(true)
 	agentIO.SetAllowedSenders([]string{})
@@ -966,11 +978,11 @@ func TestEmailAgentOneRound(t *testing.T) {
 	t.Log("agent started with email IO, waiting for reply...")
 
 	// Step 3: Wait for agent's reply in user's inbox
-	var reply *transport.EmailMessage
+	var reply *emailtransport.EmailMessage
 	replyDeadline := time.Now().Add(60 * time.Second)
 	for time.Now().Before(replyDeadline) {
 		time.Sleep(5 * time.Second)
-		userPoll := transport.NewEmailTransport(userEmail)
+		userPoll := newEmailTransport(userEmail)
 		userPoll.SetStartTime(time.Now().Add(-5 * time.Minute))
 		userPoll.SetAllowSelfSent(true)
 		userPoll.SetAllowedSenders([]string{})

@@ -199,6 +199,17 @@ var (
 func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	zap.S().Infow("coordinator starting")
 
+	// Wrap non-streaming transports with BufferedIO so all writes are
+	// buffered until Flush() is called (auto-flushed on ReadLine).
+	if !io.Capabilities().Streaming {
+		io = transport.NewBufferedIO(io)
+	}
+	defer func() {
+		if err := io.Flush(); err != nil {
+			zap.S().Warnw("flush failed on coordinator exit", "error", err)
+		}
+	}()
+
 	// Create or resume session
 	var err error
 	sess, state := c.tryResumeSession(ctx, io)
@@ -456,6 +467,11 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// transports are not affected because Collect() is non-blocking and
 		// returns immediately when no agents are busy.
 		c.collectAgentResults(ctx, state, io)
+
+		// Flush any buffered output so the user receives the complete response.
+		if err := io.Flush(); err != nil {
+			zap.S().Warnw("flush failed after turn", "turn", state.Turn, "error", err)
+		}
 
 		// Capture cumulative token usage for /context display
 		c.totalInputTokens = state.TotalInputTokens

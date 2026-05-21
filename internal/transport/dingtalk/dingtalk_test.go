@@ -1,4 +1,4 @@
-package transport
+package dingtalk
 
 import (
 	"context"
@@ -23,14 +23,16 @@ func loadDingTalkConfig(t *testing.T) *config.DingTalkConfig {
 	return &cfg.Transport.DingTalk
 }
 
-// TestDingTalkStreamConnect tests the full Stream mode: register + connect + wait for message.
-// The user must @ the robot in DingTalk for this test to complete.
 func TestDingTalkStreamConnect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping dingtalk integration test in short mode")
 	}
 	cfg := loadDingTalkConfig(t)
-	dt := NewDingTalkTransport(cfg)
+	dt := &DingTalkTransport{
+		cfg:     cfg,
+		msgCh:   make(chan string, 1024),
+		closeCh: make(chan struct{}),
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -41,7 +43,6 @@ func TestDingTalkStreamConnect(t *testing.T) {
 		}
 	}()
 
-	// Give the SDK time to establish the connection
 	time.Sleep(3 * time.Second)
 
 	t.Log("send a message to the bot in DingTalk within 120s...")

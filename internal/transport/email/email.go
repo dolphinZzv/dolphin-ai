@@ -1,4 +1,5 @@
-package transport
+// Package email provides IMAP/SMTP email transport.
+package email
 
 import (
 	"bytes"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	transport "dolphin/internal/transport"
 
 	goimap "github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/client"
@@ -25,7 +27,8 @@ import (
 	"golang.org/x/text/transform"
 )
 
-// EmailMessage holds the decoded content and metadata of a received email.
+func init() { transport.Register("email", New) }
+
 type EmailMessage struct {
 	From      string
 	Subject   string
@@ -33,7 +36,6 @@ type EmailMessage struct {
 	MessageID string
 }
 
-// emailHistoryEntry holds one message for quoted reply context.
 type emailHistoryEntry struct {
 	From    string
 	Subject string
@@ -60,32 +62,27 @@ type EmailTransport struct {
 	allowedSendersOv    []string
 }
 
-func NewEmailTransport(cfg *config.EmailConfig) *EmailTransport {
+func New(cfg *config.Config) (transport.Transport, error) {
 	return &EmailTransport{
-		cfg:       cfg,
+		cfg:       &cfg.Transport.Email,
 		msgCh:     make(chan string, 1024),
 		closeCh:   make(chan struct{}),
 		startTime: time.Now(),
-	}
+	}, nil
 }
 
-// SetLastSender sets the recipient address for outgoing replies.
 func (t *EmailTransport) SetLastSender(to string) {
 	t.senderMu.Lock()
 	t.lastSender = to
 	t.senderMu.Unlock()
 }
 
-// SetStartTime overrides the start time used to filter old messages.
 func (t *EmailTransport) SetStartTime(st time.Time) { t.startTime = st }
 
-// SetAllowSelfSent controls whether messages from own address are processed.
 func (t *EmailTransport) SetAllowSelfSent(v bool) { t.allowSelfSent = v }
 
-// SetAllowedSenders overrides the allowed senders list (nil = accept all, empty slice = accept all).
 func (t *EmailTransport) SetAllowedSenders(senders []string) { t.allowedSendersOv = senders }
 
-// InjectMessage pushes a message directly into the read channel for testing.
 func (t *EmailTransport) InjectMessage(msg string) {
 	select {
 	case t.msgCh <- msg:
@@ -93,12 +90,10 @@ func (t *EmailTransport) InjectMessage(msg string) {
 	}
 }
 
-// PollIMAP runs a single IMAP poll cycle and returns any decoded message.
 func (t *EmailTransport) PollIMAP() *EmailMessage {
 	return t.pollOnce()
 }
 
-// FetchLatestUnseen fetches the latest unseen message from the inbox with full MIME decoding.
 func (t *EmailTransport) FetchLatestUnseen() *EmailMessage {
 	return t.pollOnce()
 }
@@ -110,13 +105,12 @@ func (t *EmailTransport) Context() string {
 		t.cfg.IMAPHost, t.cfg.IMAPPort, t.cfg.SMTPHost, t.cfg.SMTPPort)
 }
 
-func (t *EmailTransport) Capabilities() Capabilities {
-	return Capabilities{Streaming: false, Flushable: true}
+func (t *EmailTransport) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Streaming: false}
 }
 
-// Start begins IMAP polling and blocks until context is cancelled.
 func (t *EmailTransport) Start(ctx context.Context) error {
-	activeConnections.Add(1)
+	transport.ActiveConnections.Add(1)
 	interval, _ := time.ParseDuration(t.cfg.PollInterval)
 	if interval <= 0 {
 		interval = 10 * time.Second
@@ -133,14 +127,13 @@ func (t *EmailTransport) Start(ctx context.Context) error {
 	}
 }
 
-// ReadLine blocks until a new email command arrives or the transport is closed.
 func (t *EmailTransport) ReadLine() (string, error) {
 	select {
 	case msg, ok := <-t.msgCh:
 		if !ok {
 			return "", fmt.Errorf("email transport closed")
 		}
-		msgsReceived.Inc()
+		transport.MsgsReceived.Inc()
 		return msg, nil
 	case <-t.closeCh:
 		return "", fmt.Errorf("email transport closed")
@@ -149,18 +142,18 @@ func (t *EmailTransport) ReadLine() (string, error) {
 	}
 }
 
-// WriteLine sends an email response via SMTP.
 func (t *EmailTransport) WriteLine(s string) error {
 	return t.sendMail(s + "\n")
 }
 
-// WriteString sends an email response via SMTP.
 func (t *EmailTransport) WriteString(s string) error {
 	return t.sendMail(s)
 }
 
+func (t *EmailTransport) Flush() error { return nil }
+
 func (t *EmailTransport) sendMail(body string) error {
-	msgsSent.Inc()
+	transport.MsgsSent.Inc()
 	host := t.cfg.SMTPHost
 	port := t.cfg.SMTPPort
 	if port <= 0 {
@@ -181,7 +174,6 @@ func (t *EmailTransport) sendMail(body string) error {
 		return fmt.Errorf("email: no sender yet — wait for an incoming message")
 	}
 
-	// Decode RFC 2047 encoded subject if needed
 	if decoded, err := (&mime.WordDecoder{}).DecodeHeader(subject); err == nil {
 		subject = decoded
 	}
@@ -206,7 +198,6 @@ func (t *EmailTransport) sendMail(body string) error {
 	sb.WriteString("\r\n")
 	sb.WriteString(body)
 
-	// Append quoted conversation history (last 10 messages) for context
 	t.historyMu.Lock()
 	history := make([]emailHistoryEntry, len(t.conversationHistory))
 	copy(history, t.conversationHistory)
@@ -264,7 +255,6 @@ func (t *EmailTransport) poll() {
 	if msg == nil {
 		return
 	}
-
 	select {
 	case t.msgCh <- msg.Body:
 	default:
@@ -272,7 +262,6 @@ func (t *EmailTransport) poll() {
 	}
 }
 
-// pollOnce runs a single IMAP poll cycle and returns the decoded message, or nil if none found.
 func (t *EmailTransport) pollOnce() *EmailMessage {
 	host := t.cfg.IMAPHost
 	if host == "" {
@@ -323,12 +312,10 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 		return nil
 	}
 
-	// Mark all unseen as read first
 	allUnseen := new(goimap.SeqSet)
 	allUnseen.AddNum(seqNums...)
 	c.Store(allUnseen, goimap.AddFlags, []interface{}{"\\Seen"}, nil)
 
-	// Only process the newest message
 	latest := seqNums[len(seqNums)-1]
 	seqset := new(goimap.SeqSet)
 	seqset.AddNum(latest)
@@ -347,17 +334,14 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 		return nil
 	}
 
-	// Skip messages sent before start time
 	if !msg.Envelope.Date.IsZero() && msg.Envelope.Date.Before(t.startTime) {
 		return nil
 	}
 
-	// Skip self-sent messages to avoid infinite self-reply loop (unless overridden)
 	if !t.allowSelfSent && isOwnAddress(msg.Envelope.From, t.cfg.From, t.cfg.Username) {
 		return nil
 	}
 
-	// Only process emails from allowed senders
 	allowed := t.cfg.AllowedSenders
 	if t.allowedSendersOv != nil {
 		allowed = t.allowedSendersOv
@@ -368,14 +352,12 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 		return nil
 	}
 
-	// Decode RFC 2047 encoded subject
 	rawSubject := msg.Envelope.Subject
 	decSubject := rawSubject
 	if d, err := (&mime.WordDecoder{}).DecodeHeader(rawSubject); err == nil {
 		decSubject = d
 	}
 
-	// Read body text and decode MIME content
 	var bodyText string
 	for _, lit := range msg.Body {
 		data, _ := io.ReadAll(lit)
@@ -383,10 +365,8 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 		break
 	}
 
-	// Strip quoted reply text so the agent only sees the user's new message
 	bodyText = stripQuotedReply(bodyText)
 
-	// Build command: prefer body text, fall back to subject
 	if bodyText == "" {
 		bodyText = stripReplyPrefixes(decSubject)
 	}
@@ -394,7 +374,6 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 		return nil
 	}
 
-	// Store reply metadata
 	var fromAddr, msgID string
 
 	if len(msg.Envelope.From) > 0 && msg.Envelope.From[0] != nil {
@@ -417,7 +396,7 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 		}
 		t.historyMu.Unlock()
 	}
-	zap.S().Infow("email received", "from", fromAddr, "subject", truncate(decSubject, 80))
+	zap.S().Infow("email received", "from", fromAddr, "subject", transport.Truncate(decSubject, 80))
 
 	return &EmailMessage{
 		From:      fromAddr,
@@ -427,21 +406,16 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 	}
 }
 
-// stripQuotedReply removes the quoted portion of an email reply, keeping only the new message.
-// It looks for patterns like "\nOn ... wrote:\n> ..." and removes everything from that point.
 func stripQuotedReply(s string) string {
-	// Find the first line that looks like a quoted-reply header
 	lines := strings.Split(s, "\n")
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, ">") {
-			// Quoted text starts here — remove from this line
 			if i > 0 {
 				return strings.TrimSpace(strings.Join(lines[:i], "\n"))
 			}
 			return ""
 		}
-		// Common email reply separators
 		lower := strings.ToLower(trimmed)
 		if strings.Contains(lower, "wrote:") || strings.Contains(lower, "写道：") {
 			if i > 0 {
@@ -453,8 +427,6 @@ func stripQuotedReply(s string) string {
 	return strings.TrimSpace(s)
 }
 
-// stripReplyPrefixes removes common email reply/forward prefixes from a subject line
-// so it can be used as a clean command when the email body is empty.
 func stripReplyPrefixes(s string) string {
 	lower := strings.ToLower(s)
 	for {
@@ -473,7 +445,6 @@ func stripReplyPrefixes(s string) string {
 	return s
 }
 
-// formatAddresses formats a list of IMAP addresses for logging.
 func formatAddresses(from []*goimap.Address) string {
 	var parts []string
 	for _, addr := range from {
@@ -484,8 +455,6 @@ func formatAddresses(from []*goimap.Address) string {
 	return strings.Join(parts, ", ")
 }
 
-// isOwnAddress checks whether any sender address matches the reference list.
-// Entries starting with "@" match any address ending with that domain suffix.
 func isOwnAddress(from []*goimap.Address, refs ...string) bool {
 	for _, addr := range from {
 		if addr == nil {
@@ -509,10 +478,6 @@ func isOwnAddress(from []*goimap.Address, refs ...string) bool {
 	return false
 }
 
-// decodeMIMEBody extracts readable text from a raw email body.
-// IMAP BODY[TEXT] returns the content including MIME boundaries for multipart messages.
-// This function parses multipart, decodes transfer encodings (base64, quoted-printable),
-// and returns text/plain content (preferred) or text/html stripped to text.
 func decodeMIMEBody(bodyData []byte) string {
 	bodyData = bytes.TrimSpace(bodyData)
 	if len(bodyData) == 0 {
@@ -522,12 +487,8 @@ func decodeMIMEBody(bodyData []byte) string {
 	ct, params, cte, hasCT := parseMIMEHeaders(bodyData)
 	boundary := params["boundary"]
 
-	// If no Content-Type found, or no boundary in Content-Type, the body may
-	// have an Outlook-style preamble (e.g. "This is a multi-part message in
-	// MIME format."). Try to detect boundaries in the data.
 	if !hasCT || boundary == "" {
 		if b := detectBoundary(bodyData); b != "" {
-			// Use multipart reader — it handles preamble/text parts correctly
 			bodyData = findMultipartStart(bodyData, b)
 			bodyData = normalizeCRLF(bodyData)
 			reader := multipart.NewReader(bytes.NewReader(bodyData), b)
@@ -562,7 +523,6 @@ func decodeMIMEBody(bodyData []byte) string {
 	}
 
 	if boundary == "" {
-		// Reconstruct full Content-Type so decodeCharset can detect the charset parameter
 		ctFull := ct
 		for k, v := range params {
 			ctFull += "; " + k + "=\"" + v + "\""
@@ -570,8 +530,6 @@ func decodeMIMEBody(bodyData []byte) string {
 		return decodeContent(string(extractAfterHeaders(bodyData)), ctFull, cte)
 	}
 
-	// Find the start of the first boundary for Go's multipart reader.
-	// Go expects each boundary line to be \r\n--boundary\r\n (or \n--boundary\n).
 	bodyData = findMultipartStart(bodyData, boundary)
 	bodyData = normalizeCRLF(bodyData)
 	reader := multipart.NewReader(bytes.NewReader(bodyData), boundary)
@@ -598,11 +556,9 @@ func decodeMIMEBody(bodyData []byte) string {
 		}
 	}
 
-	// Prefer text/plain
 	if len(textParts) > 0 {
 		return strings.TrimSpace(strings.Join(textParts, "\n"))
 	}
-	// Fall back to text/html, stripped of tags
 	if len(htmlParts) > 0 {
 		return strings.TrimSpace(stripHTML(strings.Join(htmlParts, "\n")))
 	}
@@ -610,8 +566,6 @@ func decodeMIMEBody(bodyData []byte) string {
 	return strings.TrimSpace(string(bodyData))
 }
 
-// parseMIMEHeaders extracts Content-Type, parameters, and Content-Transfer-Encoding from MIME headers.
-// Returns ("", nil, "", false) if no Content-Type header found.
 func parseMIMEHeaders(data []byte) (string, map[string]string, string, bool) {
 	limit := min(len(data), 2048)
 	head := data[:limit]
@@ -641,7 +595,6 @@ func parseMIMEHeaders(data []byte) (string, map[string]string, string, bool) {
 		if ct == "" {
 			return "", nil, "", false
 		}
-		// Also check for Content-Transfer-Encoding on the next "line" (before the body)
 		if nl > 0 {
 			rest := head[nl+1:]
 			if nl2 := bytes.IndexByte(rest, '\n'); nl2 > 0 {
@@ -679,18 +632,14 @@ func parseMIMEHeaders(data []byte) (string, map[string]string, string, bool) {
 	return ct, params, cte, true
 }
 
-// detectBoundary scans body data for a MIME boundary line (--<boundary>).
-// Used when no Content-Type header is found (e.g. preamble before the MIME parts).
 func detectBoundary(data []byte) string {
 	lines := bytes.Split(data, []byte("\n"))
 	for _, line := range lines {
 		line = bytes.TrimSpace(line)
 		if bytes.HasPrefix(line, []byte("--")) && len(line) > 2 {
 			candidate := string(line[2:])
-			// Closing boundary ends with --; strip it to get the real boundary value
 			candidate = strings.TrimSuffix(candidate, "--")
 			if candidate != "" && len(candidate) >= 4 {
-				// Verify it appears at least twice (opening + closing)
 				if bytes.Count(data, []byte(candidate)) >= 2 {
 					return candidate
 				}
@@ -700,9 +649,7 @@ func detectBoundary(data []byte) string {
 	return ""
 }
 
-// normalizeCRLF converts bare \n line endings to \r\n for Go's multipart reader.
 func normalizeCRLF(data []byte) []byte {
-	// Replace \n with \r\n, but not if already preceded by \r
 	var out []byte
 	for i, b := range data {
 		if b == '\n' && (i == 0 || data[i-1] != '\r') {
@@ -714,11 +661,8 @@ func normalizeCRLF(data []byte) []byte {
 	return out
 }
 
-// findMultipartStart finds the position of the first boundary line ("\n--boundary")
-// so that Go's multipart reader can parse the parts correctly.
 func findMultipartStart(data []byte, boundary string) []byte {
 	dash := []byte("--" + boundary)
-	// Look for \n--boundary or \r\n--boundary
 	nlDash := append([]byte("\n"), dash...)
 	if idx := bytes.Index(data, nlDash); idx >= 0 {
 		return data[idx:]
@@ -727,11 +671,9 @@ func findMultipartStart(data []byte, boundary string) []byte {
 	if idx := bytes.Index(data, rnlDash); idx >= 0 {
 		return data[idx:]
 	}
-	// Fallback: try from start (may not parse correctly)
 	return data
 }
 
-// extractAfterHeaders returns the body content after the MIME header block.
 func extractAfterHeaders(data []byte) []byte {
 	idx := bytes.Index(data, []byte("\n\n"))
 	if idx >= 0 {
@@ -744,7 +686,6 @@ func extractAfterHeaders(data []byte) []byte {
 	return data
 }
 
-// decodeContent decodes a part body given its media type and transfer encoding.
 func decodeContent(body, mediaType, transferEncoding string) string {
 	switch strings.ToLower(transferEncoding) {
 	case "base64":
@@ -765,7 +706,6 @@ func decodeContent(body, mediaType, transferEncoding string) string {
 	}
 }
 
-// decodeCharset converts text to UTF-8 if charset is specified in the media type.
 func decodeCharset(body, mediaType string) string {
 	_, params, err := mime.ParseMediaType(mediaType)
 	if err != nil {
@@ -780,7 +720,6 @@ func decodeCharset(body, mediaType string) string {
 	}
 }
 
-// decodeGB18030 converts GB18030/GBK bytes to UTF-8, falling back to raw on error.
 func decodeGB18030(data []byte) string {
 	decoder := simplifiedchinese.GB18030.NewDecoder()
 	decoded, err := io.ReadAll(transform.NewReader(bytes.NewReader(data), decoder))
@@ -790,7 +729,6 @@ func decodeGB18030(data []byte) string {
 	return string(decoded)
 }
 
-// stripHTML removes HTML tags and common entities, returning plain text.
 func stripHTML(html string) string {
 	var buf strings.Builder
 	inTag := false
@@ -808,7 +746,6 @@ func stripHTML(html string) string {
 			buf.WriteByte(ch)
 		}
 	}
-	// Replace common HTML entities
 	s := buf.String()
 	s = strings.ReplaceAll(s, "&nbsp;", " ")
 	s = strings.ReplaceAll(s, "&lt;", "<")
@@ -820,7 +757,7 @@ func stripHTML(html string) string {
 
 func (t *EmailTransport) Close() error {
 	t.closeOnce.Do(func() {
-		activeConnections.Add(-1)
+		transport.ActiveConnections.Add(-1)
 		t.closeMu.Lock()
 		if t.pollTicker != nil {
 			t.pollTicker.Stop()

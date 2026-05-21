@@ -1,4 +1,5 @@
-package transport
+// Package mqtt provides MQTT pub/sub transport.
+package mqtt
 
 import (
 	"context"
@@ -9,49 +10,40 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	transport "dolphin/internal/transport"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"go.uber.org/zap"
 )
 
-// mqttMsg pairs an incoming payload with its derived response topic.
+func init() { transport.Register("mqtt", New) }
+
 type mqttMsg struct {
 	payload   string
 	respTopic string
 }
 
 // MQTTTransport provides MQTT pub/sub transport implementing UserIO.
-//
-// Subscribes to the configured topic (supports MQTT wildcards + / #).
-// The response topic is derived from each incoming message's topic so that
-// multiple publishers on sub-topics each get their own response channel:
-//
-//	subscribe:   /agent/+/message
-//	receive on:  /agent/agent-1/message
-//	respond to:  /agent/agent-1/response
-//
-// When the incoming topic is an exact match (no wildcard suffix), the
-// configured response_topic is used as-is (backward compatible).
 type MQTTTransport struct {
 	cfg       *config.MQTTConfig
 	client    mqtt.Client
 	msgCh     chan mqttMsg
 	closeCh   chan struct{}
 	closeOnce sync.Once
-	respTopic string // guarded by respMu, set on ReadLine, read on publish
+	respTopic string
 	respMu    sync.Mutex
 	connected atomic.Bool
 	closeMu   sync.Mutex
 }
 
-func NewMQTTTransport(cfg *config.Config) *MQTTTransport {
+func New(cfg *config.Config) (transport.Transport, error) {
 	t := &MQTTTransport{
 		cfg:       &cfg.Transport.MQTT,
 		msgCh:     make(chan mqttMsg, 4096),
 		closeCh:   make(chan struct{}),
 		respTopic: cfg.Transport.MQTT.PublishTopic,
 	}
-	return t
+	return t, nil
 }
 
 func (t *MQTTTransport) Name() string { return "mqtt" }
@@ -61,12 +53,12 @@ func (t *MQTTTransport) Context() string {
 		t.cfg.Broker, t.cfg.SubscribeTopic)
 }
 
-func (t *MQTTTransport) Capabilities() Capabilities {
-	return Capabilities{Streaming: false, Flushable: true}
+func (t *MQTTTransport) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Streaming: false}
 }
 
 func (t *MQTTTransport) Start(ctx context.Context) error {
-	activeConnections.Add(1)
+	transport.ActiveConnections.Add(1)
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker(t.cfg.Broker)
 	opts.SetClientID(t.cfg.ClientID)
@@ -78,7 +70,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	}
 	opts.SetKeepAlive(60 * time.Second)
 	opts.SetPingTimeout(10 * time.Second)
-	opts.SetCleanSession(false) // preserve subscriptions across reconnect
+	opts.SetCleanSession(false)
 	opts.SetAutoReconnect(true)
 	opts.SetMaxReconnectInterval(30 * time.Second)
 	opts.SetConnectionLostHandler(func(c mqtt.Client, err error) {
@@ -98,14 +90,13 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		"response_topic", t.cfg.PublishTopic,
 	)
 
-	// Subscribe to command topic — push payloads with response topic to msgCh
 	token = t.client.Subscribe(t.cfg.SubscribeTopic, 1, func(c mqtt.Client, msg mqtt.Message) {
 		respTopic := deriveResponseTopic(t.cfg.SubscribeTopic, t.cfg.PublishTopic, msg.Topic())
 		payload := string(msg.Payload())
 		zap.S().Debugw("mqtt command received",
 			"topic", msg.Topic(),
 			"response_topic", respTopic,
-			"payload", truncate(payload, 200),
+			"payload", transport.Truncate(payload, 200),
 		)
 		select {
 		case t.msgCh <- mqttMsg{payload: payload, respTopic: respTopic}:
@@ -121,15 +112,13 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	return t.Close()
 }
 
-// ReadLine blocks until an MQTT command message arrives or the transport is closed.
 func (t *MQTTTransport) ReadLine() (string, error) {
 	select {
 	case msg, ok := <-t.msgCh:
 		if !ok {
 			return "", fmt.Errorf("mqtt transport closed")
 		}
-		msgsReceived.Inc()
-		// Store the response topic atomically so publish() uses the correct topic
+		transport.MsgsReceived.Inc()
 		t.respMu.Lock()
 		t.respTopic = msg.respTopic
 		t.respMu.Unlock()
@@ -139,28 +128,28 @@ func (t *MQTTTransport) ReadLine() (string, error) {
 	}
 }
 
-// WriteLine publishes a line to the derived response topic.
 func (t *MQTTTransport) WriteLine(s string) error {
 	return t.publish(s + "\n")
 }
 
-// WriteString publishes text to the derived response topic.
 func (t *MQTTTransport) WriteString(s string) error {
 	return t.publish(s)
 }
+
+func (t *MQTTTransport) Flush() error { return nil }
 
 func (t *MQTTTransport) publish(payload string) error {
 	if !t.connected.Load() {
 		return fmt.Errorf("mqtt not connected")
 	}
-	msgsSent.Inc()
+	transport.MsgsSent.Inc()
 	t.respMu.Lock()
 	topic := t.respTopic
 	t.respMu.Unlock()
 	if topic == "" {
 		topic = t.cfg.PublishTopic
 	}
-	zap.S().Debugw("mqtt publish", "topic", topic, "payload", truncate(payload, 200))
+	zap.S().Debugw("mqtt publish", "topic", topic, "payload", transport.Truncate(payload, 200))
 	token := t.client.Publish(topic, 0, false, payload)
 	token.Wait()
 	return token.Error()
@@ -168,7 +157,7 @@ func (t *MQTTTransport) publish(payload string) error {
 
 func (t *MQTTTransport) Close() error {
 	t.closeOnce.Do(func() {
-		activeConnections.Add(-1)
+		transport.ActiveConnections.Add(-1)
 		t.closeMu.Lock()
 		defer t.closeMu.Unlock()
 		if t.client != nil && t.connected.Load() {
@@ -191,19 +180,9 @@ func deriveResponseTopic(cmdTopic, respTopic, incomingTopic string) string {
 	if suffix == "" {
 		return respTopic
 	}
-	// Build response topic by replacing "message" suffix with "response"
-	// e.g., /agent/panda-test/message -> /agent/panda-test/response
 	base := strings.TrimSuffix(incomingTopic, "/message")
 	if base == incomingTopic {
-		// No "/message" suffix, just append response topic suffix
 		return strings.TrimRight(respTopic, "/") + suffix
 	}
 	return base + "/response"
-}
-
-func truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
-	}
-	return s[:max] + "..."
 }

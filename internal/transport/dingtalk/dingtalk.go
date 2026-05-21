@@ -1,4 +1,5 @@
-package transport
+// Package dingtalk provides DingTalk bot stream transport.
+package dingtalk
 
 import (
 	"context"
@@ -8,11 +9,14 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	transport "dolphin/internal/transport"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 	"go.uber.org/zap"
 )
+
+func init() { transport.Register("dingtalk", New) }
 
 // DingTalkTransport provides DingTalk bot I/O via Stream mode using the official SDK.
 type DingTalkTransport struct {
@@ -26,12 +30,12 @@ type DingTalkTransport struct {
 	webhookMu sync.RWMutex
 }
 
-func NewDingTalkTransport(cfg *config.DingTalkConfig) *DingTalkTransport {
+func New(cfg *config.Config) (transport.Transport, error) {
 	return &DingTalkTransport{
-		cfg:     cfg,
+		cfg:     &cfg.Transport.DingTalk,
 		msgCh:   make(chan string, 1024),
 		closeCh: make(chan struct{}),
-	}
+	}, nil
 }
 
 func (t *DingTalkTransport) Name() string { return "dingtalk" }
@@ -41,15 +45,13 @@ func (t *DingTalkTransport) Context() string {
 		"The user is on a mobile device. Keep responses concise."
 }
 
-func (t *DingTalkTransport) Capabilities() Capabilities {
-	return Capabilities{Streaming: false, Flushable: true}
+func (t *DingTalkTransport) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Streaming: false}
 }
 
-// Start creates the SDK stream client and connects to DingTalk.
-// The SDK handles auto-reconnect internally.
 func (t *DingTalkTransport) Start(ctx context.Context) error {
-	activeConnections.Add(1)
-	defer activeConnections.Add(-1)
+	transport.ActiveConnections.Add(1)
+	defer transport.ActiveConnections.Add(-1)
 
 	cred := client.NewAppCredentialConfig(t.cfg.ClientID, t.cfg.ClientSecret)
 	t.sdkCli = client.NewStreamClient(
@@ -66,7 +68,6 @@ func (t *DingTalkTransport) Start(ctx context.Context) error {
 	return t.Close()
 }
 
-// onMessage is the chatbot callback registered with the SDK.
 func (t *DingTalkTransport) onMessage(ctx context.Context, data *chatbot.BotCallbackDataModel) ([]byte, error) {
 	if data.SessionWebhook != "" {
 		t.webhookMu.Lock()
@@ -83,7 +84,7 @@ func (t *DingTalkTransport) onMessage(ctx context.Context, data *chatbot.BotCall
 
 	select {
 	case t.msgCh <- msgText:
-		msgsReceived.Inc()
+		transport.MsgsReceived.Inc()
 	default:
 		zap.S().Warnw("dingtalk message dropped, channel full")
 	}
@@ -91,7 +92,6 @@ func (t *DingTalkTransport) onMessage(ctx context.Context, data *chatbot.BotCall
 	return nil, nil
 }
 
-// ReadLine blocks until a message arrives or the transport is closed.
 func (t *DingTalkTransport) ReadLine() (string, error) {
 	select {
 	case msg, ok := <-t.msgCh:
@@ -106,19 +106,18 @@ func (t *DingTalkTransport) ReadLine() (string, error) {
 	}
 }
 
-// WriteLine sends a message back via the session webhook.
 func (t *DingTalkTransport) WriteLine(s string) error {
 	return t.sendMessage(s)
 }
 
-// WriteString sends a message back via the session webhook.
 func (t *DingTalkTransport) WriteString(s string) error {
 	return t.sendMessage(s)
 }
 
-// sendMessage sends a reply using the SDK's chatbot replier via session webhook.
+func (t *DingTalkTransport) Flush() error { return nil }
+
 func (t *DingTalkTransport) sendMessage(body string) error {
-	msgsSent.Inc()
+	transport.MsgsSent.Inc()
 
 	t.webhookMu.RLock()
 	webhook := t.webhook
@@ -144,7 +143,6 @@ func (t *DingTalkTransport) sendMessage(body string) error {
 	return nil
 }
 
-// isMarkdownContent detects if a string contains markdown formatting markers.
 func isMarkdownContent(s string) bool {
 	markdownIndicators := []string{
 		"# ", "**", "```", "`", "- ", "* ", "1. ", "> ", "---", "[](",
@@ -157,7 +155,6 @@ func isMarkdownContent(s string) bool {
 	return false
 }
 
-// Close shuts down the transport.
 func (t *DingTalkTransport) Close() error {
 	t.closeOnce.Do(func() {
 		close(t.closeCh)

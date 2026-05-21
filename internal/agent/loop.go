@@ -843,16 +843,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	toolIdx := -1
 	var finalUsage *provider.Usage
 
-	var blockBuf strings.Builder
-	const blockFlushThreshold = 1024
-
-	flushBlock := func() {
-		if blockBuf.Len() > 0 {
-			io.WriteString(blockBuf.String())
-			blockBuf.Reset()
-		}
-	}
-
 	// Hook: transport:send — fires before delivering response to transport
 	if a.hooks != nil {
 		a.hooks.Fire(ctx, hook.PointTransportSend, &hook.Context{
@@ -881,7 +871,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	for chunk := range streamCh {
 		select {
 		case <-ctx.Done():
-			flushBlock()
 			return &streamResult{err: ctx.Err()}
 		default:
 		}
@@ -894,14 +883,7 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 			text := extractText(chunk.Content)
 			if text != "" {
 				textBuf.WriteString(text)
-				if caps.Streaming {
-					io.WriteString(text)
-				} else {
-					blockBuf.WriteString(text)
-					if blockBuf.Len() >= blockFlushThreshold {
-						flushBlock()
-					}
-				}
+				io.WriteString(text)
 			}
 		}
 
@@ -929,7 +911,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 			if finalUsage == nil {
 				finalUsage = chunk.Usage
 			} else {
-				// Merge: message_start has input+cache, message_delta has output
 				if chunk.Usage.OutputTokens > 0 {
 					finalUsage.OutputTokens = chunk.Usage.OutputTokens
 				}
@@ -937,10 +918,7 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 		}
 	}
 
-	if !caps.Streaming && blockBuf.Len() > 0 {
-		blockBuf.WriteString("\n")
-		flushBlock()
-	} else if caps.Streaming && textBuf.Len() > 0 {
+	if caps.Streaming && textBuf.Len() > 0 {
 		io.WriteLine("")
 	}
 

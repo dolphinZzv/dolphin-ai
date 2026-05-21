@@ -2,7 +2,7 @@ VERSION ?= dev
 APP_BUNDLE := panda.app
 PANDA_DIR := app/panda
 
-.PHONY: build run clean test fmt check-fmt lint init-hooks llm-smoke docs-smoke app app-clean distribute latest
+.PHONY: build run clean test fmt check-fmt lint init-hooks llm-smoke docs-smoke app app-clean distribute latest ensure-dolphin
 
 build:
 	go build -ldflags="-X 'dolphin/cmd.Version=$(VERSION)' -X 'dolphin/cmd.CommitHash=$(shell git rev-parse --short HEAD)'" -o dolphin .
@@ -47,7 +47,13 @@ llm-smoke:
 docs-smoke:
 	@scripts/docs-smoke.sh
 
-app:
+ensure-dolphin:
+	@pgrep -x dolphin > /dev/null 2>&1 || { \
+		echo "dolphin not running, starting..."; \
+		./dolphin &; \
+	}
+
+app: ensure-dolphin
 	$(MAKE) -C $(PANDA_DIR) build VERSION=$(VERSION)
 	cp -r $(PANDA_DIR)/$(APP_BUNDLE) .
 

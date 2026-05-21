@@ -73,6 +73,12 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) error {
 		return fmt.Errorf("telemetry: create resource: %w", err)
 	}
 
+	// Route OTel SDK internal errors (export failures, timeouts, etc.) through zap
+	// instead of the default stderr logging.
+	otel.SetErrorHandler(otel.ErrorHandlerFunc(func(err error) {
+		zap.S().Errorw("otel error", "error", err)
+	}))
+
 	// ---- traces ----
 	traceExp, err := newTraceExporter(ctx, cfg)
 	if err != nil {

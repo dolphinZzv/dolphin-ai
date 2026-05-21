@@ -72,11 +72,16 @@ func handleConnection(_ conn: NWConnection) {
     func receiveNext() {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 32768) { data, _, isComplete, error in
             if let data = data { receivedData.append(data) }
+
+            // Process immediately once we have a complete HTTP request,
+            // without waiting for the client to close the connection.
+            if let request = parseRequest(receivedData) {
+                handleRequest(request, conn: conn)
+                return
+            }
+
             if error != nil || isComplete {
                 conn.cancel()
-                if let request = parseRequest(receivedData) {
-                    handleRequest(request, conn: conn)
-                }
             } else {
                 receiveNext()
             }

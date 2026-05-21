@@ -26,6 +26,7 @@ type UserIO interface {
 	ReadLine() (string, error)
 	WriteLine(string) error
 	WriteString(string) error
+	Flush() error
 	Capabilities() Capabilities
 	Context() string // transport-specific context injected into system prompt
 	Name() string    // transport name ("stdio", "email", "ssh")
@@ -36,16 +37,30 @@ type UserIO interface {
 // Block transports batch writes and flush periodically (e.g. MQTT, Email).
 type Capabilities struct {
 	Streaming       bool
-	Flushable       bool
 	ConfirmExit     bool // if true, require confirmation before exiting the agent
 	ShowToolDetails bool // if true, show tool call arguments/outputs to the user
 }
 
-// newMarkdownRenderer creates a glamour terminal renderer for the given style name.
+// SessionTransport is a Transport that accepts incoming sessions and dispatches
+// them to a handler. Only SSH implements this.
+type SessionTransport interface {
+	Transport
+	SetSessionHandler(func(context.Context, UserIO))
+}
+
+// Truncate truncates a string to max characters, appending "..." if needed.
+func Truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
+}
+
+// NewMarkdownRenderer creates a glamour terminal renderer for the given style name.
 // Supported styles: "auto" (auto-detect dark/light), "dark", "light", "ascii",
 // "pink", "dracula", "tokyo-night". Falls back to auto on unknown style names.
 // Returns nil on error.
-func newMarkdownRenderer(style string) *glamour.TermRenderer {
+func NewMarkdownRenderer(style string) *glamour.TermRenderer {
 	switch style {
 	case "", "auto":
 		md, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))

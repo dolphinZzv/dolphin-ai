@@ -1,4 +1,5 @@
-package transport
+// Package acp provides ACP (Agent Communication Protocol) REST transport.
+package acp
 
 import (
 	"context"
@@ -10,12 +11,13 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	transport "dolphin/internal/transport"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
-// --- Task model ---
+func init() { transport.Register("acp", New) }
 
 type taskStatus string
 
@@ -39,7 +41,7 @@ type acpTask struct {
 	Created   time.Time  `json:"created"`
 	Completed time.Time  `json:"completed,omitempty"`
 
-	resultCh chan string `json:"-"` // sync mode: HTTP handler blocks here
+	resultCh chan string `json:"-"`
 }
 
 func (t *acpTask) setCompleted(output string) {
@@ -92,19 +94,19 @@ func (t *acpTask) snapshot() taskResponse {
 }
 
 type taskRequest struct {
-	ID        string `json:"id"`
-	AgentID   string `json:"agentId,omitempty"`
-	SessionID string `json:"sessionId,omitempty"`
-	Task      string `json:"task"`
-	Context   string `json:"context,omitempty"`
+	ID        string            `json:"id"`
+	AgentID   string            `json:"agentId,omitempty"`
+	SessionID string            `json:"sessionId,omitempty"`
+	Task      string            `json:"task"`
+	Context   string            `json:"context,omitempty"`
 	Metadata  map[string]string `json:"metadata,omitempty"`
 }
 
 type taskResponse struct {
-	ID     string `json:"id"`
-	Status string `json:"status"`
-	Output *taskOutput `json:"output,omitempty"`
-	Error  string `json:"error,omitempty"`
+	ID       string            `json:"id"`
+	Status   string            `json:"status"`
+	Output   *taskOutput       `json:"output,omitempty"`
+	Error    string            `json:"error,omitempty"`
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
@@ -113,49 +115,40 @@ type taskOutput struct {
 	ContentType string `json:"contentType"`
 }
 
-// --- ACP Transport ---
-
 // ACPTransport implements the IBM BeeAI Agent Communication Protocol as a Transport.
-// It provides REST endpoints for other ACP-compatible agents to discover and invoke Dolphin.
 type ACPTransport struct {
 	cfg       *config.ACPConfig
 	server    *http.Server
 	msgCh     chan *acpTask
 	closeCh   chan struct{}
 	closeOnce sync.Once
-	tasks     sync.Map // taskID -> *acpTask
+	tasks     sync.Map
 
 	currentTask   *acpTask
 	currentTaskMu sync.RWMutex
 }
 
-var _ Transport = (*ACPTransport)(nil)
-var _ UserIO = (*ACPTransport)(nil)
-
-func NewACPTransport(cfg *config.ACPConfig) *ACPTransport {
+func New(cfg *config.Config) (transport.Transport, error) {
 	return &ACPTransport{
-		cfg:     cfg,
+		cfg:     &cfg.Transport.ACP,
 		msgCh:   make(chan *acpTask, 4096),
 		closeCh: make(chan struct{}),
-	}
+	}, nil
 }
 
-func (t *ACPTransport) Name() string {
-	return "acp"
-}
+func (t *ACPTransport) Name() string { return "acp" }
 
 func (t *ACPTransport) Context() string {
 	return fmt.Sprintf("Connected via ACP (Agent Communication Protocol, IBM BeeAI). Listener: %s. Agent ID: %s.", t.cfg.ListenAddr, t.cfg.AgentID)
 }
 
-func (t *ACPTransport) Capabilities() Capabilities {
-	return Capabilities{Streaming: false, Flushable: true}
+func (t *ACPTransport) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Streaming: false}
 }
 
-// Start launches the ACP HTTP server and blocks until ctx is cancelled.
 func (t *ACPTransport) Start(ctx context.Context) error {
-	activeConnections.Add(1)
-	defer activeConnections.Add(-1)
+	transport.ActiveConnections.Add(1)
+	defer transport.ActiveConnections.Add(-1)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tasks", t.authMiddleware(t.handleTasks))
@@ -194,14 +187,13 @@ func (t *ACPTransport) Start(ctx context.Context) error {
 	return t.Close()
 }
 
-// ReadLine blocks until a task arrives via the HTTP server.
 func (t *ACPTransport) ReadLine() (string, error) {
 	select {
 	case task, ok := <-t.msgCh:
 		if !ok {
 			return "", fmt.Errorf("acp transport closed")
 		}
-		msgsReceived.Inc()
+		transport.MsgsReceived.Inc()
 
 		t.currentTaskMu.Lock()
 		t.currentTask = task
@@ -214,18 +206,18 @@ func (t *ACPTransport) ReadLine() (string, error) {
 	}
 }
 
-// WriteLine publishes a response to the current task's result channel.
 func (t *ACPTransport) WriteLine(s string) error {
 	return t.write(s)
 }
 
-// WriteString publishes a response to the current task's result channel.
 func (t *ACPTransport) WriteString(s string) error {
 	return t.write(s)
 }
 
+func (t *ACPTransport) Flush() error { return nil }
+
 func (t *ACPTransport) write(s string) error {
-	msgsSent.Inc()
+	transport.MsgsSent.Inc()
 
 	t.currentTaskMu.RLock()
 	task := t.currentTask
@@ -235,10 +227,8 @@ func (t *ACPTransport) write(s string) error {
 		return fmt.Errorf("acp: no current task to respond to")
 	}
 
-	// Update task state (critical for async tasks where no handler waits on resultCh)
 	task.setCompleted(s)
 
-	// Try to notify sync handler; non-blocking in case it already timed out
 	select {
 	case task.resultCh <- s:
 	default:
@@ -247,7 +237,6 @@ func (t *ACPTransport) write(s string) error {
 	return nil
 }
 
-// Close shuts down the transport.
 func (t *ACPTransport) Close() error {
 	t.closeOnce.Do(func() {
 		close(t.closeCh)
@@ -259,8 +248,6 @@ func (t *ACPTransport) Close() error {
 	})
 	return nil
 }
-
-// --- Auth middleware ---
 
 func (t *ACPTransport) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	if t.cfg.APIKey == "" {
@@ -284,10 +271,6 @@ func (t *ACPTransport) authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// --- HTTP handlers ---
-
-// POST /tasks — submit a task
-// GET /tasks — list active tasks (not in spec, convenience)
 func (t *ACPTransport) handleTasks(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodPost:
@@ -312,8 +295,6 @@ func (t *ACPTransport) handleCreateTask(w http.ResponseWriter, r *http.Request) 
 	}
 
 	syncTimeout := parseSyncTimeout(t.cfg.SyncTimeout)
-
-	// Check if caller wants async
 	wantsAsync := r.Header.Get("Prefer") == "respond-async"
 
 	task := &acpTask{
@@ -328,7 +309,6 @@ func (t *ACPTransport) handleCreateTask(w http.ResponseWriter, r *http.Request) 
 
 	t.tasks.Store(taskID, task)
 
-	// Queue task for agent loop
 	select {
 	case t.msgCh <- task:
 	case <-time.After(10 * time.Second):
@@ -338,7 +318,6 @@ func (t *ACPTransport) handleCreateTask(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if wantsAsync {
-		// Return 202 with task ID immediately
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted)
 		json.NewEncoder(w).Encode(taskResponse{
@@ -348,10 +327,9 @@ func (t *ACPTransport) handleCreateTask(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Sync mode: wait for result
 	select {
 	case result := <-task.resultCh:
-		task.setCompleted(result) // already set by write(), but idempotent
+		task.setCompleted(result)
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(task.snapshot())
 
@@ -380,8 +358,6 @@ func (t *ACPTransport) handleListTasks(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(tasks)
 }
 
-// GET /tasks/{id} — poll task status
-// DELETE /tasks/{id} — cancel task
 func (t *ACPTransport) handleTaskByID(w http.ResponseWriter, r *http.Request) {
 	taskID := strings.TrimPrefix(r.URL.Path, "/tasks/")
 	if taskID == "" {
@@ -413,26 +389,24 @@ func (t *ACPTransport) handleTaskByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GET /capabilities — list agent capabilities
 func (t *ACPTransport) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
 	resp := map[string]interface{}{
-		"agentId":       t.cfg.AgentID,
-		"name":          t.cfg.AgentName,
-		"version":       t.cfg.AgentVersion,
-		"description":   t.cfg.AgentDesc,
-		"capabilities":  t.cfg.Capabilities,
-		"protocol":      "acp",
+		"agentId":         t.cfg.AgentID,
+		"name":            t.cfg.AgentName,
+		"version":         t.cfg.AgentVersion,
+		"description":     t.cfg.AgentDesc,
+		"capabilities":    t.cfg.Capabilities,
+		"protocol":        "acp",
 		"protocolVersion": "0.1",
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
 }
 
-// GET /agents/{id} — agent card (returns same as capabilities for self)
 func (t *ACPTransport) handleAgentCard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
@@ -440,8 +414,6 @@ func (t *ACPTransport) handleAgentCard(w http.ResponseWriter, r *http.Request) {
 	}
 	t.handleCapabilities(w, r)
 }
-
-// --- helpers ---
 
 func parseSyncTimeout(s string) time.Duration {
 	d, err := time.ParseDuration(s)

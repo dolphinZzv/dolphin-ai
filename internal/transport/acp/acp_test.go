@@ -1,4 +1,4 @@
-package transport
+package acp
 
 import (
 	"encoding/json"
@@ -26,10 +26,13 @@ func newTestACPConfig() *config.ACPConfig {
 	}
 }
 
-// startTestACPTransport creates an ACPTransport with an httptest.Server for reliable port handling.
 func startTestACPTransport(t *testing.T, cfg *config.ACPConfig) (*ACPTransport, string) {
 	t.Helper()
-	tr := NewACPTransport(cfg)
+	tr := &ACPTransport{
+		cfg:     cfg,
+		msgCh:   make(chan *acpTask, 4096),
+		closeCh: make(chan struct{}),
+	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/tasks", tr.authMiddleware(tr.handleTasks))
@@ -44,25 +47,22 @@ func startTestACPTransport(t *testing.T, cfg *config.ACPConfig) (*ACPTransport, 
 }
 
 func TestACPTransportName(t *testing.T) {
-	tr := NewACPTransport(newTestACPConfig())
+	tr := &ACPTransport{cfg: newTestACPConfig()}
 	if tr.Name() != "acp" {
 		t.Errorf("Name() = %q, want acp", tr.Name())
 	}
 }
 
 func TestACPTransportCapabilities(t *testing.T) {
-	tr := NewACPTransport(newTestACPConfig())
+	tr := &ACPTransport{cfg: newTestACPConfig()}
 	caps := tr.Capabilities()
 	if caps.Streaming {
 		t.Error("Streaming = true, want false")
 	}
-	if !caps.Flushable {
-		t.Error("Flushable = false, want true")
-	}
 }
 
 func TestACPTransportContext(t *testing.T) {
-	tr := NewACPTransport(newTestACPConfig())
+	tr := &ACPTransport{cfg: newTestACPConfig()}
 	ctx := tr.Context()
 	if !strings.Contains(ctx, "ACP") {
 		t.Error("Context() should mention ACP")
@@ -76,7 +76,6 @@ func TestACPTransportSyncTask(t *testing.T) {
 	cfg := newTestACPConfig()
 	tr, baseURL := startTestACPTransport(t, cfg)
 
-	// Agent loop
 	go func() {
 		for {
 			line, err := tr.ReadLine()
@@ -133,7 +132,6 @@ func TestACPTransportAsyncTask(t *testing.T) {
 		}
 	}()
 
-	// Async POST
 	req, _ := http.NewRequest("POST", baseURL+"/tasks",
 		strings.NewReader(`{"task":"async task"}`))
 	req.Header.Set("Prefer", "respond-async")
@@ -159,7 +157,6 @@ func TestACPTransportAsyncTask(t *testing.T) {
 		t.Fatal("task ID is empty")
 	}
 
-	// Poll until completed
 	var result taskResponse
 	for i := 0; i < 10; i++ {
 		time.Sleep(100 * time.Millisecond)
@@ -212,7 +209,6 @@ func TestACPTransportAuth(t *testing.T) {
 	cfg.APIKey = "test-secret-key"
 	_, baseURL := startTestACPTransport(t, cfg)
 
-	// Without auth
 	resp, err := http.Get(baseURL + "/capabilities")
 	if err != nil {
 		t.Fatalf("GET /capabilities: %v", err)
@@ -222,7 +218,6 @@ func TestACPTransportAuth(t *testing.T) {
 		t.Errorf("expected 401 without auth, got %d", resp.StatusCode)
 	}
 
-	// With auth
 	req, _ := http.NewRequest("GET", baseURL+"/capabilities", nil)
 	req.Header.Set("Authorization", "Bearer test-secret-key")
 	resp, err = http.DefaultClient.Do(req)
@@ -234,7 +229,6 @@ func TestACPTransportAuth(t *testing.T) {
 		t.Errorf("expected 200 with auth, got %d", resp.StatusCode)
 	}
 
-	// Wrong key
 	req, _ = http.NewRequest("GET", baseURL+"/capabilities", nil)
 	req.Header.Set("Authorization", "Bearer wrong-key")
 	resp, err = http.DefaultClient.Do(req)
@@ -251,9 +245,6 @@ func TestACPTransportCancelTask(t *testing.T) {
 	cfg := newTestACPConfig()
 	_, baseURL := startTestACPTransport(t, cfg)
 
-	// Don't start agent loop — task stays pending
-
-	// Use async POST to avoid blocking on sync timeout
 	req, _ := http.NewRequest("POST", baseURL+"/tasks",
 		strings.NewReader(`{"task":"cancellable task"}`))
 	req.Header.Set("Prefer", "respond-async")
@@ -280,7 +271,6 @@ func TestACPTransportCancelTask(t *testing.T) {
 		t.Errorf("expected 200 on cancel, got %d", resp.StatusCode)
 	}
 
-	// Verify cancelled
 	resp, err = http.Get(baseURL + "/tasks/" + taskID)
 	if err != nil {
 		t.Fatalf("GET /tasks/%s: %v", taskID, err)
@@ -335,7 +325,6 @@ func TestACPTransportConcurrentTasks(t *testing.T) {
 	cfg := newTestACPConfig()
 	tr, baseURL := startTestACPTransport(t, cfg)
 
-	// Agent loop
 	go func() {
 		for {
 			line, err := tr.ReadLine()

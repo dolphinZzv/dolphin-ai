@@ -7,38 +7,192 @@ class McpServer {
     let lock = NSLock()
 
     func handleSync(request: JsonRpcRequest) -> JsonRpcResponse {
-        guard request.method == "tools/call",
-              let params = request.params,
-              let toolName = params.name else {
-            return JsonRpcResponse(id: request.id, error: .invalidParams)
-        }
+        switch request.method {
+        case "initialize":
+            return JsonRpcResponse(id: request.id, result: JsonRpcResult(
+                success: true,
+                extra: [
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": ["tools": [:]] as [String: Any],
+                    "serverInfo": ["name": "WebHost", "version": "0.1.0"]
+                ]
+            ))
 
-        let arguments = params.arguments
+        case "tools/list":
+            return JsonRpcResponse(id: request.id, result: JsonRpcResult(
+                success: true,
+                extra: ["tools": Self.toolDefinitions]
+            ))
 
-        switch toolName {
-        case "web_session_create":
-            return createSession(arguments: arguments, requestId: request.id)
-        case "page_open":
-            return navigate(arguments: arguments, requestId: request.id)
-        case "script_run":
-            return evaluate(arguments: arguments, requestId: request.id)
-        case "page_screenshot":
-            return screenshot(arguments: arguments, requestId: request.id)
-        case "web_set_interactive":
-            return setInteractive(arguments: arguments, requestId: request.id)
-        case "web_capabilities":
-            return getCapabilities(arguments: arguments, requestId: request.id)
-        case "web_session_close":
-            return closeSession(arguments: arguments, requestId: request.id)
-        case "web_inject":
-            return injectContent(arguments: arguments, requestId: request.id)
-        case "web_wait":
-            return waitForElement(arguments: arguments, requestId: request.id)
-        case "web_dialog_response":
-            return dialogResponse(arguments: arguments, requestId: request.id)
+        case "tools/call":
+            guard let params = request.params,
+                  let toolName = params.name else {
+                return JsonRpcResponse(id: request.id, error: .invalidParams)
+            }
+            return handleToolCall(toolName: toolName, arguments: params.arguments, requestId: request.id)
+
         default:
             return JsonRpcResponse(id: request.id, error: .methodNotFound)
         }
+    }
+
+    private func handleToolCall(toolName: String, arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {
+        switch toolName {
+        case "web_session_create":
+            return createSession(arguments: arguments, requestId: requestId)
+        case "page_open":
+            return navigate(arguments: arguments, requestId: requestId)
+        case "script_run":
+            return evaluate(arguments: arguments, requestId: requestId)
+        case "page_screenshot":
+            return screenshot(arguments: arguments, requestId: requestId)
+        case "web_set_interactive":
+            return setInteractive(arguments: arguments, requestId: requestId)
+        case "web_capabilities":
+            return getCapabilities(arguments: arguments, requestId: requestId)
+        case "web_session_close":
+            return closeSession(arguments: arguments, requestId: requestId)
+        case "web_inject":
+            return injectContent(arguments: arguments, requestId: requestId)
+        case "web_wait":
+            return waitForElement(arguments: arguments, requestId: requestId)
+        case "web_dialog_response":
+            return dialogResponse(arguments: arguments, requestId: requestId)
+        default:
+            return JsonRpcResponse(id: requestId, error: .methodNotFound)
+        }
+    }
+
+    private static var toolDefinitions: [[String: Any]] {
+        [
+            [
+                "name": "web_session_create",
+                "description": "Create a new WKWebView browser session for web automation",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "viewport": [
+                            "type": "object",
+                            "description": "Optional viewport size for the browser window",
+                            "properties": [
+                                "width": ["type": "number", "description": "Viewport width in pixels"],
+                                "height": ["type": "number", "description": "Viewport height in pixels"]
+                            ]
+                        ]
+                    ]
+                ] as [String: Any]
+            ],
+            [
+                "name": "page_open",
+                "description": "Navigate the browser to a specified URL",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "url": ["type": "string", "description": "URL to navigate to"]
+                    ],
+                    "required": ["sessionId", "url"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "script_run",
+                "description": "Execute JavaScript in the browser page and return results",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "script": ["type": "string", "description": "JavaScript code to execute"],
+                        "timeout": ["type": "number", "description": "Timeout in milliseconds (default 10000)"]
+                    ],
+                    "required": ["sessionId", "script"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "page_screenshot",
+                "description": "Capture a screenshot of the current browser page as base64 PNG",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "web_set_interactive",
+                "description": "Enable or disable interactive mode for the session",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "interactive": ["type": "boolean", "description": "Whether to enable interactive mode"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "web_capabilities",
+                "description": "Get the capabilities and features supported by the browser session",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "web_session_close",
+                "description": "Close a browser session and release associated resources",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "web_inject",
+                "description": "Inject CSS and/or JavaScript into the current page",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "css": ["type": "string", "description": "CSS to inject into the page"],
+                        "js": ["type": "string", "description": "JavaScript to inject into the page"]
+                    ],
+                    "required": ["sessionId"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "web_wait",
+                "description": "Wait for a DOM element matching the CSS selector to appear on the page",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "selector": ["type": "string", "description": "CSS selector to wait for"],
+                        "timeout": ["type": "number", "description": "Timeout in milliseconds (default 30000)"]
+                    ],
+                    "required": ["sessionId", "selector"]
+                ] as [String: Any]
+            ],
+            [
+                "name": "web_dialog_response",
+                "description": "Respond to a JavaScript dialog (alert, confirm, or prompt)",
+                "inputSchema": [
+                    "type": "object",
+                    "properties": [
+                        "sessionId": ["type": "string", "description": "Session ID from web_session_create"],
+                        "dialogId": ["type": "string", "description": "Dialog ID to respond to"],
+                        "action": ["type": "string", "description": "Action: accept or dismiss"],
+                        "text": ["type": "string", "description": "Text to enter for prompt dialogs"]
+                    ],
+                    "required": ["sessionId", "dialogId"]
+                ] as [String: Any]
+            ]
+        ]
     }
 
     private func createSession(arguments: [String: AnyCodable]?, requestId: Any?) -> JsonRpcResponse {

@@ -1,4 +1,5 @@
-package transport
+// Package stdio provides terminal-based stdio transport.
+package stdio
 
 import (
 	"context"
@@ -10,23 +11,25 @@ import (
 	"strings"
 
 	"dolphin/internal/config"
-	"github.com/charmbracelet/glamour"
+	transport "dolphin/internal/transport"
 
+	"github.com/charmbracelet/glamour"
 	"github.com/chzyer/readline"
 )
+
+func init() { transport.Register("stdio", New) }
 
 const defaultPrompt = "Dolphin > "
 
 // StdioTransport provides stdio-based interactive I/O using readline.
 type StdioTransport struct {
 	rl     *readline.Instance
-	md     *glamour.TermRenderer // markdown renderer, nil when disabled
-	mdBuf  strings.Builder       // buffer for accumulating streaming content
-	rawOut bool                  // when true, WriteString bypasses markdown buffer
+	md     *glamour.TermRenderer
+	mdBuf  strings.Builder
+	rawOut bool
 }
 
-func NewStdioTransport(cfg *config.Config) *StdioTransport {
-	// History file path
+func New(cfg *config.Config) (transport.Transport, error) {
 	home, _ := os.UserHomeDir()
 	historyDir := filepath.Join(home, ".dolphin")
 	historyFile := filepath.Join(historyDir, "history")
@@ -42,7 +45,6 @@ func NewStdioTransport(cfg *config.Config) *StdioTransport {
 		FuncFilterInputRune: nil,
 	})
 	if err != nil {
-		// Fallback: create readline without history/complete
 		var fallbackErr error
 		rl, fallbackErr = readline.New(defaultPrompt)
 		if fallbackErr != nil {
@@ -52,12 +54,11 @@ func NewStdioTransport(cfg *config.Config) *StdioTransport {
 
 	t := &StdioTransport{rl: rl}
 	if cfg != nil && cfg.Transport.Stdio.MarkdownRender {
-		t.md = newMarkdownRenderer(cfg.Transport.Stdio.MarkdownStyle)
+		t.md = transport.NewMarkdownRenderer(cfg.Transport.Stdio.MarkdownStyle)
 	}
-	return t
+	return t, nil
 }
 
-// tab completer for commands
 var completer = readline.NewPrefixCompleter(
 	readline.PcItem("/exit"),
 	readline.PcItem("/quit"),
@@ -86,12 +87,12 @@ func (t *StdioTransport) Context() string {
 		runtime.GOOS, runtime.GOARCH, shellName(), home)
 }
 
-func (t *StdioTransport) Capabilities() Capabilities {
-	return Capabilities{Streaming: true, Flushable: false, ConfirmExit: true, ShowToolDetails: true}
+func (t *StdioTransport) Capabilities() transport.Capabilities {
+	return transport.Capabilities{Streaming: true, ConfirmExit: true, ShowToolDetails: true}
 }
 
 func (t *StdioTransport) Start(ctx context.Context) error {
-	activeConnections.Add(1)
+	transport.ActiveConnections.Add(1)
 	return nil
 }
 
@@ -101,7 +102,7 @@ func (t *StdioTransport) ReadLine() (string, error) {
 		if err != nil {
 			return line, err
 		}
-		msgsReceived.Inc()
+		transport.MsgsReceived.Inc()
 
 		switch line {
 		case "/clear":
@@ -116,10 +117,9 @@ func (t *StdioTransport) ReadLine() (string, error) {
 }
 
 func (t *StdioTransport) WriteString(s string) error {
-	msgsSent.Inc()
+	transport.MsgsSent.Inc()
 	if t.md != nil {
 		t.mdBuf.WriteString(s)
-		// Render and flush complete paragraphs (separated by blank lines)
 		content := t.mdBuf.String()
 		if idx := strings.LastIndex(content, "\n\n"); idx >= 0 {
 			block := content[:idx+2]
@@ -138,8 +138,7 @@ func (t *StdioTransport) WriteString(s string) error {
 }
 
 func (t *StdioTransport) WriteLine(s string) error {
-	msgsSent.Inc()
-	// If markdown is enabled and we have buffered content, flush it rendered
+	transport.MsgsSent.Inc()
 	if t.md != nil && t.mdBuf.Len() > 0 {
 		t.mdBuf.WriteString("\n")
 		rendered, err := t.md.Render(t.mdBuf.String())
@@ -153,8 +152,13 @@ func (t *StdioTransport) WriteLine(s string) error {
 	return err
 }
 
+func (t *StdioTransport) Flush() error {
+	_, err := fmt.Println("----------------------------------------")
+	return err
+}
+
 func (t *StdioTransport) Close() error {
-	activeConnections.Add(-1)
+	transport.ActiveConnections.Add(-1)
 	if t.rl != nil {
 		return t.rl.Close()
 	}

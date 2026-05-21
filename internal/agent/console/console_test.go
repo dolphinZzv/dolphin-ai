@@ -16,6 +16,7 @@ type mockIO struct {
 func (m *mockIO) ReadLine() (string, error)            { return "", io.EOF }
 func (m *mockIO) WriteLine(s string) error             { m.writes.WriteString(s + "\n"); return nil }
 func (m *mockIO) WriteString(s string) error           { m.writes.WriteString(s); return nil }
+func (m *mockIO) Flush() error                         { return nil }
 func (m *mockIO) Capabilities() transport.Capabilities { return transport.Capabilities{} }
 func (m *mockIO) Context() string                      { return "" }
 func (m *mockIO) Name() string                         { return "mock" }

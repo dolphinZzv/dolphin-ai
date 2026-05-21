@@ -1,4 +1,4 @@
-package transport
+package mqtt
 
 import (
 	"context"
@@ -43,14 +43,15 @@ func TestPandaSendMessageDolphinReceivesAndResponds(t *testing.T) {
 	cfg.Transport.MQTT.Password = testPassword
 	cfg.Transport.MQTT.ClientID = "dolphin-transport"
 
-	transport := NewMQTTTransport(cfg)
+	trI, _ := New(cfg)
+	tr := trI.(*MQTTTransport)
 	ctx, cancel := context.WithCancel(context.Background())
 
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		if err := transport.Start(ctx); err != nil {
+		if err := tr.Start(ctx); err != nil {
 			t.Logf("transport error: %v", err)
 		}
 	}()
@@ -88,13 +89,13 @@ func TestPandaSendMessageDolphinReceivesAndResponds(t *testing.T) {
 	}
 	t.Logf("Panda published to %s: %s", messageTopic, testMsg)
 
-	line, err := transport.ReadLine()
+	line, err := tr.ReadLine()
 	if err != nil {
 		t.Fatalf("Dolphin ReadLine error: %v", err)
 	}
 	t.Logf("Dolphin received: %s", line)
 
-	transport.WriteLine("dolphin ack: " + line)
+	tr.WriteLine("dolphin ack: " + line)
 	t.Logf("Dolphin wrote response")
 
 	select {

@@ -1,10 +1,11 @@
-package transport
+package mqtt
 
 import (
 	"testing"
 	"time"
 
 	"dolphin/internal/config"
+	transport "dolphin/internal/transport"
 )
 
 func TestDeriveResponseTopicExactMatch(t *testing.T) {
@@ -36,25 +37,25 @@ func TestDeriveResponseTopicStripsTrailingSlash(t *testing.T) {
 }
 
 func TestTruncateShort(t *testing.T) {
-	if s := truncate("hello", 10); s != "hello" {
+	if s := transport.Truncate("hello", 10); s != "hello" {
 		t.Errorf("short: got %q", s)
 	}
 }
 
 func TestTruncateLong(t *testing.T) {
-	if s := truncate("hello world", 5); s != "hello..." {
+	if s := transport.Truncate("hello world", 5); s != "hello..." {
 		t.Errorf("truncated: got %q", s)
 	}
 }
 
 func TestTruncateExact(t *testing.T) {
-	if s := truncate("hello", 5); s != "hello" {
+	if s := transport.Truncate("hello", 5); s != "hello" {
 		t.Errorf("exact: got %q", s)
 	}
 }
 
 func TestTruncateEmpty(t *testing.T) {
-	if s := truncate("", 5); s != "" {
+	if s := transport.Truncate("", 5); s != "" {
 		t.Errorf("empty: got %q", s)
 	}
 }
@@ -70,9 +71,13 @@ func TestNewMQTTTransport(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Transport.MQTT.SubscribeTopic = "test/topic"
 	cfg.Transport.MQTT.PublishTopic = "test/response"
-	tp := NewMQTTTransport(cfg)
+	tpI, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tp := tpI.(*MQTTTransport)
 	if tp == nil {
-		t.Fatal("NewMQTTTransport returned nil")
+		t.Fatal("New returned nil")
 	}
 	if tp.cfg.SubscribeTopic != "test/topic" {
 		t.Errorf("topic = %q", tp.cfg.SubscribeTopic)
@@ -88,7 +93,6 @@ func TestMQTTTransportCloseUninitialized(t *testing.T) {
 	if err := tp.Close(); err != nil {
 		t.Errorf("Close error: %v", err)
 	}
-	// Second close should be safe
 	if err := tp.Close(); err != nil {
 		t.Errorf("second Close error: %v", err)
 	}
@@ -107,14 +111,12 @@ func TestMQTTTransportCloseInitialized(t *testing.T) {
 
 func TestMQTTTransportReadLineClosed(t *testing.T) {
 	tp := &MQTTTransport{closeCh: make(chan struct{})}
-	close(tp.closeCh) // simulate closed state
+	close(tp.closeCh)
 	_, err := tp.ReadLine()
 	if err == nil {
 		t.Error("expected error after close")
 	}
 }
-
-// --- E2E: MQTT transport channel roundtrip ---
 
 func TestMQTTTransportReadLineReceivesPayload(t *testing.T) {
 	tp := &MQTTTransport{
@@ -122,7 +124,6 @@ func TestMQTTTransportReadLineReceivesPayload(t *testing.T) {
 		closeCh: make(chan struct{}),
 	}
 
-	// Send a payload through the channel
 	go func() {
 		tp.msgCh <- mqttMsg{payload: "hello from mqtt", respTopic: "resp/test"}
 	}()
@@ -137,8 +138,9 @@ func TestMQTTTransportReadLineReceivesPayload(t *testing.T) {
 }
 
 func TestMQTTTransportWriteStringPublish(t *testing.T) {
-	tp := NewMQTTTransport(&config.Config{})
-	// WriteString to a disconnected transport should return an error
+	cfg := &config.Config{}
+	tpI, _ := New(cfg)
+	tp := tpI.(*MQTTTransport)
 	err := tp.WriteString("test")
 	if err == nil {
 		t.Error("expected error for WriteString on disconnected transport")
@@ -146,8 +148,9 @@ func TestMQTTTransportWriteStringPublish(t *testing.T) {
 }
 
 func TestMQTTTransportWriteLinePublish(t *testing.T) {
-	tp := NewMQTTTransport(&config.Config{})
-	// WriteLine to a disconnected transport should return an error
+	cfg := &config.Config{}
+	tpI, _ := New(cfg)
+	tp := tpI.(*MQTTTransport)
 	err := tp.WriteLine("test")
 	if err == nil {
 		t.Error("expected error for WriteLine on disconnected transport")
@@ -160,14 +163,12 @@ func TestMQTTTransportConcurrentReadClose(t *testing.T) {
 		closeCh: make(chan struct{}),
 	}
 
-	// Start a ReadLine that will block, then close
 	errCh := make(chan error, 1)
 	go func() {
 		_, err := tp.ReadLine()
 		errCh <- err
 	}()
 
-	// Small delay to ensure ReadLine is blocked
 	time.Sleep(10 * time.Millisecond)
 
 	tp.Close()
@@ -190,11 +191,8 @@ func TestMQTTTransportChannelFullDropped(t *testing.T) {
 	}
 	tp.connected.Store(true)
 
-	// Fill the channel
 	tp.msgCh <- mqttMsg{payload: "first", respTopic: "resp"}
 
-	// This should not panic — the MQTT callback path uses select/default
-	// Simulate what the subscribe callback does:
 	select {
 	case tp.msgCh <- mqttMsg{payload: "second", respTopic: "resp"}:
 		t.Log("second message sent (unexpected — channel should be full)")
@@ -202,7 +200,6 @@ func TestMQTTTransportChannelFullDropped(t *testing.T) {
 		t.Log("second message correctly dropped (channel full)")
 	}
 
-	// Drain and verify
 	select {
 	case msg := <-tp.msgCh:
 		if msg.payload != "first" {
@@ -231,18 +228,15 @@ func TestMQTTTransportCapabilities(t *testing.T) {
 	if caps.Streaming {
 		t.Error("MQTT should not support streaming")
 	}
-	if !caps.Flushable {
-		t.Error("MQTT should support flushable (block transport)")
-	}
 }
 
 func TestMQTTTransportRespTopicConcurrent(t *testing.T) {
 	cfg := &config.Config{}
 	cfg.Transport.MQTT.SubscribeTopic = "cmd/+/test"
 	cfg.Transport.MQTT.PublishTopic = "resp"
-	tp := NewMQTTTransport(cfg)
+	tpI, _ := New(cfg)
+	tp := tpI.(*MQTTTransport)
 
-	// Simulate concurrent update from subscribe callback and read from publish
 	done := make(chan struct{})
 	go func() {
 		for i := 0; i < 100; i++ {

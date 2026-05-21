@@ -1,4 +1,4 @@
-package transport
+package ssh
 
 import (
 	"bytes"
@@ -8,12 +8,13 @@ import (
 	"testing"
 	"time"
 
+	transport "dolphin/internal/transport"
+
 	"dolphin/internal/config"
 
 	gossh "golang.org/x/crypto/ssh"
 )
 
-// mockChannel implements gossh.Channel for testing.
 type mockChannel struct {
 	*bytes.Buffer
 }
@@ -73,12 +74,8 @@ func TestSSHSessionWriteString(t *testing.T) {
 	}
 }
 
-func TestStdioTransportImplementsUserIO(t *testing.T) {
-	var _ UserIO = (*StdioTransport)(nil)
-}
-
 func TestSSHSessionImplementsUserIO(t *testing.T) {
-	var _ UserIO = (*SSHSession)(nil)
+	var _ transport.UserIO = (*SSHSession)(nil)
 }
 
 func TestSSHSessionContext(t *testing.T) {
@@ -97,54 +94,18 @@ func TestSSHSessionContext(t *testing.T) {
 	}
 }
 
-func TestStdioTransportContext(t *testing.T) {
-	tp := NewStdioTransport(config.DefaultConfig())
-	ctx := tp.Context()
-	if !strings.Contains(ctx, "terminal") {
-		t.Errorf("expected 'terminal' in stdio context, got: %s", ctx)
-	}
-}
-
-func TestMQTTTransportContext(t *testing.T) {
-	cfg := config.DefaultConfig()
-	tp := NewMQTTTransport(cfg)
-	ctx := tp.Context()
-	if !strings.Contains(ctx, "MQTT") {
-		t.Errorf("expected MQTT in context, got: %s", ctx)
-	}
-	if !strings.Contains(ctx, cfg.Transport.MQTT.Broker) {
-		t.Errorf("expected broker in context, got: %s", ctx)
-	}
-}
-
-func TestEmailTransportContext(t *testing.T) {
-	cfg := &config.EmailConfig{
-		IMAPHost: "imap.example.com",
-		IMAPPort: 993,
-		SMTPHost: "smtp.example.com",
-		SMTPPort: 587,
-	}
-	tp := NewEmailTransport(cfg)
-	ctx := tp.Context()
-	if !strings.Contains(ctx, "email") {
-		t.Errorf("expected 'email' in context, got: %s", ctx)
-	}
-	if !strings.Contains(ctx, "imap.example.com") {
-		t.Errorf("expected IMAP host in context, got: %s", ctx)
-	}
-}
-
 func TestNewSSHTransportWithPassword(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Transport.SSH.Enabled = true
 	cfg.Transport.SSH.Username = "testuser"
 	cfg.Transport.SSH.Password = "testpass"
 
-	handler := func(_ context.Context, _ UserIO) {}
-	_, err := NewSSHTransport(cfg, handler)
+	tr, err := New(cfg)
 	if err != nil {
-		t.Fatalf("NewSSHTransport with valid config should not error: %v", err)
+		t.Fatalf("New with valid config should not error: %v", err)
 	}
+	st := tr.(*SSHTransport)
+	st.SetSessionHandler(func(_ context.Context, _ transport.UserIO) {})
 }
 
 func TestNewSSHTransportWithEphemeralKey(t *testing.T) {
@@ -153,11 +114,12 @@ func TestNewSSHTransportWithEphemeralKey(t *testing.T) {
 	cfg.Transport.SSH.HostKey = "/nonexistent/path/key"
 	cfg.Transport.SSH.Password = "test-password"
 
-	handler := func(_ context.Context, _ UserIO) {}
-	_, err := NewSSHTransport(cfg, handler)
+	tr, err := New(cfg)
 	if err != nil {
-		t.Fatalf("NewSSHTransport should fall back to ephemeral key: %v", err)
+		t.Fatalf("New should fall back to ephemeral key: %v", err)
 	}
+	st := tr.(*SSHTransport)
+	st.SetSessionHandler(func(_ context.Context, _ transport.UserIO) {})
 }
 
 func TestSSHAuthValidCredentials(t *testing.T) {
@@ -168,16 +130,17 @@ func TestSSHAuthValidCredentials(t *testing.T) {
 	cfg.Transport.SSH.HostKey = "/nonexistent/key"
 
 	connected := make(chan struct{}, 1)
-	handler := func(_ context.Context, _ UserIO) {
+	handler := func(_ context.Context, _ transport.UserIO) {
 		connected <- struct{}{}
 	}
 
-	trans, err := NewSSHTransport(cfg, handler)
+	tr, err := New(cfg)
 	if err != nil {
-		t.Fatalf("NewSSHTransport: %v", err)
+		t.Fatalf("New: %v", err)
 	}
+	trans := tr.(*SSHTransport)
+	trans.SetSessionHandler(handler)
 
-	// Start on random port
 	cfg.Transport.SSH.Addr = "127.0.0.1:0"
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -187,15 +150,12 @@ func TestSSHAuthValidCredentials(t *testing.T) {
 		errCh <- trans.Start(ctx)
 	}()
 
-	// Give it time to start
 	time.Sleep(100 * time.Millisecond)
 
-	// Find the actual addr
 	trans.mu.Lock()
 	addr := trans.listener.Addr().String()
 	trans.mu.Unlock()
 
-	// Generate client config with valid credentials
 	clientCfg := &gossh.ClientConfig{
 		User:            "dolphin",
 		Auth:            []gossh.AuthMethod{gossh.Password("secret")},
@@ -209,7 +169,6 @@ func TestSSHAuthValidCredentials(t *testing.T) {
 	}
 	defer client.Close()
 
-	// Open a session so handler runs
 	session, err := client.NewSession()
 	if err != nil {
 		t.Fatalf("NewSession: %v", err)
@@ -218,7 +177,6 @@ func TestSSHAuthValidCredentials(t *testing.T) {
 
 	select {
 	case <-connected:
-		// Success
 	case <-time.After(2 * time.Second):
 		t.Fatal("handler was not called after connection")
 	}
@@ -231,11 +189,13 @@ func TestSSHAuthInvalidPassword(t *testing.T) {
 	cfg.Transport.SSH.Password = "correctpass"
 	cfg.Transport.SSH.HostKey = "/nonexistent/key"
 
-	handler := func(_ context.Context, _ UserIO) {}
-	trans, err := NewSSHTransport(cfg, handler)
+	handler := func(_ context.Context, _ transport.UserIO) {}
+	tr, err := New(cfg)
 	if err != nil {
-		t.Fatalf("NewSSHTransport: %v", err)
+		t.Fatalf("New: %v", err)
 	}
+	trans := tr.(*SSHTransport)
+	trans.SetSessionHandler(handler)
 
 	cfg.Transport.SSH.Addr = "127.0.0.1:0"
 	ctx, cancel := context.WithCancel(context.Background())
@@ -270,11 +230,13 @@ func TestSSHAuthInvalidUser(t *testing.T) {
 	cfg.Transport.SSH.Password = "pass"
 	cfg.Transport.SSH.HostKey = "/nonexistent/key"
 
-	handler := func(_ context.Context, _ UserIO) {}
-	trans, err := NewSSHTransport(cfg, handler)
+	handler := func(_ context.Context, _ transport.UserIO) {}
+	tr, err := New(cfg)
 	if err != nil {
-		t.Fatalf("NewSSHTransport: %v", err)
+		t.Fatalf("New: %v", err)
 	}
+	trans := tr.(*SSHTransport)
+	trans.SetSessionHandler(handler)
 
 	cfg.Transport.SSH.Addr = "127.0.0.1:0"
 	ctx, cancel := context.WithCancel(context.Background())
@@ -309,14 +271,16 @@ func TestSSHChannelRequestHandling(t *testing.T) {
 	cfg.Transport.SSH.Password = "test"
 	cfg.Transport.SSH.HostKey = "/nonexistent/key"
 
-	handler := func(ctx context.Context, _ UserIO) {
+	handler := func(ctx context.Context, _ transport.UserIO) {
 		<-ctx.Done()
 	}
 
-	trans, err := NewSSHTransport(cfg, handler)
+	tr, err := New(cfg)
 	if err != nil {
-		t.Fatalf("NewSSHTransport: %v", err)
+		t.Fatalf("New: %v", err)
 	}
+	trans := tr.(*SSHTransport)
+	trans.SetSessionHandler(handler)
 
 	cfg.Transport.SSH.Addr = "127.0.0.1:0"
 	ctx, cancel := context.WithCancel(context.Background())
@@ -348,14 +312,12 @@ func TestSSHChannelRequestHandling(t *testing.T) {
 	}
 	defer sess.Close()
 
-	// Send "shell" request directly - should succeed
 	if ok, err := sess.SendRequest("shell", true, nil); err != nil {
 		t.Fatalf("shell request error: %v", err)
 	} else if !ok {
 		t.Fatal("shell request was rejected")
 	}
 
-	// Send "pty-req" request - should succeed
 	if ok, err := sess.SendRequest("pty-req", true, nil); err != nil {
 		t.Fatalf("pty-req request error: %v", err)
 	} else if !ok {

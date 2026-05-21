@@ -111,6 +111,7 @@ func (m *mockIO) WriteString(s string) error {
 	m.writes.WriteString(s)
 	return nil
 }
+func (m *mockIO) Flush() error { return nil }
 func (m *mockIO) Name() string {
 	if m.name == "" {
 		return "mock"
@@ -119,7 +120,7 @@ func (m *mockIO) Name() string {
 }
 func (m *mockIO) Context() string { return "" }
 func (m *mockIO) Capabilities() transport.Capabilities {
-	return transport.Capabilities{Streaming: true, Flushable: false, ConfirmExit: m.confirmExit}
+	return transport.Capabilities{Streaming: true, ConfirmExit: m.confirmExit}
 }
 
 // mockTool implements mcp.Tool for testing.

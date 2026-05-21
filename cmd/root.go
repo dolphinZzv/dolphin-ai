@@ -39,6 +39,13 @@ import (
 	"dolphin/internal/transport"
 	"dolphin/internal/update"
 
+	_ "dolphin/internal/transport/acp"
+	_ "dolphin/internal/transport/dingtalk"
+	_ "dolphin/internal/transport/email"
+	_ "dolphin/internal/transport/mqtt"
+	_ "dolphin/internal/transport/ssh"
+	_ "dolphin/internal/transport/stdio"
+
 	appctx "dolphin/internal/context"
 
 	"github.com/oklog/run"
@@ -608,13 +615,23 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 	}
 
+	// Initialize transports via registry
+	factories := transport.Factories()
+
 	// SSH transport
 	if cfg.Transport.SSH.Enabled {
-		t, err := transport.NewSSHTransport(cfg, func(ctx context.Context, io transport.UserIO) {
-			newCoordinator().Run(ctx, io)
-		})
+		f, ok := factories["ssh"]
+		if !ok {
+			return fmt.Errorf("ssh transport not registered")
+		}
+		t, err := f(cfg)
 		if err != nil {
 			return fmt.Errorf("ssh transport: %w", err)
+		}
+		if st, ok := t.(transport.SessionTransport); ok {
+			st.SetSessionHandler(func(ctx context.Context, io transport.UserIO) {
+				newCoordinator().Run(ctx, io)
+			})
 		}
 		addr := cfg.Transport.SSH.Addr
 		if addr == "" {
@@ -648,12 +665,20 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// MQTT transport (client)
 	if cfg.Transport.MQTT.Enabled {
+		f, ok := factories["mqtt"]
+		if !ok {
+			return fmt.Errorf("mqtt transport not registered")
+		}
+		t, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("mqtt transport: %w", err)
+		}
+		uio := t.(transport.UserIO)
+
 		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransMQTTActive))
 		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransMQTTBroker)+"\n\n", cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.SubscribeTopic, cfg.Transport.MQTT.ClientID))
 
 		ctx, cancel := context.WithCancel(context.Background())
-		t := transport.NewMQTTTransport(cfg)
-
 		g.Add(func() error {
 			return t.Start(ctx)
 		}, func(err error) {
@@ -662,7 +687,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		})
 		g.Add(func() error {
 			go func() {
-				newCoordinator().Run(ctx, t)
+				newCoordinator().Run(ctx, uio)
 				zap.S().Errorw("coordinator exited unexpectedly")
 			}()
 			<-ctx.Done()
@@ -675,6 +700,16 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// Email transport
 	if cfg.Transport.Email.Enabled {
+		f, ok := factories["email"]
+		if !ok {
+			return fmt.Errorf("email transport not registered")
+		}
+		t, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("email transport: %w", err)
+		}
+		uio := t.(transport.UserIO)
+
 		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransEmailActive))
 		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyTransEmailIMAP)+"\n",
 			cfg.Transport.Email.IMAPHost, cfg.Transport.Email.IMAPPort,
@@ -683,8 +718,6 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransEmailHint)+"\n\n", cfg.Transport.Email.From))
 
 		ctx, cancel := context.WithCancel(context.Background())
-		t := transport.NewEmailTransport(&cfg.Transport.Email)
-
 		g.Add(func() error {
 			return t.Start(ctx)
 		}, func(err error) {
@@ -693,7 +726,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		})
 		g.Add(func() error {
 			go func() {
-				newCoordinator().Run(ctx, t)
+				newCoordinator().Run(ctx, uio)
 				zap.S().Errorw("coordinator exited unexpectedly")
 			}()
 			<-ctx.Done()
@@ -706,11 +739,19 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// DingTalk transport
 	if cfg.Transport.DingTalk.Enabled {
+		f, ok := factories["dingtalk"]
+		if !ok {
+			return fmt.Errorf("dingtalk transport not registered")
+		}
+		t, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("dingtalk transport: %w", err)
+		}
+		uio := t.(transport.UserIO)
+
 		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransDingTalk))
 
 		ctx, cancel := context.WithCancel(context.Background())
-		t := transport.NewDingTalkTransport(&cfg.Transport.DingTalk)
-
 		g.Add(func() error {
 			return t.Start(ctx)
 		}, func(err error) {
@@ -719,7 +760,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		})
 		g.Add(func() error {
 			go func() {
-				newCoordinator().Run(ctx, t)
+				newCoordinator().Run(ctx, uio)
 				zap.S().Errorw("coordinator exited unexpectedly")
 			}()
 			<-ctx.Done()
@@ -732,11 +773,19 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// ACP transport
 	if cfg.Transport.ACP.Enabled {
+		f, ok := factories["acp"]
+		if !ok {
+			return fmt.Errorf("acp transport not registered")
+		}
+		t, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("acp transport: %w", err)
+		}
+		uio := t.(transport.UserIO)
+
 		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransACPActive), cfg.Transport.ACP.ListenAddr))
 
 		ctx, cancel := context.WithCancel(context.Background())
-		t := transport.NewACPTransport(&cfg.Transport.ACP)
-
 		g.Add(func() error {
 			return t.Start(ctx)
 		}, func(err error) {
@@ -745,7 +794,7 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		})
 		g.Add(func() error {
 			go func() {
-				newCoordinator().Run(ctx, t)
+				newCoordinator().Run(ctx, uio)
 				zap.S().Errorw("coordinator exited unexpectedly")
 			}()
 			<-ctx.Done()
@@ -758,15 +807,23 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 
 	// Stdio transport
 	if cfg.Transport.Stdio.Enabled {
-		ctx, cancel := context.WithCancel(context.Background())
-		io := transport.NewStdioTransport(cfg)
+		f, ok := factories["stdio"]
+		if !ok {
+			return fmt.Errorf("stdio transport not registered")
+		}
+		t, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("stdio transport: %w", err)
+		}
+		uio := t.(transport.UserIO)
 
+		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
-			newCoordinator().Run(ctx, io)
+			newCoordinator().Run(ctx, uio)
 			return nil
 		}, func(err error) {
 			cancel()
-			io.Close()
+			t.Close()
 		})
 		actorCount++
 	}
