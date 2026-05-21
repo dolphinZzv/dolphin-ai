@@ -48,6 +48,9 @@ coverage.out
 app/dolphin/
 .DS_Store
 
+# Panda standalone repository (independent)
+app/
+
 .sisyphus
 
 # Workflow

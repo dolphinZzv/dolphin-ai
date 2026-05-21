@@ -1,3 +1,0 @@
-[submodule "app/panda"]
-	path = app/panda
-	url = git@github.com:dolphinZzv/panda.git
