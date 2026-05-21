@@ -152,6 +152,7 @@ type TransportConfig struct {
 	Email    EmailConfig    `mapstructure:"email"`
 	DingTalk DingTalkConfig `mapstructure:"dingtalk"`
 	ACP      ACPConfig      `mapstructure:"acp"`
+	A2A      A2AConfig      `mapstructure:"a2a"`
 }
 
 // ServersConfig holds standalone server configurations (MQTT broker, etc.).
@@ -190,6 +191,23 @@ type ACPPeerConfig struct {
 	ID     string `mapstructure:"id"`
 	URL    string `mapstructure:"url"`
 	APIKey string `mapstructure:"api_key"`
+}
+
+// A2AConfig holds configuration for the A2A (Agent-to-Agent) transport.
+// Uses JSON-RPC 2.0 over HTTP, following Google A2A specification.
+type A2AConfig struct {
+	Enabled      bool     `mapstructure:"enabled"`
+	ListenAddr   string   `mapstructure:"listen_addr"`
+	AgentID      string   `mapstructure:"agent_id"`
+	AgentName    string   `mapstructure:"agent_name"`
+	AgentVersion string   `mapstructure:"agent_version"`
+	AgentDesc    string   `mapstructure:"agent_description"`
+	Capabilities []string `mapstructure:"capabilities"`
+	SyncTimeout  string   `mapstructure:"sync_timeout"`
+	APIKey       string   `mapstructure:"api_key"`
+	TLSEnabled   bool     `mapstructure:"tls_enabled"`
+	TLSCertFile  string   `mapstructure:"tls_cert_file"`
+	TLSKeyFile   string   `mapstructure:"tls_key_file"`
 }
 
 type StdioConfig struct {
@@ -950,6 +968,19 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.acp.tls_enabled", false)
 	v.SetDefault("transport.acp.tls_cert_file", "")
 	v.SetDefault("transport.acp.tls_key_file", "")
+
+	v.SetDefault("transport.a2a.enabled", false)
+	v.SetDefault("transport.a2a.listen_addr", ":8334")
+	v.SetDefault("transport.a2a.agent_id", "dolphin")
+	v.SetDefault("transport.a2a.agent_name", "Dolphin AI Agent")
+	v.SetDefault("transport.a2a.agent_version", "0.1.0")
+	v.SetDefault("transport.a2a.agent_description", "Cross-terminal/email/chat/SSH AI agent")
+	v.SetDefault("transport.a2a.capabilities", []string{"task-execution", "shell-command", "web-search"})
+	v.SetDefault("transport.a2a.sync_timeout", "60s")
+	v.SetDefault("transport.a2a.api_key", "")
+	v.SetDefault("transport.a2a.tls_enabled", false)
+	v.SetDefault("transport.a2a.tls_cert_file", "")
+	v.SetDefault("transport.a2a.tls_key_file", "")
 
 	v.SetDefault("session.max_age", "24h")
 	v.SetDefault("session.resume", false)

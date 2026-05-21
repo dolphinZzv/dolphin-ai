@@ -39,6 +39,7 @@ import (
 	"dolphin/internal/transport"
 	"dolphin/internal/update"
 
+	_ "dolphin/internal/transport/a2a"
 	_ "dolphin/internal/transport/acp"
 	_ "dolphin/internal/transport/dingtalk"
 	_ "dolphin/internal/transport/email"
@@ -499,6 +500,9 @@ func printBanner(cfg *config.Config) {
 	if cfg.Transport.ACP.Enabled {
 		transports = append(transports, "acp")
 	}
+	if cfg.Transport.A2A.Enabled {
+		transports = append(transports, "a2a")
+	}
 	transportStr := strings.Join(transports, " ")
 	if transportStr == "" {
 		transportStr = "none"
@@ -784,6 +788,40 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		uio := t.(transport.UserIO)
 
 		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransACPActive), cfg.Transport.ACP.ListenAddr))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(func() error {
+			return t.Start(ctx)
+		}, func(err error) {
+			cancel()
+			t.Close()
+		})
+		g.Add(func() error {
+			go func() {
+				newCoordinator().Run(ctx, uio)
+				zap.S().Errorw("coordinator exited unexpectedly")
+			}()
+			<-ctx.Done()
+			return nil
+		}, func(err error) {
+			cancel()
+		})
+		actorCount += 2
+	}
+
+	// A2A transport
+	if cfg.Transport.A2A.Enabled {
+		f, ok := factories["a2a"]
+		if !ok {
+			return fmt.Errorf("a2a transport not registered")
+		}
+		t, err := f(cfg)
+		if err != nil {
+			return fmt.Errorf("a2a transport: %w", err)
+		}
+		uio := t.(transport.UserIO)
+
+		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransA2AActive), cfg.Transport.A2A.ListenAddr))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {

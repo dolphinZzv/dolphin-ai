@@ -500,6 +500,7 @@ dolphin agent 会话。
 	KeyTransEmailHint:   "发送邮件到 %s — 主题 = 命令",
 	KeyTransDingTalk:    "\n=== DingTalk 机器人已激活（Stream 模式）===\n",
 	KeyTransACPActive:   "\n=== ACP 传输已激活（IBM BeeAI ACP）于 %s ===\n",
+	KeyTransA2AActive:   "\n=== A2A 传输已激活（Google Agent-to-Agent）于 %s ===\n",
 	KeyTransNoneEnabled: "没有启用任何传输（请在配置中启用 stdio、ssh、mqtt 或 email）",
 
 	// Common
