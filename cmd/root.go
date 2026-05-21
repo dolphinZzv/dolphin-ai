@@ -821,8 +821,6 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 		uio := t.(transport.UserIO)
 
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransA2AActive), cfg.Transport.A2A.ListenAddr))
-
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
 			return t.Start(ctx)
