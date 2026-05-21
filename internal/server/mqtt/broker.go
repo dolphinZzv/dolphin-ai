@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 
 	"dolphin/internal/config"
 
@@ -53,6 +54,8 @@ func (b *Broker) Start() error {
 		}
 	}()
 
+	fmt.Fprintf(os.Stderr, "\n=== MQTT broker started ===\nAddress: %s  Accounts: %d\n\n",
+		b.cfg.Addr, len(b.cfg.Accounts))
 	zap.S().Infow("mqtt broker started", "address", b.cfg.Addr, "accounts", len(b.cfg.Accounts))
 	return nil
 }
