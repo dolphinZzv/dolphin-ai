@@ -79,7 +79,6 @@ func NewRootCmd() *cobra.Command {
 	cmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, i18n.TL(i18n.KeyFlagQuiet))
 	cmd.SetVersionTemplate("dolphin {{.Version}}\n")
 
-	cmd.AddCommand(NewSetupCmd())
 	cmd.AddCommand(NewResetCmd())
 	cmd.AddCommand(NewNewCmd())
 	cmd.AddCommand(NewUpdateCmd())
@@ -120,9 +119,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if !cfg.LLMConfigured() {
 		warnNoLLM(cfg)
 	}
-
-	// First-run career-guided tool loading
-	firstRunSetup(cfg)
 
 	// Init session manager
 	sessMgr := session.NewManager(config.SessionsDir())
@@ -196,17 +192,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	skillMgr := initSkillManager(cfg)
 	cmdMgr := initCommandManager(cfg)
 
-	// Launch async project detection + repo recommendation (non-blocking)
-	recommendCh := make(chan *config.Recommendation, 1)
-	go func() {
-		workDir, _ := os.Getwd()
-		rec := config.RecommendTools(context.Background(), workDir, nil, cfg.Skills.Repos, cfg.MCP.Repos)
-		if rec != nil && (len(rec.Skills) > 0 || len(rec.MCP) > 0) {
-			recommendCh <- rec
-		}
-		close(recommendCh)
-	}()
-
 	// Initialize cron task manager
 	cronMgr := initCronManager(cfg)
 
@@ -267,126 +252,11 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		coord.SetSkillManager(skillMgr)
 		coord.SetCommandManager(cmdMgr)
 		coord.SetCronManager(cronMgr)
-		select {
-		case rec := <-recommendCh:
-			if rec != nil {
-				coord.SetStartupRecommend(rec)
-			}
-		default:
-		}
 		return coord
 	}
 
 	printBanner(cfg)
 	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, bus, newCoordinator)
-}
-
-// isDevMode returns true when DZ_DEV=true (integration test mode).
-func isDevMode() bool {
-	return os.Getenv("DZ_DEV") == "true"
-}
-
-// firstRunSetup runs the first-run career-guided tool loading wizard.
-// In dev mode (DZ_DEV=true), skips the interactive prompt and auto-loads a demo career.
-func firstRunSetup(cfg *config.Config) {
-	if !config.IsFirstRun() || !cfg.Transport.Stdio.Enabled {
-		return
-	}
-
-	var profile *config.CareerProfile
-	var err error
-
-	if isDevMode() {
-		profile = &config.CareerProfile{
-			Name:        "demo",
-			Skills:      []string{"demo-skill"},
-			MCP:         []string{"filesystem"},
-			Description: "Demo (integration test)",
-		}
-		cfg.Skills.Repos = append([]string{"dolphinZzv/demo_skills"}, cfg.Skills.Repos...)
-		cfg.MCP.Repos = append([]string{"dolphinv/mcp"}, cfg.MCP.Repos...)
-		cfg.Skills.Repos = append(cfg.Skills.Repos, "dolphinZzv/demo_agents")
-		fmt.Fprintf(os.Stderr, "\n[dev] Auto-loading demo career profile\n")
-	} else {
-		profile, err = config.RunFirstRunPrompt()
-		if err != nil {
-			zap.S().Warnw("first-run prompt failed", "error", err)
-			return
-		}
-	}
-	if profile == nil {
-		config.CreateFirstRunMarker()
-		return
-	}
-
-	fmt.Fprintf(os.Stderr, "\n=== %s: %s ===\n", i18n.TL(i18n.KeyRecommendedTools), profile.Description)
-	extraSkills, extraMCP := config.AugmentWithRepos(profile, cfg.Skills.Repos, cfg.MCP.Repos)
-
-	// Apply matched tools: download skills, add MCP servers to config
-	if err := config.ApplyTools(extraSkills, extraMCP); err != nil {
-		zap.S().Warnw("apply tools failed", "error", err)
-	}
-	// Merge into in-memory config so MCP servers take effect immediately
-	if cfg.MCP.Servers == nil {
-		cfg.MCP.Servers = make(map[string]config.MCPServerConfig)
-	}
-	for _, m := range extraMCP {
-		if m.Command == "" {
-			continue
-		}
-		if _, exists := cfg.MCP.Servers[m.Name]; exists {
-			continue
-		}
-		cfg.MCP.Servers[m.Name] = config.MCPServerConfig{
-			Type:    "stdio",
-			Command: m.Command,
-			Args:    m.Args,
-		}
-	}
-
-	// Display deduplicated matched tools
-	seenSkills := make(map[string]bool)
-	var skillNames []string
-	for _, s := range profile.Skills {
-		if !seenSkills[s] {
-			seenSkills[s] = true
-			skillNames = append(skillNames, s)
-		}
-	}
-	for _, s := range extraSkills {
-		if !seenSkills[s.Name] {
-			seenSkills[s.Name] = true
-			skillNames = append(skillNames, s.Name)
-		}
-	}
-	seenMCP := make(map[string]bool)
-	var mcpNames []string
-	for _, m := range profile.MCP {
-		if !seenMCP[m] {
-			seenMCP[m] = true
-			mcpNames = append(mcpNames, m)
-		}
-	}
-	for _, m := range extraMCP {
-		if !seenMCP[m.Name] {
-			seenMCP[m.Name] = true
-			mcpNames = append(mcpNames, m.Name)
-		}
-	}
-
-	if len(skillNames) > 0 {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeySkills), strings.Join(skillNames, ", "))
-	}
-	if len(mcpNames) > 0 {
-		fmt.Fprintf(os.Stderr, "%s: %s\n", i18n.TL(i18n.KeyMCP), strings.Join(mcpNames, ", "))
-	}
-	if len(skillNames) > 0 || len(mcpNames) > 0 {
-		fmt.Fprintf(os.Stderr, "\n%s\n", i18n.TL(i18n.KeyToolsInstalled))
-	}
-
-	config.PromptSystemMD()
-	config.PromptConfigFile()
-	config.CreateFirstRunMarker()
 }
 
 func warnNoLLM(cfg *config.Config) {

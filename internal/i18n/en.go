@@ -1,20 +1,13 @@
 package i18n
 
 var enMessages = map[string]string{
-	KeyWelcome:           "Welcome to dolphin — AI Agent",
-	KeySelectDomain:      "What kind of work are you doing? Pick one or more (comma-separated, e.g. 1,3,5)",
-	KeyPrivacyNote:       "Your choice stays local — nothing is sent anywhere.",
-	KeySkip:              "Skip for now",
 	KeyChoice:            "Choice",
-	KeyRecommendedTools:  "Recommended tools",
 	KeySkills:            "Skills",
 	KeyMCP:               "MCP",
 	KeyInstallHint:       "To install, add tools to your skill/MCP repos or config.",
 	KeyToolsInstalled:    "Tools installed. Skills and MCP servers are available immediately.",
 	KeyConfigRestrictive: "restrictive (recommended for security)",
 	KeyRestrictiveHint:   "Your config has security hardening applied. Change any setting manually and restart.",
-	KeySetupHint:         "You can re-run setup anytime with: dolphin setup",
-	KeyNoMatch:           "No matching option found. Skipping tool recommendation.\nYou can add tools later in ~/.dolphin/config.yaml",
 	KeySystemMDPrompt:    "Auto-generate SYSTEM.md with your system info (OS, shell, CPU count)?",
 	KeySystemMDExplain:   "It'll be injected into every session to help the agent understand your environment.",
 	KeySystemMDYes:       "yes",
@@ -249,13 +242,6 @@ Config files (config.yaml) are preserved.`,
 	KeyCmdSessionsDumpUse:   "dump <id>",
 	KeyCmdSessionsDumpShort: "Generate Mermaid sequence diagram for a session",
 
-	KeyCmdSetupUse:   "setup",
-	KeyCmdSetupShort: "Re-run the career-guided tool setup wizard",
-	KeyCmdSetupLong: `Re-runs the career selection prompt and displays recommended tools.
-
-The first-run marker is NOT reset, so this does not trigger on next startup.
-Use --reset to clear the first-run marker and start fresh.`,
-
 	KeyCmdSkillsUse:            "skills",
 	KeyCmdSkillsShort:          "List and manage skills",
 	KeyCmdSkillsListUse:        "list",
@@ -423,23 +409,6 @@ Examples:
 	KeyUpdatePreRelease:    "\n⚠ = pre-release",
 
 	// Setup output
-	KeySetupFirstRunReset: "First-run marker reset. Career prompt will show on next startup.",
-	KeySetupSkipped:       "\nSetup skipped. No changes made.",
-	KeySetupRecTools:      "\n=== Recommended tools for %s ===",
-	KeySetupLoadTo:        "\nLoad to: [p] project  [a] global  [n] skip",
-	KeySetupChoice:        "Choice: ",
-	KeySetupSavedProject:  "\nTools saved to .dolphin/config.yaml",
-	KeySetupSavedGlobal:   "\nTools saved to ~/.dolphin/config.yaml",
-	KeySetupSkipNoChange:  "\nSkipped. No changes made.",
-	KeySetupManual:        "You can add tools manually in your config or skill/MCP repos.",
-	KeySetupComplete:      "=== Setup Complete ===",
-	KeySetupProfile:       "  Profile: %s",
-	KeySetupSkillsCount:   "  Skills:  %d",
-	KeySetupMCPCount:      "  MCP:     %d",
-	KeySetupNextSteps:     "Next steps:",
-	KeySetupStep1:         "  1. Set your LLM API key: export DZ_LLM_API_KEY=sk-...",
-	KeySetupStep2:         "  2. Restart dolphin for changes to take effect",
-	KeySetupStep3:         "  3. Run 'dolphin doctor' to verify your setup",
 
 	// Init output
 	KeyInitRestrictiveGenerated: "\nSecurity-hardened config generated: %s",

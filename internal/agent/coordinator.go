@@ -15,7 +15,6 @@ import (
 	"dolphin/internal/agent/console"
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/command"
-	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
@@ -37,8 +36,7 @@ type Coordinator struct {
 	cronMgr          *scheduler.Manager
 	console          *console.Console
 	basePrompt       string
-	pending          []TaskResult // results collected but not yet in LLM context
-	startupRecommend *config.Recommendation
+	pending          []TaskResult    // results collected but not yet in LLM context
 	loadedTools      map[string]bool // MCP tools loaded by LLM via load_mcp_tools
 	buildinRegistry  *buildin.BuildinRegistry
 	buildinCancelFns map[string][]func() // per-agent unsubscribe funcs
@@ -122,11 +120,6 @@ func (c *Coordinator) SetCommandManager(mgr *command.Manager) {
 // SetCronManager sets the cron task manager for scheduled tasks.
 func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 	c.cronMgr = mgr
-}
-
-// SetStartupRecommend sets a recommendation to display on startup (async, non-blocking).
-func (c *Coordinator) SetStartupRecommend(rec *config.Recommendation) {
-	c.startupRecommend = rec
 }
 
 // initBuildinAgents initializes all registered built-in agents. It wires
@@ -302,11 +295,6 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Coordinator Ready", c.version, runtime.GOOS, runtime.Version(), c.commitHash))
 	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
-
-	// Display async startup recommendation if ready
-	if c.startupRecommend != nil && (len(c.startupRecommend.Skills) > 0 || len(c.startupRecommend.MCP) > 0) {
-		io.WriteLine(config.PrintRecommendation(c.startupRecommend))
-	}
 
 	for {
 		select {

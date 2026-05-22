@@ -1,20 +1,13 @@
 package i18n
 
 var zhMessages = map[string]string{
-	KeyWelcome:           "欢迎使用 dolphin — AI Agent",
-	KeySelectDomain:      "你在做什么类型的工作？选择一个或多个（逗号分隔，如 1,3,5）",
-	KeyPrivacyNote:       "你的选择保存在本地，不会发送到任何地方。",
-	KeySkip:              "暂时跳过",
 	KeyChoice:            "选择",
-	KeyRecommendedTools:  "推荐的工具",
 	KeySkills:            "技能",
 	KeyMCP:               "MCP 工具",
 	KeyInstallHint:       "要安装，请将工具添加到你的 skill/MCP 仓库或配置中。",
 	KeyToolsInstalled:    "工具已安装。技能和 MCP 服务器立即可用。",
 	KeyConfigRestrictive: "限制模式（推荐用于安全场景）",
 	KeyRestrictiveHint:   "配置已应用安全加固。可手动修改后重启。",
-	KeySetupHint:         "你可以随时重新运行设置：dolphin setup",
-	KeyNoMatch:           "没有找到匹配的选项。跳过工具推荐。\n你可以稍后在 ~/.dolphin/config.yaml 中添加工具。",
 	KeySystemMDPrompt:    "是否自动生成 SYSTEM.md？包含系统信息（操作系统、Shell、CPU 数量）",
 	KeySystemMDExplain:   "它会在每次会话中注入，帮助 AI 了解你的运行环境。",
 	KeySystemMDYes:       "是",
@@ -247,13 +240,6 @@ dolphin agent 会话。
 	KeyCmdSessionsDumpUse:   "dump <id>",
 	KeyCmdSessionsDumpShort: "生成会话的 Mermaid 时序图",
 
-	KeyCmdSetupUse:   "setup",
-	KeyCmdSetupShort: "重新运行职业导向的工具设置向导",
-	KeyCmdSetupLong: `重新运行职业选择提示并显示推荐的工具。
-
-首次运行的标记不会重置，因此不会在下次启动时触发。
-使用 --reset 清除首次运行标记并重新开始。`,
-
 	KeyCmdSkillsUse:            "skills",
 	KeyCmdSkillsShort:          "列出和管理技能",
 	KeyCmdSkillsListUse:        "list",
@@ -420,23 +406,6 @@ dolphin agent 会话。
 	KeyUpdatePreRelease:    "\n⚠ = 预发布版本",
 
 	// Setup output
-	KeySetupFirstRunReset: "首次运行标记已重置。下次启动时将显示职业引导提示。",
-	KeySetupSkipped:       "\n设置已跳过。未做任何更改。",
-	KeySetupRecTools:      "\n=== %s 推荐工具 ===",
-	KeySetupLoadTo:        "\n安装到: [p] 项目  [a] 全局  [n] 跳过",
-	KeySetupChoice:        "选择: ",
-	KeySetupSavedProject:  "\n工具已保存到 .dolphin/config.yaml",
-	KeySetupSavedGlobal:   "\n工具已保存到 ~/.dolphin/config.yaml",
-	KeySetupSkipNoChange:  "\n已跳过。未做任何更改。",
-	KeySetupManual:        "你可以稍后手动在配置或 skill/MCP 仓库中添加工具。",
-	KeySetupComplete:      "=== 设置完成 ===",
-	KeySetupProfile:       "  职业:   %s",
-	KeySetupSkillsCount:   "  技能:   %d",
-	KeySetupMCPCount:      "  MCP:    %d",
-	KeySetupNextSteps:     "下一步:",
-	KeySetupStep1:         "  1. 设置 LLM API 密钥: export DZ_LLM_API_KEY=sk-...",
-	KeySetupStep2:         "  2. 重启 dolphin 使更改生效",
-	KeySetupStep3:         "  3. 运行 'dolphin doctor' 验证配置",
 
 	// Init output
 	KeyInitRestrictiveGenerated: "\n安全加固配置已生成: %s",
