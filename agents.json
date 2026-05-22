@@ -5,7 +5,7 @@
     {
       "name": "reviewer",
       "description": "reviewer",
-      "url":"git@github.com:dolphinZzv/demo_agent.git"
-      }
-    ]
+      "url": "git@github.com:dolphinZzv/demo_agent.git"
+    }
+  ]
 }

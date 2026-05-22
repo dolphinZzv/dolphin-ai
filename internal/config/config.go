@@ -36,6 +36,7 @@ type Config struct {
 	MCP        MCPConfig       `mapstructure:"mcp"`
 	Pool       PoolConfig      `mapstructure:"agent_pool"`
 	Skills     SkillsConfig    `mapstructure:"skills"`
+	Agents     AgentsConfig    `mapstructure:"agents"`
 	Crontab    CrontabConfig   `mapstructure:"crontab"`
 	Pprof      PprofConfig     `mapstructure:"pprof"`
 	Metrics    MetricsConfig   `mapstructure:"metrics"`
@@ -101,6 +102,8 @@ type LLMConfig struct {
 
 	// Multi-provider: if set, startup selects the first that passes health check.
 	Providers []ProviderConfig `mapstructure:"providers"`
+
+	Limits LimitsConfig `mapstructure:"limits"`
 }
 
 // EffectiveProviders returns the list of provider configs to try at startup.
@@ -125,6 +128,56 @@ type SessionConfig struct {
 	Summary bool   `mapstructure:"summary"`
 	MaxAge  string `mapstructure:"max_age"`
 	Resume  bool   `mapstructure:"resume"`
+}
+
+type LimitsConfig struct {
+	Enabled          bool             `mapstructure:"enabled"`
+	SchedulerEnabled bool             `mapstructure:"scheduler_enabled"`
+	Requests         MultiLevelLimits `mapstructure:"requests"`
+	Tokens           TokenMultiLimits `mapstructure:"tokens"`
+	Concurrency      ConcurrencyLimit `mapstructure:"concurrency"`
+	Enforcement      string           `mapstructure:"enforcement"`
+	Retry            RetryConfig      `mapstructure:"retry"`
+	Exempt           ExemptConfig     `mapstructure:"exempt"`
+	ProviderMode     string           `mapstructure:"provider_mode"`
+}
+
+type MultiLevelLimits struct {
+	Daily   LevelLimit `mapstructure:"daily"`
+	Weekly  LevelLimit `mapstructure:"weekly"`
+	Monthly LevelLimit `mapstructure:"monthly"`
+}
+
+type LevelLimit struct {
+	Max       int    `mapstructure:"max"`
+	ResetCron string `mapstructure:"reset_cron"`
+}
+
+type TokenMultiLimits struct {
+	Daily   TokenLevelLimit `mapstructure:"daily"`
+	Weekly  TokenLevelLimit `mapstructure:"weekly"`
+	Monthly TokenLevelLimit `mapstructure:"monthly"`
+}
+
+type TokenLevelLimit struct {
+	InputMax  int    `mapstructure:"input_max"`
+	OutputMax int    `mapstructure:"output_max"`
+	ResetCron string `mapstructure:"reset_cron"`
+}
+
+type ConcurrencyLimit struct {
+	MaxRunning int `mapstructure:"max_running"`
+}
+
+type RetryConfig struct {
+	MaxAttempts    int           `mapstructure:"max_attempts"`
+	InitialBackoff time.Duration `mapstructure:"initial_backoff"`
+	MaxBackoff     time.Duration `mapstructure:"max_backoff"`
+}
+
+type ExemptConfig struct {
+	Enabled  bool     `mapstructure:"enabled"`
+	Patterns []string `mapstructure:"patterns"`
 }
 
 var sessionsDirOverride string
@@ -356,6 +409,11 @@ type SkillsConfig struct {
 	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphin/skills)
 	MaxTop int      `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
 	Repos  []string `mapstructure:"repos"`   // manifest repos, e.g. ["dolphinv/skills"]
+}
+
+// AgentsConfig holds configuration for agent discovery.
+type AgentsConfig struct {
+	Repos []string `mapstructure:"repos"` // agent manifest repos, e.g. ["dolphinZzv/demo_agents"]
 }
 
 type PprofConfig struct {

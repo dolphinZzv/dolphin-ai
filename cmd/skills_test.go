@@ -336,7 +336,7 @@ func TestSkills_SearchFetchesRemote(t *testing.T) {
 func TestNewSkillsCmd_HasSubcommands(t *testing.T) {
 	cmd := NewSkillsCmd()
 	subs := cmd.Commands()
-	expected := map[string]bool{"list": false, "search": false, "install": false, "disable": false}
+	expected := map[string]bool{"list": false, "search": false, "install": false, "new": false, "disable": false, "enable": false, "uninstall": false}
 	for _, sub := range subs {
 		if _, ok := expected[sub.Name()]; !ok {
 			t.Errorf("unexpected subcommand: %s", sub.Name())
@@ -359,5 +359,105 @@ func TestRunSkillsList_InvalidConfig(t *testing.T) {
 	err := runSkillsList(nil, nil)
 	if err == nil {
 		t.Fatal("expected error with invalid config")
+	}
+}
+
+func TestSkillsEnable(t *testing.T) {
+	_, dir := setupSkillsTest(t)
+	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
+	writeTestSkill(t, userSkillsDir, "to-enable", "Will be enabled", "content")
+
+	// First disable it
+	cmd := NewSkillsCmd()
+	cmd.SetArgs([]string{"disable", "to-enable"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
+
+	// Verify .disabled dir exists
+	disabledDir := filepath.Join(userSkillsDir, "to-enable.disabled")
+	if _, err := os.Stat(disabledDir); os.IsNotExist(err) {
+		t.Fatal("disabled dir should exist after disable")
+	}
+
+	// Now enable it
+	cmd2 := NewSkillsCmd()
+	cmd2.SetArgs([]string{"enable", "to-enable"})
+	output := captureOutput(func() {
+		if err := cmd2.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "enabled") {
+		t.Errorf("expected enabled message, got: %s", output)
+	}
+
+	// .disabled dir should be gone, original back
+	if _, err := os.Stat(disabledDir); !os.IsNotExist(err) {
+		t.Error("disabled dir should be removed after enable")
+	}
+	origDir := filepath.Join(userSkillsDir, "to-enable")
+	if _, err := os.Stat(filepath.Join(origDir, "SKILL.md")); os.IsNotExist(err) {
+		t.Error("SKILL.md should exist after enable")
+	}
+}
+
+func TestSkillsEnable_NotFound(t *testing.T) {
+	_, dir := setupSkillsTest(t)
+	os.MkdirAll(filepath.Join(dir, "skills"), 0o700)
+
+	cmd := NewSkillsCmd()
+	cmd.SetArgs([]string{"enable", "not-exist"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-existent disabled skill")
+	}
+}
+
+func TestSkillsUninstall(t *testing.T) {
+	_, dir := setupSkillsTest(t)
+	userSkillsDir := filepath.Join(dir, ".dolphin", "skills")
+	writeTestSkill(t, userSkillsDir, "to-uninstall", "Will be deleted", "content")
+
+	// Verify it exists
+	skillPath := filepath.Join(userSkillsDir, "to-uninstall", "SKILL.md")
+	if _, err := os.Stat(skillPath); os.IsNotExist(err) {
+		t.Fatal("skill file should exist before uninstall")
+	}
+
+	cmd := NewSkillsCmd()
+	cmd.SetArgs([]string{"uninstall", "to-uninstall"})
+	output := captureOutput(func() {
+		if err := cmd.Execute(); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	if !strings.Contains(output, "uninstalled") {
+		t.Errorf("expected uninstalled message, got: %s", output)
+	}
+
+	// Files should be deleted (not .disabled)
+	if _, err := os.Stat(skillPath); !os.IsNotExist(err) {
+		t.Error("skill should be deleted after uninstall")
+	}
+	disabledDir := filepath.Join(userSkillsDir, "to-uninstall.disabled")
+	if _, err := os.Stat(disabledDir); !os.IsNotExist(err) {
+		t.Error("no .disabled dir should exist after uninstall")
+	}
+}
+
+func TestSkillsUninstall_NotFound(t *testing.T) {
+	_, dir := setupSkillsTest(t)
+	os.MkdirAll(filepath.Join(dir, "skills"), 0o700)
+
+	cmd := NewSkillsCmd()
+	cmd.SetArgs([]string{"uninstall", "not-exist"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error for non-existent skill")
 	}
 }

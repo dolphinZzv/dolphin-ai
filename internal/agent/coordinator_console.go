@@ -556,6 +556,10 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 		c.printCurrentContext(io)
 		return
 	}
+	if len(args) > 0 && args[0] == "system" {
+		c.printSystemContext(io)
+		return
+	}
 
 	// If a section name is given, display its content
 	if len(args) > 0 {
@@ -624,6 +628,18 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 			io.WriteLine(fmt.Sprintf("  %-20s %d  %s  %s", s.Name, s.Priority, size, path))
 		}
 		io.WriteLine("")
+	}
+}
+
+func (c *Coordinator) printSystemContext(io transport.UserIO) {
+	if c.lastLLMSystemPrompt == "" {
+		io.WriteLine("(no LLM request has been made yet)")
+		return
+	}
+	// Print in chunks to avoid overwhelming the terminal on a single line write.
+	// Each chunk is written as a separate WriteLine for streaming transports.
+	for _, chunk := range splitIntoChunks(c.lastLLMSystemPrompt, 4000) {
+		io.WriteLine(chunk)
 	}
 }
 
@@ -1180,4 +1196,25 @@ func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io tran
 		newSess.ID, oldID, oldTurns,
 	))
 	io.WriteLine("")
+}
+
+// splitIntoChunks splits a string into chunks of max N lines each,
+// preserving the content for display on streaming transports.
+func splitIntoChunks(s string, maxLines int) []string {
+	if s == "" {
+		return nil
+	}
+	lines := strings.Split(s, "\n")
+	if len(lines) <= maxLines {
+		return []string{s}
+	}
+	var chunks []string
+	for i := 0; i < len(lines); i += maxLines {
+		end := i + maxLines
+		if end > len(lines) {
+			end = len(lines)
+		}
+		chunks = append(chunks, strings.Join(lines[i:end], "\n"))
+	}
+	return chunks
 }

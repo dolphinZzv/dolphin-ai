@@ -91,6 +91,8 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(NewDoctorCmd())
 	cmd.AddCommand(NewCompletionCmd())
 	cmd.AddCommand(NewSkillsCmd())
+	cmd.AddCommand(NewMCPCmd())
+	cmd.AddCommand(NewAgentCmd())
 
 	return cmd
 }
@@ -303,6 +305,7 @@ func firstRunSetup(cfg *config.Config) {
 		}
 		cfg.Skills.Repos = append([]string{"dolphinZzv/demo_skills"}, cfg.Skills.Repos...)
 		cfg.MCP.Repos = append([]string{"dolphinv/mcp"}, cfg.MCP.Repos...)
+		cfg.Skills.Repos = append(cfg.Skills.Repos, "dolphinZzv/demo_agents")
 		fmt.Fprintf(os.Stderr, "\n[dev] Auto-loading demo career profile\n")
 	} else {
 		profile, err = config.RunFirstRunPrompt()

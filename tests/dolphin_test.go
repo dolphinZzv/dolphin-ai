@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
+	a2atransport "dolphin/internal/transport/a2a"
 	emailtransport "dolphin/internal/transport/email"
 
 	"github.com/smartystreets/goconvey/convey"
@@ -1146,6 +1149,233 @@ func TestFeedbackCommand(t *testing.T) {
 			convey.Convey("Then feedback should be sent successfully", func() {
 				convey.So(out, convey.ShouldContainSubstring, "Sending feedback to")
 				convey.So(out, convey.ShouldContainSubstring, "Thank you! Your feedback has been sent")
+			})
+		})
+	})
+}
+
+// ========== A2A transport e2e tests ==========
+
+func TestA2ATransportE2E(t *testing.T) {
+	convey.Convey("Given an A2A transport started with an echoing agent loop", t, func() {
+		// Find a free port
+		listener, err := net.Listen("tcp", ":0")
+		convey.So(err, convey.ShouldBeNil)
+		port := listener.Addr().(*net.TCPAddr).Port
+		listener.Close()
+
+		cfg := config.DefaultConfig()
+		cfg.Transport.A2A.ListenAddr = fmt.Sprintf(":%d", port)
+		cfg.Transport.A2A.SyncTimeout = "10s"
+		cfg.Transport.A2A.AgentID = "e2e-test-agent"
+		cfg.Transport.A2A.AgentName = "E2E Test Agent"
+		cfg.Transport.A2A.AgentVersion = "1.0.0"
+		cfg.Transport.A2A.AgentDesc = "A2A e2e test agent"
+
+		tr, err := a2atransport.New(cfg)
+		convey.So(err, convey.ShouldBeNil)
+
+		io := tr.(transport.UserIO)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		// Agent loop: echos input back as output
+		go func() {
+			for {
+				line, err := io.ReadLine()
+				if err != nil {
+					return
+				}
+				io.WriteString("echo: " + line)
+			}
+		}()
+
+		// Start the A2A HTTP server in background
+		go tr.Start(ctx)
+
+		// Wait for the HTTP server to become ready
+		baseURL := fmt.Sprintf("http://localhost:%d", port)
+		ready := false
+		for i := 0; i < 20; i++ {
+			conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 200*time.Millisecond)
+			if dialErr == nil {
+				conn.Close()
+				ready = true
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if !ready {
+			t.Fatal("A2A server did not start within timeout")
+		}
+
+		convey.Convey("When sending a tasks/send request via HTTP", func() {
+			body := `{"jsonrpc":"2.0","id":1,"method":"tasks/send","params":{"id":"e2e-test","message":{"role":"user","parts":[{"type":"text","text":"hello from e2e"}]}}}`
+			resp, err := http.Post(baseURL+"/a2a", "application/json", strings.NewReader(body))
+			convey.So(err, convey.ShouldBeNil)
+			defer resp.Body.Close()
+
+			var rpcResp struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      json.RawMessage `json:"id"`
+				Result  json.RawMessage `json:"result,omitempty"`
+				Error   *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error,omitempty"`
+			}
+			err = json.NewDecoder(resp.Body).Decode(&rpcResp)
+			convey.So(err, convey.ShouldBeNil)
+
+			convey.Convey("Then the response should be completed with echoed text", func() {
+				convey.So(rpcResp.Error, convey.ShouldBeNil)
+				convey.So(rpcResp.Result, convey.ShouldNotBeNil)
+
+				var result struct {
+					ID     string `json:"id"`
+					Status struct {
+						State   string `json:"state"`
+						Message *struct {
+							Role  string `json:"role"`
+							Parts []struct {
+								Type string `json:"type"`
+								Text string `json:"text"`
+							} `json:"parts"`
+						} `json:"message,omitempty"`
+					} `json:"status"`
+				}
+				err := json.Unmarshal(rpcResp.Result, &result)
+				convey.So(err, convey.ShouldBeNil)
+				convey.So(result.Status.State, convey.ShouldEqual, "completed")
+				convey.So(result.Status.Message, convey.ShouldNotBeNil)
+				convey.So(len(result.Status.Message.Parts), convey.ShouldBeGreaterThan, 0)
+				convey.So(result.Status.Message.Parts[0].Text, convey.ShouldEqual, "echo: hello from e2e")
+				convey.So(result.ID, convey.ShouldEqual, "e2e-test")
+			})
+		})
+
+		convey.Convey("When fetching the agent card", func() {
+			resp, err := http.Get(baseURL + "/.well-known/agent.json")
+			convey.So(err, convey.ShouldBeNil)
+			defer resp.Body.Close()
+
+			convey.So(resp.StatusCode, convey.ShouldEqual, http.StatusOK)
+
+			var card struct {
+				Name            string `json:"name"`
+				Description     string `json:"description"`
+				ProtocolVersion string `json:"protocolVersion"`
+			}
+			err = json.NewDecoder(resp.Body).Decode(&card)
+			convey.So(err, convey.ShouldBeNil)
+
+			convey.Convey("Then the agent card should contain correct metadata", func() {
+				convey.So(card.Name, convey.ShouldEqual, "E2E Test Agent")
+				convey.So(card.Description, convey.ShouldEqual, "A2A e2e test agent")
+				convey.So(card.ProtocolVersion, convey.ShouldEqual, "1.0")
+			})
+		})
+
+		convey.Convey("When sending a request with wrong method", func() {
+			body := `{"jsonrpc":"2.0","id":1,"method":"bogus","params":{}}`
+			resp, err := http.Post(baseURL+"/a2a", "application/json", strings.NewReader(body))
+			convey.So(err, convey.ShouldBeNil)
+			defer resp.Body.Close()
+
+			var rpcResp struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      json.RawMessage `json:"id"`
+				Error   *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error,omitempty"`
+			}
+			json.NewDecoder(resp.Body).Decode(&rpcResp)
+
+			convey.Convey("Then a Method not found error should be returned", func() {
+				convey.So(rpcResp.Error, convey.ShouldNotBeNil)
+				convey.So(rpcResp.Error.Code, convey.ShouldEqual, -32601)
+			})
+		})
+
+		convey.Convey("When sending a task with API key auth", func() {
+			// Stop the transport and restart with auth
+			cancel()
+			time.Sleep(200 * time.Millisecond)
+
+			// Find another free port for the auth test
+			l2, err := net.Listen("tcp", ":0")
+			convey.So(err, convey.ShouldBeNil)
+			port2 := l2.Addr().(*net.TCPAddr).Port
+			l2.Close()
+
+			cfg2 := config.DefaultConfig()
+			cfg2.Transport.A2A.ListenAddr = fmt.Sprintf(":%d", port2)
+			cfg2.Transport.A2A.SyncTimeout = "5s"
+			cfg2.Transport.A2A.AgentID = "auth-test-agent"
+			cfg2.Transport.A2A.AgentName = "Auth Test"
+			cfg2.Transport.A2A.AgentVersion = "1.0"
+			cfg2.Transport.A2A.AgentDesc = "auth test"
+			cfg2.Transport.A2A.APIKey = "test-secret-key"
+
+			tr2, err := a2atransport.New(cfg2)
+			convey.So(err, convey.ShouldBeNil)
+
+			io2 := tr2.(transport.UserIO)
+
+			ctx2, cancel2 := context.WithCancel(context.Background())
+			defer cancel2()
+
+			go func() {
+				for {
+					line, err := io2.ReadLine()
+					if err != nil {
+						return
+					}
+					io2.WriteString("ok: " + line)
+				}
+			}()
+			go tr2.Start(ctx2)
+
+			authURL := fmt.Sprintf("http://localhost:%d", port2)
+			// Wait for server
+			for i := 0; i < 20; i++ {
+				conn, dialErr := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port2), 200*time.Millisecond)
+				if dialErr == nil {
+					conn.Close()
+					break
+				}
+				time.Sleep(100 * time.Millisecond)
+			}
+
+			convey.Convey("Then requests without auth should be rejected", func() {
+				body := `{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{"id":"any"}}`
+				resp, err := http.Post(authURL+"/a2a", "application/json", strings.NewReader(body))
+				convey.So(err, convey.ShouldBeNil)
+				defer resp.Body.Close()
+				convey.So(resp.StatusCode, convey.ShouldEqual, http.StatusUnauthorized)
+			})
+
+			convey.Convey("Then requests with correct auth should succeed", func() {
+				body := `{"jsonrpc":"2.0","id":1,"method":"tasks/send","params":{"id":"auth-test","message":{"role":"user","parts":[{"type":"text","text":"authed"}]}}}`
+				req, err := http.NewRequest("POST", authURL+"/a2a", strings.NewReader(body))
+				convey.So(err, convey.ShouldBeNil)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Authorization", "Bearer test-secret-key")
+				resp, err := http.DefaultClient.Do(req)
+				convey.So(err, convey.ShouldBeNil)
+				defer resp.Body.Close()
+				convey.So(resp.StatusCode, convey.ShouldEqual, http.StatusOK)
+
+				var rpcResp struct {
+					Error *struct {
+						Code    int    `json:"code"`
+						Message string `json:"message"`
+					} `json:"error"`
+				}
+				json.NewDecoder(resp.Body).Decode(&rpcResp)
+				convey.So(rpcResp.Error, convey.ShouldBeNil)
 			})
 		})
 	})

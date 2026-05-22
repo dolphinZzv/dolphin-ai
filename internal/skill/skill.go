@@ -262,6 +262,44 @@ func (m *Manager) Unregister(name string) error {
 	return nil
 }
 
+// Disable removes a skill from memory and renames its directory to <name>.disabled/,
+// preserving files on disk so it can be re-enabled later.
+func (m *Manager) Disable(name string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if _, ok := m.skills[name]; !ok {
+		return fmt.Errorf("skill %q not found", name)
+	}
+
+	delete(m.skills, name)
+
+	oldDir := filepath.Join(m.dirs[0], name)
+	newDir := filepath.Join(m.dirs[0], name+".disabled")
+	if err := os.Rename(oldDir, newDir); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("disable skill %q: %w", name, err)
+	}
+	return nil
+}
+
+// Enable restores a previously disabled skill by renaming <name>.disabled/ back
+// to <name>/ and reloading it into memory.
+func (m *Manager) Enable(name string) error {
+	disabledDir := filepath.Join(m.dirs[0], name+".disabled")
+	skillDir := filepath.Join(m.dirs[0], name)
+
+	if _, err := os.Stat(disabledDir); os.IsNotExist(err) {
+		return fmt.Errorf("disabled skill %q not found", name)
+	}
+
+	if err := os.Rename(disabledDir, skillDir); err != nil {
+		return fmt.Errorf("enable skill %q: %w", name, err)
+	}
+
+	// Reload to pick up the re-enabled skill
+	return m.Load()
+}
+
 // Reload re-scans all skill directories. This is the hot-reload entry point.
 func (m *Manager) Reload() error { return m.Load() }
 

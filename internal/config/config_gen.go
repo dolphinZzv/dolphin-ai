@@ -42,6 +42,38 @@ llm:
   temperature: 0.7        # 0.0–2.0
   max_sub_turns: 10       # max tool-call feedback loops per user turn
 
+  # ── LLM Usage Limits ─────────────────────────────────────
+  limits:
+    enabled: false
+    scheduler_enabled: true
+    requests:
+      daily_max: 1000
+      daily_reset_cron: "0 0 * * *"
+      weekly_max: 5000
+      weekly_reset_cron: "0 0 * * 1"
+      monthly_max: 10000
+      monthly_reset_cron: "0 0 1 * *"
+    tokens:
+      daily_input_max: 1000000
+      daily_output_max: 500000
+      daily_reset_cron: "0 0 * * *"
+      weekly_input_max: 5000000
+      weekly_output_max: 2000000
+      weekly_reset_cron: "0 0 * * 1"
+      monthly_input_max: 10000000
+      monthly_output_max: 5000000
+      monthly_reset_cron: "0 0 1 * *"
+    concurrency:
+      max_running: 5
+    enforcement: hard
+    retry:
+      max_attempts: 3
+      initial_backoff: 1s
+      max_backoff: 60s
+    exempt:
+      enabled: false
+      patterns: []
+
 # ── Sessions ──────────────────────────────────────────────
 session:
   dir: .dolphin/sessions

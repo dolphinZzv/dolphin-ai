@@ -1,12 +1,20 @@
 package agent
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
@@ -207,6 +215,139 @@ func (c *Coordinator) registerCoordinatorTools() {
 				"required": []string{"id"},
 			},
 			c.handleSessionDumpTool,
+		)
+		// Self-evolution MCP server management tools
+		c.registerCoordTool("install_mcp_server",
+			"Install an MCP server from a configured MCP repo. Fetches the repo manifest, finds the matching server by name, and adds it to the config file.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "MCP server name to install"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleInstallMCPServer,
+		)
+		c.registerCoordTool("uninstall_mcp_server",
+			"Permanently remove an MCP server from the config file.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "MCP server name to uninstall"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleUninstallMCPServer,
+		)
+		c.registerCoordTool("enable_mcp_server",
+			"Enable a disabled MCP server in the config file.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "MCP server name to enable"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleEnableMCPServer,
+		)
+		c.registerCoordTool("disable_mcp_server",
+			"Disable an MCP server without removing its config. The server can be re-enabled later.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "MCP server name to disable"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleDisableMCPServer,
+		)
+		c.registerCoordTool("disable_skill",
+			"Disable a skill by removing it from memory and renaming its directory to .disabled/. The skill can be re-enabled later using enable_skill.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Skill name to disable"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleDisableSkill,
+		)
+		c.registerCoordTool("enable_skill",
+			"Enable a previously disabled skill. Restores the skill directory from .disabled/ and reloads it into memory.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Skill name to enable"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleEnableSkill,
+		)
+		c.registerCoordTool("uninstall_skill",
+			"Permanently delete a skill and all its files. This cannot be undone — use disable_skill instead to preserve the files.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Skill name to uninstall"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleUninstallSkill,
+		)
+		c.registerCoordTool("install_agent",
+			"Install an agent from a configured repo to the local agents directory. Fetches agents.json from repos, finds the matching agent, and creates the agent definition locally.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Agent name to install"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleInstallAgent,
+		)
+		c.registerCoordTool("search_agents",
+			"Search available agent definitions from remote repos by name or description. Agents are reusable worker configurations with specific roles and tool sets.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"query": map[string]any{"type": "string", "description": "Search query (matched against agent name and description)"},
+				},
+				"required": []string{"query"},
+			},
+			c.handleSearchAgents,
+		)
+		c.registerCoordTool("disable_agent",
+			"Disable a persistent agent by renaming its directory to .disabled/. The agent is removed from the pool but can be re-enabled later using enable_agent.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Agent name to disable"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleDisableAgent,
+		)
+		c.registerCoordTool("enable_agent",
+			"Enable a previously disabled persistent agent. Restores the agent directory from .disabled/ and re-adds it to the pool.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Agent name to enable"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleEnableAgent,
+		)
+		c.registerCoordTool("uninstall_agent",
+			"Permanently delete a persistent agent and all its files. This cannot be undone — use disable_agent instead to preserve the files.",
+			map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name": map[string]any{"type": "string", "description": "Agent name to uninstall"},
+				},
+				"required": []string{"name"},
+			},
+			c.handleUninstallAgent,
 		)
 	}
 	c.registerCoordTool("context",
@@ -1004,6 +1145,631 @@ func (c *Coordinator) dumpSessionMermaidTo(events []session.SessionEvent, id str
 			}
 		}
 	}
+}
+
+// ---- Self-evolution MCP server tool handlers ----
+
+func (c *Coordinator) handleInstallMCPServer(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "MCP server name is required.", IsError: true}, nil
+	}
+
+	// Check if already installed
+	if _, exists := c.cfg.MCP.Servers[params.Name]; exists {
+		return &mcp.ToolResult{Content: fmt.Sprintf("MCP server %q is already installed.", params.Name)}, nil
+	}
+
+	// Fetch from repos
+	if len(c.cfg.MCP.Repos) == 0 {
+		return &mcp.ToolResult{Content: "No MCP repos configured. Add repos to mcp.repos in config.yaml.", IsError: true}, nil
+	}
+	if err := c.installMCPServerFromRepos(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to install MCP server: %v", err), IsError: true}, nil
+	}
+
+	return &mcp.ToolResult{Content: fmt.Sprintf("MCP server %q installed successfully. Restart to load it.", params.Name)}, nil
+}
+
+func (c *Coordinator) installMCPServerFromRepos(name string) error {
+	fetcher := config.NewRepoFetcher(c.getCacheDir())
+	if ex, err := os.Executable(); err == nil {
+		fetcher.SetLocalDir(filepath.Dir(ex))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	manifests := fetcher.FetchAll(ctx, c.cfg.MCP.Repos)
+	cancel()
+
+	var found *config.ToolEntry
+	for _, m := range manifests {
+		for _, t := range m.Tools {
+			if t.Name == name {
+				found = &t
+				break
+			}
+		}
+		if found != nil {
+			break
+		}
+	}
+	if found == nil {
+		return fmt.Errorf("MCP server %q not found in any configured repo", name)
+	}
+	return config.ApplyTools(nil, []config.ToolEntry{*found})
+}
+
+func (c *Coordinator) getCacheDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(homeDir, config.UserConfigDir, "cache")
+}
+
+func (c *Coordinator) handleUninstallMCPServer(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "MCP server name is required.", IsError: true}, nil
+	}
+
+	if err := config.RemoveMCPServer(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to uninstall MCP server: %v", err), IsError: true}, nil
+	}
+
+	return &mcp.ToolResult{Content: fmt.Sprintf("MCP server %q uninstalled. Restart to apply changes.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleEnableMCPServer(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "MCP server name is required.", IsError: true}, nil
+	}
+
+	if err := config.ToggleMCPServer(params.Name, true); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to enable MCP server: %v", err), IsError: true}, nil
+	}
+
+	return &mcp.ToolResult{Content: fmt.Sprintf("MCP server %q enabled. Restart to apply changes.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleDisableMCPServer(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "MCP server name is required.", IsError: true}, nil
+	}
+
+	if err := config.ToggleMCPServer(params.Name, false); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to disable MCP server: %v", err), IsError: true}, nil
+	}
+
+	return &mcp.ToolResult{Content: fmt.Sprintf("MCP server %q disabled. Restart to apply changes.", params.Name)}, nil
+}
+
+// ---- Self-evolution Skill tool handlers ----
+
+func (c *Coordinator) handleDisableSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.skills == nil {
+		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Skill name is required.", IsError: true}, nil
+	}
+	if err := c.skills.Disable(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to disable skill %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q disabled. Use enable_skill to re-enable it.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleEnableSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.skills == nil {
+		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Skill name is required.", IsError: true}, nil
+	}
+	if err := c.skills.Enable(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to enable skill %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q enabled and loaded.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleUninstallSkill(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.skills == nil {
+		return &mcp.ToolResult{Content: "Skills system is not available.", IsError: true}, nil
+	}
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Skill name is required.", IsError: true}, nil
+	}
+	if _, ok := c.skills.Get(params.Name); !ok {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q not found.", params.Name), IsError: true}, nil
+	}
+	if err := c.skills.Unregister(params.Name); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to uninstall skill %q: %v", params.Name, err), IsError: true}, nil
+	}
+	return &mcp.ToolResult{Content: fmt.Sprintf("Skill %q permanently uninstalled.", params.Name)}, nil
+}
+
+// ---- Agent tool handlers ----
+
+func (c *Coordinator) handleInstallAgent(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Agent name is required.", IsError: true}, nil
+	}
+
+	// Check if already installed locally
+	agentsDir := filepath.Join(config.ProjectConfigDir, "agents")
+	if _, err := os.Stat(filepath.Join(agentsDir, params.Name, "agent.yaml")); err == nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q is already installed locally.", params.Name)}, nil
+	}
+
+	// Check if disabled
+	if _, err := os.Stat(filepath.Join(agentsDir, params.Name+".disabled", "agent.yaml")); err == nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q is installed but disabled. Use enable_agent to restore it.", params.Name)}, nil
+	}
+
+	// Fetch agents.json from repos
+	if len(c.cfg.Skills.Repos) == 0 {
+		return &mcp.ToolResult{Content: "No repos configured. Add repos to skills.repos in config.yaml.", IsError: true}, nil
+	}
+
+	fetcher := config.NewRepoFetcher(c.getCacheDir())
+	if ex, err := os.Executable(); err == nil {
+		fetcher.SetLocalDir(filepath.Dir(ex))
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	manifests := fetcher.FetchAllAgentManifests(ctx, c.cfg.Skills.Repos)
+	cancel()
+
+	var found *config.AgentManifestEntry
+	for _, m := range manifests {
+		for _, a := range m.Agents {
+			if a.Name == params.Name {
+				found = &a
+				break
+			}
+		}
+		if found != nil {
+			break
+		}
+	}
+
+	if found == nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q not found in any configured repo.", params.Name), IsError: true}, nil
+	}
+
+	// Download agent repo from URL (or copy local path)
+	agentDir := filepath.Join(agentsDir, params.Name)
+	if err := downloadAgentRepo(found.URL, agentDir, found.Path); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to download agent repo: %v", err), IsError: true}, nil
+	}
+
+	// Verify agent.yaml exists
+	agentYAML := filepath.Join(agentDir, "agent.yaml")
+	if _, err := os.Stat(agentYAML); os.IsNotExist(err) {
+		os.RemoveAll(agentDir)
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent repo does not contain agent.yaml."), IsError: true}, nil
+	}
+
+	// Load and add to pool
+	loadedDef, err := loadAgentYAML(agentYAML)
+	if err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q installed but failed to load agent.yaml: %v", params.Name, err), IsError: true}, nil
+	}
+	loadedDef.Name = params.Name
+	if loadedDef.Workspace == "" {
+		loadedDef.Workspace = filepath.Join(c.cfg.Pool.WorkspaceDir, params.Name)
+	}
+	os.MkdirAll(loadedDef.Workspace, 0700)
+
+	c.pool.Add(params.Name, loadedDef, AgentUser, c.Agent, c.toolReg)
+	zap.S().Infow("installed agent from repo", "name", params.Name, "url", found.URL)
+	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q installed successfully from %s.", params.Name, found.URL)}, nil
+}
+func (c *Coordinator) handleSearchAgents(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Query string `json:"query"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+
+	// Collect results: local agents + remote
+	var results []string
+
+	// Local agents from pool
+	agents := c.pool.List()
+	for _, a := range agents {
+		if params.Query == "" || strings.Contains(strings.ToLower(a.Name), strings.ToLower(params.Query)) ||
+			strings.Contains(strings.ToLower(a.Role), strings.ToLower(params.Query)) {
+			results = append(results, fmt.Sprintf("- %s [%s] %s (tasks: %d)", a.Name, a.Kind, a.Role, a.TasksDone))
+		}
+	}
+
+	// Remote: fetch agents.json from repos
+	if len(c.cfg.Skills.Repos) > 0 {
+		fetcher := config.NewRepoFetcher(c.getCacheDir())
+		if ex, err := os.Executable(); err == nil {
+			fetcher.SetLocalDir(filepath.Dir(ex))
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		manifests := fetcher.FetchAllAgentManifests(ctx, c.cfg.Skills.Repos)
+		cancel()
+		for _, m := range manifests {
+			for _, a := range m.Agents {
+				if params.Query != "" && !strings.Contains(strings.ToLower(a.Name), strings.ToLower(params.Query)) &&
+					!strings.Contains(strings.ToLower(a.Description), strings.ToLower(params.Query)) {
+					continue
+				}
+				desc := a.Description
+				if desc == "" {
+					desc = a.Role
+				}
+				results = append(results, fmt.Sprintf("- %s [remote/%s] %s", a.Name, m.Name, desc))
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		if params.Query != "" {
+			return &mcp.ToolResult{Content: fmt.Sprintf("No agents found matching %q.", params.Query)}, nil
+		}
+		return &mcp.ToolResult{Content: "No agents available."}, nil
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Found %d agent(s):\n", len(results))
+	for _, r := range results {
+		sb.WriteString(r + "\n")
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) agentsDir() string {
+	return filepath.Join(config.ProjectConfigDir, "agents")
+}
+
+func (c *Coordinator) handleDisableAgent(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Agent name is required.", IsError: true}, nil
+	}
+
+	agentDir := filepath.Join(c.agentsDir(), params.Name)
+	disabledDir := filepath.Join(c.agentsDir(), params.Name+".disabled")
+
+	// Check if agent exists and is not already disabled
+	if _, err := os.Stat(agentDir); os.IsNotExist(err) {
+		// Maybe it is already disabled
+		if _, err2 := os.Stat(disabledDir); err2 == nil {
+			return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q is already disabled. Use enable_agent to restore it.", params.Name)}, nil
+		}
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q not found.", params.Name), IsError: true}, nil
+	}
+
+	// Remove from runtime pool first
+	c.pool.Remove(params.Name)
+
+	// Rename directory to .disabled/
+	if err := os.Rename(agentDir, disabledDir); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to disable agent %q: %v", params.Name, err), IsError: true}, nil
+	}
+
+	zap.S().Infow("disabled agent", "name", params.Name)
+	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q disabled. Use enable_agent to re-enable it.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleEnableAgent(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Agent name is required.", IsError: true}, nil
+	}
+
+	agentDir := filepath.Join(c.agentsDir(), params.Name)
+	disabledDir := filepath.Join(c.agentsDir(), params.Name+".disabled")
+
+	// Check disabled dir exists
+	if _, err := os.Stat(disabledDir); os.IsNotExist(err) {
+		if _, err2 := os.Stat(agentDir); err2 == nil {
+			return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q is already enabled.", params.Name)}, nil
+		}
+		return &mcp.ToolResult{Content: fmt.Sprintf("Disabled agent %q not found.", params.Name), IsError: true}, nil
+	}
+
+	// Rename back
+	if err := os.Rename(disabledDir, agentDir); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to enable agent %q: %v", params.Name, err), IsError: true}, nil
+	}
+
+	// Re-load definition and add to pool
+	def, err := loadAgentYAML(filepath.Join(agentDir, "agent.yaml"))
+	if err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q restored but failed to load definition: %v", params.Name, err), IsError: true}, nil
+	}
+	def.Name = params.Name
+	if def.Workspace == "" {
+		def.Workspace = filepath.Join(c.cfg.Pool.WorkspaceDir, params.Name)
+	}
+	os.MkdirAll(def.Workspace, 0700)
+
+	c.pool.Add(params.Name, def, AgentUser, c.Agent, c.toolReg)
+	zap.S().Infow("enabled agent", "name", params.Name, "tools", def.Tools)
+	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q enabled and added to the pool.", params.Name)}, nil
+}
+
+func (c *Coordinator) handleUninstallAgent(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	var params struct {
+		Name string `json:"name"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Name == "" {
+		return &mcp.ToolResult{Content: "Agent name is required.", IsError: true}, nil
+	}
+
+	// Try regular dir first, then disabled dir
+	agentDir := filepath.Join(c.agentsDir(), params.Name)
+	disabledDir := filepath.Join(c.agentsDir(), params.Name+".disabled")
+
+	var targetDir string
+	switch {
+	case dirExists(agentDir):
+		targetDir = agentDir
+	case dirExists(disabledDir):
+		targetDir = disabledDir
+	default:
+		return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q not found.", params.Name), IsError: true}, nil
+	}
+
+	// Remove from pool if running
+	c.pool.Remove(params.Name)
+
+	// Permanently delete
+	if err := os.RemoveAll(targetDir); err != nil {
+		return &mcp.ToolResult{Content: fmt.Sprintf("Failed to uninstall agent %q: %v", params.Name, err), IsError: true}, nil
+	}
+
+	zap.S().Infow("uninstalled agent", "name", params.Name)
+	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q permanently uninstalled.", params.Name)}, nil
+}
+
+func dirExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// downloadAgentRepo downloads or copies an agent repo to the target directory.
+// url can be:
+//   - "owner/repo" (GitHub repo, downloaded as ZIP and extracted)
+//   - a local path (copied directly)
+//
+// subPath is an optional subdirectory within the repo to extract.
+func downloadAgentRepo(url, destDir, subPath string) error {
+	if url == "" {
+		return fmt.Errorf("no URL specified for agent repo")
+	}
+
+	// Local path
+	if strings.HasPrefix(url, ".") || strings.HasPrefix(url, "/") || strings.HasPrefix(url, "~") {
+		return copyAgentDir(url, destDir)
+	}
+
+	// SSH git URL (e.g. git@github.com:owner/repo.git)
+	if strings.HasPrefix(url, "git@") {
+		return gitCloneRepo(url, destDir)
+	}
+
+	// GitHub owner/repo format
+	parts := strings.SplitN(url, "/", 2)
+	if len(parts) == 2 && !strings.Contains(url, "://") && !strings.Contains(url, "\\") {
+		return downloadGitHubRepo(url, destDir, subPath)
+	}
+
+	// Full URL
+	return downloadGitHubRepo(url, destDir, subPath)
+}
+
+// gitCloneRepo clones a git repository using SSH URL.
+func gitCloneRepo(repoURL, destDir string) error {
+	cmd := exec.Command("git", "clone", repoURL, destDir)
+	cmd.Stdout = os.Stderr
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("git clone %s: %w", repoURL, err)
+	}
+	return nil
+}
+
+// downloadGitHubRepo downloads a GitHub repo archive and extracts it.
+// subPath is an optional subdirectory within the repo to extract.
+func downloadGitHubRepo(repo, destDir, subPath string) error {
+	// Handle both "owner/repo" and full URL formats
+	if !strings.Contains(repo, "://") {
+		repo = fmt.Sprintf("https://github.com/%s/archive/main.zip", repo)
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(repo)
+	if err != nil {
+		return fmt.Errorf("download repo: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download repo: HTTP %d", resp.StatusCode)
+	}
+
+	// Read the ZIP into memory
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("open zip: %w", err)
+	}
+
+	// Find the root directory name in the zip (GitHub zips have a top-level dir)
+	var rootPrefix string
+	for _, f := range reader.File {
+		if !f.FileInfo().IsDir() {
+			parts := strings.SplitN(f.Name, "/", 2)
+			if len(parts) == 2 {
+				rootPrefix = parts[0] + "/"
+			}
+			break
+		}
+	}
+
+	// Extract all files, stripping the root directory
+	for _, f := range reader.File {
+		var name string
+		if rootPrefix != "" && strings.HasPrefix(f.Name, rootPrefix) {
+			name = strings.TrimPrefix(f.Name, rootPrefix)
+		} else {
+			name = f.Name
+		}
+		if name == "" {
+			continue
+		}
+		// Filter by subpath if specified
+		if subPath != "" {
+			if strings.HasPrefix(name, subPath+"/") {
+				name = strings.TrimPrefix(name, subPath+"/")
+			} else if name == subPath {
+				// If the subpath is a file, include it at root
+				continue
+			} else {
+				continue
+			}
+		}
+		if name == "" {
+			continue
+		}
+
+		outPath := filepath.Join(destDir, name)
+		if f.FileInfo().IsDir() {
+			os.MkdirAll(outPath, 0700)
+			continue
+		}
+
+		os.MkdirAll(filepath.Dir(outPath), 0700)
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("open file in zip: %w", err)
+		}
+
+		out, err := os.OpenFile(outPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+		if err != nil {
+			rc.Close()
+			return fmt.Errorf("create file: %w", err)
+		}
+
+		_, err = io.Copy(out, rc)
+		rc.Close()
+		out.Close()
+		if err != nil {
+			return fmt.Errorf("extract file: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// copyAgentDir copies a local agent repo directory to the destination.
+func copyAgentDir(src, destDir string) error {
+	// Resolve ~ to home directory
+	if strings.HasPrefix(src, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolve home dir: %w", err)
+		}
+		src = filepath.Join(home, src[1:])
+	}
+
+	info, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("source path: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("source is not a directory: %s", src)
+	}
+
+	return filepath.Walk(src, func(path string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		outPath := filepath.Join(destDir, rel)
+		if fi.IsDir() {
+			return os.MkdirAll(outPath, 0700)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(outPath, data, 0600)
+	})
 }
 
 // handlerTool wraps a function as an MCP Tool.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -28,6 +29,26 @@ type ToolEntry struct {
 	Args        []string `json:"args,omitempty"`
 }
 
+// AgentManifest is a JSON manifest listing available agent definitions in a repo.
+type AgentManifest struct {
+	Version     string               `json:"version,omitempty"`
+	Name        string               `json:"name,omitempty"`
+	Description string               `json:"description"`
+	Agents      []AgentManifestEntry `json:"agents"`
+}
+
+// AgentManifestEntry is a single agent entry in an agents.json manifest.
+type AgentManifestEntry struct {
+	Name        string   `json:"name"`
+	Role        string   `json:"role"`
+	Description string   `json:"description"`
+	Tools       []string `json:"tools"`
+	Model       string   `json:"model,omitempty"`
+	Timeout     int      `json:"timeout,omitempty"`
+	URL         string   `json:"url,omitempty"`  // GitHub repo to clone, e.g. "owner/repo"
+	Path        string   `json:"path,omitempty"` // Subdirectory within the repo (optional)
+}
+
 // Conflict describes a tool that exists in multiple repos.
 type Conflict struct {
 	Name    string
@@ -40,12 +61,27 @@ type RepoSource struct {
 	Description string
 }
 
-// RepoFetcher fetches and caches tool manifests from GitHub repos.
+// RepoFetcher fetches and caches tool manifests from repos.
 type RepoFetcher struct {
 	cacheDir string
 	localDir string // offline fallback: directory containing <shortname>.json files
 	ttl      time.Duration
 	mu       sync.RWMutex
+}
+
+// isFullURL checks if a repo string is a full URL (not GitHub owner/repo shorthand).
+func isFullURL(s string) bool {
+	return strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://")
+}
+
+// manifestURL returns the URL to fetch a manifest file from a repo.
+// If repoName is a full URL, it's returned as-is.
+// Otherwise it's treated as GitHub "owner/repo" shorthand.
+func manifestURL(repoName, filename string) string {
+	if isFullURL(repoName) {
+		return repoName
+	}
+	return fmt.Sprintf("https://raw.githubusercontent.com/%s/main/%s", repoName, filename)
 }
 
 // NewRepoFetcher creates a fetcher that caches manifests to cacheDir.
@@ -70,14 +106,14 @@ func (f *RepoFetcher) SetLocalDir(dir string) {
 }
 
 // FetchManifest fetches the manifest.json for a single repo.
-// Repo name format: "owner/repo" (e.g. "dolphinv/skills").
+// Repo name format: "owner/repo" (e.g. "dolphinv/skills") or full URL.
 func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*ToolManifest, error) {
 	// Check cache first
 	if m, ok := f.cacheHit(repoName); ok {
 		return m, nil
 	}
 
-	url := fmt.Sprintf("https://raw.githubusercontent.com/%s/main/manifest.json", repoName)
+	url := manifestURL(repoName, "manifest.json")
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
 	if err != nil {
@@ -87,8 +123,7 @@ func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*Tool
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		// Network error — try local fallback
-		if m, ok := f.tryLocalFallback(repoName); ok {
+		if m, ok := f.tryLocalFallback(repoName); ok && !isFullURL(repoName) {
 			return m, nil
 		}
 		return nil, fmt.Errorf("fetch %s: %w", url, err)
@@ -96,8 +131,7 @@ func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*Tool
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		// Non-200 response — try local fallback
-		if m, ok := f.tryLocalFallback(repoName); ok {
+		if m, ok := f.tryLocalFallback(repoName); ok && !isFullURL(repoName) {
 			return m, nil
 		}
 		return nil, fmt.Errorf("fetch %s: HTTP %d", url, resp.StatusCode)
@@ -105,8 +139,7 @@ func (f *RepoFetcher) FetchManifest(ctx context.Context, repoName string) (*Tool
 
 	var m ToolManifest
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
-		// Parse error — try local fallback
-		if m, ok := f.tryLocalFallback(repoName); ok {
+		if m, ok := f.tryLocalFallback(repoName); ok && !isFullURL(repoName) {
 			return m, nil
 		}
 		return nil, fmt.Errorf("parse manifest from %s: %w", repoName, err)
@@ -160,6 +193,93 @@ func (f *RepoFetcher) FetchAll(ctx context.Context, repos []string) []*ToolManif
 
 	// Compact nil entries
 	var out []*ToolManifest
+	for _, m := range results {
+		if m != nil {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// FetchAgentManifest fetches the agents.json for a single repo.
+func (f *RepoFetcher) FetchAgentManifest(ctx context.Context, repoName string) (*AgentManifest, error) {
+	url := manifestURL(repoName, "agents.json")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return f.agentFallback(repoName, url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return f.agentFallback(repoName, url, fmt.Errorf("HTTP %d", resp.StatusCode))
+	}
+
+	var m AgentManifest
+	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {
+		return f.agentFallback(repoName, url, fmt.Errorf("parse: %w", err))
+	}
+	if m.Name == "" {
+		m.Name = repoName
+	}
+	return &m, nil
+}
+
+// agentFallback tries local fallback for GitHub shorthand repos, or returns the error for full URLs.
+func (f *RepoFetcher) agentFallback(repoName, url string, err error) (*AgentManifest, error) {
+	if isFullURL(repoName) {
+		return nil, fmt.Errorf("fetch agents.json from %s: %w", url, err)
+	}
+	if m, ok := f.tryAgentLocalFallback(repoName); ok {
+		return m, nil
+	}
+	return nil, fmt.Errorf("fetch agents.json from %s: %w", url, err)
+}
+
+// FetchAllAgentManifests fetches agents.json from multiple repos in parallel.
+func (f *RepoFetcher) FetchAllAgentManifests(ctx context.Context, repos []string) []*AgentManifest {
+	if len(repos) == 0 {
+		return nil
+	}
+
+	type result struct {
+		manifest *AgentManifest
+		index    int
+	}
+
+	results := make([]*AgentManifest, len(repos))
+	var wg sync.WaitGroup
+	ch := make(chan result, len(repos))
+
+	for i, repo := range repos {
+		wg.Add(1)
+		go func(i int, repo string) {
+			defer wg.Done()
+			m, err := f.FetchAgentManifest(ctx, repo)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "[repo] fetch agents from %s: %v\n", repo, err)
+				return
+			}
+			ch <- result{manifest: m, index: i}
+		}(i, repo)
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	for r := range ch {
+		results[r.index] = r.manifest
+	}
+
+	var out []*AgentManifest
 	for _, m := range results {
 		if m != nil {
 			out = append(out, m)
@@ -359,5 +479,239 @@ func (f *RepoFetcher) tryLocalFallback(repoName string) (*ToolManifest, bool) {
 		return &m, true
 	}
 
+	// Try agents format (agents.json variant)
+	var agentManifest struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Agents      []struct {
+			Name        string   `json:"name"`
+			Role        string   `json:"role"`
+			Description string   `json:"description"`
+			Tools       []string `json:"tools"`
+			Model       string   `json:"model,omitempty"`
+			Timeout     int      `json:"timeout,omitempty"`
+		} `json:"agents"`
+	}
+	if err := json.Unmarshal(data, &agentManifest); err == nil && len(agentManifest.Agents) > 0 {
+		m.Name = agentManifest.Name
+		m.Description = agentManifest.Description
+		if m.Name == "" {
+			m.Name = repoName
+		}
+		for _, a := range agentManifest.Agents {
+			m.Tools = append(m.Tools, ToolEntry{
+				Name:        a.Name,
+				Description: a.Description,
+			})
+		}
+		f.writeCache(repoName, &m)
+		return &m, true
+	}
+
+	// Try skills format (skills.json variant)
+	var skillsManifest struct {
+		Version     string `json:"version"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Skills      []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			URL         string `json:"url"`
+		} `json:"skills"`
+	}
+	if err := json.Unmarshal(data, &skillsManifest); err == nil && len(skillsManifest.Skills) > 0 {
+		m.Name = skillsManifest.Name
+		m.Description = skillsManifest.Description
+		if m.Name == "" {
+			m.Name = repoName
+		}
+		for _, s := range skillsManifest.Skills {
+			m.Tools = append(m.Tools, ToolEntry{
+				Name:        s.Name,
+				Description: s.Description,
+				URL:         s.URL,
+			})
+		}
+		f.writeCache(repoName, &m)
+		return &m, true
+	}
+
 	return nil, false
+}
+
+// tryAgentLocalFallback searches local directories for an agents.json-style file
+// matching the repo name (e.g., "demo_agent.json" for "dolphinzZ/demo_agent").
+func (f *RepoFetcher) tryAgentLocalFallback(repoName string) (*AgentManifest, bool) {
+	name := localManifestName(repoName)
+
+	f.mu.RLock()
+	dir := f.localDir
+	f.mu.RUnlock()
+
+	searchDirs := []string{}
+	if dir != "" {
+		searchDirs = append(searchDirs, dir)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		searchDirs = append(searchDirs, cwd)
+	}
+
+	var data []byte
+	for _, d := range searchDirs {
+		for {
+			b, err := os.ReadFile(filepath.Join(d, name))
+			if err == nil {
+				data = b
+				break
+			}
+			parent := filepath.Dir(d)
+			if parent == d {
+				break
+			}
+			d = parent
+		}
+		if data != nil {
+			break
+		}
+	}
+	if data == nil {
+		return nil, false
+	}
+
+	var m AgentManifest
+	if err := json.Unmarshal(data, &m); err != nil || len(m.Agents) == 0 {
+		return nil, false
+	}
+	if m.Name == "" {
+		m.Name = repoName
+	}
+	return &m, true
+}
+func (f *RepoFetcher) FetchSkillsManifest(ctx context.Context, repoName string) (*ToolManifest, error) {
+	// Try local fallback first
+	if m, ok := f.trySkillsLocalFallback(); ok {
+		return m, nil
+	}
+
+	// Fall back to GitHub fetch
+	url := manifestURL(repoName, "skills.json")
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("fetch skills.json from %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fetch skills.json from %s: HTTP %d", url, resp.StatusCode)
+	}
+
+	// Try tools format first, then skills format
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	var toolM ToolManifest
+	if err := json.Unmarshal(data, &toolM); err == nil && len(toolM.Tools) > 0 {
+		if toolM.Name == "" {
+			toolM.Name = repoName
+		}
+		return &toolM, nil
+	}
+
+	var skillsManifest struct {
+		Version     string `json:"version"`
+		Description string `json:"description"`
+		Skills      []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			URL         string `json:"url"`
+		} `json:"skills"`
+	}
+	if err := json.Unmarshal(data, &skillsManifest); err != nil || len(skillsManifest.Skills) == 0 {
+		return nil, fmt.Errorf("parse skills.json from %s: no valid tools or skills found", repoName)
+	}
+
+	m := &ToolManifest{
+		Name:        repoName,
+		Description: skillsManifest.Description,
+	}
+	for _, s := range skillsManifest.Skills {
+		m.Tools = append(m.Tools, ToolEntry{
+			Name:        s.Name,
+			Description: s.Description,
+			URL:         s.URL,
+		})
+	}
+	return m, nil
+}
+
+func (f *RepoFetcher) trySkillsLocalFallback() (*ToolManifest, bool) {
+	f.mu.RLock()
+	dir := f.localDir
+	f.mu.RUnlock()
+
+	searchDirs := []string{}
+	if dir != "" {
+		searchDirs = append(searchDirs, dir)
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		searchDirs = append(searchDirs, cwd)
+	}
+
+	var data []byte
+	for _, d := range searchDirs {
+		base := d
+		for {
+			b, err := os.ReadFile(filepath.Join(base, "skills.json"))
+			if err == nil {
+				data = b
+				break
+			}
+			parent := filepath.Dir(base)
+			if parent == base {
+				break
+			}
+			base = parent
+		}
+		if data != nil {
+			break
+		}
+	}
+	if data == nil {
+		return nil, false
+	}
+
+	var skillsManifest struct {
+		Version     string `json:"version"`
+		Description string `json:"description"`
+		Skills      []struct {
+			Name        string `json:"name"`
+			Description string `json:"description"`
+			URL         string `json:"url"`
+		} `json:"skills"`
+	}
+	if err := json.Unmarshal(data, &skillsManifest); err != nil || len(skillsManifest.Skills) == 0 {
+		return nil, false
+	}
+
+	m := &ToolManifest{
+		Name:        "skills",
+		Description: skillsManifest.Description,
+	}
+	for _, s := range skillsManifest.Skills {
+		m.Tools = append(m.Tools, ToolEntry{
+			Name:        s.Name,
+			Description: s.Description,
+			URL:         s.URL,
+		})
+	}
+	return m, true
 }

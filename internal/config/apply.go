@@ -141,6 +141,92 @@ func applyMCPServers(servers []ToolEntry, baseDir string) error {
 	return os.WriteFile(configPath, data, 0600)
 }
 
+// RemoveMCPServer removes a server entry from the mcp.servers map in config.yaml.
+func RemoveMCPServer(name string) error {
+	baseDir, err := resolveConfigDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(baseDir, ConfigFileName+".yaml")
+
+	full, err := readFullConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	mcpSection, _ := full["mcp"].(map[string]any)
+	if mcpSection == nil {
+		return fmt.Errorf("mcp server %q not found: no mcp section in config", name)
+	}
+	existingServers, _ := mcpSection["servers"].(map[string]any)
+	if existingServers == nil {
+		return fmt.Errorf("mcp server %q not found: no servers in config", name)
+	}
+	if _, exists := existingServers[name]; !exists {
+		return fmt.Errorf("mcp server %q not found", name)
+	}
+
+	delete(existingServers, name)
+
+	data, err := yaml.Marshal(full)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return os.WriteFile(configPath, data, 0600)
+}
+
+// ToggleMCPServer sets the enabled field for an MCP server in config.yaml.
+func ToggleMCPServer(name string, enabled bool) error {
+	baseDir, err := resolveConfigDir()
+	if err != nil {
+		return err
+	}
+	configPath := filepath.Join(baseDir, ConfigFileName+".yaml")
+
+	full, err := readFullConfig(configPath)
+	if err != nil {
+		return err
+	}
+
+	mcpSection, _ := full["mcp"].(map[string]any)
+	if mcpSection == nil {
+		return fmt.Errorf("mcp server %q not found: no mcp section in config", name)
+	}
+	existingServers, _ := mcpSection["servers"].(map[string]any)
+	if existingServers == nil {
+		return fmt.Errorf("mcp server %q not found: no servers in config", name)
+	}
+	server, exists := existingServers[name]
+	if !exists {
+		return fmt.Errorf("mcp server %q not found", name)
+	}
+
+	serverMap, ok := server.(map[string]any)
+	if !ok {
+		return fmt.Errorf("mcp server %q has unexpected type", name)
+	}
+	serverMap["enabled"] = enabled
+
+	data, err := yaml.Marshal(full)
+	if err != nil {
+		return fmt.Errorf("marshal config: %w", err)
+	}
+	return os.WriteFile(configPath, data, 0600)
+}
+
+// readFullConfig reads and unmarshals a YAML config file into a generic map.
+func readFullConfig(path string) (map[string]any, error) {
+	full := make(map[string]any)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read config %s: %w", path, err)
+	}
+	if err := yaml.Unmarshal(data, &full); err != nil {
+		return nil, fmt.Errorf("parse config %s: %w", path, err)
+	}
+	return full, nil
+}
+
 // downloadSkill fetches skill content from a raw GitHub URL.
 func downloadSkill(client *http.Client, url string) ([]byte, error) {
 	rawURL := toRawGitHubURL(url)

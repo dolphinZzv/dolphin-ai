@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"dolphin/internal/agent/limits"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
@@ -36,12 +37,13 @@ type Agent struct {
 	compressor         compressor.Compressor
 	hooks              *hook.Registry
 	events             *event.EventBus
-	heartbeatInterval  int // emit heartbeat event every N turns, 0=off
+	heartbeatInterval  int
 	availableProviders []config.ProviderConfig
 	providerIndex      int
 	version            string
 	buildTime          string
 	commitHash         string
+	limitsManager      *limits.LimitsManager
 }
 
 // LoopState holds state for a single agent run.
@@ -73,6 +75,9 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 		ctxBuilder:         NewContextBuilder(),
 		availableProviders: providers,
 		providerIndex:      selIdx,
+	}
+	if cfg.LLM.Limits.Enabled {
+		a.limitsManager = limits.NewLimitsManager(&cfg.LLM.Limits)
 	}
 	a.rebuildCompressor()
 	return a
@@ -679,6 +684,18 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 			Model:     a.cfg.LLM.Model,
 		}
 
+		// Limits check before LLM call
+		if a.limitsManager != nil {
+			checkReq := &limits.CheckRequest{
+				Model:    a.cfg.LLM.Model,
+				Provider: a.provider.Name(),
+			}
+			if err := a.limitsManager.Check(ctx, checkReq); err != nil {
+				io.WriteLine(fmt.Sprintf("\n[LLM limit exceeded: %s]\n", err.Error()))
+				return err
+			}
+		}
+
 		// Hook: llm:before — plugins can modify the request or abort
 		if err := a.fireBeforeLLM(ctx, state, req); err != nil {
 			return err
@@ -705,6 +722,13 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 
 		// Logging, hooks, events
 		a.logLLMResponse(ctx, io, state, i, llmDuration, content, toolCalls, result.usage)
+
+		if a.limitsManager != nil && result.usage != nil {
+			a.limitsManager.UpdateUsage(&limits.Usage{
+				InputTokens:  result.usage.InputTokens,
+				OutputTokens: result.usage.OutputTokens,
+			})
+		}
 
 		if len(toolCalls) == 0 {
 			return nil

@@ -365,6 +365,154 @@ func TestManager_Register(t *testing.T) {
 	}
 }
 
+func TestManager_Disable(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	if err := m.Register("test-skill", "A test", "Content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Reload so it's in the directory structure
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Verify in memory and on disk
+	if _, ok := m.Get("test-skill"); !ok {
+		t.Fatal("expected skill in memory before disable")
+	}
+	origDir := filepath.Join(dir, "test-skill")
+	disabledDir := filepath.Join(dir, "test-skill.disabled")
+	if _, err := os.Stat(filepath.Join(origDir, "SKILL.md")); os.IsNotExist(err) {
+		t.Fatal("SKILL.md should exist before disable")
+	}
+
+	// Disable
+	if err := m.Disable("test-skill"); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+
+	// Should be removed from memory
+	if _, ok := m.Get("test-skill"); ok {
+		t.Error("skill should not be in memory after disable")
+	}
+
+	// Original dir should be renamed to .disabled/
+	if _, err := os.Stat(origDir); !os.IsNotExist(err) {
+		t.Error("original directory should be renamed after disable")
+	}
+	if _, err := os.Stat(disabledDir); os.IsNotExist(err) {
+		t.Error(".disabled directory should exist after disable")
+	}
+
+	// File content should be preserved
+	if _, err := os.Stat(filepath.Join(disabledDir, "SKILL.md")); os.IsNotExist(err) {
+		t.Error("SKILL.md should be preserved in .disabled/ after disable")
+	}
+}
+
+func TestManager_Disable_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	err := m.Disable("nonexistent")
+	if err == nil {
+		t.Fatal("expected error for non-existent skill")
+	}
+}
+
+func TestManager_Enable(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	// Register and disable first
+	if err := m.Register("test-skill", "A test", "Content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if err := m.Disable("test-skill"); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+
+	// Enable
+	if err := m.Enable("test-skill"); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+
+	// Should be back in memory after Enable calls Load()
+	s, ok := m.Get("test-skill")
+	if !ok {
+		t.Fatal("expected skill in memory after enable")
+	}
+	if s.Description != "A test" {
+		t.Errorf("description = %q, want 'A test'", s.Description)
+	}
+
+	// .disabled dir should be gone, original dir should be back
+	disabledDir := filepath.Join(dir, "test-skill.disabled")
+	origDir := filepath.Join(dir, "test-skill")
+	if _, err := os.Stat(disabledDir); !os.IsNotExist(err) {
+		t.Error(".disabled directory should be removed after enable")
+	}
+	if _, err := os.Stat(filepath.Join(origDir, "SKILL.md")); os.IsNotExist(err) {
+		t.Error("SKILL.md should be back in original dir after enable")
+	}
+}
+
+func TestManager_Enable_NotFound(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	err := m.Enable("nonexistent")
+	if err == nil {
+		t.Fatal("expected error for non-existent disabled skill")
+	}
+}
+
+func TestManager_DisableThenEnable_FullLifecycle(t *testing.T) {
+	dir := t.TempDir()
+	m := NewManager(dir)
+
+	// Register a skill
+	if err := m.Register("lifecycle", "Lifecycle test", "Content"); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	if err := m.Load(); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	// Record usage
+	m.RecordUsage("lifecycle")
+	s, _ := m.Get("lifecycle")
+	if s.CallCount != 1 {
+		t.Errorf("call count = %d, want 1", s.CallCount)
+	}
+
+	// Disable — should lose usage stats
+	if err := m.Disable("lifecycle"); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+
+	// Enable — should restore but with fresh stats (new Load, new memory)
+	if err := m.Enable("lifecycle"); err != nil {
+		t.Fatalf("Enable: %v", err)
+	}
+
+	s, ok := m.Get("lifecycle")
+	if !ok {
+		t.Fatal("expected skill after enable")
+	}
+	if s.CallCount != 0 {
+		t.Errorf("call count after re-enable = %d, want 0 (fresh load)", s.CallCount)
+	}
+	if s.Content != "Content" {
+		t.Errorf("content = %q, want 'Content'", s.Content)
+	}
+}
+
 func TestManager_Unregister(t *testing.T) {
 	dir := t.TempDir()
 	m := NewManager(dir)

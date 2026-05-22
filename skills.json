@@ -2,54 +2,11 @@
   "version": "1.0",
   "description": "dolphin Official Skills Repository",
   "updated_at": "2026-05-10T00:00:00Z",
-  "repo_url": "https://github.com/dolphinv/skills",
-  "tools": [
+  "skills": [
     {
-      "name": "frontend-expert",
-      "description": "前端专家技能 - 精通 React/Vue/Angular 等现代前端框架",
-      "url": "https://github.com/dolphinv/skills/blob/main/frontend-expert/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "react-best-practices",
-      "description": "React 最佳实践 - Hooks、状态管理、性能优化",
-      "url": "https://github.com/dolphinv/skills/blob/main/react/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "backend-golang",
-      "description": "Go 后端开发 - Gin/GRPC/微服务",
-      "url": "https://github.com/dolphinv/skills/blob/main/golang/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "devops-sre",
-      "description": "DevOps/SRE 技能 - K8s/Docker/CI/CD",
-      "url": "https://github.com/dolphinv/skills/blob/main/devops/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "ai-ml-engineer",
-      "description": "AI/ML 工程师技能 - 模型训练/部署/推理优化",
-      "url": "https://github.com/dolphinv/skills/blob/main/ai-ml/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "security-expert",
-      "description": "安全专家技能 - 代码审计/渗透测试/安全加固",
-      "url": "https://github.com/dolphinv/skills/blob/main/security/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "data-engineer",
-      "description": "数据工程师技能 - ETL/数据管道/大数据处理",
-      "url": "https://github.com/dolphinv/skills/blob/main/data/",
-      "updated_at": "2026-05-10T00:00:00Z"
-    },
-    {
-      "name": "mobile-expert",
-      "description": "移动端专家 - iOS/Android/Flutter/React Native",
-      "url": "https://github.com/dolphinv/skills/blob/main/mobile/",
+      "name": "demo_skills",
+      "description": "demo_skills",
+      "url": "https://github.com/dolphinZzv/demo_skills.git",
       "updated_at": "2026-05-10T00:00:00Z"
     }
   ]
