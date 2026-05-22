@@ -79,3 +79,6 @@ logs
 
 
 .dolphin
+
+# Local fallback manifests (repo-specific)
+demo_agents.json
