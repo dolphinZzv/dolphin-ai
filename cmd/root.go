@@ -36,6 +36,8 @@ import (
 	servermqtt "dolphin/internal/server/mqtt"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
+	"dolphin/internal/subsystem"
+	workflowpkg "dolphin/internal/subsystem/workflow"
 	"dolphin/internal/transport"
 	"dolphin/internal/update"
 
@@ -92,6 +94,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(NewSkillsCmd())
 	cmd.AddCommand(NewMCPCmd())
 	cmd.AddCommand(NewAgentCmd())
+	cmd.AddCommand(NewWorkflowCmd())
 
 	return cmd
 }
@@ -191,6 +194,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Initialize skill and command managers
 	skillMgr := initSkillManager(cfg)
 	cmdMgr := initCommandManager(cfg)
+	// Initialize workflow manager and register as subsystem
+	wfmr := initWorkflowManager(cfg)
+	subsystem.Register(wfmr)
 
 	// Initialize cron task manager
 	cronMgr := initCronManager(cfg)
@@ -333,6 +339,24 @@ func initCronManager(cfg *config.Config) *scheduler.Manager {
 	} else {
 		zap.S().Infow("crontab loaded", "file", cfg.Crontab.File)
 	}
+	return mgr
+}
+
+// initWorkflowManager creates and starts the workflow manager.
+func initWorkflowManager(cfg *config.Config) *workflowpkg.Manager {
+	wfDirs := []string{cfg.Workflows.Dir}
+	if homeDir, err := os.UserHomeDir(); err == nil {
+		userWfDir := filepath.Join(homeDir, config.UserConfigDir, "workflows")
+		if userWfDir != cfg.Workflows.Dir {
+			wfDirs = append([]string{userWfDir}, wfDirs...)
+		}
+	}
+	mgr := workflowpkg.NewManager(wfDirs...)
+	mgr.Load()
+	if wfs := mgr.List(); len(wfs) > 0 {
+		zap.S().Infow("workflows loaded", "dirs", wfDirs, "count", len(wfs))
+	}
+	go mgr.WatchAndReload(context.Background(), 30*time.Second)
 	return mgr
 }
 

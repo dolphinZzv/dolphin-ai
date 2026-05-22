@@ -27,32 +27,34 @@ var (
 )
 
 type Config struct {
-	Name       string          `mapstructure:"name"`
-	ID         string          `mapstructure:"id"`
-	LLM        LLMConfig       `mapstructure:"llm"`
-	Session    SessionConfig   `mapstructure:"session"`
-	Transport  TransportConfig `mapstructure:"transport"`
-	Servers    ServersConfig   `mapstructure:"servers"`
-	MCP        MCPConfig       `mapstructure:"mcp"`
-	Pool       PoolConfig      `mapstructure:"agent_pool"`
-	Skills     SkillsConfig    `mapstructure:"skills"`
-	Agents     AgentsConfig    `mapstructure:"agents"`
-	Crontab    CrontabConfig   `mapstructure:"crontab"`
-	Pprof      PprofConfig     `mapstructure:"pprof"`
-	Metrics    MetricsConfig   `mapstructure:"metrics"`
-	Health     HealthConfig    `mapstructure:"health"`
-	Telemetry  TelemetryConfig `mapstructure:"telemetry"`
-	Diary      DiaryConfig     `mapstructure:"diary"`
-	Update     UpdateConfig    `mapstructure:"update"`
-	LogLevel   string          `mapstructure:"log_level"`
-	LogFile    string          `mapstructure:"log_file"`
-	LogMaxSize int             `mapstructure:"log_max_size"`
-	LogMaxAge  int             `mapstructure:"log_max_age"`
-	LogMaxBack int             `mapstructure:"log_max_backup"`
-	Plugins    PluginsConfig   `mapstructure:"plugins"`
-	Flags      FlagsConfig     `mapstructure:"flags"`
-	Resource   ResourceConfig  `mapstructure:"resource"`
-	SyncConfig bool            `mapstructure:"sync_config"`
+	Name        string            `mapstructure:"name"`
+	ID          string            `mapstructure:"id"`
+	LLM         LLMConfig         `mapstructure:"llm"`
+	Session     SessionConfig     `mapstructure:"session"`
+	Transport   TransportConfig   `mapstructure:"transport"`
+	Servers     ServersConfig     `mapstructure:"servers"`
+	MCP         MCPConfig         `mapstructure:"mcp"`
+	Pool        PoolConfig        `mapstructure:"agent_pool"`
+	Skills      SkillsConfig      `mapstructure:"skills"`
+	Workflows   WorkflowsConfig   `mapstructure:"workflows"`
+	Agents      AgentsConfig      `mapstructure:"agents"`
+	Crontab     CrontabConfig     `mapstructure:"crontab"`
+	Pprof       PprofConfig       `mapstructure:"pprof"`
+	Metrics     MetricsConfig     `mapstructure:"metrics"`
+	Health      HealthConfig      `mapstructure:"health"`
+	Telemetry   TelemetryConfig   `mapstructure:"telemetry"`
+	Diary       DiaryConfig       `mapstructure:"diary"`
+	Update      UpdateConfig      `mapstructure:"update"`
+	LogLevel    string            `mapstructure:"log_level"`
+	LogFile     string            `mapstructure:"log_file"`
+	LogMaxSize  int               `mapstructure:"log_max_size"`
+	LogMaxAge   int               `mapstructure:"log_max_age"`
+	LogMaxBack  int               `mapstructure:"log_max_backup"`
+	Plugins     PluginsConfig     `mapstructure:"plugins"`
+	Flags       FlagsConfig       `mapstructure:"flags"`
+	Resource    ResourceConfig    `mapstructure:"resource"`
+	Credentials CredentialsConfig `mapstructure:"credentials"`
+	SyncConfig  bool              `mapstructure:"sync_config"`
 }
 
 // Clone deep-copies the Config using JSON round-trip.
@@ -142,6 +144,22 @@ type LimitsConfig struct {
 	ProviderMode     string           `mapstructure:"provider_mode"`
 }
 
+func (c *LimitsConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+
+	if c.Enforcement != "hard" && c.Enforcement != "soft" && c.Enforcement != "" {
+		return fmt.Errorf("enforcement must be 'hard' or 'soft', got '%s'", c.Enforcement)
+	}
+
+	if c.Enforcement == "soft" && c.Retry.MaxAttempts == 0 {
+		return fmt.Errorf("soft enforcement requires retry.max_attempts > 0")
+	}
+
+	return nil
+}
+
 type MultiLevelLimits struct {
 	Daily   LevelLimit `mapstructure:"daily"`
 	Weekly  LevelLimit `mapstructure:"weekly"`
@@ -178,6 +196,14 @@ type RetryConfig struct {
 type ExemptConfig struct {
 	Enabled  bool     `mapstructure:"enabled"`
 	Patterns []string `mapstructure:"patterns"`
+}
+
+type CredentialsConfig struct {
+	Enabled    bool     `mapstructure:"enabled"`
+	Store      string   `mapstructure:"store"`
+	Path       string   `mapstructure:"path"`
+	SafeFields []string `mapstructure:"safe_fields"`
+	AllowOnly  []string `mapstructure:"allow_only"`
 }
 
 var sessionsDirOverride string
@@ -325,13 +351,14 @@ type DingTalkConfig struct {
 }
 
 type MCPConfig struct {
-	Shell     ShellConfig                `mapstructure:"shell"`
-	CDP       CDPConfig                  `mapstructure:"cdp"`
-	Email     EmailMCPConfig             `mapstructure:"email"`
-	Webhook   MCPWebhookConfig           `mapstructure:"webhook"`
-	WebSearch MCPWebSearchConfig         `mapstructure:"web_search"`
-	Servers   map[string]MCPServerConfig `mapstructure:"servers"`
-	Repos     []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
+	Shell       ShellConfig                `mapstructure:"shell"`
+	CDP         CDPConfig                  `mapstructure:"cdp"`
+	Email       EmailMCPConfig             `mapstructure:"email"`
+	Webhook     MCPWebhookConfig           `mapstructure:"webhook"`
+	WebSearch   MCPWebSearchConfig         `mapstructure:"web_search"`
+	Credentials CredentialsConfig          `mapstructure:"credentials"`
+	Servers     map[string]MCPServerConfig `mapstructure:"servers"`
+	Repos       []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
 }
 
 type MCPWebhookConfig struct {
@@ -409,6 +436,11 @@ type SkillsConfig struct {
 	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphin/skills)
 	MaxTop int      `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
 	Repos  []string `mapstructure:"repos"`   // manifest repos, e.g. ["dolphinv/skills"]
+}
+
+// WorkflowsConfig holds configuration for workflow definitions.
+type WorkflowsConfig struct {
+	Dir string `mapstructure:"dir"` // workflows directory (default: .dolphin/workflows)
 }
 
 // AgentsConfig holds configuration for agent discovery.
@@ -1076,6 +1108,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("skills.dir", ".dolphin/skills")
 	v.SetDefault("skills.max_top", 10)
 	v.SetDefault("skills.repos", []string{})
+
+	v.SetDefault("workflows.dir", ".dolphin/workflows")
 
 	v.SetDefault("crontab.file", ".dolphin/CRONTAB.md")
 	v.SetDefault("crontab.check_interval", "30s")

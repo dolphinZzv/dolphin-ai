@@ -155,6 +155,23 @@ func (tc *TokenCounter) ResetLevel(level string) {
 	tc.Persist()
 }
 
+func (tc *TokenCounter) GetSnapshot() map[string]int {
+	tc.mu.RLock()
+	defer tc.mu.RUnlock()
+
+	return map[string]int{
+		"daily_requests":        tc.RequestsDaily,
+		"weekly_requests":       tc.RequestsWeekly,
+		"monthly_requests":      tc.RequestsMonthly,
+		"daily_input_tokens":    tc.InputTokensDaily,
+		"daily_output_tokens":   tc.OutputTokensDaily,
+		"weekly_input_tokens":   tc.InputTokensWeekly,
+		"weekly_output_tokens":  tc.OutputTokensWeekly,
+		"monthly_input_tokens":  tc.InputTokensMonthly,
+		"monthly_output_tokens": tc.OutputTokensMonthly,
+	}
+}
+
 type counterState struct {
 	RequestsDaily       int
 	RequestsWeekly      int
