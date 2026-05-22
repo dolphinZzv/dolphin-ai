@@ -247,15 +247,20 @@ func (m *Manager) Register(name, description, content string) error {
 	return os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(sb.String()), 0600)
 }
 
-// Unregister removes a skill from memory and deletes its file from the
-// primary skills directory.
+// Unregister removes a skill from memory and deletes its directory from where
+// it was loaded (user home or project dir).
 func (m *Manager) Unregister(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	s, ok := m.skills[name]
+	if !ok {
+		return fmt.Errorf("skill %q not found", name)
+	}
+
 	delete(m.skills, name)
 
-	skillDir := filepath.Join(m.dirs[0], name)
+	skillDir := filepath.Join(s.Source, name)
 	if err := os.RemoveAll(skillDir); err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -268,14 +273,15 @@ func (m *Manager) Disable(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	if _, ok := m.skills[name]; !ok {
+	s, ok := m.skills[name]
+	if !ok {
 		return fmt.Errorf("skill %q not found", name)
 	}
 
 	delete(m.skills, name)
 
-	oldDir := filepath.Join(m.dirs[0], name)
-	newDir := filepath.Join(m.dirs[0], name+".disabled")
+	oldDir := filepath.Join(s.Source, name)
+	newDir := filepath.Join(s.Source, name+".disabled")
 	if err := os.Rename(oldDir, newDir); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("disable skill %q: %w", name, err)
 	}
@@ -283,12 +289,21 @@ func (m *Manager) Disable(name string) error {
 }
 
 // Enable restores a previously disabled skill by renaming <name>.disabled/ back
-// to <name>/ and reloading it into memory.
+// to <name>/ and reloading it into memory. Searches all configured directories
+// for the .disabled directory.
 func (m *Manager) Enable(name string) error {
-	disabledDir := filepath.Join(m.dirs[0], name+".disabled")
-	skillDir := filepath.Join(m.dirs[0], name)
-
-	if _, err := os.Stat(disabledDir); os.IsNotExist(err) {
+	var disabledDir, skillDir string
+	found := false
+	for _, dir := range m.dirs {
+		dd := filepath.Join(dir, name+".disabled")
+		if _, err := os.Stat(dd); err == nil {
+			disabledDir = dd
+			skillDir = filepath.Join(dir, name)
+			found = true
+			break
+		}
+	}
+	if !found {
 		return fmt.Errorf("disabled skill %q not found", name)
 	}
 
