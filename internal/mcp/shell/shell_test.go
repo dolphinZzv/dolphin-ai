@@ -56,6 +56,7 @@ func TestShellExecuteDisallowedCommand(t *testing.T) {
 func TestShellExecuteSuccess(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
+	cfg.MCP.Shell.AllowUnrestricted = true
 	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
 	if err != nil {
@@ -80,6 +81,7 @@ func TestShellDefinition(t *testing.T) {
 func TestShellExecuteTimeout(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
+	cfg.MCP.Shell.AllowUnrestricted = true
 	cfg.MCP.Shell.TimeoutSeconds = 1
 	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"sleep 5"}`))
@@ -94,6 +96,7 @@ func TestShellExecuteTimeout(t *testing.T) {
 func TestShellExecutePipeCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
+	cfg.MCP.Shell.AllowUnrestricted = true
 	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | wc -c"}`))
 	if err != nil {

@@ -116,8 +116,13 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 		} else {
 			cmd = exec.CommandContext(ctx, fields[0])
 		}
-	} else {
+	} else if s.cfg.AllowUnrestricted {
 		cmd = shellCommand(ctx, params.Command)
+	} else {
+		return &mcp.ToolResult{
+			Content: "shell restricted: configure mcp.shell.allowed_commands or set mcp.shell.allow_unrestricted=true",
+			IsError: true,
+		}, nil
 	}
 	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
 		cmd.Dir = wd

@@ -320,6 +320,14 @@ func runAgentInstall(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+func validateAgentName(agentsDir, agentPath string) error {
+	clean := filepath.Clean(agentPath)
+	if !strings.HasPrefix(clean, filepath.Clean(agentsDir)) {
+		return fmt.Errorf("invalid agent name: resolves outside agents directory")
+	}
+	return nil
+}
+
 func runAgentNew(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	agentsDir := agentDir()
@@ -358,6 +366,9 @@ func runAgentDisable(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	agentsDir := agentDir()
 	agentPath := filepath.Join(agentsDir, name)
+	if err := validateAgentName(agentsDir, agentPath); err != nil {
+		return err
+	}
 	disabledPath := filepath.Join(agentsDir, name+".disabled")
 
 	// Check if agent exists
@@ -382,6 +393,9 @@ func runAgentEnable(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	agentsDir := agentDir()
 	agentPath := filepath.Join(agentsDir, name)
+	if err := validateAgentName(agentsDir, agentPath); err != nil {
+		return err
+	}
 	disabledPath := filepath.Join(agentsDir, name+".disabled")
 
 	// Check disabled dir exists
@@ -411,6 +425,9 @@ func runAgentUninstall(cmd *cobra.Command, args []string) error {
 	name := args[0]
 	agentsDir := agentDir()
 	agentPath := filepath.Join(agentsDir, name)
+	if err := validateAgentName(agentsDir, agentPath); err != nil {
+		return err
+	}
 	disabledPath := filepath.Join(agentsDir, name+".disabled")
 
 	var targetDir string

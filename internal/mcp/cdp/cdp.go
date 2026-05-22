@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -225,6 +227,29 @@ func (c *Tool) startIdleWatcher(timeout time.Duration) {
 	}()
 }
 
+// blockPrivateBrowserTarget prevents navigation to private/internal IPs (SSRF protection).
+func blockPrivateBrowserTarget(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("invalid URL: %v", err)
+	}
+	host := parsed.Hostname()
+	ips, err := net.LookupHost(host)
+	if err != nil {
+		return fmt.Errorf("cannot resolve host %q: %v", host, err)
+	}
+	for _, ip := range ips {
+		parsedIP := net.ParseIP(ip)
+		if parsedIP == nil {
+			continue
+		}
+		if parsedIP.IsLoopback() || parsedIP.IsPrivate() || parsedIP.IsLinkLocalUnicast() {
+			return fmt.Errorf("SSRF blocked: %q resolves to private IP %q", host, ip)
+		}
+	}
+	return nil
+}
+
 func (c *Tool) navigate(ctx context.Context, url string) (*mcp.ToolResult, error) {
 	if url == "" {
 		return &mcp.ToolResult{Content: "url is required for navigate action", IsError: true}, nil
@@ -232,6 +257,10 @@ func (c *Tool) navigate(ctx context.Context, url string) (*mcp.ToolResult, error
 
 	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
 		url = "https://" + url
+	}
+
+	if err := blockPrivateBrowserTarget(url); err != nil {
+		return &mcp.ToolResult{Content: err.Error(), IsError: true}, nil
 	}
 
 	var title string

@@ -24,6 +24,7 @@ func TestShellCommandUnix(t *testing.T) {
 func TestShellExecuteWithWorkdir(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
+	cfg.MCP.Shell.AllowUnrestricted = true
 	tool := New(cfg)
 	ctx := WithWorkdir(context.Background(), "/tmp")
 	result, err := tool.Execute(ctx, json.RawMessage(`{"command":"pwd"}`))
@@ -38,6 +39,7 @@ func TestShellExecuteWithWorkdir(t *testing.T) {
 func TestShellExecuteRedirectCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
+	cfg.MCP.Shell.AllowUnrestricted = true
 	tool := New(cfg)
 	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello | tee /dev/null"}`))
 	if err != nil {

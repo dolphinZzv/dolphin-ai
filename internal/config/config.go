@@ -357,8 +357,9 @@ type MCPConfig struct {
 	Webhook     MCPWebhookConfig           `mapstructure:"webhook"`
 	WebSearch   MCPWebSearchConfig         `mapstructure:"web_search"`
 	Credentials CredentialsConfig          `mapstructure:"credentials"`
+	A2A         MCPA2AConfig               `mapstructure:"a2a"`
 	Servers     map[string]MCPServerConfig `mapstructure:"servers"`
-	Repos       []string                   `mapstructure:"repos"` // manifest repos, e.g. ["dolphinv/mcp"]
+	Repos       []string                   `mapstructure:"repos"`
 }
 
 type MCPWebhookConfig struct {
@@ -376,9 +377,20 @@ type WebhookTarget struct {
 type MCPWebSearchConfig struct {
 	Enabled   bool     `mapstructure:"enabled"`
 	Priority  int      `mapstructure:"priority"`
-	Provider  string   `mapstructure:"provider"`  // single default provider (backward compat)
-	Providers []string `mapstructure:"providers"` // enabled provider list, intersected with registered providers for LLM enum
-	APIKey    string   `mapstructure:"api_key"`   // for serper/iflow providers
+	Provider  string   `mapstructure:"provider"`
+	Providers []string `mapstructure:"providers"`
+	APIKey    string   `mapstructure:"api_key"`
+}
+
+type MCPA2AConfig struct {
+	Enabled bool             `mapstructure:"enabled"`
+	Agents  []A2AAgentConfig `mapstructure:"agents"`
+}
+
+type A2AAgentConfig struct {
+	Name   string `mapstructure:"name"`
+	URL    string `mapstructure:"url"`
+	APIKey string `mapstructure:"api_key"`
 }
 
 type MCPServerConfig struct {
@@ -1079,7 +1091,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("session.resume", false)
 
 	v.SetDefault("mcp.shell.enabled", true)
-	v.SetDefault("mcp.shell.allow_unrestricted", true)
+	v.SetDefault("mcp.shell.allow_unrestricted", false)
 	v.SetDefault("mcp.shell.timeout_seconds", 30)
 	v.SetDefault("mcp.shell.priority", 10)
 	v.SetDefault("mcp.shell.max_command_length", 4096)

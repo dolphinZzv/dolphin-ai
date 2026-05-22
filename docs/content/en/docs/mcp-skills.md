@@ -1,7 +1,7 @@
 ---
-title: MCP & Skills
+title: MCP & Capabilities
 description: How to extend Dolphin with external MCP servers and loadable skills
-slug: mcp-skills
+slug: capabilities
 weight: 30
 ---
 

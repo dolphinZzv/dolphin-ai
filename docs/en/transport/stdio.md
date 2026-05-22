@@ -1,4 +1,4 @@
-# Stdio Transport
+# STDIO Transport
 
 The stdio transport reads from stdin and writes to stdout. It is the default transport used when running Dolphin interactively in a terminal.
 

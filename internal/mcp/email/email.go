@@ -138,6 +138,26 @@ func (e *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 	}
 }
 
+// isAllowedAttachmentPath checks that the resolved file path is within allowed directories.
+func isAllowedAttachmentPath(absPath string) (bool, string) {
+	home, _ := os.UserHomeDir()
+	cwd, _ := os.Getwd()
+	allowed := []string{os.TempDir()}
+	if home != "" {
+		allowed = append(allowed, home)
+	}
+	if cwd != "" {
+		allowed = append(allowed, cwd)
+	}
+	for _, dir := range allowed {
+		prefix := strings.TrimRight(dir, string(filepath.Separator)) + string(filepath.Separator)
+		if strings.HasPrefix(absPath, prefix) || absPath == dir {
+			return true, ""
+		}
+	}
+	return false, fmt.Sprintf("attachment path %q not allowed: must be under home directory, project directory, or %s", absPath, os.TempDir())
+}
+
 func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachments []struct {
 	FilePath string `json:"file_path"`
 }) (*mcp.ToolResult, error) {
@@ -174,6 +194,9 @@ func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachme
 		absPath, err := filepath.Abs(a.FilePath)
 		if err != nil {
 			return &mcp.ToolResult{Content: fmt.Sprintf("Invalid file path %q: %v", a.FilePath, err), IsError: true}, nil
+		}
+		if ok, msg := isAllowedAttachmentPath(absPath); !ok {
+			return &mcp.ToolResult{Content: msg, IsError: true}, nil
 		}
 		data, err := os.ReadFile(absPath)
 		if err != nil {

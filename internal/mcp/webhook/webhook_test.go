@@ -23,6 +23,7 @@ func TestWebhook_POSTWithBody(t *testing.T) {
 	defer ts.Close()
 
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url":  ts.URL,
 		"body": `{"message":"hello"}`,
@@ -51,6 +52,7 @@ func TestWebhook_CustomHeaders(t *testing.T) {
 	defer ts.Close()
 
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url":     ts.URL,
 		"body":    "test",
@@ -88,6 +90,7 @@ func TestWebhook_NamedTarget(t *testing.T) {
 		},
 	}
 	tool := New(cfg)
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"target": "my_bot",
 	})
@@ -115,6 +118,7 @@ func TestWebhook_GETMethod(t *testing.T) {
 	defer ts.Close()
 
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url":    ts.URL,
 		"method": "GET",
@@ -150,6 +154,7 @@ func TestWebhook_MergeTargetAndInlineHeaders(t *testing.T) {
 		},
 	}
 	tool := New(cfg)
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"target":  "my_bot",
 		"headers": map[string]string{"Authorization": "Bearer inline"},
@@ -184,6 +189,7 @@ func TestWebhook_URLFromTargetWithInlineOverride(t *testing.T) {
 		"my_bot": {URL: ts1.URL},
 	}
 	tool := New(cfg)
+	tool.disableSSRF = true
 	// Inline URL overrides target URL
 	input, _ := json.Marshal(map[string]any{
 		"target": "my_bot",
@@ -200,6 +206,7 @@ func TestWebhook_URLFromTargetWithInlineOverride(t *testing.T) {
 
 func TestWebhook_ErrorMissingURL(t *testing.T) {
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"body": "test",
 	})
@@ -214,6 +221,7 @@ func TestWebhook_ErrorMissingURL(t *testing.T) {
 
 func TestWebhook_ErrorUnknownTarget(t *testing.T) {
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"target": "nonexistent",
 	})
@@ -228,6 +236,7 @@ func TestWebhook_ErrorUnknownTarget(t *testing.T) {
 
 func TestWebhook_ErrorNetworkFailure(t *testing.T) {
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url": "http://127.0.0.1:1",
 	})
@@ -245,6 +254,7 @@ func TestWebhook_ResponseContent(t *testing.T) {
 	defer ts.Close()
 
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url":  ts.URL,
 		"body": "test",
@@ -271,6 +281,7 @@ func TestWebhook_ContentTypeDefault(t *testing.T) {
 	defer ts.Close()
 
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url":  ts.URL,
 		"body": `{"key":"value"}`,
@@ -293,6 +304,7 @@ func TestWebhook_NoContentTypeWithoutBody(t *testing.T) {
 	defer ts.Close()
 
 	tool := New(config.DefaultConfig())
+	tool.disableSSRF = true
 	input, _ := json.Marshal(map[string]any{
 		"url":    ts.URL,
 		"method": "GET",

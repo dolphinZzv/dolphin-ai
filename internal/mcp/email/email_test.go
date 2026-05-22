@@ -1030,8 +1030,8 @@ func TestEmailSendAttachmentNotFound(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected error for missing attachment file")
 	}
-	if !strings.Contains(result.Content, "Cannot read attachment") {
-		t.Errorf("expected 'Cannot read attachment' error, got: %q", result.Content)
+	if !strings.Contains(result.Content, "not allowed") {
+		t.Errorf("expected path not allowed error, got: %q", result.Content)
 	}
 }
 

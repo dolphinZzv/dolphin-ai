@@ -19,9 +19,10 @@ import (
 
 // Tool sends HTTP webhook requests to configured or inline endpoints.
 type Tool struct {
-	cfg    *config.MCPWebhookConfig
-	schema json.RawMessage
-	client *http.Client
+	cfg         *config.MCPWebhookConfig
+	schema      json.RawMessage
+	client      *http.Client
+	disableSSRF bool // set true in tests to bypass private IP check
 }
 
 // webhookInput is the JSON-unmarshal shape for the Execute input.
@@ -130,6 +131,13 @@ func (w *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 	}
 	if req.Header.Get("Content-Type") == "" && params.Body != "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+
+	// SSRF protection: reject requests to private/internal IPs
+	if !w.disableSSRF {
+		if err := blockPrivateTarget(urlStr); err != nil {
+			return &mcp.ToolResult{Content: err.Error(), IsError: true}, nil
+		}
 	}
 
 	zap.S().Debugw("webhook: sending request", "method", method, "url", sanitizeURL(urlStr))
