@@ -5,7 +5,6 @@ package shell
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 
 	"dolphin/internal/config"
@@ -29,8 +28,8 @@ func TestShellExecuteRedirectCommand(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
 	tool := New(cfg)
-	// Use echo with NUL redirect (Windows equivalent of /dev/null)
-	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello > `+os.DevNull+` && echo ok"}`))
+	// Windows: use $null for PowerShell (default shell) redirect
+	result, err := tool.Execute(context.Background(), json.RawMessage(`{"command":"echo hello > $null"}`))
 	if err != nil {
 		t.Fatalf("Execute error: %v", err)
 	}

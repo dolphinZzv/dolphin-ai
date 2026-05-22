@@ -3,6 +3,7 @@ package shell
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"testing"
 
 	"dolphin/internal/config"
@@ -94,6 +95,9 @@ func TestShellExecuteTimeout(t *testing.T) {
 }
 
 func TestShellExecutePipeCommand(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("pipe test requires Unix utilities (wc)")
+	}
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = nil
 	cfg.MCP.Shell.AllowUnrestricted = true
@@ -108,6 +112,9 @@ func TestShellExecutePipeCommand(t *testing.T) {
 }
 
 func TestShellExecuteRestrictedMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("restricted mode test requires standalone executables (echo is built-in on Windows)")
+	}
 	cfg := config.DefaultConfig()
 	cfg.MCP.Shell.AllowedCommands = []string{"echo", "ls"}
 	tool := New(cfg)

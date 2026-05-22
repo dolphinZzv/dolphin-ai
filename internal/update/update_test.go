@@ -281,7 +281,7 @@ func TestExtractBinary_TarGz(t *testing.T) {
 	tmpDir := t.TempDir()
 	archivePath := filepath.Join(tmpDir, "archive.tar.gz")
 	binContent := []byte("#!/bin/sh\necho hello\n")
-	if err := createTarGz(archivePath, "dolphin", binContent); err != nil {
+	if err := createTarGz(archivePath, binaryName(), binContent); err != nil {
 		t.Fatal(err)
 	}
 
@@ -330,7 +330,7 @@ func TestExtractBinaryFromTarGz_InvalidGzip(t *testing.T) {
 func TestExtractBinaryFromZip(t *testing.T) {
 	tmpDir := t.TempDir()
 	zipPath := filepath.Join(tmpDir, "archive.zip")
-	if err := createZipWithBinary(zipPath, "dolphin", []byte("binary-content")); err != nil {
+	if err := createZipWithBinary(zipPath, binaryName(), []byte("binary-content")); err != nil {
 		t.Fatalf("create zip: %v", err)
 	}
 

@@ -441,11 +441,14 @@ func TestRunTurnWithThinking(t *testing.T) {
 }
 
 func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
-	// Isolate HOME so the email-configured marker doesn't leak.
+	// Isolate home/userprofile so the email-configured marker doesn't leak.
 	origHome := os.Getenv("HOME")
+	origUserProfile := os.Getenv("USERPROFILE")
 	tmpDir := t.TempDir()
 	os.Setenv("HOME", tmpDir)
+	os.Setenv("USERPROFILE", tmpDir)
 	defer os.Setenv("HOME", origHome)
+	defer os.Setenv("USERPROFILE", origUserProfile)
 
 	cfg := config.DefaultConfig()
 	config.SetSessionsDir(t.TempDir())
