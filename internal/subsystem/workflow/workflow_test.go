@@ -1086,3 +1086,70 @@ func wfNames(list []*Workflow) []string {
 	}
 	return out
 }
+
+func TestManager_ListForAgent_AllWhenAllowedEmpty(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("a", "wf a", "steps a")
+	m.Register("b", "wf b", "steps b")
+
+	wfs := m.ListForAgent(nil)
+	if len(wfs) != 2 {
+		t.Errorf("ListForAgent(nil) = %d, want 2", len(wfs))
+	}
+	wfs = m.ListForAgent([]string{})
+	if len(wfs) != 2 {
+		t.Errorf("ListForAgent([]) = %d, want 2", len(wfs))
+	}
+}
+
+func TestManager_ListForAgent_Filters(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("a", "wf a", "steps a")
+	m.Register("b", "wf b", "steps b")
+	m.Register("c", "wf c", "steps c")
+
+	wfs := m.ListForAgent([]string{"a", "c"})
+	if len(wfs) != 2 {
+		t.Fatalf("ListForAgent([a,c]) = %d, want 2", len(wfs))
+	}
+	if wfs[0].Name != "a" || wfs[1].Name != "c" {
+		t.Errorf("got %v, want [a c]", []string{wfs[0].Name, wfs[1].Name})
+	}
+}
+
+func TestManager_GetForAgent_Allowed(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("x", "wf x", "steps x")
+
+	w, ok := m.GetForAgent("x", []string{"x", "y"})
+	if !ok {
+		t.Fatal("expected to find workflow 'x' when allowed")
+	}
+	if w.Name != "x" {
+		t.Errorf("name = %q, want 'x'", w.Name)
+	}
+}
+
+func TestManager_GetForAgent_NotAllowed(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("z", "wf z", "steps z")
+
+	_, ok := m.GetForAgent("z", []string{"x", "y"})
+	if ok {
+		t.Error("expected not to find workflow 'z' when not in allowed list")
+	}
+}
+
+func TestManager_GetForAgent_EmptyAllowed(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("any", "wf any", "steps any")
+
+	_, ok := m.GetForAgent("any", nil)
+	if !ok {
+		t.Error("expected to find workflow when allowed is nil")
+	}
+	_, ok = m.GetForAgent("any", []string{})
+	if !ok {
+		t.Error("expected to find workflow when allowed is empty")
+	}
+}

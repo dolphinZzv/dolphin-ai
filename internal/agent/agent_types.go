@@ -29,6 +29,8 @@ type AgentDef struct {
 	Name      string   `yaml:"name" json:"name"`
 	Role      string   `yaml:"role" json:"role"`
 	Tools     []string `yaml:"tools" json:"tools"`
+	Skills    []string `yaml:"skills,omitempty" json:"skills,omitempty"`       // visible skills (empty = all)
+	Workflows []string `yaml:"workflows,omitempty" json:"workflows,omitempty"` // visible workflows (empty = all)
 	Model     string   `yaml:"model,omitempty" json:"model,omitempty"`
 	Workspace string   `yaml:"workspace,omitempty" json:"workspace,omitempty"`
 	Timeout   int      `yaml:"timeout,omitempty" json:"timeout,omitempty"` // per-task timeout (seconds)

@@ -163,6 +163,44 @@ func (m *Manager) TopSkills(n int) []*Skill {
 	return skills
 }
 
+// ListForAgent returns skills filtered by the allowed list.
+// If allowed is empty, returns all skills (backward compatible).
+func (m *Manager) ListForAgent(allowed []string) []*Skill {
+	all := m.List()
+	if len(allowed) == 0 {
+		return all
+	}
+	set := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		set[a] = true
+	}
+	filtered := make([]*Skill, 0, len(allowed))
+	for _, s := range all {
+		if set[s.Name] {
+			filtered = append(filtered, s)
+		}
+	}
+	return filtered
+}
+
+// GetForAgent returns a skill by name if it is in the allowed list.
+// If allowed is empty, returns the skill (backward compatible).
+func (m *Manager) GetForAgent(name string, allowed []string) (*Skill, bool) {
+	if len(allowed) > 0 {
+		ok := false
+		for _, a := range allowed {
+			if a == name {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return nil, false
+		}
+	}
+	return m.Get(name)
+}
+
 // Search returns skills whose name or description matches the query.
 func (m *Manager) Search(query string) []*Skill {
 	m.mu.RLock()

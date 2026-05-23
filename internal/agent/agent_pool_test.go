@@ -2,11 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
+	"dolphin/internal/mcp"
 )
 
 func TestAgentInstanceStatus(t *testing.T) {
@@ -255,5 +257,200 @@ func TestAgentPoolShutdownNoAgents(t *testing.T) {
 	results := pool.Collect()
 	if len(results) != 0 {
 		t.Errorf("expected empty results after shutdown, got %d", len(results))
+	}
+}
+
+// ---- filterTool tests ----
+
+// mockPoolTool is a minimal mcp.Tool for testing.
+type mockPoolTool struct {
+	name    string
+	execute func(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error)
+}
+
+func (m *mockPoolTool) Definition() mcp.ToolDefinition {
+	return mcp.ToolDefinition{Name: m.name}
+}
+
+func (m *mockPoolTool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	return m.execute(ctx, input)
+}
+
+func TestFilterTool_BlocksWhenPreCheckFails(t *testing.T) {
+	inner := &mockPoolTool{
+		name: "test_tool",
+		execute: func(_ context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
+			return &mcp.ToolResult{Content: "ok", IsError: false}, nil
+		},
+	}
+
+	ft := &filterTool{
+		def:      inner.Definition(),
+		original: inner,
+		preCheck: func(_ context.Context, _ json.RawMessage) string {
+			return "blocked"
+		},
+	}
+
+	result, err := ft.Execute(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error result when preCheck blocks")
+	}
+	if result.Content != "blocked" {
+		t.Errorf("result = %q, want 'blocked'", result.Content)
+	}
+}
+
+func TestFilterTool_PassesWhenPreCheckSucceeds(t *testing.T) {
+	inner := &mockPoolTool{
+		name: "test_tool",
+		execute: func(_ context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
+			return &mcp.ToolResult{Content: "ok", IsError: false}, nil
+		},
+	}
+
+	ft := &filterTool{
+		def:      inner.Definition(),
+		original: inner,
+		preCheck: func(_ context.Context, _ json.RawMessage) string {
+			return ""
+		},
+	}
+
+	result, err := ft.Execute(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("expected success when preCheck passes")
+	}
+	if result.Content != "ok" {
+		t.Errorf("result = %q, want 'ok'", result.Content)
+	}
+}
+
+// ---- wrapSkillTools / wrapWorkflowTools integration tests ----
+
+func TestWrapSkillTools_AllowsPermittedSkill(t *testing.T) {
+	reg := mcp.NewRegistry(config.DefaultConfig())
+	reg.Register(&mockPoolTool{
+		name: "load_skill",
+		execute: func(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+			var p struct {
+				Name string `json:"name"`
+			}
+			json.Unmarshal(input, &p)
+			return &mcp.ToolResult{Content: "skill: " + p.Name}, nil
+		},
+	})
+
+	reg = wrapSkillTools(reg, []string{"review", "deploy"})
+
+	// Allowed skill
+	input, _ := json.Marshal(map[string]string{"name": "review"})
+	result, err := reg.Execute(context.Background(), "load_skill", input)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success for 'review', got error: %s", result.Content)
+	}
+}
+
+func TestWrapSkillTools_BlocksDisallowedSkill(t *testing.T) {
+	reg := mcp.NewRegistry(config.DefaultConfig())
+	reg.Register(&mockPoolTool{
+		name: "load_skill",
+		execute: func(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+			var p struct {
+				Name string `json:"name"`
+			}
+			json.Unmarshal(input, &p)
+			return &mcp.ToolResult{Content: "skill: " + p.Name}, nil
+		},
+	})
+
+	reg = wrapSkillTools(reg, []string{"review", "deploy"})
+
+	// Disallowed skill
+	input, _ := json.Marshal(map[string]string{"name": "secret"})
+	result, err := reg.Execute(context.Background(), "load_skill", input)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for disallowed skill 'secret'")
+	}
+}
+
+func TestWrapWorkflowTools_AllowsPermittedWorkflow(t *testing.T) {
+	reg := mcp.NewRegistry(config.DefaultConfig())
+	reg.Register(&mockPoolTool{
+		name: "load_workflow",
+		execute: func(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+			var p struct {
+				Name string `json:"name"`
+			}
+			json.Unmarshal(input, &p)
+			return &mcp.ToolResult{Content: "workflow: " + p.Name}, nil
+		},
+	})
+
+	reg = wrapWorkflowTools(reg, []string{"review-flow", "deploy-flow"})
+
+	// Allowed workflow
+	input, _ := json.Marshal(map[string]string{"name": "review-flow"})
+	result, err := reg.Execute(context.Background(), "load_workflow", input)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("expected success for 'review-flow', got error: %s", result.Content)
+	}
+}
+
+func TestWrapWorkflowTools_BlocksDisallowedWorkflow(t *testing.T) {
+	reg := mcp.NewRegistry(config.DefaultConfig())
+	reg.Register(&mockPoolTool{
+		name: "run_workflow",
+		execute: func(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+			var p struct {
+				Name string `json:"name"`
+			}
+			json.Unmarshal(input, &p)
+			return &mcp.ToolResult{Content: "workflow: " + p.Name}, nil
+		},
+	})
+
+	reg = wrapWorkflowTools(reg, []string{"review-flow"})
+
+	// Disallowed workflow
+	input, _ := json.Marshal(map[string]string{"name": "admin-flow"})
+	result, err := reg.Execute(context.Background(), "run_workflow", input)
+	if err != nil {
+		t.Fatalf("Execute error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for disallowed workflow 'admin-flow'")
+	}
+}
+
+func TestWrapSkillTools_NoOpWhenAllowedEmpty(t *testing.T) {
+	origTool := &mockPoolTool{
+		name: "load_skill",
+		execute: func(_ context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
+			return &mcp.ToolResult{Content: "any"}, nil
+		},
+	}
+	reg := mcp.NewRegistry(config.DefaultConfig())
+	reg.Register(origTool)
+
+	// Empty allowed list = no-op
+	reg2 := wrapSkillTools(reg, []string{})
+	if reg2 != reg {
+		t.Error("expected same registry back when allowed is empty")
 	}
 }

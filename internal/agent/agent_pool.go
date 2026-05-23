@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -123,6 +124,15 @@ func (p *AgentPool) ParentSessionID() session.SessionID { return p.parentSession
 func (p *AgentPool) Add(name string, def *AgentDef, kind AgentKind, agent *Agent, tools *mcp.Registry) *AgentInstance {
 	// Build filtered tool registry
 	filteredTools := tools.FilteredView(def.Tools)
+
+	// Wrap skill/workflow tool handlers with agent-specific visibility
+	if len(def.Skills) > 0 {
+		filteredTools = wrapSkillTools(filteredTools, def.Skills)
+	}
+	if len(def.Workflows) > 0 {
+		filteredTools = wrapWorkflowTools(filteredTools, def.Workflows)
+	}
+
 	// Create a sub-agent with the filtered tools
 	comp := agent.compressor
 	if comp == nil {
@@ -550,4 +560,81 @@ func (p *AgentPool) reapIdleAgents() {
 			}
 		}
 	}
+}
+
+// filterTool wraps an mcp.Tool with a pre-check function.
+// If preCheck returns a non-empty error message, the tool call is rejected.
+type filterTool struct {
+	def      mcp.ToolDefinition
+	original mcp.Tool
+	preCheck func(ctx context.Context, input json.RawMessage) string // empty = allowed
+}
+
+func (f *filterTool) Definition() mcp.ToolDefinition { return f.def }
+
+func (f *filterTool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if msg := f.preCheck(ctx, input); msg != "" {
+		return &mcp.ToolResult{Content: msg, IsError: true}, nil
+	}
+	return f.original.Execute(ctx, input)
+}
+
+// wrapSkillTools replaces load_skill with a filtered version.
+// If allowed is empty, returns the registry unchanged.
+func wrapSkillTools(reg *mcp.Registry, allowed []string) *mcp.Registry {
+	if len(allowed) == 0 {
+		return reg
+	}
+	if t, ok := reg.Get("load_skill"); ok {
+		reg.Register(&filterTool{
+			def:      t.Definition(),
+			original: t,
+			preCheck: func(_ context.Context, input json.RawMessage) string {
+				var params struct {
+					Name string `json:"name"`
+				}
+				if err := json.Unmarshal(input, &params); err != nil {
+					return "invalid input: " + err.Error()
+				}
+				for _, a := range allowed {
+					if a == params.Name {
+						return ""
+					}
+				}
+				return fmt.Sprintf("Skill %q is not available for this agent. Allowed skills: %v", params.Name, allowed)
+			},
+		})
+	}
+	return reg
+}
+
+// wrapWorkflowTools replaces load_workflow and run_workflow with filtered versions.
+// If allowed is empty, returns the registry unchanged.
+func wrapWorkflowTools(reg *mcp.Registry, allowed []string) *mcp.Registry {
+	if len(allowed) == 0 {
+		return reg
+	}
+	for _, name := range []string{"load_workflow", "run_workflow"} {
+		if t, ok := reg.Get(name); ok {
+			reg.Register(&filterTool{
+				def:      t.Definition(),
+				original: t,
+				preCheck: func(_ context.Context, input json.RawMessage) string {
+					var params struct {
+						Name string `json:"name"`
+					}
+					if err := json.Unmarshal(input, &params); err != nil {
+						return "invalid input: " + err.Error()
+					}
+					for _, a := range allowed {
+						if a == params.Name {
+							return ""
+						}
+					}
+					return fmt.Sprintf("Workflow %q is not available for this agent. Allowed workflows: %v", params.Name, allowed)
+				},
+			})
+		}
+	}
+	return reg
 }

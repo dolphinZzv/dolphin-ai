@@ -137,6 +137,44 @@ func (m *Manager) List() []*Workflow {
 	return list
 }
 
+// ListForAgent returns workflows filtered by the allowed list.
+// If allowed is empty, returns all workflows (backward compatible).
+func (m *Manager) ListForAgent(allowed []string) []*Workflow {
+	all := m.List()
+	if len(allowed) == 0 {
+		return all
+	}
+	set := make(map[string]bool, len(allowed))
+	for _, a := range allowed {
+		set[a] = true
+	}
+	filtered := make([]*Workflow, 0, len(allowed))
+	for _, w := range all {
+		if set[w.Name] {
+			filtered = append(filtered, w)
+		}
+	}
+	return filtered
+}
+
+// GetForAgent returns a workflow by name if it is in the allowed list.
+// If allowed is empty, returns the workflow (backward compatible).
+func (m *Manager) GetForAgent(name string, allowed []string) (*Workflow, bool) {
+	if len(allowed) > 0 {
+		ok := false
+		for _, a := range allowed {
+			if a == name {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			return nil, false
+		}
+	}
+	return m.Get(name)
+}
+
 // NewTemplate creates a new workflow file from a template in the primary directory.
 func (m *Manager) NewTemplate(name, description string) error {
 	if description == "" {

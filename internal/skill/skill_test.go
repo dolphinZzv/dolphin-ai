@@ -535,3 +535,74 @@ func TestManager_Unregister(t *testing.T) {
 		t.Error("dir should be removed after Unregister")
 	}
 }
+
+func TestManager_ListForAgent_AllWhenAllowedEmpty(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("a", "skill a", "content a")
+	m.Register("b", "skill b", "content b")
+	m.Register("c", "skill c", "content c")
+
+	// Empty allowed list = return all
+	skills := m.ListForAgent(nil)
+	if len(skills) != 3 {
+		t.Errorf("ListForAgent(nil) = %d, want 3", len(skills))
+	}
+	skills = m.ListForAgent([]string{})
+	if len(skills) != 3 {
+		t.Errorf("ListForAgent([]) = %d, want 3", len(skills))
+	}
+}
+
+func TestManager_ListForAgent_Filters(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("a", "skill a", "content a")
+	m.Register("b", "skill b", "content b")
+	m.Register("c", "skill c", "content c")
+
+	skills := m.ListForAgent([]string{"a", "c"})
+	if len(skills) != 2 {
+		t.Fatalf("ListForAgent([a,c]) = %d, want 2", len(skills))
+	}
+	if skills[0].Name != "a" || skills[1].Name != "c" {
+		t.Errorf("got %v, want [a c]", []string{skills[0].Name, skills[1].Name})
+	}
+}
+
+func TestManager_GetForAgent_Allowed(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("a", "skill a", "content a")
+
+	// Allowed and present
+	s, ok := m.GetForAgent("a", []string{"a", "b"})
+	if !ok {
+		t.Fatal("expected to find skill 'a' when allowed")
+	}
+	if s.Name != "a" {
+		t.Errorf("name = %q, want 'a'", s.Name)
+	}
+}
+
+func TestManager_GetForAgent_NotAllowed(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("b", "skill b", "content b")
+
+	// Not in allowed list
+	_, ok := m.GetForAgent("b", []string{"a", "c"})
+	if ok {
+		t.Error("expected not to find skill 'b' when not in allowed list")
+	}
+}
+
+func TestManager_GetForAgent_EmptyAllowed(t *testing.T) {
+	m := NewManager(t.TempDir())
+	m.Register("x", "skill x", "content x")
+
+	_, ok := m.GetForAgent("x", nil)
+	if !ok {
+		t.Error("expected to find skill 'x' when allowed is nil")
+	}
+	_, ok = m.GetForAgent("x", []string{})
+	if !ok {
+		t.Error("expected to find skill 'x' when allowed is empty")
+	}
+}

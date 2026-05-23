@@ -128,3 +128,61 @@ func TestTempAgentWorkspace(t *testing.T) {
 		t.Errorf("got %q", path)
 	}
 }
+
+func TestAgentDefLoadWithSkillsWorkflows(t *testing.T) {
+	dir := t.TempDir()
+	agentDir := filepath.Join(dir, "reviewer")
+	os.MkdirAll(agentDir, 0755)
+	yamlContent := `role: "Code reviewer"
+tools: ["shell"]
+skills:
+  - code-review
+  - security-scan
+workflows:
+  - review-flow
+timeout: 120
+`
+	os.WriteFile(filepath.Join(agentDir, "agent.yaml"), []byte(yamlContent), 0644)
+
+	defs, err := LoadAgentDefs(dir)
+	if err != nil {
+		t.Fatalf("LoadAgentDefs error: %v", err)
+	}
+	def, ok := defs["reviewer"]
+	if !ok {
+		t.Fatal("agent 'reviewer' not found")
+	}
+
+	if len(def.Skills) != 2 || def.Skills[0] != "code-review" || def.Skills[1] != "security-scan" {
+		t.Errorf("Skills = %v, want [code-review security-scan]", def.Skills)
+	}
+	if len(def.Workflows) != 1 || def.Workflows[0] != "review-flow" {
+		t.Errorf("Workflows = %v, want [review-flow]", def.Workflows)
+	}
+}
+
+func TestAgentDefLoadDefaultsSkillsWorkflowsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	agentDir := filepath.Join(dir, "default-agent")
+	os.MkdirAll(agentDir, 0755)
+	yamlContent := `role: "Default agent"
+tools: ["shell"]
+`
+	os.WriteFile(filepath.Join(agentDir, "agent.yaml"), []byte(yamlContent), 0644)
+
+	defs, err := LoadAgentDefs(dir)
+	if err != nil {
+		t.Fatalf("LoadAgentDefs error: %v", err)
+	}
+	def, ok := defs["default-agent"]
+	if !ok {
+		t.Fatal("agent 'default-agent' not found")
+	}
+
+	if def.Skills != nil {
+		t.Errorf("Skills should be nil when not specified, got %v", def.Skills)
+	}
+	if def.Workflows != nil {
+		t.Errorf("Workflows should be nil when not specified, got %v", def.Workflows)
+	}
+}
