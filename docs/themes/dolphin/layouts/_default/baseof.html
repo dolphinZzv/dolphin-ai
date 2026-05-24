@@ -7,8 +7,7 @@
   <meta name="description" content="{{ .Params.description | default .Site.Params.description }}">
   <link rel="stylesheet" href="/css/main.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐬</text></svg>">
-  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <script>document.documentElement.classList.add('theme-'+(localStorage.getItem('dolphin-theme')||'auto'))</script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js" defer></script>
   {{ block "extrahead" . }}{{ end }}
 </head>
 <body>
@@ -19,36 +18,43 @@
   {{ partial "footer.html" . }}
   <script src="/js/copy.js"></script>
   <script>
-    mermaid.initialize({
-      startOnLoad: true,
-      theme: 'base',
-      themeVariables: {
-        fontFamily: 'inherit',
+    (function() {
+      var root = document.documentElement;
+      var mermaidDark = false;
+
+      function applyTheme(t) {
+        root.classList.remove('theme-auto', 'theme-light', 'theme-dark');
+        root.classList.add('theme-' + t);
+        localStorage.setItem('dolphin-theme', t);
+        mermaidDark = t === 'dark' || (t === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        updateMermaidTheme();
+        document.querySelectorAll('.theme-btn').forEach(function(btn) {
+          btn.classList.toggle('active', btn.dataset.theme === t);
+        });
       }
-    });
-  </script>
-  <script>
-(function() {
-  var theme = localStorage.getItem('dolphin-theme') || 'auto';
-  var root = document.documentElement;
 
-  function applyTheme(t) {
-    root.classList.remove('theme-auto', 'theme-light', 'theme-dark');
-    root.classList.add('theme-' + t);
-    document.querySelectorAll('.theme-btn').forEach(function(btn) {
-      btn.classList.toggle('active', btn.dataset.theme === t);
-    });
-    localStorage.setItem('dolphin-theme', t);
-  }
+      function updateMermaidTheme() {
+        if (typeof mermaid !== 'undefined') {
+          mermaid.initialize({
+            theme: mermaidDark ? 'dark' : 'base',
+            themeVariables: { fontFamily: 'inherit' }
+          });
+          document.querySelectorAll('.mermaid').forEach(function(el) {
+            el.removeAttribute('data-processed');
+          });
+          mermaid.run();
+        }
+      }
 
-  applyTheme(theme);
+      var theme = localStorage.getItem('dolphin-theme') || 'auto';
+      applyTheme(theme);
 
-  document.querySelectorAll('.theme-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-      applyTheme(this.dataset.theme);
-    });
-  });
-})();
+      document.querySelectorAll('.theme-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+          applyTheme(this.dataset.theme);
+        });
+      });
+    })();
   </script>
 </body>
 </html>
