@@ -233,7 +233,6 @@ type TransportConfig struct {
 	MQTT     MQTTConfig     `mapstructure:"mqtt"`
 	Email    EmailConfig    `mapstructure:"email"`
 	DingTalk DingTalkConfig `mapstructure:"dingtalk"`
-	ACP      ACPConfig      `mapstructure:"acp"`
 	A2A      A2AConfig      `mapstructure:"a2a"`
 }
 
@@ -249,30 +248,6 @@ type MQTTBrokerConfig struct {
 	Enabled  bool          `mapstructure:"enabled"`
 	Addr     string        `mapstructure:"addr"`
 	Accounts []MQTTAccount `mapstructure:"accounts"`
-}
-
-// ACPConfig holds configuration for the ACP (Agent Communication Protocol) transport.
-// Uses REST over HTTP, following IBM BeeAI ACP specification.
-type ACPConfig struct {
-	Enabled      bool            `mapstructure:"enabled"`
-	ListenAddr   string          `mapstructure:"listen_addr"`
-	AgentID      string          `mapstructure:"agent_id"`
-	AgentName    string          `mapstructure:"agent_name"`
-	AgentVersion string          `mapstructure:"agent_version"`
-	AgentDesc    string          `mapstructure:"agent_description"`
-	Capabilities []string        `mapstructure:"capabilities"`
-	SyncTimeout  string          `mapstructure:"sync_timeout"`
-	APIKey       string          `mapstructure:"api_key"`
-	TLSEnabled   bool            `mapstructure:"tls_enabled"`
-	TLSCertFile  string          `mapstructure:"tls_cert_file"`
-	TLSKeyFile   string          `mapstructure:"tls_key_file"`
-	Peers        []ACPPeerConfig `mapstructure:"peers"`
-}
-
-type ACPPeerConfig struct {
-	ID     string `mapstructure:"id"`
-	URL    string `mapstructure:"url"`
-	APIKey string `mapstructure:"api_key"`
 }
 
 // A2AConfig holds configuration for the A2A (Agent-to-Agent) transport.
@@ -413,7 +388,7 @@ func TimeoutDuration(sec int) time.Duration {
 
 type ShellConfig struct {
 	Enabled           bool     `mapstructure:"enabled"`
-	AllowedCommands   []string `mapstructure:"allowed_commands"`   // empty = allow all when allow_unrestricted is true
+	AllowedCommands   []string `mapstructure:"allowed_commands"`   // default: ["date"]; empty + allow_unrestricted=true = allow all
 	AllowUnrestricted bool     `mapstructure:"allow_unrestricted"` // opt-in to unrestricted sh -c when no whitelist
 	MaxCommandLength  int      `mapstructure:"max_command_length"` // 0 = use default
 	TimeoutSeconds    int      `mapstructure:"timeout_seconds"`
@@ -1061,19 +1036,6 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("transport.dingtalk.enabled", false)
 
-	v.SetDefault("transport.acp.enabled", false)
-	v.SetDefault("transport.acp.listen_addr", ":8333")
-	v.SetDefault("transport.acp.agent_id", "dolphin")
-	v.SetDefault("transport.acp.agent_name", "Dolphin AI Agent")
-	v.SetDefault("transport.acp.agent_version", "0.1.0")
-	v.SetDefault("transport.acp.agent_description", "Cross-terminal/email/chat/SSH AI agent")
-	v.SetDefault("transport.acp.capabilities", []string{"task-execution", "shell-command", "web-search"})
-	v.SetDefault("transport.acp.sync_timeout", "60s")
-	v.SetDefault("transport.acp.api_key", "")
-	v.SetDefault("transport.acp.tls_enabled", false)
-	v.SetDefault("transport.acp.tls_cert_file", "")
-	v.SetDefault("transport.acp.tls_key_file", "")
-
 	v.SetDefault("transport.a2a.enabled", false)
 	v.SetDefault("transport.a2a.listen_addr", ":8334")
 	v.SetDefault("transport.a2a.agent_id", "dolphin")
@@ -1091,7 +1053,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("session.resume", false)
 
 	v.SetDefault("mcp.shell.enabled", true)
-	v.SetDefault("mcp.shell.allow_unrestricted", false)
+	v.SetDefault("mcp.shell.allow_unrestricted", true)
+	v.SetDefault("mcp.shell.allowed_commands", []string{"date"})
 	v.SetDefault("mcp.shell.timeout_seconds", 30)
 	v.SetDefault("mcp.shell.priority", 10)
 	v.SetDefault("mcp.shell.max_command_length", 4096)

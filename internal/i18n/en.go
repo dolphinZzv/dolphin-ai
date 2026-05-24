@@ -505,7 +505,6 @@ Examples:
 	KeyTransEmailSMTP:   "SMTP: %s:%d",
 	KeyTransEmailHint:   "Send an email to %s — subject = command",
 	KeyTransDingTalk:    "\n=== DingTalk bot active (Stream mode) ===\n",
-	KeyTransACPActive:   "\n=== ACP transport active (IBM BeeAI ACP) on %s ===\n",
 	KeyTransA2AActive:   "\n=== A2A transport active (Google Agent-to-Agent) on %s ===\n",
 	KeyTransNoneEnabled: "no transport enabled (enable stdio, ssh, mqtt, or email in config)",
 

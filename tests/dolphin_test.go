@@ -16,6 +16,7 @@ import (
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
+	mcpshell "dolphin/internal/mcp/shell"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 	a2atransport "dolphin/internal/transport/a2a"
@@ -1152,6 +1153,53 @@ func TestFeedbackCommand(t *testing.T) {
 			})
 		})
 	})
+}
+
+// TestCoordinatorTimeQueryE2E tests the coordinator end-to-end with a real LLM provider
+// and subagent dispatch for a time query ("几点了"). This mirrors the real ./dolphin binary
+// flow: config → agent → pool → coordinator → real LLM → subagent → synthesis.
+// Requires valid LLM credentials — skipped if not configured.
+func TestCoordinatorTimeQueryE2E(t *testing.T) {
+	_, validProviders := loadLLMConfig(t)
+	if len(validProviders) == 0 {
+		t.Skip("no valid providers")
+	}
+
+	cfg := config.DefaultConfig()
+	config.SetSessionsDir(t.TempDir())
+	cfg.Session.MaxLoop = 10
+	cfg.LLM.MaxContextTokens = 100000
+	cfg.LLM.Providers = validProviders
+	cfg.MCP.Shell.Enabled = true
+
+	sessMgr := session.NewManager(config.SessionsDir())
+	sessMgr.EnsureDir()
+
+	// Create tool registry and register shell tool (as done in cmd/root.go)
+	toolReg := mcp.NewRegistry(cfg)
+	toolReg.Register(mcpshell.New(cfg))
+
+	agt := agent.New(cfg, sessMgr, toolReg)
+	pool := agent.NewAgentPool(context.Background(), agent.PoolConfig{
+		MaxConcurrency: 10,
+		DefaultTimeout: 60,
+	})
+	coord := agent.NewCoordinator(agt, pool)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	io := &testIO{lines: []string{"几点了", "/exit"}}
+	coord.Run(ctx, io)
+	out := io.output()
+
+	t.Logf("coordinator output:\n%s", out)
+
+	if !strings.Contains(out, "2026") && !strings.Contains(out, "2025") &&
+		!strings.Contains(out, "点") && !strings.Contains(out, "时") &&
+		!strings.Contains(out, ":") && !strings.Contains(out, "时间") {
+		t.Error("expected output to contain time information (year, 点, 时, or :)")
+	}
 }
 
 // ========== A2A transport e2e tests ==========

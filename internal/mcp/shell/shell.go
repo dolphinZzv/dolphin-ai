@@ -88,6 +88,13 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 	if len(fields) == 0 {
 		return &mcp.ToolResult{Content: "empty command", IsError: true}, nil
 	}
+
+	// When allow_unrestricted is true, allowed_commands is ignored
+	// and the command runs directly via sh -c.
+	if s.cfg.AllowUnrestricted {
+		return s.executeUnrestricted(ctx, params.Command, params.Timeout)
+	}
+
 	if len(allowed) > 0 {
 		if !s.isAllowed(fields[0]) {
 			return &mcp.ToolResult{Content: fmt.Sprintf("command not allowed: %s (allowed: %v)", fields[0], allowed), IsError: true}, nil
@@ -116,14 +123,60 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 		} else {
 			cmd = exec.CommandContext(ctx, fields[0])
 		}
-	} else if s.cfg.AllowUnrestricted {
-		cmd = shellCommand(ctx, params.Command)
 	} else {
+		// allow_unrestricted=false and no allowed_commands — restricted
 		return &mcp.ToolResult{
 			Content: "shell restricted: configure mcp.shell.allowed_commands or set mcp.shell.allow_unrestricted=true",
 			IsError: true,
 		}, nil
 	}
+	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
+		cmd.Dir = wd
+	}
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() != nil {
+			return &mcp.ToolResult{
+				Content: fmt.Sprintf("command timed out after %ds:\nstdout:\n%s\nstderr:\n%s", timeout, stdout.String(), stderr.String()),
+				IsError: true,
+			}, nil
+		}
+		return &mcp.ToolResult{
+			Content: fmt.Sprintf("command failed:\nstdout:\n%s\nstderr:\n%s\nerror: %v", stdout.String(), stderr.String(), err),
+			IsError: true,
+		}, nil
+	}
+
+	const maxOutput = 64 * 1024
+	outStr := stdout.String()
+	errStr := stderr.String()
+	if len(outStr) > maxOutput {
+		outStr = outStr[:maxOutput] + "\n... [truncated]"
+	}
+	if len(errStr) > maxOutput {
+		errStr = errStr[:maxOutput] + "\n... [truncated]"
+	}
+	return &mcp.ToolResult{
+		Content: fmt.Sprintf("stdout:\n%s\nstderr:\n%s", outStr, errStr),
+	}, nil
+}
+
+// executeUnrestricted runs the command via sh -c with no allowlist checks.
+// Used when AllowUnrestricted is true.
+func (s *Tool) executeUnrestricted(ctx context.Context, command string, timeoutSec int) (*mcp.ToolResult, error) {
+	timeout := s.cfg.TimeoutSeconds
+	if timeoutSec > 0 {
+		timeout = timeoutSec
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	zap.S().Debugw("executing unrestricted shell command", "command", truncateCommand(command))
+
+	cmd := shellCommand(ctx, command)
 	if wd, ok := ctx.Value(workdirKey{}).(string); ok && wd != "" {
 		cmd.Dir = wd
 	}

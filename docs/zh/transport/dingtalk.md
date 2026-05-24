@@ -37,7 +37,6 @@ transport:
 
 ## 参考
 
-- [ACP 传输层](acp.md) — IBM BeeAI Agent Communication Protocol
 - [A2A 传输层](a2a.md) — Google Agent-to-Agent 协议
 
 ---

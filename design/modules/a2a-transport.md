@@ -4,7 +4,6 @@
 
 ## 设计原则
 
-1. **Transport 模式** — 作为与 MQTT/Email/SSH/ACP 同级的新 Transport 实现，复用现有 Coordinator + UserIO 接口
 2. **遵循标准** — 端点设计直接遵循 Google A2A 规范，不做私有扩展
 3. **增量为先** — v1 只做 inbound（接收外部 Agent 请求），v2 扩展 outbound（调用其他 Agent）
 4. **自包含** — 不使用外部 SDK，通过标准 Go net/http 实现 JSON-RPC 2.0 端点
@@ -223,7 +222,6 @@ type A2AConfig struct {
 | 风险 | 缓解 |
 |------|------|
 | Google A2A 规范仍在演进 | 只实现核心 JSON-RPC 方法，保持合约简洁 |
-| HTTP 端口冲突 | 默认 8334（与 ACP 默认 8333 区分），可配置 |
 | 任务堆积 | channel 满时 10s 超时返回错误 |
 | 无鉴权暴露 | 默认禁用，需显式配置 enabled: true 才启动 |
 
@@ -314,7 +312,6 @@ curl -X POST http://localhost:8334/a2a \
 
 ## Related
 
-- [ACP Transport](acp-transport.md) — IBM BeeAI Agent Communication Protocol
 - [Transport Layer](transport.md) — transport interface and existing implementations
 - [Architecture Index](../README.md) — master design document index
 - Google A2A Specification — https://github.com/google/A2A

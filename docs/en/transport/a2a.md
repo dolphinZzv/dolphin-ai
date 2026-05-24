@@ -219,7 +219,6 @@ submitted → working → completed
 
 ## See Also
 
-- [ACP Transport](acp.md) — IBM BeeAI Agent Communication Protocol
 - [Google A2A Specification](https://github.com/google/A2A)
 - [Design Doc](../../design/modules/a2a-transport.md)
 

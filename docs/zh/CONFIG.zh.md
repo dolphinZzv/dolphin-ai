@@ -215,7 +215,6 @@ mcp:
 | MQTT | [docs/zh/transport/mqtt.md](transport/mqtt.md) |
 | Email | [docs/zh/transport/email.md](transport/email.md) |
 | DingTalk | [docs/zh/transport/dingtalk.md](transport/dingtalk.md) |
-| ACP (IBM BeeAI) | [docs/zh/transport/acp.md](transport/acp.md) |
 | A2A (Google) | [docs/zh/transport/a2a.md](transport/a2a.md) |
 
 ### Stdio (`transport.stdio`)

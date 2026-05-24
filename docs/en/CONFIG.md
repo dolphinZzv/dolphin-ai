@@ -209,7 +209,6 @@ Controls how the agent communicates. Each transport has a dedicated usage guide:
 | MQTT | [docs/en/transport/mqtt.md](transport/mqtt.md) |
 | Email | [docs/en/transport/email.md](transport/email.md) |
 | DingTalk | [docs/en/transport/dingtalk.md](transport/dingtalk.md) |
-| ACP (IBM BeeAI) | [docs/en/transport/acp.md](transport/acp.md) |
 | A2A (Google) | [docs/en/transport/a2a.md](transport/a2a.md) |
 
 ### Stdio (`transport.stdio`)

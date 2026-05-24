@@ -37,7 +37,6 @@ Once configured and enabled, Dolphin will respond to messages sent to the DingTa
 
 ## See Also
 
-- [ACP Transport](acp.md) — IBM BeeAI Agent Communication Protocol
 - [A2A Transport](a2a.md) — Google Agent-to-Agent protocol
 
 ---

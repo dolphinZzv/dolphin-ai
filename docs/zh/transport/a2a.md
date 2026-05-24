@@ -162,7 +162,6 @@ submitted → working → completed
 
 ## 参考
 
-- [ACP 传输层](acp.md) — IBM BeeAI Agent Communication Protocol
 - [Google A2A 规范](https://github.com/google/A2A)
 - [设计文档](../../design/modules/a2a-transport.md)
 

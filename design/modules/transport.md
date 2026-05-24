@@ -31,7 +31,6 @@ type Capabilities struct {
 }
 ```
 
-| Flag | stdio | SSH | Email | DingTalk | MQTT | ACP | A2A |
 |------|-------|-----|-------|----------|------|-----|-----|
 | Streaming | true | true | false | false | false | false | false |
 | ShowToolDetails | true | true | false | false | false | false | false |
@@ -68,7 +67,6 @@ type Capabilities struct {
 | **MQTT** | `eclipse/paho.mqtt.golang` | Subscribe command topic, Publish response topic | 非流式 |
 | **Email** | `net/smtp` + `emersion/go-imap` | SMTP 发送, IMAP 轮询, 正文 → 命令, In-Reply-To 线索化回复 | 非流式 |
 | **DingTalk** | `open-dingtalk/dingtalk-stream-sdk-go` | Stream 模式 (WebSocket 长连接), 无需公网IP | 非流式 |
-| **ACP** | `net/http` | REST API 端点，IBM BeeAI ACP 规范 | 非流式 |
 | **A2A** | `net/http` | JSON-RPC 2.0 端点，Google A2A 规范 | 非流式 |
 
 ## Email Transport Flow

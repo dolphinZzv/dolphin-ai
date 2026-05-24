@@ -478,52 +478,52 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 // collectAgentResults polls for completed sub-agent results and runs follow-up
 // turns to synthesize them. Critical for non-interactive transports where
 // there is no subsequent user input to trigger normal result collection.
+//
+// maxSynthesisRounds prevents infinite loops: when a synthesis turn dispatches
+// new subagent tasks, agents remain busy and the loop would otherwise continue
+// indefinitely dispatching → synthesizing → dispatching.
 func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState, io transport.UserIO) {
 	if c.pool == nil {
 		return
 	}
 
+	// Phase 1: Non-blocking drain — catch results completed during runTurn.
+	c.drainAndSynthesize(ctx, state, io, false)
+
+	// Yield to give pool worker goroutines a chance to start processing
+	// freshly dispatched tasks. Without this, the coordinator can check
+	// for busy agents before the worker has set status to "busy".
+	runtime.Gosched()
+
+	// Check if any agents are still busy
+	agents := c.pool.List()
+	if len(agents) == 0 {
+		return
+	}
+	hasBusy := false
+	for _, a := range agents {
+		if a.Status == "busy" {
+			hasBusy = true
+			break
+		}
+	}
+	if !hasBusy {
+		return
+	}
+
+	// Phase 2: Active polling with synthesis round cap.
 	timeout := time.Duration(c.cfg.Pool.DefaultTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 	deadline := time.Now().Add(timeout)
 
+	const maxSynthesisRounds = 3
+	synthesisRounds := 0
+
 	for time.Now().Before(deadline) {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-		}
-
-		// Non-blocking collect
-		collected := c.pool.Collect()
-		if len(collected) > 0 {
-			c.pending = append(c.pending, collected...)
-
-			// Run a follow-up turn to synthesize the results
-			dynamicPrompt := c.buildDynamicPrompt()
-			state.Messages = append(state.Messages, provider.Message{
-				Role:    "user",
-				Content: provider.TextContent("[Agent task results are now available. Synthesize them into your response.]"),
-			})
-
-			c.lastLLMSystemPrompt = dynamicPrompt
-			c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
-			if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
-				zap.S().Debugw("agent result follow-up turn", "error", err)
-				return
-			}
-
-			// Reset deadline after processing — more results may follow
-			deadline = time.Now().Add(timeout)
-		}
-
-		// Check if any agents are still busy
+		// Check if all agents are done
 		agents := c.pool.List()
-		if len(agents) == 0 {
-			return
-		}
 		hasBusy := false
 		for _, a := range agents {
 			if a.Status == "busy" {
@@ -532,7 +532,15 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 			}
 		}
 		if !hasBusy {
+			c.drainAndSynthesize(ctx, state, io, false)
 			return
+		}
+
+		// Cap reached — let the main loop handle remaining results.
+		if synthesisRounds >= maxSynthesisRounds {
+			zap.S().Debugw("max synthesis rounds reached",
+				"rounds", synthesisRounds)
+			break
 		}
 
 		// Poll interval
@@ -541,22 +549,51 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 		case <-ctx.Done():
 			return
 		}
+
+		if c.drainAndSynthesize(ctx, state, io, false) {
+			synthesisRounds++
+		}
 	}
 
-	// Timeout reached — drain whatever is available
-	zap.S().Debugw("agent result collection timed out", "timeout", timeout.Seconds())
+	// Timeout or cap reached — drain whatever is available.
+	zap.S().Debugw("agent result collection poll ended",
+		"timeout", timeout.Seconds(),
+		"synthesis_rounds", synthesisRounds,
+		"reason", map[bool]string{true: "timeout", false: "max_rounds"}[time.Now().After(deadline)])
+	c.drainAndSynthesize(ctx, state, io, true)
+}
+
+// drainAndSynthesize drains completed results from the pool and runs a
+// synthesis turn if any results were found. When timedOut is true, a
+// timeout-specific message is used. Returns true if a synthesis turn
+// was run. State.Messages is saved before and restored after to prevent
+// synthesis context from leaking into subsequent user turns.
+func (c *Coordinator) drainAndSynthesize(ctx context.Context, state *LoopState, io transport.UserIO, timedOut bool) bool {
 	collected := c.pool.Collect()
-	if len(collected) > 0 {
-		c.pending = append(c.pending, collected...)
-		dynamicPrompt := c.buildDynamicPrompt()
-		state.Messages = append(state.Messages, provider.Message{
-			Role:    "user",
-			Content: provider.TextContent("[Some agent task results are available (timed out waiting for others). Synthesize what you have.]"),
-		})
-		c.lastLLMSystemPrompt = dynamicPrompt
-		c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
-		c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools)
+	if len(collected) == 0 {
+		return false
 	}
+	c.pending = append(c.pending, collected...)
+
+	msg := "[Agent task results are now available. Synthesize them into your response.]"
+	if timedOut {
+		msg = "[Some agent task results are available (timed out waiting for others). Synthesize what you have.]"
+	}
+
+	dynamicPrompt := c.buildDynamicPrompt()
+	c.lastLLMSystemPrompt = dynamicPrompt
+
+	saved := state.Messages
+	state.Messages = append(state.Messages, provider.Message{
+		Role:    "user",
+		Content: provider.TextContent(msg),
+	})
+	c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
+	if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
+		zap.S().Debugw("agent result synthesis turn", "error", err)
+	}
+	state.Messages = saved
+	return true
 }
 
 // buildDynamicPrompt returns the full system prompt including available agents

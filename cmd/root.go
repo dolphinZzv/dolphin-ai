@@ -44,7 +44,6 @@ import (
 	"dolphin/internal/update"
 
 	_ "dolphin/internal/transport/a2a"
-	_ "dolphin/internal/transport/acp"
 	_ "dolphin/internal/transport/dingtalk"
 	_ "dolphin/internal/transport/email"
 	_ "dolphin/internal/transport/mqtt"
@@ -403,9 +402,6 @@ func printBanner(cfg *config.Config) {
 	if cfg.Transport.DingTalk.Enabled {
 		transports = append(transports, "dingtalk")
 	}
-	if cfg.Transport.ACP.Enabled {
-		transports = append(transports, "acp")
-	}
 	if cfg.Transport.A2A.Enabled {
 		transports = append(transports, "a2a")
 	}
@@ -660,40 +656,6 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		uio := t.(transport.UserIO)
 
 		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransDingTalk))
-
-		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return t.Start(ctx)
-		}, func(err error) {
-			cancel()
-			t.Close()
-		})
-		g.Add(func() error {
-			go func() {
-				newCoordinator().Run(ctx, uio)
-				zap.S().Errorw("coordinator exited unexpectedly")
-			}()
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cancel()
-		})
-		actorCount += 2
-	}
-
-	// ACP transport
-	if cfg.Transport.ACP.Enabled {
-		f, ok := factories["acp"]
-		if !ok {
-			return fmt.Errorf("acp transport not registered")
-		}
-		t, err := f(cfg)
-		if err != nil {
-			return fmt.Errorf("acp transport: %w", err)
-		}
-		uio := t.(transport.UserIO)
-
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransACPActive), cfg.Transport.ACP.ListenAddr))
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
