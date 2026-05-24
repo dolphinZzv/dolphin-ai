@@ -11,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"dolphin/internal/config"
+
 	"github.com/rs/xid"
 	"go.uber.org/zap"
 )
@@ -260,7 +262,7 @@ func (m *Manager) LatestSession() (SessionID, string, int, error) {
 // CountTurns counts the number of turns in a session file by finding the max turn value.
 func CountTurns(path string) (int, error) {
 	// Limit file size to 10MB to prevent OOM on large session files
-	const maxSize = 10 * 1024 * 1024
+	maxSize := sessionMaxSize(nil)
 	info, err := os.Stat(path)
 	if err != nil {
 		return 0, err
@@ -291,7 +293,7 @@ func CountTurns(path string) (int, error) {
 
 // CountTokens reads a session file and sums input/output token counts.
 func CountTokens(path string) (inputTokens, outputTokens int, err error) {
-	const maxSize = 10 * 1024 * 1024
+	maxSize := sessionMaxSize(nil)
 	info, err := os.Stat(path)
 	if err != nil {
 		return 0, 0, err
@@ -321,7 +323,7 @@ func CountTokens(path string) (inputTokens, outputTokens int, err error) {
 // ReadEvents reads all session events from a session file.
 func ReadEvents(path string) ([]SessionEvent, error) {
 	// Limit file size to 10MB to prevent OOM
-	const maxSize = 10 * 1024 * 1024
+	maxSize := sessionMaxSize(nil)
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -420,4 +422,13 @@ func (m *Manager) reapOldSessions(maxAge time.Duration) {
 			}
 		}
 	}
+}
+
+// sessionMaxSize returns the maximum session file size in bytes from config,
+// or the default of 10MB if cfg is nil or unset.
+func sessionMaxSize(cfg *config.Config) int64 {
+	if cfg != nil && cfg.Session.MaxSizeMB > 0 {
+		return int64(cfg.Session.MaxSizeMB) * 1024 * 1024
+	}
+	return 10 * 1024 * 1024
 }

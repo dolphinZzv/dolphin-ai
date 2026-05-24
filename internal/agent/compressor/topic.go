@@ -16,11 +16,12 @@ import (
 // (incomplete) topic stays raw.
 type TopicCompressor struct {
 	provider provider.Provider
+	timeout  time.Duration
 }
 
 // NewTopicCompressor creates a TopicCompressor with an LLM provider.
-func NewTopicCompressor(provider provider.Provider) *TopicCompressor {
-	return &TopicCompressor{provider: provider}
+func NewTopicCompressor(provider provider.Provider, timeout time.Duration) *TopicCompressor {
+	return &TopicCompressor{provider: provider, timeout: timeout}
 }
 
 // topicGroup holds messages belonging to one topic.
@@ -192,7 +193,11 @@ func (tc *TopicCompressor) summarizeTopic(messages []provider.Message) string {
 	systemPrompt := "你是一个对话摘要助手。请用1-2句话简要摘要以下对话片段，保留关键决策和结论。只输出摘要文本，不要加前缀或标记。"
 	userContent := "请摘要以下对话片段：\n" + strings.Join(texts, "\n")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	timeout := tc.timeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	resp, err := tc.provider.Complete(ctx, provider.ProviderRequest{

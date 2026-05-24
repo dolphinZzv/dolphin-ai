@@ -15,11 +15,12 @@ import (
 type TieredCompressor struct {
 	provider provider.Provider
 	rawKeep  int // number of recent user+assistant pairs to keep raw (default 3)
+	timeout  time.Duration
 }
 
 // NewTieredCompressor creates a TieredCompressor with an LLM provider.
-func NewTieredCompressor(provider provider.Provider) *TieredCompressor {
-	return &TieredCompressor{provider: provider, rawKeep: 3}
+func NewTieredCompressor(provider provider.Provider, timeout time.Duration) *TieredCompressor {
+	return &TieredCompressor{provider: provider, rawKeep: 3, timeout: timeout}
 }
 
 func (t *TieredCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
@@ -122,7 +123,11 @@ func (t *TieredCompressor) summarize(messages []provider.Message, level int) str
 	systemPrompt := "你是一个对话摘要助手。请用1-2句话简要摘要以下对话内容，保留关键信息。只输出摘要文本，不要加前缀或标记。"
 	userContent := "请摘要以下对话：\n" + strings.Join(texts, "\n")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	timeout := t.timeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	resp, err := t.provider.Complete(ctx, provider.ProviderRequest{

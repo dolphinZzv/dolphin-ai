@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"time"
 
+	"dolphin/internal/config"
 	"dolphin/internal/event"
 )
 
@@ -20,7 +21,7 @@ func (a *healthAgent) Init(ctx context.Context, handle *AgentHandle) {
 	var lastFired time.Time
 
 	handle.Subscribe(event.TypeHeartbeat, func(ctx context.Context, evt event.Event) {
-		if time.Since(lastFired) < 30*time.Second {
+		if time.Since(lastFired) < healthDebounce(handle.cfg) {
 			return
 		}
 		lastFired = time.Now()
@@ -30,3 +31,18 @@ func (a *healthAgent) Init(ctx context.Context, handle *AgentHandle) {
 }
 
 func init() { Register(&healthAgent{}) }
+
+func healthDebounce(cfg *config.Config) time.Duration {
+	if cfg == nil {
+		return 30 * time.Second
+	}
+	s := cfg.Health.Debounce
+	if s == "" {
+		return 30 * time.Second
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return 30 * time.Second
+	}
+	return d
+}

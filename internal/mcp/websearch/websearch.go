@@ -103,7 +103,7 @@ func New(cfg *config.Config) *Tool {
 	return &Tool{
 		cfg:         &cfg.MCP.WebSearch,
 		schema:      schema,
-		client:      &http.Client{Timeout: 15 * time.Second},
+		client:      &http.Client{Timeout: websearchTimeout(&cfg.MCP.WebSearch)},
 		defaultProv: defaultProv,
 	}
 }
@@ -197,4 +197,11 @@ func parseQueries(raw json.RawMessage) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func websearchTimeout(cfg *config.MCPWebSearchConfig) time.Duration {
+	if cfg.TimeoutSeconds <= 0 {
+		return 15 * time.Second
+	}
+	return time.Duration(cfg.TimeoutSeconds) * time.Second
 }

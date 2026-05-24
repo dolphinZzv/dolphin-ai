@@ -273,7 +273,7 @@ func (t *EmailTransport) pollOnce() *EmailMessage {
 	}
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	d := &net.Dialer{Timeout: 30 * time.Second}
+	d := &net.Dialer{Timeout: emailDialTimeout(t.cfg.DialTimeout)}
 	tlsConn, err := tls.DialWithDialer(d, "tcp", addr, nil)
 	if err != nil {
 		zap.S().Warnw("email imap connect failed", "error", err)
@@ -753,6 +753,16 @@ func stripHTML(html string) string {
 	s = strings.ReplaceAll(s, "&amp;", "&")
 	s = strings.ReplaceAll(s, "&quot;", "\"")
 	return strings.TrimSpace(s)
+}
+
+func emailDialTimeout(s string) time.Duration {
+	if s != "" {
+		d, err := time.ParseDuration(s)
+		if err == nil && d > 0 {
+			return d
+		}
+	}
+	return 30 * time.Second
 }
 
 func (t *EmailTransport) Close() error {

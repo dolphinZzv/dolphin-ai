@@ -224,6 +224,9 @@ func NewSSHSession(ch gossh.Channel, conn net.Conn, remote, user string, md *gla
 
 var sshCompletions = []string{"/exit", "/quit", "/help"}
 
+// defaultReadTimeout is the default SSH read deadline duration.
+const defaultReadTimeout = 5 * time.Minute
+
 func (s *SSHSession) redraw(line []byte, pos int) {
 	fmt.Fprint(s.ch, "\rDolphin > ", string(line), "\x1b[K")
 	back := len(line) - pos
@@ -234,7 +237,7 @@ func (s *SSHSession) redraw(line []byte, pos int) {
 
 func (s *SSHSession) ReadLine() (string, error) {
 	if s.conn != nil {
-		s.conn.SetReadDeadline(time.Now().Add(5 * time.Minute))
+		s.conn.SetReadDeadline(time.Now().Add(defaultReadTimeout))
 	}
 	fmt.Fprint(s.ch, "Dolphin > ")
 	line := make([]byte, 0, 256)

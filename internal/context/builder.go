@@ -2,6 +2,7 @@
 package context
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,6 +11,14 @@ import (
 
 	"go.uber.org/zap"
 )
+
+// ToolInfo holds the basic information about an MCP tool for dynamically
+// generating the builtin skills documentation from the tool registry.
+type ToolInfo struct {
+	Name        string
+	Description string
+	Priority    int
+}
 
 // Default section priorities (lower = earlier in prompt).
 const (
@@ -151,6 +160,11 @@ type Builder struct {
 	// management, command management, reload, and context are documented.
 	SelfEvolution bool
 
+	// toolLister, when set, provides the list of registered MCP tools for
+	// dynamic builtin skills generation. The embedded BUILTIN_SKILLS.md is
+	// used as fallback when nil.
+	toolLister func() []ToolInfo
+
 	// SectionPriority overrides default section priorities.
 	// Key is section provider name: "soul", "preface", "builtin_skills",
 	// "self_evo_skills", "agents", "rules", "user", "system", "subsystems".
@@ -223,9 +237,14 @@ func registerBuiltinProviders(b *Builder) {
 		func(agentName string) string { return DefaultPreface },
 	), PriorityPreface, "PREFACE.md")
 
-	// BUILTIN SKILLS (embedded, conditional on non-empty)
+	// BUILTIN SKILLS (dynamic from tool registry, falls back to embedded)
 	b.RegisterSectionProvider(NewSectionProviderFunc("builtin_skills",
-		func(agentName string) string { return BuiltinSkills },
+		func(agentName string) string {
+			if b.toolLister != nil {
+				return formatToolDocs(b.toolLister())
+			}
+			return BuiltinSkills
+		},
 	), PriorityBuiltinSkills, "BUILTIN_SKILLS.md")
 
 	// SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
@@ -281,6 +300,14 @@ func NewBuilder() *Builder {
 // SetRenderData sets the template render data for variable injection in context files.
 func (b *Builder) SetRenderData(rdata *RenderData) {
 	b.rdata = rdata
+}
+
+// SetToolLister sets a function that returns the current list of registered
+// MCP tools. When set, the BUILTIN_SKILLS.md section is dynamically generated
+// from tool definitions (sorted by priority, ascending) instead of using the
+// embedded content. Only tools that are registered (enabled) are included.
+func (b *Builder) SetToolLister(fn func() []ToolInfo) {
+	b.toolLister = fn
 }
 
 // Build builds the system prompt for the default (coordinator) agent.
@@ -431,4 +458,35 @@ func (b *Builder) loadCached(path string) (string, bool) {
 		modTime: info.ModTime(),
 	}
 	return b.statCache[path].content, true
+}
+
+// formatToolDocs generates the BUILTIN_SKILLS.md content from a list of tool
+// definitions, sorted by priority ascending (0 → DefaultPriority 100).
+func formatToolDocs(tools []ToolInfo) string {
+	if len(tools) == 0 {
+		return ""
+	}
+	sorted := make([]ToolInfo, len(tools))
+	copy(sorted, tools)
+	sort.Slice(sorted, func(i, j int) bool {
+		pi := sorted[i].Priority
+		if pi <= 0 {
+			pi = 100
+		}
+		pj := sorted[j].Priority
+		if pj <= 0 {
+			pj = 100
+		}
+		if pi != pj {
+			return pi < pj
+		}
+		return sorted[i].Name < sorted[j].Name
+	})
+
+	var buf strings.Builder
+	buf.WriteString("## MCP Tools Usage\n\n")
+	for _, t := range sorted {
+		fmt.Fprintf(&buf, "### %s\n%s\n\n", t.Name, t.Description)
+	}
+	return strings.TrimRight(buf.String(), "\n")
 }

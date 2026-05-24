@@ -15,6 +15,7 @@ import (
 	"dolphin/internal/agent/console"
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/command"
+	"dolphin/internal/config"
 	ctxpkg "dolphin/internal/context"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
@@ -169,7 +170,7 @@ func (c *Coordinator) initBuildinAgents(ctx context.Context) {
 		return func() {}
 	}
 
-	handle := buildin.NewAgentHandle(c.agent.events, dispatchTask, logEvent, startSpan)
+	handle := buildin.NewAgentHandle(c.agent.cfg, c.agent.events, dispatchTask, logEvent, startSpan)
 
 	for _, ba := range c.buildinRegistry.List() {
 		ba.Init(ctx, handle)
@@ -520,7 +521,11 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 	}
 	deadline := time.Now().Add(timeout)
 
-	const maxSynthesisRounds = 3
+	maxRounds := c.agent.cfg.Pool.MaxSynthesisRounds
+	if maxRounds <= 0 {
+		maxRounds = 3
+	}
+	pollInterval := parseDurationOpt(c.agent.cfg.Pool.PollInterval, 200*time.Millisecond)
 	synthesisRounds := 0
 
 	for time.Now().Before(deadline) {
@@ -539,7 +544,7 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 		}
 
 		// Cap reached — let the main loop handle remaining results.
-		if synthesisRounds >= maxSynthesisRounds {
+		if synthesisRounds >= maxRounds {
 			zap.S().Debugw("max synthesis rounds reached",
 				"rounds", synthesisRounds)
 			break
@@ -547,7 +552,7 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 
 		// Poll interval
 		select {
-		case <-time.After(200 * time.Millisecond):
+		case <-time.After(pollInterval):
 		case <-ctx.Done():
 			return
 		}
@@ -936,4 +941,29 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 			}
 		}
 	}
+}
+
+// coordTimeout returns the timeout for coordinator operations (repo fetching, etc).
+// Uses LLM timeout as base, with a reasonable cap for repo fetches.
+func coordTimeout(cfg *config.Config) time.Duration {
+	if cfg != nil && cfg.LLM.TimeoutSeconds > 0 {
+		t := time.Duration(cfg.LLM.TimeoutSeconds) * time.Second
+		if t < 5*time.Second {
+			return t
+		}
+		return 5 * time.Second
+	}
+	return 5 * time.Second
+}
+
+// parseDurationOpt parses a duration string, returning fallback on error or empty.
+func parseDurationOpt(s string, fallback time.Duration) time.Duration {
+	if s == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(s)
+	if err != nil {
+		return fallback
+	}
+	return d
 }

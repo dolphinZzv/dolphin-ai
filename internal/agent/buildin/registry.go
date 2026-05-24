@@ -5,6 +5,7 @@ package buildin
 import (
 	"context"
 
+	"dolphin/internal/config"
 	"dolphin/internal/event"
 )
 
@@ -21,6 +22,7 @@ type BuildinAgent interface {
 // All actions are automatically recorded to session and OTel via the
 // injected callbacks.
 type AgentHandle struct {
+	cfg          *config.Config
 	bus          *event.EventBus
 	dispatchTask func(ctx context.Context, agentName, prompt string) (string, error)
 	logEvent     func(ctx context.Context, evtType string, data map[string]any)
@@ -29,12 +31,14 @@ type AgentHandle struct {
 
 // NewAgentHandle creates a new AgentHandle.
 func NewAgentHandle(
+	cfg *config.Config,
 	bus *event.EventBus,
 	dispatchTask func(ctx context.Context, agentName, prompt string) (string, error),
 	logEvent func(ctx context.Context, evtType string, data map[string]any),
 	startSpan func(ctx context.Context, agentName, triggerEvent string) func(),
 ) *AgentHandle {
 	return &AgentHandle{
+		cfg:          cfg,
 		bus:          bus,
 		dispatchTask: dispatchTask,
 		logEvent:     logEvent,

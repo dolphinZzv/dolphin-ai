@@ -17,6 +17,7 @@ import (
 type IncrementalCompressor struct {
 	provider       provider.Provider
 	updateInterval int // merge new turns into summary every N turns (default 5)
+	timeout        time.Duration
 
 	mu               sync.Mutex
 	runningSummary   string
@@ -25,8 +26,8 @@ type IncrementalCompressor struct {
 }
 
 // NewIncrementalCompressor creates an IncrementalCompressor with an LLM provider.
-func NewIncrementalCompressor(provider provider.Provider) *IncrementalCompressor {
-	return &IncrementalCompressor{provider: provider, updateInterval: 5}
+func NewIncrementalCompressor(provider provider.Provider, timeout time.Duration) *IncrementalCompressor {
+	return &IncrementalCompressor{provider: provider, updateInterval: 5, timeout: timeout}
 }
 
 func (ic *IncrementalCompressor) Compress(messages []provider.Message, maxTokens int) ([]provider.Message, *CompressReport) {
@@ -123,7 +124,11 @@ func (ic *IncrementalCompressor) mergeIntoSummary(messages []provider.Message, n
 
 	userContent := "已有摘要：" + ic.runningSummary + "\n\n新对话内容：\n" + strings.Join(texts, "\n") + "\n\n请输出合并后的摘要："
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	timeout := ic.timeout
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	resp, err := ic.provider.Complete(ctx, provider.ProviderRequest{

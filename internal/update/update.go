@@ -15,6 +15,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"dolphin/internal/config"
 )
 
 const (
@@ -48,10 +50,18 @@ type GitHubClient struct {
 	Token      string
 }
 
+// updateHTTPTimeout returns the HTTP timeout from config, or 30s default.
+func updateHTTPTimeout(cfg *config.Config) time.Duration {
+	if cfg != nil && cfg.Update.TimeoutSeconds > 0 {
+		return time.Duration(cfg.Update.TimeoutSeconds) * time.Second
+	}
+	return 30 * time.Second
+}
+
 // NewGitHubClient creates a client that reads GITHUB_TOKEN from the environment.
 func NewGitHubClient() *GitHubClient {
 	return &GitHubClient{
-		HTTPClient: &http.Client{Timeout: 30 * time.Second},
+		HTTPClient: &http.Client{Timeout: updateHTTPTimeout(nil)},
 		Token:      os.Getenv("GITHUB_TOKEN"),
 	}
 }

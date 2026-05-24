@@ -150,7 +150,10 @@ func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 		}, nil
 	}
 
-	const maxOutput = 64 * 1024
+	maxOutput := s.cfg.OutputMaxBytes
+	if maxOutput <= 0 {
+		maxOutput = 64 * 1024
+	}
 	outStr := stdout.String()
 	errStr := stderr.String()
 	if len(outStr) > maxOutput {
@@ -197,7 +200,10 @@ func (s *Tool) executeUnrestricted(ctx context.Context, command string, timeoutS
 		}, nil
 	}
 
-	const maxOutput = 64 * 1024
+	maxOutput := s.cfg.OutputMaxBytes
+	if maxOutput <= 0 {
+		maxOutput = 64 * 1024
+	}
 	outStr := stdout.String()
 	errStr := stderr.String()
 	if len(outStr) > maxOutput {

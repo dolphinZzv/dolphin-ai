@@ -20,11 +20,19 @@ func (w *Tool) searchIflow(ctx context.Context, query string) ([]searchResult, e
 		return nil, fmt.Errorf("iflow provider requires api_key (set mcp.web_search.api_key)")
 	}
 
+	maxResults := w.cfg.MaxResults
+	if maxResults <= 0 {
+		maxResults = 5
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"keywords": query,
-		"num":      5,
+		"num":      maxResults,
 	})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://platform.iflow.cn/api/search/webSearch", strings.NewReader(string(payload)))
+	baseURL := "https://platform.iflow.cn/api/search/webSearch"
+	if u, ok := w.cfg.ProviderBaseURLs["iflow"]; ok && u != "" {
+		baseURL = u
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, strings.NewReader(string(payload)))
 	if err != nil {
 		return nil, err
 	}

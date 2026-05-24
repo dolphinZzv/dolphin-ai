@@ -66,7 +66,7 @@ func New(cfg *config.Config) *Tool {
 	return &Tool{
 		cfg:    &cfg.MCP.Webhook,
 		schema: schema,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: webhookTimeout(&cfg.MCP.Webhook)},
 	}
 }
 
@@ -200,4 +200,11 @@ func isPrivateIP(ip net.IP) bool {
 		return false
 	}
 	return len(ip) == net.IPv6len && ip[0]&0xfe == 0xfc
+}
+
+func webhookTimeout(cfg *config.MCPWebhookConfig) time.Duration {
+	if cfg.TimeoutSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(cfg.TimeoutSeconds) * time.Second
 }

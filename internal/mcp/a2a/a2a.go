@@ -21,7 +21,7 @@ type Tool struct {
 func New(cfg *config.Config) *Tool {
 	return &Tool{
 		cfg:    &cfg.MCP.A2A,
-		client: &http.Client{Timeout: 30 * time.Second},
+		client: &http.Client{Timeout: a2aTimeout(&cfg.MCP.A2A)},
 	}
 }
 
@@ -185,7 +185,11 @@ func (t *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 	}
 	reqJSON, _ := json.Marshal(rpcReq)
 
-	req, err := http.NewRequestWithContext(ctx, "POST", targetURL+"/rpc", bytes.NewBuffer(reqJSON))
+	rpcPath := t.cfg.DefaultRPCPath
+	if rpcPath == "" {
+		rpcPath = "/rpc"
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", targetURL+rpcPath, bytes.NewBuffer(reqJSON))
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("create request failed: %v", err), IsError: true}, nil
 	}
@@ -260,4 +264,11 @@ func (t *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 
 func generateID() string {
 	return fmt.Sprintf("task-%d", time.Now().UnixNano())
+}
+
+func a2aTimeout(cfg *config.MCPA2AConfig) time.Duration {
+	if cfg.TimeoutSeconds <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(cfg.TimeoutSeconds) * time.Second
 }

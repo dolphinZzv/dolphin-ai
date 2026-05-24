@@ -73,6 +73,18 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 	b.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("subsystems",
 		func(agentName string) string { return subsystem.ContextMD() },
 	), ctxpkg.PrioritySubSystems, "SUBSYSTEMS.md")
+	b.SetToolLister(func() []ctxpkg.ToolInfo {
+		defs := toolReg.List()
+		info := make([]ctxpkg.ToolInfo, len(defs))
+		for i, d := range defs {
+			info[i] = ctxpkg.ToolInfo{
+				Name:        d.Name,
+				Description: d.Description,
+				Priority:    d.Priority,
+			}
+		}
+		return info
+	})
 
 	a := &Agent{
 		cfg:                cfg,
@@ -97,7 +109,7 @@ func (a *Agent) switchToNextProvider() bool {
 		pc := a.availableProviders[i]
 		p := provider.NewProviderFromConfig(&pc)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), a.healthCheckTimeout())
 		err := p.HealthCheck(ctx)
 		cancel()
 
@@ -131,7 +143,7 @@ func (a *Agent) switchToProvider(name string) bool {
 			continue
 		}
 		p := provider.NewProviderFromConfig(&pc)
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), a.healthCheckTimeout())
 		err := p.HealthCheck(ctx)
 		cancel()
 		if err != nil {
@@ -158,18 +170,30 @@ func (a *Agent) SetBuildTime(t string)  { a.buildTime = t }
 func (a *Agent) SetCommitHash(h string) { a.commitHash = h }
 
 func (a *Agent) rebuildCompressor() {
+	timeout := time.Duration(a.cfg.LLM.CompressTimeoutSeconds) * time.Second
+	if timeout <= 0 {
+		timeout = 15 * time.Second
+	}
 	switch a.cfg.LLM.CompressMode {
 	case "segment":
 		a.compressor = compressor.NewSegmentCompressor(a.cfg.LLM.SegmentMergeLimit)
 	case "tiered":
-		a.compressor = compressor.NewTieredCompressor(a.provider)
+		a.compressor = compressor.NewTieredCompressor(a.provider, timeout)
 	case "incremental":
-		a.compressor = compressor.NewIncrementalCompressor(a.provider)
+		a.compressor = compressor.NewIncrementalCompressor(a.provider, timeout)
 	case "topic":
-		a.compressor = compressor.NewTopicCompressor(a.provider)
+		a.compressor = compressor.NewTopicCompressor(a.provider, timeout)
 	default:
 		a.compressor = &compressor.DropCompressor{}
 	}
+}
+
+func (a *Agent) healthCheckTimeout() time.Duration {
+	t := a.cfg.LLM.HealthCheckTimeoutSeconds
+	if t <= 0 {
+		t = 10
+	}
+	return time.Duration(t) * time.Second
 }
 
 // selectProvider runs health checks on all configured providers concurrently,
@@ -207,14 +231,18 @@ func selectProvider(cfg *config.Config) (provider.Provider, int) {
 			}
 
 			start := time.Now()
-			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			healthTO := time.Duration(cfg.LLM.HealthCheckTimeoutSeconds) * time.Second
+			if healthTO <= 0 {
+				healthTO = 10 * time.Second
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), healthTO)
 			err := p.HealthCheck(ctx)
 			cancel()
 
 			// Retry once on network jitter.
 			if err != nil {
 				start = time.Now()
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), healthTO)
 				err = p.HealthCheck(ctx)
 				cancel()
 			}
@@ -615,7 +643,7 @@ func (a *Agent) handleProviderCommand(line string, io transport.UserIO) {
 					return
 				}
 				p := provider.NewProviderFromConfig(&pc)
-				checkCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				checkCtx, cancel := context.WithTimeout(context.Background(), a.healthCheckTimeout())
 				err := p.HealthCheck(checkCtx)
 				cancel()
 				if err != nil {
@@ -1199,10 +1227,22 @@ func isPlaceholderKey(key string) bool {
 	return key == "" || key == "test-key" || key == "sk-placeholder" || strings.HasPrefix(key, "test-")
 }
 
+func llmBackoffBase(s string) time.Duration {
+	d, err := time.ParseDuration(s)
+	if err != nil || d <= 0 {
+		return time.Second
+	}
+	return d
+}
+
 // callLLMWithRetry calls CompleteStream with exponential backoff retry.
 // On exhaustion, it fails over to the next available provider if any.
 func (a *Agent) callLLMWithRetry(ctx context.Context, req provider.ProviderRequest) (<-chan provider.StreamChunk, error) {
-	maxRetries := 3
+	maxRetries := a.cfg.LLM.Retry.MaxAttempts
+	if maxRetries <= 0 {
+		maxRetries = 3
+	}
+	backoffBase := llmBackoffBase(a.cfg.LLM.Retry.BackoffBase)
 	for attempt := 0; attempt < maxRetries; attempt++ {
 		ch, err := a.provider.CompleteStream(ctx, req)
 		if err == nil {
@@ -1211,7 +1251,7 @@ func (a *Agent) callLLMWithRetry(ctx context.Context, req provider.ProviderReque
 		if !isRetryable(err) {
 			return nil, err
 		}
-		wait := time.Duration(1<<uint(attempt)) * time.Second
+		wait := backoffBase * time.Duration(1<<uint(attempt))
 		zap.S().Warnw("llm call failed, retrying",
 			"attempt", attempt+1,
 			"max", maxRetries,
@@ -1240,7 +1280,7 @@ func (a *Agent) callLLMWithRetry(ctx context.Context, req provider.ProviderReque
 			if !isRetryable(err) {
 				return nil, err
 			}
-			wait := time.Duration(1<<uint(attempt)) * time.Second
+			wait := backoffBase * time.Duration(1<<uint(attempt))
 			zap.S().Warnw("failover llm call failed, retrying",
 				"attempt", attempt+1,
 				"max", maxRetries,

@@ -55,7 +55,7 @@ func TestParseDuckDuckGoHTML(t *testing.T) {
 </body>
 </html>`
 
-	results := parseDuckDuckGoHTML(html)
+	results := parseDuckDuckGoHTML(html, 10)
 	if len(results) != 3 {
 		t.Fatalf("expected 3 results, got %d", len(results))
 	}
@@ -65,7 +65,7 @@ func TestParseDuckDuckGoHTML(t *testing.T) {
 }
 
 func TestParseDuckDuckGoHTML_Empty(t *testing.T) {
-	results := parseDuckDuckGoHTML("<html></html>")
+	results := parseDuckDuckGoHTML("<html></html>", 10)
 	if len(results) != 0 {
 		t.Fatalf("expected 0 results, got %d", len(results))
 	}
@@ -79,7 +79,7 @@ func TestParseDuckDuckGoHTML_AmpersandURL(t *testing.T) {
   </div>
 </body></html>`
 
-	results := parseDuckDuckGoHTML(html)
+	results := parseDuckDuckGoHTML(html, 10)
 	if len(results) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(results))
 	}

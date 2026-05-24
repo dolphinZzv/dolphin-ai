@@ -186,7 +186,10 @@ func (e *Tool) send(ecfg *config.EmailConfig, to, subject, body string, attachme
 		mimeType string
 	}
 	var files []attachFile
-	const maxFileSize = 10 * 1024 * 1024
+	maxFileSize := e.cfg.MCP.Email.MaxAttachmentSize
+	if maxFileSize <= 0 {
+		maxFileSize = 10 * 1024 * 1024
+	}
 	for _, a := range attachments {
 		if a.FilePath == "" {
 			continue
@@ -325,7 +328,7 @@ func (e *Tool) search(ecfg *config.EmailConfig, query string, unreadOnly bool, m
 }
 
 func (e *Tool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnly bool, maxResults int) (*mcp.ToolResult, error) {
-	c, err := dialIMAP(ecfg)
+	c, err := dialIMAP(ecfg, e.connectTimeout())
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
 	}
@@ -391,7 +394,7 @@ func (e *Tool) searchIMAP(ecfg *config.EmailConfig, query string, unreadOnly boo
 }
 
 func (e *Tool) searchPOP3(ecfg *config.EmailConfig, query string, maxResults int) (*mcp.ToolResult, error) {
-	p, err := dialPOP3(ecfg)
+	p, err := dialPOP3(ecfg, e.connectTimeout())
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
 	}
@@ -448,7 +451,7 @@ func (e *Tool) fetch(ecfg *config.EmailConfig, seq int) (*mcp.ToolResult, error)
 }
 
 func (e *Tool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*mcp.ToolResult, error) {
-	c, err := dialIMAP(ecfg)
+	c, err := dialIMAP(ecfg, e.connectTimeout())
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("IMAP connection failed: %s", err.Error()), IsError: true}, nil
 	}
@@ -476,7 +479,7 @@ func (e *Tool) fetchIMAP(ecfg *config.EmailConfig, seq uint32) (*mcp.ToolResult,
 }
 
 func (e *Tool) fetchPOP3(ecfg *config.EmailConfig, seq int) (*mcp.ToolResult, error) {
-	p, err := dialPOP3(ecfg)
+	p, err := dialPOP3(ecfg, e.connectTimeout())
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("POP3 connection failed: %s", err.Error()), IsError: true}, nil
 	}
@@ -503,7 +506,7 @@ func tlsConfigForEmail(ecfg *config.EmailConfig) *tls.Config {
 	return &tls.Config{InsecureSkipVerify: ecfg.SkipTLSVerify}
 }
 
-func dialIMAP(ecfg *config.EmailConfig) (*client.Client, error) {
+func dialIMAP(ecfg *config.EmailConfig, timeoutDuration time.Duration) (*client.Client, error) {
 	host := ecfg.IMAPHost
 	if host == "" {
 		host = ecfg.SMTPHost
@@ -513,7 +516,7 @@ func dialIMAP(ecfg *config.EmailConfig) (*client.Client, error) {
 		port = 993
 	}
 
-	d := &net.Dialer{Timeout: 30 * time.Second}
+	d := &net.Dialer{Timeout: timeoutDuration}
 	tlsConn, err := tls.DialWithDialer(d, "tcp", fmt.Sprintf("%s:%d", host, port), tlsConfigForEmail(ecfg))
 	if err != nil {
 		return nil, err
@@ -633,7 +636,7 @@ type pop3Conn struct {
 	logged bool
 }
 
-func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
+func dialPOP3(ecfg *config.EmailConfig, timeoutDuration time.Duration) (*pop3Conn, error) {
 	host := ecfg.POP3Host
 	if host == "" {
 		host = ecfg.IMAPHost
@@ -646,10 +649,10 @@ func dialPOP3(ecfg *config.EmailConfig) (*pop3Conn, error) {
 		port = 995
 	}
 
-	d := &net.Dialer{Timeout: 30 * time.Second}
+	d := &net.Dialer{Timeout: timeoutDuration}
 	tlsConn, err := tls.DialWithDialer(d, "tcp", fmt.Sprintf("%s:%d", host, port), tlsConfigForEmail(ecfg))
 	if err != nil {
-		plainConn, err2 := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, 110), 30*time.Second)
+		plainConn, err2 := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, 110), timeoutDuration)
 		if err2 != nil {
 			return nil, fmt.Errorf("pop3 connect failed (TLS %s:%d and plain :110): %w / %s", host, port, err, err2)
 		}
@@ -792,6 +795,20 @@ func formatDate(s string) string {
 		return t.Format("2006-01-02 15:04")
 	}
 	return s
+}
+
+// connectTimeout returns the dial timeout for IMAP/POP3 connections.
+// cfgTimeout is the configured timeout string (e.g. "30s"); if empty, defaults to 30s.
+func (e *Tool) connectTimeout() time.Duration {
+	timeout := e.cfg.MCP.Email.ConnectTimeout
+	if timeout == "" {
+		return 30 * time.Second
+	}
+	d, err := time.ParseDuration(timeout)
+	if err != nil || d <= 0 {
+		return 30 * time.Second
+	}
+	return d
 }
 
 func truncateStr(s string, max int) string {

@@ -40,6 +40,11 @@ weight: 20
 | `llm.max_sub_turns` | `int` | `10` | 每轮用户输入最多工具调用反馈循环次数（防止无限循环）。 |
 | `llm.compress_mode` | `string` | `"drop"` | 上下文压缩策略。可选值：`drop`（丢弃最早内容）、`segment`（合并片段）、`tiered`（分层）、`incremental`（增量）、`topic`（主题）。 |
 | `llm.segment_merge_limit` | `int` | `100` | 片段数量阈值，超过后触发递归合并（仅 `segment` 模式使用）。 |
+| `llm.timeout_seconds` | `int` | `300` | 每个 provider 的 HTTP 客户端超时秒数。 |
+| `llm.health_check_timeout_seconds` | `int` | `10` | 每个 provider 健康检查的超时秒数。 |
+| `llm.compress_timeout_seconds` | `int` | `15` | 上下文压缩 LLM 调用超时秒数。 |
+| `llm.retry.max_attempts` | `int` | `3` | LLM 调用失败后的最大重试次数（瞬态错误，非限流）。 |
+| `llm.retry.backoff_base` | `string` | `"1s"` | 指数退避基础时长（如 `"1s"`、`"2s"`）。 |
 
 ### 多提供商 (`llm.providers`)
 
@@ -53,6 +58,7 @@ weight: 20
 | `api_key` | `string` | 该提供商的 API 密钥。为空时回退到 `llm.api_key`。 |
 | `model` | `string` | 模型名称。 |
 | `max_tokens` | `int` | 该提供商的最大 token 数。为 0 时回退到 `llm.max_tokens`。 |
+| `timeout_seconds` | `int` | 该 provider 的 HTTP 超时覆盖。为 0 时使用 `llm.timeout_seconds`。 |
 
 ```yaml
 llm:
@@ -87,6 +93,7 @@ llm:
 | `session.summary` | `bool` | `true` | 是否在检查点时自动生成会话摘要。 |
 | `session.max_age` | `string` | `"24h"` | 超过此时间的会话文件自动清理（如 `"72h"`、`"7d"`）。环境变量：`DZ_SESSION_MAX_AGE`。 |
 | `session.resume` | `bool` | `false` | 启动时是否提示恢复上次会话。 |
+| `session.max_size_mb` | `int` | `10` | 会话文件最大大小（MB），超出则拒绝加载。 |
 
 ---
 
@@ -105,6 +112,7 @@ llm:
 | `mcp.shell.priority` | `int` | `10` | 工具列表优先级（越小越靠前）。 |
 | `mcp.shell.max_command_length` | `int` | `4096` | 每条命令的最大字符数。 |
 | `mcp.shell.allowed_commands` | `[]string` | `[]` | 命令白名单（空列表 = 允许所有）。限制模式下自动设置。 |
+| `mcp.shell.output_max_bytes` | `int` | `65536` | 标准输出/错误截断字节上限。 |
 
 ### CDP 浏览器 (`mcp.cdp`)
 
@@ -117,6 +125,13 @@ Chrome DevTools Protocol — 浏览器自动化。
 | `mcp.cdp.priority` | `int` | `1000` | 工具列表优先级。 |
 | `mcp.cdp.ws_url` | `string` | `""` | 连接到已有的 CDP 端点（WebSocket URL），而非启动新浏览器。 |
 | `mcp.cdp.idle_timeout` | `int` | `300` | 空闲多少秒后自动关闭浏览器。设为 `0` 禁用自动关闭。 |
+| `mcp.cdp.startup_timeout` | `int` | `30` | 浏览器初始化验证超时秒数。macOS 冷启动可能较慢。 |
+| `mcp.cdp.health_check_timeout` | `int` | `10` | 浏览器健康检查超时秒数。 |
+| `mcp.cdp.navigation_wait` | `string` | `"2s"` | 页面导航后额外等待时长（如 `"2s"`、`"500ms"`）。空字符串 = 不等待。 |
+| `mcp.cdp.screenshot_quality` | `int` | `100` | 全页截图质量（0-100）。 |
+| `mcp.cdp.screenshot_dir` | `string` | `"screenshots"` | 截图输出目录（相对路径相对于项目目录）。 |
+| `mcp.cdp.chrome_flags` | `map` | `{disable-gpu, no-sandbox, ...}` | 额外 chromedp 启动标志，覆盖内置默认值。 |
+| `mcp.cdp.user_agent` | `string` | `"Mozilla/5.0 ..."` | 自定义 User-Agent。空字符串 = 使用 Chrome 默认值。 |
 
 ### 邮件 MCP (`mcp.email`)
 
@@ -126,6 +141,8 @@ Chrome DevTools Protocol — 浏览器自动化。
 |------|------|--------|------|
 | `mcp.email.enabled` | `bool` | `true` | 启用邮件 MCP 工具。 |
 | `mcp.email.priority` | `int` | `500` | 工具列表优先级。 |
+| `mcp.email.max_attachment_size` | `int` | `10485760` | 附件大小上限（字节）。 |
+| `mcp.email.connect_timeout` | `string` | `"30s"` | IMAP/POP3 连接超时（如 `"30s"`、`"10s"`）。 |
 
 ### Webhook MCP (`mcp.webhook`)
 
@@ -136,6 +153,7 @@ HTTP webhook 工具，用于向外部服务发送请求。
 | `mcp.webhook.enabled` | `bool` | `true` | 启用 Webhook 工具。 |
 | `mcp.webhook.priority` | `int` | `100` | 工具列表优先级。 |
 | `mcp.webhook.targets` | `map[string]object` | `{}` | 命名的预配置 webhook 目标。每个目标包含：`url`（string，必填）、`method`（string，默认 `"POST"`）、`headers`（map[string]string）。 |
+| `mcp.webhook.timeout_seconds` | `int` | `30` | HTTP 请求超时秒数。 |
 
 ```yaml
 mcp:
@@ -158,6 +176,10 @@ mcp:
 | `mcp.web_search.provider` | `string` | `"duckduckgo"` | 默认搜索引擎（旧式单 provider 配置）。 |
 | `mcp.web_search.providers` | `[]string` | `[]` | 启用的搜索引擎列表。与已注册的 provider 取交集后暴露给 LLM。为空时回退到 `provider`。 |
 | `mcp.web_search.api_key` | `string` | `""` | 需要 API 密钥的搜索引擎共用（serper、iflow）。 |
+| `mcp.web_search.timeout_seconds` | `int` | `15` | 搜索引擎 HTTP 请求超时秒数。 |
+| `mcp.web_search.max_results` | `int` | `10` | 每次查询最大结果数。 |
+| `mcp.web_search.user_agent` | `string` | `""` | 自定义 User-Agent。空 = 使用 provider 默认值。 |
+| `mcp.web_search.provider_base_urls` | `map[string]string` | `{}` | 各搜索引擎的基础 URL 覆盖，如 `{duckduckgo: "https://html.duckduckgo.com/html/"}`。 |
 
 支持的搜索引擎：
 - `duckduckgo` — 零配置，HTML 抓取
@@ -186,6 +208,8 @@ mcp:
 | `url` | `string` | 服务器 URL（`sse` / `http-stream` 类型使用）。 |
 | `headers` | `map[string]string` | 自定义 HTTP 请求头（如 `Authorization`）。 |
 | `timeout` | `int` | 请求超时秒数（`0` = 默认 `30`）。 |
+| `reconnect_delay` | `string` | SSE 重连延迟（如 `"5s"`），仅 `sse` 类型使用。 |
+| `shutdown_timeout` | `int` | stdio 子进程优雅关闭等待秒数。超时后强制终止。`0` = 默认 `3`。 |
 
 ```yaml
 mcp:
@@ -220,6 +244,10 @@ mcp:
 | `agent_pool.idle_timeout` | `int` | `600` | 空闲临时 agent 多少秒后被回收。 |
 | `agent_pool.max_pending_results` | `int` | `10` | 每个 agent 最多保留的待处理结果数。 |
 | `agent_pool.max_pending_result_len` | `int` | `500` | prompt 中每条结果的最大字符数。`0` = 不截断。 |
+| `agent_pool.max_synthesis_rounds` | `int` | `3` | 协调器轮询结果时最多合成轮次。 |
+| `agent_pool.poll_interval` | `string` | `"200ms"` | 子 agent 就绪轮询间隔（如 `"200ms"`、`"1s"`）。 |
+| `agent_pool.min_reap_interval` | `string` | `"5s"` | 空闲回收最小检查间隔。 |
+| `agent_pool.max_reap_interval` | `string` | `"30s"` | 空闲回收最大检查间隔。 |
 
 ---
 
@@ -258,6 +286,9 @@ mcp:
 | `transport.ssh.host_key` | `string` | `"~/.ssh/id_ed25519"` | SSH 主机私钥路径。 |
 | `transport.ssh.username` | `string` | `"dolphin"` | SSH 登录用户名。 |
 | `transport.ssh.password` | `string` | `""` | SSH 密码。启用 SSH 后如果为空则首次启动时自动生成。 |
+| `transport.ssh.read_timeout` | `string` | `"5m"` | ReadLine 超时时长（如 `"5m"`、`"30s"`）。 |
+| `transport.ssh.markdown_render` | `bool` | `false` | 在 SSH 终端输出中渲染 Markdown。 |
+| `transport.ssh.markdown_style` | `string` | `""` | 渲染 Markdown 的 CSS 主题（如 `"dracula"`、`"github"`）。 |
 
 ### MQTT (`transport.mqtt`)
 
@@ -275,6 +306,9 @@ MQTT 消息传输。
 | `transport.mqtt.embedded_accounts` | `[]object` | `[]` | 内嵌代理的账户凭据。如果内嵌代理启用且未配置账户，会自动生成一个。每个条目包含：`username`（string）、`password`（string）。环境变量 `DZ_MQTT_USER` / `DZ_MQTT_PASSWORD` 可设置第一个账户。 |
 | `transport.mqtt.username` | `string` | `""` | 连接 broker 的客户端用户名（非内嵌 broker 用）。 |
 | `transport.mqtt.password` | `string` | `""` | 连接 broker 的客户端密码。为空时自动取第一个内嵌账户的密码。 |
+| `transport.mqtt.keep_alive_seconds` | `int` | `60` | MQTT KeepAlive 间隔秒数。 |
+| `transport.mqtt.ping_timeout_seconds` | `int` | `10` | MQTT ping 响应超时秒数。 |
+| `transport.mqtt.max_reconnect_seconds` | `int` | `30` | 最大重连回退间隔秒数。 |
 
 ### 邮件 (`transport.email`)
 
@@ -297,6 +331,7 @@ MQTT 消息传输。
 | `transport.email.skip_tls_verify` | `bool` | `false` | 跳过 TLS 证书验证（用于自签名证书场景）。 |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP 收件箱轮询间隔（如 `"30s"`、`"5m"`）。 |
 | `transport.email.allowed_senders` | `[]string` | `[]` | 发件人白名单。以 `@` 开头的条目匹配以该域名后缀结尾的任意地址（如 `"@siciv.space"` 匹配 `user@siciv.space`）。空列表 = 允许所有发件人。 |
+| `transport.email.dial_timeout` | `string` | `"30s"` | IMAP/POP3 拨号超时（如 `"30s"`、`"10s"`）。 |
 
 **邮件传输流程：**
 
@@ -342,6 +377,7 @@ sequenceDiagram
 | `transport.dingtalk.enabled` | `bool` | `false` | 启用钉钉传输。环境变量：`DZ_DINGTALK_ENABLED`。 |
 | `transport.dingtalk.client_id` | `string` | `""` | 钉钉应用 AppKey。环境变量：`DZ_DINGTALK_CLIENT_ID`。 |
 | `transport.dingtalk.client_secret` | `string` | `""` | 钉钉应用 AppSecret。环境变量：`DZ_DINGTALK_CLIENT_SECRET`。 |
+| `transport.dingtalk.read_timeout` | `string` | `"5m"` | Stream 连接读取超时时长（如 `"5m"`、`"1m"`）。 |
 
 **快速上手：**
 
@@ -359,6 +395,29 @@ transport:
     client_id: "your-appkey"
     client_secret: "your-appsecret"
 ```
+
+### A2A (`transport.a2a`)
+
+Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 协议规范。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `transport.a2a.enabled` | `bool` | `false` | 启用 A2A 传输。 |
+| `transport.a2a.listen_addr` | `string` | `":8080"` | HTTP 监听地址。 |
+| `transport.a2a.agent_id` | `string` | `""` | 唯一智能体标识。 |
+| `transport.a2a.agent_name` | `string` | `""` | 可读智能体名称。 |
+| `transport.a2a.agent_version` | `string` | `""` | 智能体版本号。 |
+| `transport.a2a.agent_description` | `string` | `""` | 智能体简短描述。 |
+| `transport.a2a.capabilities` | `[]string` | `[]` | 智能体能力列表（如 `["text", "task"]`）。 |
+| `transport.a2a.sync_timeout` | `string` | `"60s"` | 同步任务执行超时时长。 |
+| `transport.a2a.api_key` | `string` | `""` | Bearer 认证的 API 密钥。为空则禁用认证。 |
+| `transport.a2a.tls_enabled` | `bool` | `false` | 启用 TLS。 |
+| `transport.a2a.tls_cert_file` | `string` | `""` | TLS 证书文件路径。 |
+| `transport.a2a.tls_key_file` | `string` | `""` | TLS 密钥文件路径。 |
+| `transport.a2a.handler_path` | `string` | `"/a2a"` | A2A RPC HTTP 处理路径。 |
+| `transport.a2a.agent_card_path` | `string` | `"/.well-known/agent.json"` | Agent Card 端点路径。 |
+| `transport.a2a.read_header_timeout` | `int` | `10` | HTTP 服务器 `ReadHeaderTimeout`（秒）。 |
+| `transport.a2a.shutdown_timeout` | `int` | `5` | 服务器关闭上下文超时（秒）。 |
 
 ---
 
@@ -403,12 +462,8 @@ transport:
 | `plugins.dir` | `string` | `"~/.dolphin/plugins/"` | 插件脚本目录（可执行脚本或 `.md` 文件）。 |
 | `plugins.webhook_url` | `string` | `""` | 事件投递的 HTTP 端点。事件以 JSON 格式 POST 到此地址。 |
 | `plugins.webhook_events` | `[]string` | `["*"]` | 要投递的事件类型。`["*"]` 表示全部投递。可过滤为指定列表如 `["tool:called", "tool:completed"]`。 |
-
-**可用事件类型**：`session:created`、`session:ended`、`user:message`、`llm:response`、`tool:called`、`tool:completed`、`compression`、`error`、`heartbeat`、`agent:dispatched`、`agent:completed`、`skill:loaded`。
-
-| 字段 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
 | `plugins.heartbeat_turns` | `int` | `0` | 每 N 轮触发一次 `heartbeat` 事件。`0` = 关闭。 |
+| `plugins.script_timeout_seconds` | `int` | `3` | 每个 Hook/Event 脚本的执行超时秒数。 |
 
 **可用 Hook 节点**（† = 可中止）：`session:start`、`session:end`、`user:input†`、`llm:before†`、`llm:after`、`tool:before†`、`tool:after`、`response:before`、`error`。
 
@@ -422,6 +477,32 @@ plugins:
   webhook_events: ["tool:called", "tool:completed"]
   heartbeat_turns: 5
 ```
+
+---
+
+## 更新 (`update`)
+
+自动更新检查与安装。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `update.enabled` | `bool` | `false` | 启用自动更新检查。 |
+| `update.check_interval` | `string` | `"24h"` | 更新检查间隔（如 `"24h"`、`"12h"`）。 |
+| `update.channel` | `string` | `"stable"` | 发布频道：`"stable"` 或 `"pre-release"`。 |
+| `update.auto_install` | `bool` | `false` | 自动下载并安装更新。 |
+| `update.timeout_seconds` | `int` | `30` | 更新检查的 HTTP 客户端超时秒数。 |
+
+---
+
+## 健康检查 (`health`)
+
+HTTP 健康检查端点。
+
+| 字段 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `health.enabled` | `bool` | `false` | 启用健康检查 HTTP 服务。 |
+| `health.addr` | `string` | `":9091"` | 监听地址（如 `":9091"` 监听所有接口）。 |
+| `health.debounce` | `string` | `"30s"` | 心跳去抖间隔（如 `"30s"`、`"1m"`）。在此窗口内避免重复触发健康事件。 |
 
 ---
 

@@ -40,6 +40,11 @@ These fields are used when `providers` is empty. They can also be set via `DZ_LL
 | `llm.max_sub_turns` | `int` | `10` | Max consecutive tool-call rounds per user turn (prevents runaway loops). |
 | `llm.compress_mode` | `string` | `"drop"` | Context compression strategy. One of: `drop` (discard oldest), `segment` (merge segments), `tiered`, `incremental`, `topic`. |
 | `llm.segment_merge_limit` | `int` | `100` | Segment count threshold before recursive merging (only used in `segment` mode). |
+| `llm.timeout_seconds` | `int` | `300` | HTTP client timeout in seconds per provider. |
+| `llm.health_check_timeout_seconds` | `int` | `10` | Health check timeout in seconds per provider. |
+| `llm.compress_timeout_seconds` | `int` | `15` | LLM call timeout in seconds for context compression/summary. |
+| `llm.retry.max_attempts` | `int` | `3` | Max retry attempts for transient LLM API failures (not rate-limit retry). |
+| `llm.retry.backoff_base` | `string` | `"1s"` | Exponential backoff base duration (e.g. `"1s"`, `"2s"`). |
 
 ### Multi-Provider (`llm.providers`)
 
@@ -53,6 +58,7 @@ When `providers` is configured, startup tries each entry in order with a health 
 | `api_key` | `string` | API key for this provider. Falls back to `llm.api_key` if empty. |
 | `model` | `string` | Model name. |
 | `max_tokens` | `int` | Max tokens for this provider. Falls back to `llm.max_tokens` if zero. |
+| `timeout_seconds` | `int` | Per-provider HTTP timeout override. Falls back to `llm.timeout_seconds` if zero. |
 
 ```yaml
 llm:
@@ -82,6 +88,7 @@ Controls session persistence, auto-checkpoint, and cleanup.
 | `session.summary` | `bool` | `true` | Auto-generate a session summary on checkpoint. |
 | `session.max_age` | `string` | `"24h"` | Auto-delete sessions older than this duration (e.g. `"72h"`, `"7d"`). Env: `DZ_SESSION_MAX_AGE`. |
 | `session.resume` | `bool` | `false` | If true, prompt to resume the last session on startup. |
+| `session.max_size_mb` | `int` | `10` | Max session file size in MB. Larger files are rejected. |
 
 ---
 
@@ -100,6 +107,7 @@ Executes shell commands.
 | `mcp.shell.priority` | `int` | `10` | Tool listing priority (lower = listed first). |
 | `mcp.shell.max_command_length` | `int` | `4096` | Max characters per command. |
 | `mcp.shell.allowed_commands` | `[]string` | `[]` | Allowlist of command names (empty = allow all). Populated automatically in restrictive mode. |
+| `mcp.shell.output_max_bytes` | `int` | `65536` | Stdout/stderr truncation limit in bytes. |
 
 ### CDP Browser (`mcp.cdp`)
 
@@ -113,6 +121,12 @@ Chrome DevTools Protocol — browser automation.
 | `mcp.cdp.ws_url` | `string` | `""` | Connect to an existing CDP endpoint instead of launching a new browser. |
 | `mcp.cdp.idle_timeout` | `int` | `300` | Seconds of inactivity before auto-closing the browser. Set to `0` to disable. |
 | `mcp.cdp.startup_timeout` | `int` | `30` | Seconds to wait for browser init verification. Cold starts on macOS can be slow. |
+| `mcp.cdp.health_check_timeout` | `int` | `10` | Browser health check timeout in seconds. |
+| `mcp.cdp.navigation_wait` | `string` | `"2s"` | Post-navigation wait duration (e.g. `"2s"`, `"500ms"`). Empty = no extra wait. |
+| `mcp.cdp.screenshot_quality` | `int` | `100` | Full page screenshot quality (0-100). |
+| `mcp.cdp.screenshot_dir` | `string` | `"screenshots"` | Screenshots output directory (relative to project dir). |
+| `mcp.cdp.chrome_flags` | `map` | `{disable-gpu, no-sandbox, ...}` | Additional chromedp launch flags, overrides built-in defaults. |
+| `mcp.cdp.user_agent` | `string` | `"Mozilla/5.0 ..."` | Custom User-Agent string. Empty = use Chrome default. |
 
 ### Email MCP (`mcp.email`)
 
@@ -122,6 +136,8 @@ Email send/search/fetch tool (requires `transport.email` to be configured separa
 |-------|------|---------|-------------|
 | `mcp.email.enabled` | `bool` | `true` | Enable the email MCP tool. |
 | `mcp.email.priority` | `int` | `500` | Tool listing priority. |
+| `mcp.email.max_attachment_size` | `int` | `10485760` | Max attachment size in bytes. |
+| `mcp.email.connect_timeout` | `string` | `"30s"` | IMAP/POP3 connection timeout (e.g. `"30s"`, `"10s"`). |
 
 ### Webhook MCP (`mcp.webhook`)
 
@@ -132,6 +148,7 @@ HTTP webhook tool for sending requests to external services.
 | `mcp.webhook.enabled` | `bool` | `true` | Enable the webhook tool. |
 | `mcp.webhook.priority` | `int` | `100` | Tool listing priority. |
 | `mcp.webhook.targets` | `map[string]object` | `{}` | Named pre-configured webhook targets. Each target has: `url` (string, required), `method` (string, default `"POST"`), `headers` (map[string]string). |
+| `mcp.webhook.timeout_seconds` | `int` | `30` | HTTP request timeout in seconds. |
 
 ```yaml
 mcp:
@@ -154,6 +171,10 @@ Web search tool with multiple provider support. Providers are registered via `in
 | `mcp.web_search.provider` | `string` | `"duckduckgo"` | Default provider (legacy single-provider config). |
 | `mcp.web_search.providers` | `[]string` | `[]` | List of enabled providers. Intersected with registered providers for the LLM enum. Falls back to `provider` if empty. |
 | `mcp.web_search.api_key` | `string` | `""` | API key for providers that require one (serper, iflow). |
+| `mcp.web_search.timeout_seconds` | `int` | `15` | HTTP request timeout in seconds per provider. |
+| `mcp.web_search.max_results` | `int` | `10` | Max results per query. |
+| `mcp.web_search.user_agent` | `string` | `""` | Custom User-Agent. Empty = provider default. |
+| `mcp.web_search.provider_base_urls` | `map[string]string` | `{}` | Per-provider base URL overrides, e.g. `{duckduckgo: "https://html.duckduckgo.com/html/"}`. |
 
 Supported providers:
 - `duckduckgo` — zero-config, HTML scraping
@@ -182,6 +203,8 @@ Connect to external MCP servers. Each key is a server name.
 | `url` | `string` | Server URL (for `sse` / `http-stream` types). |
 | `headers` | `map[string]string` | Custom HTTP headers (e.g. `Authorization`). |
 | `timeout` | `int` | Request timeout in seconds (`0` = default `30`). |
+| `reconnect_delay` | `string` | SSE reconnect delay (e.g. `"5s"`). Only applies to `sse` type. |
+| `shutdown_timeout` | `int` | Stdio subprocess graceful shutdown wait in seconds. Killed after timeout. `0` = default `3`. |
 
 ```yaml
 mcp:
@@ -216,6 +239,10 @@ Controls concurrent sub-agent execution.
 | `agent_pool.idle_timeout` | `int` | `600` | Seconds before reaping idle temporary agents. |
 | `agent_pool.max_pending_results` | `int` | `10` | Max pending results preserved per agent. |
 | `agent_pool.max_pending_result_len` | `int` | `500` | Max characters per result in the prompt. `0` = no truncation. |
+| `agent_pool.max_synthesis_rounds` | `int` | `3` | Max synthesis rounds during coordinator result polling. |
+| `agent_pool.poll_interval` | `string` | `"200ms"` | Sub-agent ready poll interval (e.g. `"200ms"`, `"1s"`). |
+| `agent_pool.min_reap_interval` | `string` | `"5s"` | Minimum idle reap check interval. |
+| `agent_pool.max_reap_interval` | `string` | `"30s"` | Maximum idle reap check interval. |
 
 ---
 
@@ -254,6 +281,9 @@ Remote shell access.
 | `transport.ssh.host_key` | `string` | `"~/.ssh/id_ed25519"` | Path to the SSH host private key. |
 | `transport.ssh.username` | `string` | `"dolphin"` | SSH login username. |
 | `transport.ssh.password` | `string` | `""` | SSH password. Auto-generated on first start if empty and SSH is enabled. |
+| `transport.ssh.read_timeout` | `string` | `"5m"` | ReadLine deadline duration (e.g. `"5m"`, `"30s"`). |
+| `transport.ssh.markdown_render` | `bool` | `false` | Render markdown in SSH terminal output. |
+| `transport.ssh.markdown_style` | `string` | `""` | CSS theme for rendered markdown (e.g. `"dracula"`, `"github"`). |
 
 ### MQTT (`transport.mqtt`)
 
@@ -271,6 +301,9 @@ MQTT messaging transport.
 | `transport.mqtt.embedded_accounts` | `[]object` | `[]` | Credentials for the embedded broker. If empty and embedded is enabled, one account is auto-generated. Each entry has: `username` (string), `password` (string). Env: `DZ_MQTT_USER` / `DZ_MQTT_PASSWORD` set the first account. |
 | `transport.mqtt.username` | `string` | `""` | Client username for broker connection (not the embedded broker). |
 | `transport.mqtt.password` | `string` | `""` | Client password for broker connection. Auto-populated from the first embedded account if empty. |
+| `transport.mqtt.keep_alive_seconds` | `int` | `60` | MQTT KeepAlive interval in seconds. |
+| `transport.mqtt.ping_timeout_seconds` | `int` | `10` | MQTT ping response timeout in seconds. |
+| `transport.mqtt.max_reconnect_seconds` | `int` | `30` | Maximum reconnect backoff interval in seconds. |
 
 ### Email (`transport.email`)
 
@@ -293,6 +326,7 @@ Email transport — receives instructions and sends responses via SMTP/IMAP.
 | `transport.email.skip_tls_verify` | `bool` | `false` | Skip TLS certificate verification (for self-signed certificates). |
 | `transport.email.poll_interval` | `string` | `"10s"` | IMAP inbox poll interval (e.g. `"30s"`, `"5m"`). |
 | `transport.email.allowed_senders` | `[]string` | `[]` | Allowlist of sender addresses or domains. Entries starting with `@` match any address ending with that domain suffix (e.g. `"@siciv.space"` matches `user@siciv.space`). Empty = allow all senders. |
+| `transport.email.dial_timeout` | `string` | `"30s"` | IMAP/POP3 dial timeout (e.g. `"30s"`, `"10s"`). |
 
 **Email transport flow:**
 
@@ -338,6 +372,7 @@ DingTalk bot transport via Stream mode (WebSocket long connection). The bot acti
 | `transport.dingtalk.enabled` | `bool` | `false` | Enable DingTalk transport. Env: `DZ_DINGTALK_ENABLED`. |
 | `transport.dingtalk.client_id` | `string` | `""` | DingTalk app AppKey. Env: `DZ_DINGTALK_CLIENT_ID`. |
 | `transport.dingtalk.client_secret` | `string` | `""` | DingTalk app AppSecret. Env: `DZ_DINGTALK_CLIENT_SECRET`. |
+| `transport.dingtalk.read_timeout` | `string` | `"5m"` | ReadLine timeout for stream connection (e.g. `"5m"`, `"1m"`). |
 
 **Quickstart:**
 
@@ -356,7 +391,32 @@ transport:
     client_secret: "your-appsecret"
 ```
 
+### A2A (`transport.a2a`)
+
+Agent-to-Agent (A2A) JSON-RPC communication over HTTP. Implements Google's Agent-to-Agent protocol.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `transport.a2a.enabled` | `bool` | `false` | Enable A2A transport. |
+| `transport.a2a.listen_addr` | `string` | `":8080"` | HTTP listen address. |
+| `transport.a2a.agent_id` | `string` | `""` | Unique agent identifier. |
+| `transport.a2a.agent_name` | `string` | `""` | Human-readable agent name. |
+| `transport.a2a.agent_version` | `string` | `""` | Agent version string. |
+| `transport.a2a.agent_description` | `string` | `""` | Short description of the agent. |
+| `transport.a2a.capabilities` | `[]string` | `[]` | List of agent capabilities (e.g. `["text", "task"]`). |
+| `transport.a2a.sync_timeout` | `string` | `"60s"` | Timeout for synchronous task execution. |
+| `transport.a2a.api_key` | `string` | `""` | API key for bearer authentication. If empty, auth is disabled. |
+| `transport.a2a.tls_enabled` | `bool` | `false` | Enable TLS. |
+| `transport.a2a.tls_cert_file` | `string` | `""` | Path to TLS certificate file. |
+| `transport.a2a.tls_key_file` | `string` | `""` | Path to TLS key file. |
+| `transport.a2a.handler_path` | `string` | `"/a2a"` | HTTP handler path for A2A RPC. |
+| `transport.a2a.agent_card_path` | `string` | `"/.well-known/agent.json"` | Agent Card endpoint path. |
+| `transport.a2a.read_header_timeout` | `int` | `10` | HTTP server `ReadHeaderTimeout` in seconds. |
+| `transport.a2a.shutdown_timeout` | `int` | `5` | Server shutdown context timeout in seconds. |
+
 ---
+
+## Crontab (`crontab`)
 
 ## Crontab (`crontab`)
 
@@ -399,12 +459,8 @@ Both can be driven by script plugins in the plugins directory.
 | `plugins.dir` | `string` | `"~/.dolphin/plugins/"` | Directory for plugin scripts (executable scripts or `.md` files). |
 | `plugins.webhook_url` | `string` | `""` | HTTP endpoint for event delivery. Events are POSTed as JSON. |
 | `plugins.webhook_events` | `[]string` | `["*"]` | Event types to deliver. `["*"]` delivers all. Filter with a list like `["tool:called", "tool:completed"]`. |
-
-**Available event types**: `session:created`, `session:ended`, `user:message`, `llm:response`, `tool:called`, `tool:completed`, `compression`, `error`, `heartbeat`, `agent:dispatched`, `agent:completed`, `skill:loaded`.
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
 | `plugins.heartbeat_turns` | `int` | `0` | Emit a `heartbeat` event every N turns. `0` = off. |
+| `plugins.script_timeout_seconds` | `int` | `3` | Per-script execution timeout for hook/event scripts. |
 
 **Available hook points** († = abortable): `session:start`, `session:end`, `user:input†`, `llm:before†`, `llm:after`, `tool:before†`, `tool:after`, `response:before`, `error`.
 
@@ -418,6 +474,32 @@ plugins:
   webhook_events: ["tool:called", "tool:completed"]
   heartbeat_turns: 5
 ```
+
+---
+
+## Update (`update`)
+
+Automatic update checking and installation.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `update.enabled` | `bool` | `false` | Enable automatic update checks. |
+| `update.check_interval` | `string` | `"24h"` | How often to check for updates (e.g. `"24h"`, `"12h"`). |
+| `update.channel` | `string` | `"stable"` | Release channel: `"stable"` or `"pre-release"`. |
+| `update.auto_install` | `bool` | `false` | Automatically download and install updates. |
+| `update.timeout_seconds` | `int` | `30` | HTTP client timeout in seconds for update checks. |
+
+---
+
+## Health (`health`)
+
+HTTP health check endpoint.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `health.enabled` | `bool` | `false` | Enable health check HTTP server. |
+| `health.addr` | `string` | `":9091"` | Listen address (e.g. `":9091"` for all interfaces). |
+| `health.debounce` | `string` | `"30s"` | Heartbeat debounce interval (e.g. `"30s"`, `"1m"`). Prevents duplicate health events within this window. |
 
 ---
 

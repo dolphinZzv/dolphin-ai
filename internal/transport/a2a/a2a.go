@@ -182,13 +182,21 @@ func (t *A2ATransport) Start(ctx context.Context) error {
 	defer transport.ActiveConnections.Add(-1)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/a2a", t.authMiddleware(t.handleRPC))
-	mux.HandleFunc("/.well-known/agent.json", t.authMiddleware(t.handleAgentCard))
+	handlerPath := t.cfg.HandlerPath
+	if handlerPath == "" {
+		handlerPath = "/a2a"
+	}
+	cardPath := t.cfg.AgentCardPath
+	if cardPath == "" {
+		cardPath = "/.well-known/agent.json"
+	}
+	mux.HandleFunc(handlerPath, t.authMiddleware(t.handleRPC))
+	mux.HandleFunc(cardPath, t.authMiddleware(t.handleAgentCard))
 
 	t.server = &http.Server{
 		Addr:              t.cfg.ListenAddr,
 		Handler:           mux,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: a2aReadHeaderTimeout(t.cfg.ReadHeaderTimeout),
 	}
 
 	go func() {
@@ -211,7 +219,7 @@ func (t *A2ATransport) Start(ctx context.Context) error {
 	)
 
 	<-ctx.Done()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), a2aShutdownTimeout(t.cfg.ShutdownTimeout))
 	defer cancel()
 	t.server.Shutdown(shutdownCtx)
 	return t.Close()
@@ -271,7 +279,7 @@ func (t *A2ATransport) Close() error {
 	t.closeOnce.Do(func() {
 		close(t.closeCh)
 		if t.server != nil {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), a2aShutdownTimeout(t.cfg.ShutdownTimeout))
 			defer cancel()
 			t.server.Shutdown(shutdownCtx)
 		}
@@ -536,6 +544,19 @@ func writeRPCError(w http.ResponseWriter, id json.RawMessage, code int, message 
 		ID:      idVal,
 		Error:   &rpcError{Code: code, Message: message},
 	})
+}
+
+func a2aReadHeaderTimeout(sec int) time.Duration {
+	if sec <= 0 {
+		return 10 * time.Second
+	}
+	return time.Duration(sec) * time.Second
+}
+func a2aShutdownTimeout(sec int) time.Duration {
+	if sec <= 0 {
+		return 5 * time.Second
+	}
+	return time.Duration(sec) * time.Second
 }
 
 func parseSyncTimeout(s string) time.Duration {

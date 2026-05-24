@@ -27,6 +27,13 @@ type AnthropicProvider struct {
 	client  *http.Client
 }
 
+func providerTimeout(sec int) time.Duration {
+	if sec <= 0 {
+		return 5 * time.Minute
+	}
+	return time.Duration(sec) * time.Second
+}
+
 func NewAnthropicProvider(cfg *config.ProviderConfig) *AnthropicProvider {
 	baseURL := cfg.BaseURL
 	if baseURL == "" {
@@ -47,7 +54,7 @@ func NewAnthropicProvider(cfg *config.ProviderConfig) *AnthropicProvider {
 		model:   cfg.Model,
 		maxTok:  cfg.MaxTokens,
 		name:    cfg.Name,
-		client:  &http.Client{Timeout: 5 * time.Minute},
+		client:  &http.Client{Timeout: providerTimeout(cfg.TimeoutSeconds)},
 	}
 }
 

@@ -14,7 +14,6 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root,
   .theme-auto {
     --bg: #0f172a;
     --bg-secondary: #1e293b;

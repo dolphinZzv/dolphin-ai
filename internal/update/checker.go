@@ -44,6 +44,7 @@ type CheckerConfig struct {
 	CheckInterval time.Duration
 	Channel       string
 	AutoInstall   bool
+	CheckTimeout  time.Duration // per-check HTTP timeout, 0 = default 30s
 }
 
 // StartChecker runs the background update check loop.
@@ -68,7 +69,11 @@ func StartChecker(ctx context.Context, cfg CheckerConfig, currentVersion string)
 	performCheck := func() {
 		metricUpdateCheckTotal.Inc()
 
-		checkCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		timeout := cfg.CheckTimeout
+		if timeout <= 0 {
+			timeout = 30 * time.Second
+		}
+		checkCtx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
 		release, err := client.FetchLatest(checkCtx, cfg.Channel)

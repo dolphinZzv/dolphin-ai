@@ -16,12 +16,20 @@ func init() {
 }
 
 func (w *Tool) searchDuckDuckGo(ctx context.Context, query string) ([]searchResult, error) {
-	u := fmt.Sprintf("https://html.duckduckgo.com/html/?q=%s", url.QueryEscape(query))
+	baseURL := "https://html.duckduckgo.com/html/"
+	if u, ok := w.cfg.ProviderBaseURLs["duckduckgo"]; ok && u != "" {
+		baseURL = u
+	}
+	u := fmt.Sprintf("%s?q=%s", baseURL, url.QueryEscape(query))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; DolphinAgent/1.0)")
+	ua := "Mozilla/5.0 (compatible; DolphinAgent/1.0)"
+	if w.cfg.UserAgent != "" {
+		ua = w.cfg.UserAgent
+	}
+	req.Header.Set("User-Agent", ua)
 
 	resp, err := w.client.Do(req)
 	if err != nil {
@@ -34,10 +42,14 @@ func (w *Tool) searchDuckDuckGo(ctx context.Context, query string) ([]searchResu
 		return nil, fmt.Errorf("read response: %w", err)
 	}
 
-	return parseDuckDuckGoHTML(string(body)), nil
+	maxResults := w.cfg.MaxResults
+	if maxResults <= 0 {
+		maxResults = 10
+	}
+	return parseDuckDuckGoHTML(string(body), maxResults), nil
 }
 
-func parseDuckDuckGoHTML(html string) []searchResult {
+func parseDuckDuckGoHTML(html string, maxResults int) []searchResult {
 	var results []searchResult
 	linkStart := `<a rel="nofollow" class="result__a" href="`
 	linkEnd := `</a>`
@@ -88,7 +100,7 @@ func parseDuckDuckGoHTML(html string) []searchResult {
 			URL:     resultURL,
 			Snippet: unescapeHTML(snippet),
 		})
-		if len(results) >= 10 {
+		if len(results) >= maxResults {
 			break
 		}
 	}

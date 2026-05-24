@@ -135,10 +135,17 @@ func (t *stdioTransport) Close() error {
 	case <-done:
 		zap.S().Debugw("mcp server exited gracefully", "server", t.name)
 		return nil
-	case <-time.After(3 * time.Second):
+	case <-time.After(stdioShutdownTimeout(t.cfg.ShutdownTimeout)):
 		zap.S().Warnw("mcp server did not exit in time, killing", "server", t.name)
 		return t.cmd.Process.Kill()
 	}
+}
+
+func stdioShutdownTimeout(timeoutSec int) time.Duration {
+	if timeoutSec <= 0 {
+		return 3 * time.Second
+	}
+	return time.Duration(timeoutSec) * time.Second
 }
 
 func (t *stdioTransport) writeLine(v any) error {

@@ -78,6 +78,10 @@ type PoolConfig struct {
 	IdleTimeout         time.Duration
 	MaxPendingResults   int
 	MaxPendingResultLen int // chars per result in prompt, 0 = no truncation
+	MaxSynthesisRounds  int // cap on coordinator poll synthesis, 0 = default 3
+	PollInterval        time.Duration
+	MinReapInterval     time.Duration
+	MaxReapInterval     time.Duration
 }
 
 // NewPoolConfigFromConfig converts a config.PoolConfig to the agent-level
@@ -90,6 +94,10 @@ func NewPoolConfigFromConfig(cfg config.PoolConfig) PoolConfig {
 		IdleTimeout:         time.Duration(cfg.IdleTimeout) * time.Second,
 		MaxPendingResults:   cfg.MaxPendingResults,
 		MaxPendingResultLen: cfg.MaxPendingResultLen,
+		MaxSynthesisRounds:  cfg.MaxSynthesisRounds,
+		PollInterval:        parseDurationOpt(cfg.PollInterval, 200*time.Millisecond),
+		MinReapInterval:     parseDurationOpt(cfg.MinReapInterval, 5*time.Second),
+		MaxReapInterval:     parseDurationOpt(cfg.MaxReapInterval, 30*time.Second),
 	}
 }
 
@@ -470,7 +478,6 @@ func (p *AgentPool) Remove(name string) bool {
 		case <-time.After(5 * time.Second):
 			zap.S().Warnw("timeout waiting for agent worker to exit",
 				"name", name,
-				"timeout", 5,
 			)
 		}
 
@@ -499,15 +506,13 @@ func (p *AgentPool) Shutdown() {
 }
 
 // reapIdleAgents periodically removes idle coordinator-created agents.
-// The check interval is proportional to IdleTimeout (1/4th), clamped to
-// [5s, 30s] to balance promptness versus overhead.
 func (p *AgentPool) reapIdleAgents() {
 	interval := p.cfg.IdleTimeout / 4
-	if interval > 30*time.Second {
-		interval = 30 * time.Second
+	if p.cfg.MaxReapInterval > 0 && interval > p.cfg.MaxReapInterval {
+		interval = p.cfg.MaxReapInterval
 	}
-	if interval < 5*time.Second {
-		interval = 5 * time.Second
+	if p.cfg.MinReapInterval > 0 && interval < p.cfg.MinReapInterval {
+		interval = p.cfg.MinReapInterval
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()

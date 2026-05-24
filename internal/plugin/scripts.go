@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 
@@ -186,7 +187,7 @@ func (p *scriptPlugin) Register(reg *Registry) {
 // runHookScript executes a script for a hook point. stdin ← HookContext JSON.
 // exit 0 = ok, exit non-zero = error (abort). stdout captured as Values entry.
 func runHookScript(ctx context.Context, scriptPath string, point hook.Point, hc *hook.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, scriptTimeout(nil))
 	defer cancel()
 
 	// Marshal a JSON object that combines HookContext fields + point metadata
@@ -245,7 +246,7 @@ func runHookScript(ctx context.Context, scriptPath string, point hook.Point, hc 
 
 // runEventScript executes a script for an event. stdin ← Event JSON. Fire-and-forget.
 func runEventScript(ctx context.Context, scriptPath string, evtType event.Type, evt event.Event) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, scriptTimeout(nil))
 	defer cancel()
 
 	data, _ := json.Marshal(evt)
@@ -278,4 +279,15 @@ func expandPath(path string) (string, error) {
 		return filepath.Clean(home + path[1:]), nil
 	}
 	return filepath.Clean(path), nil
+}
+
+func scriptTimeout(cfg *config.Config) time.Duration {
+	if cfg == nil {
+		return 3 * time.Second
+	}
+	t := cfg.Plugins.ScriptTimeoutSeconds
+	if t <= 0 {
+		return 3 * time.Second
+	}
+	return time.Duration(t) * time.Second
 }

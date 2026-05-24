@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -128,7 +129,11 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 	defer c.mu.Unlock()
 
 	if c.initialized {
-		healthCtx, healthCancel := context.WithTimeout(c.browserCtx, 10*time.Second)
+		healthTimeout := c.cfg.HealthCheckTimeout
+		if healthTimeout <= 0 {
+			healthTimeout = 10
+		}
+		healthCtx, healthCancel := context.WithTimeout(c.browserCtx, time.Duration(healthTimeout)*time.Second)
 		defer func() { healthCancel() }()
 		var ok bool
 		if err := chromedp.Run(healthCtx, chromedp.Evaluate("!!window.chrome", &ok)); err == nil && ok {
@@ -154,19 +159,20 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 
 		allocOpts := []chromedp.ExecAllocatorOption{
 			chromedp.Flag("headless", c.cfg.Headless),
-			chromedp.Flag("disable-gpu", true),
-			chromedp.Flag("no-sandbox", true),
-			chromedp.Flag("disable-dev-shm-usage", true),
-			chromedp.Flag("disable-extensions", true),
-			chromedp.Flag("disable-background-networking", true),
-			chromedp.Flag("disable-sync", true),
-			chromedp.Flag("disable-default-apps", true),
-			chromedp.Flag("disable-translate", true),
-			chromedp.Flag("no-first-run", true),
-			chromedp.Flag("no-default-browser-check", true),
-			chromedp.Flag("window-size", "1920,1080"),
-			chromedp.Flag("disable-blink-features", "AutomationControlled"),
-			chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"),
+		}
+		// Apply chrome flags from config (sorted for deterministic order).
+		if len(c.cfg.ChromeFlags) > 0 {
+			keys := make([]string, 0, len(c.cfg.ChromeFlags))
+			for k := range c.cfg.ChromeFlags {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+			for _, k := range keys {
+				allocOpts = append(allocOpts, chromedp.Flag(k, c.cfg.ChromeFlags[k]))
+			}
+		}
+		if c.cfg.UserAgent != "" {
+			allocOpts = append(allocOpts, chromedp.UserAgent(c.cfg.UserAgent))
 		}
 		allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), allocOpts...)
 		browserCtx, browserCancel := chromedp.NewContext(allocCtx)
@@ -264,12 +270,17 @@ func (c *Tool) navigate(ctx context.Context, url string) (*mcp.ToolResult, error
 	}
 
 	var title string
-	err := chromedp.Run(ctx,
+	navActions := []chromedp.Action{
 		chromedp.Navigate(url),
 		chromedp.WaitReady("body"),
-		chromedp.Sleep(2*time.Second),
-		chromedp.Title(&title),
-	)
+	}
+	if c.cfg.NavigationWait != "" {
+		if d, err := time.ParseDuration(c.cfg.NavigationWait); err == nil && d > 0 {
+			navActions = append(navActions, chromedp.Sleep(d))
+		}
+	}
+	navActions = append(navActions, chromedp.Title(&title))
+	err := chromedp.Run(ctx, navActions...)
 	if err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("navigate to '%s' failed: %v", url, err), IsError: true}, nil
 	}
@@ -306,12 +317,19 @@ func (c *Tool) screenshot(ctx context.Context, selector string) (*mcp.ToolResult
 			return &mcp.ToolResult{Content: fmt.Sprintf("element screenshot failed for '%s': %v", selector, err), IsError: true}, nil
 		}
 	} else {
-		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, 100)); err != nil {
+		quality := c.cfg.ScreenshotQuality
+		if quality <= 0 {
+			quality = 100
+		}
+		if err := chromedp.Run(ctx, chromedp.FullScreenshot(&buf, quality)); err != nil {
 			return &mcp.ToolResult{Content: fmt.Sprintf("full page screenshot failed: %v", err), IsError: true}, nil
 		}
 	}
 
-	screenshotDir := filepath.Join(config.ProjectConfigDir, "screenshots")
+	screenshotDir := c.cfg.ScreenshotDir
+	if screenshotDir == "" {
+		screenshotDir = filepath.Join(config.ProjectConfigDir, "screenshots")
+	}
 	if err := os.MkdirAll(screenshotDir, 0700); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("create screenshot dir: %v", err), IsError: true}, nil
 	}

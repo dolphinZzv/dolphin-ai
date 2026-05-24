@@ -68,11 +68,11 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 	if t.cfg.Password != "" {
 		opts.SetPassword(t.cfg.Password)
 	}
-	opts.SetKeepAlive(60 * time.Second)
-	opts.SetPingTimeout(10 * time.Second)
+	opts.SetKeepAlive(mqttKeepAlive(t.cfg.KeepAliveSeconds))
+	opts.SetPingTimeout(mqttPingTimeout(t.cfg.PingTimeoutSeconds))
 	opts.SetCleanSession(false)
 	opts.SetAutoReconnect(true)
-	opts.SetMaxReconnectInterval(30 * time.Second)
+	opts.SetMaxReconnectInterval(mqttMaxReconnect(t.cfg.MaxReconnectSeconds))
 	opts.SetConnectionLostHandler(func(c mqtt.Client, err error) {
 		t.connected.Store(false)
 		zap.S().Errorw("mqtt connection lost, will auto-reconnect", "error", err)
@@ -100,7 +100,7 @@ func (t *MQTTTransport) Start(ctx context.Context) error {
 		)
 		select {
 		case t.msgCh <- mqttMsg{payload: payload, respTopic: respTopic}:
-		case <-time.After(10 * time.Second):
+		case <-time.After(mqttSubmitTimeout(t.cfg.KeepAliveSeconds)):
 			zap.S().Errorw("mqtt message dropped after 10s timeout, channel full")
 		}
 	})
@@ -168,6 +168,31 @@ func (t *MQTTTransport) Close() error {
 		close(t.closeCh)
 	})
 	return nil
+}
+
+func mqttKeepAlive(sec int) time.Duration {
+	if sec <= 0 {
+		return 60 * time.Second
+	}
+	return time.Duration(sec) * time.Second
+}
+func mqttPingTimeout(sec int) time.Duration {
+	if sec <= 0 {
+		return 10 * time.Second
+	}
+	return time.Duration(sec) * time.Second
+}
+func mqttMaxReconnect(sec int) time.Duration {
+	if sec <= 0 {
+		return 30 * time.Second
+	}
+	return time.Duration(sec) * time.Second
+}
+func mqttSubmitTimeout(sec int) time.Duration {
+	if sec <= 0 {
+		return 10 * time.Second
+	}
+	return time.Duration(sec) * time.Second
 }
 
 func deriveResponseTopic(cmdTopic, respTopic, incomingTopic string) string {

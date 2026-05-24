@@ -1,5 +1,5 @@
 ---
-title: MCP 与能力
+title: 能力
 description: 通过外部 MCP 服务器和可加载技能扩展 Dolphin 的能力
 slug: capabilities
 weight: 30

@@ -121,7 +121,7 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(5 * time.Second):
+			case <-time.After(sseReconnectDelay(t.cfg.ReconnectDelay)):
 				continue
 			}
 		}
@@ -161,9 +161,22 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(5 * time.Second):
+		case <-time.After(sseReconnectDelay(t.cfg.ReconnectDelay)):
 		}
 	}
+}
+
+// sseReconnectDelay parses the configured reconnect delay string (e.g. "5s")
+// and returns the duration. Returns 5s as default if unset or invalid.
+func sseReconnectDelay(delay string) time.Duration {
+	if delay == "" {
+		return 5 * time.Second
+	}
+	d, err := time.ParseDuration(delay)
+	if err != nil {
+		return 5 * time.Second
+	}
+	return d
 }
 
 func (t *sseTransport) SendRequest(ctx context.Context, reqJSON map[string]any) (json.RawMessage, error) {

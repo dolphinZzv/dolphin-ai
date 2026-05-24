@@ -20,8 +20,12 @@ func (w *Tool) searchSerper(ctx context.Context, query string) ([]searchResult, 
 		return nil, fmt.Errorf("serper provider requires api_key (set mcp.web_search.api_key)")
 	}
 
+	baseURL := "https://google.serper.dev/search"
+	if u, ok := w.cfg.ProviderBaseURLs["serper"]; ok && u != "" {
+		baseURL = u
+	}
 	payload, _ := json.Marshal(map[string]string{"q": query})
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://google.serper.dev/search", strings.NewReader(string(payload)))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL, strings.NewReader(string(payload)))
 	if err != nil {
 		return nil, err
 	}

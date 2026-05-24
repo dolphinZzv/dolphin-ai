@@ -13,6 +13,9 @@ type ProviderConfig struct {
 	APIKey    string `mapstructure:"api_key"`
 	Model     string `mapstructure:"model"`
 	MaxTokens int    `mapstructure:"max_tokens"`
+
+	// TimeoutSeconds overrides the global llm.timeout_seconds for this provider, 0 = use global default.
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
 }
 
 type LLMConfig struct {
@@ -32,6 +35,18 @@ type LLMConfig struct {
 
 	// Multi-provider: if set, startup selects the first that passes health check.
 	Providers []ProviderConfig `mapstructure:"providers"`
+
+	// TimeoutSeconds sets the HTTP client timeout per provider, 0 = default 5min.
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+
+	// HealthCheckTimeoutSeconds controls the per-provider health check timeout, 0 = default 10s.
+	HealthCheckTimeoutSeconds int `mapstructure:"health_check_timeout_seconds"`
+
+	// CompressTimeoutSeconds sets the per-LLM-call timeout for compression/summary, 0 = default 15s.
+	CompressTimeoutSeconds int `mapstructure:"compress_timeout_seconds"`
+
+	// Retry configures LLM API call retry behavior (transient failures, not rate limits).
+	Retry LLMRetryConfig `mapstructure:"retry"`
 
 	Limits LimitsConfig `mapstructure:"limits"`
 }
@@ -54,10 +69,11 @@ func (l *LLMConfig) EffectiveProviders() []ProviderConfig {
 }
 
 type SessionConfig struct {
-	MaxLoop int    `mapstructure:"max_loop"`
-	Summary bool   `mapstructure:"summary"`
-	MaxAge  string `mapstructure:"max_age"`
-	Resume  bool   `mapstructure:"resume"`
+	MaxLoop   int    `mapstructure:"max_loop"`
+	Summary   bool   `mapstructure:"summary"`
+	MaxAge    string `mapstructure:"max_age"`
+	Resume    bool   `mapstructure:"resume"`
+	MaxSizeMB int    `mapstructure:"max_size_mb"` // max session file size in MB, 0 = default 10
 }
 
 type LimitsConfig struct {
@@ -126,6 +142,12 @@ type ExemptConfig struct {
 	Patterns []string `mapstructure:"patterns"`
 }
 
+// LLMRetryConfig controls retry behavior for transient LLM API failures.
+type LLMRetryConfig struct {
+	MaxAttempts int    `mapstructure:"max_attempts"` // per-provider retry count, 0 = default 3
+	BackoffBase string `mapstructure:"backoff_base"` // exponential backoff base, e.g. "1s"; empty = default 1s
+}
+
 type CredentialsConfig struct {
 	Enabled    bool     `mapstructure:"enabled"`
 	Store      string   `mapstructure:"store"`
@@ -160,18 +182,22 @@ type MQTTBrokerConfig struct {
 // A2AConfig holds configuration for the A2A (Agent-to-Agent) transport.
 // Uses JSON-RPC 2.0 over HTTP, following Google A2A specification.
 type A2AConfig struct {
-	Enabled      bool     `mapstructure:"enabled"`
-	ListenAddr   string   `mapstructure:"listen_addr"`
-	AgentID      string   `mapstructure:"agent_id"`
-	AgentName    string   `mapstructure:"agent_name"`
-	AgentVersion string   `mapstructure:"agent_version"`
-	AgentDesc    string   `mapstructure:"agent_description"`
-	Capabilities []string `mapstructure:"capabilities"`
-	SyncTimeout  string   `mapstructure:"sync_timeout"`
-	APIKey       string   `mapstructure:"api_key"`
-	TLSEnabled   bool     `mapstructure:"tls_enabled"`
-	TLSCertFile  string   `mapstructure:"tls_cert_file"`
-	TLSKeyFile   string   `mapstructure:"tls_key_file"`
+	Enabled           bool     `mapstructure:"enabled"`
+	ListenAddr        string   `mapstructure:"listen_addr"`
+	AgentID           string   `mapstructure:"agent_id"`
+	AgentName         string   `mapstructure:"agent_name"`
+	AgentVersion      string   `mapstructure:"agent_version"`
+	AgentDesc         string   `mapstructure:"agent_description"`
+	Capabilities      []string `mapstructure:"capabilities"`
+	SyncTimeout       string   `mapstructure:"sync_timeout"`
+	APIKey            string   `mapstructure:"api_key"`
+	TLSEnabled        bool     `mapstructure:"tls_enabled"`
+	TLSCertFile       string   `mapstructure:"tls_cert_file"`
+	TLSKeyFile        string   `mapstructure:"tls_key_file"`
+	HandlerPath       string   `mapstructure:"handler_path"`        // HTTP handler path for A2A RPC, default "/a2a"
+	AgentCardPath     string   `mapstructure:"agent_card_path"`     // Agent Card endpoint, default "/.well-known/agent.json"
+	ReadHeaderTimeout int      `mapstructure:"read_header_timeout"` // HTTP server ReadHeaderTimeout in seconds, 0 = default 10s
+	ShutdownTimeout   int      `mapstructure:"shutdown_timeout"`    // server Shutdown context timeout in seconds, 0 = default 5s
 }
 
 type StdioConfig struct {
@@ -188,6 +214,7 @@ type SSHConfig struct {
 	Password       string `mapstructure:"password"`
 	MarkdownRender bool   `mapstructure:"markdown_render"`
 	MarkdownStyle  string `mapstructure:"markdown_style"`
+	ReadTimeout    string `mapstructure:"read_timeout"` // ReadLine deadline, e.g. "5m"; empty = default 5m
 }
 
 type MQTTAccount struct {
@@ -196,13 +223,16 @@ type MQTTAccount struct {
 }
 
 type MQTTConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Broker         string `mapstructure:"broker"`
-	SubscribeTopic string `mapstructure:"subscribe_topic"`
-	PublishTopic   string `mapstructure:"publish_topic"`
-	ClientID       string `mapstructure:"client_id"`
-	Username       string `mapstructure:"username"`
-	Password       string `mapstructure:"password"`
+	Enabled             bool   `mapstructure:"enabled"`
+	Broker              string `mapstructure:"broker"`
+	SubscribeTopic      string `mapstructure:"subscribe_topic"`
+	PublishTopic        string `mapstructure:"publish_topic"`
+	ClientID            string `mapstructure:"client_id"`
+	Username            string `mapstructure:"username"`
+	Password            string `mapstructure:"password"`
+	KeepAliveSeconds    int    `mapstructure:"keep_alive_seconds"`    // MQTT KeepAlive, 0 = default 60
+	PingTimeoutSeconds  int    `mapstructure:"ping_timeout_seconds"`  // MQTT ping timeout, 0 = default 10
+	MaxReconnectSeconds int    `mapstructure:"max_reconnect_seconds"` // MQTT max reconnect interval, 0 = default 30
 }
 
 type EmailConfig struct {
@@ -221,6 +251,7 @@ type EmailConfig struct {
 	SkipTLSVerify  bool     `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
 	PollInterval   string   `mapstructure:"poll_interval"`   // IMAP poll interval, e.g. "10s"
 	AllowedSenders []string `mapstructure:"allowed_senders"` // only process emails from these addresses
+	DialTimeout    string   `mapstructure:"dial_timeout"`    // IMAP/POP3 dial timeout, e.g. "30s"; empty = default 30s
 }
 
 // DingTalkConfig holds configuration for the DingTalk bot transport.
@@ -230,6 +261,7 @@ type DingTalkConfig struct {
 	Enabled      bool   `mapstructure:"enabled"`
 	ClientID     string `mapstructure:"client_id"`     // AppKey from DingTalk Open Platform
 	ClientSecret string `mapstructure:"client_secret"` // AppSecret from DingTalk Open Platform
+	ReadTimeout  string `mapstructure:"read_timeout"`  // ReadLine timeout, e.g. "5m"; empty = default 5m
 }
 
 type MCPConfig struct {
@@ -245,9 +277,10 @@ type MCPConfig struct {
 }
 
 type MCPWebhookConfig struct {
-	Enabled  bool                     `mapstructure:"enabled"`
-	Priority int                      `mapstructure:"priority"`
-	Targets  map[string]WebhookTarget `mapstructure:"targets"` // named pre-configured webhook targets
+	Enabled        bool                     `mapstructure:"enabled"`
+	Priority       int                      `mapstructure:"priority"`
+	TimeoutSeconds int                      `mapstructure:"timeout_seconds"` // HTTP client timeout, 0 = use default 30s
+	Targets        map[string]WebhookTarget `mapstructure:"targets"`         // named pre-configured webhook targets
 }
 
 type WebhookTarget struct {
@@ -257,16 +290,22 @@ type WebhookTarget struct {
 }
 
 type MCPWebSearchConfig struct {
-	Enabled   bool     `mapstructure:"enabled"`
-	Priority  int      `mapstructure:"priority"`
-	Provider  string   `mapstructure:"provider"`
-	Providers []string `mapstructure:"providers"`
-	APIKey    string   `mapstructure:"api_key"`
+	Enabled          bool              `mapstructure:"enabled"`
+	Priority         int               `mapstructure:"priority"`
+	Provider         string            `mapstructure:"provider"`
+	Providers        []string          `mapstructure:"providers"`
+	APIKey           string            `mapstructure:"api_key"`
+	TimeoutSeconds   int               `mapstructure:"timeout_seconds"`    // HTTP client timeout, 0 = use default 15s
+	UserAgent        string            `mapstructure:"user_agent"`         // User-Agent for provider requests; empty = provider default
+	MaxResults       int               `mapstructure:"max_results"`        // max results per provider query, 0 = provider default
+	ProviderBaseURLs map[string]string `mapstructure:"provider_base_urls"` // per-provider base URL override, e.g. duckduckgo: https://html.duckduckgo.com/html/
 }
 
 type MCPA2AConfig struct {
-	Enabled bool             `mapstructure:"enabled"`
-	Agents  []A2AAgentConfig `mapstructure:"agents"`
+	Enabled        bool             `mapstructure:"enabled"`
+	TimeoutSeconds int              `mapstructure:"timeout_seconds"`  // HTTP client timeout, 0 = use default 30s
+	DefaultRPCPath string           `mapstructure:"default_rpc_path"` // RPC endpoint path suffix, default "/rpc"
+	Agents         []A2AAgentConfig `mapstructure:"agents"`
 }
 
 type A2AAgentConfig struct {
@@ -276,13 +315,15 @@ type A2AAgentConfig struct {
 }
 
 type MCPServerConfig struct {
-	Type    string            `mapstructure:"type"`    // "stdio", "sse", "http-stream"
-	Command string            `mapstructure:"command"` // for stdio type
-	Args    []string          `mapstructure:"args"`    // for stdio type
-	URL     string            `mapstructure:"url"`     // for sse / http-stream type
-	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers (auth etc.)
-	Timeout int               `mapstructure:"timeout"` // request timeout in seconds, 0 = default 30
-	Enabled *bool             `mapstructure:"enabled"` // nil or true = enabled, false = skip
+	Type            string            `mapstructure:"type"`             // "stdio", "sse", "http-stream"
+	Command         string            `mapstructure:"command"`          // for stdio type
+	Args            []string          `mapstructure:"args"`             // for stdio type
+	URL             string            `mapstructure:"url"`              // for sse / http-stream type
+	Headers         map[string]string `mapstructure:"headers"`          // custom HTTP headers (auth etc.)
+	Timeout         int               `mapstructure:"timeout"`          // request timeout in seconds, 0 = default 30
+	Enabled         *bool             `mapstructure:"enabled"`          // nil or true = enabled, false = skip
+	ReconnectDelay  string            `mapstructure:"reconnect_delay"`  // SSE reconnect delay, e.g. "5s"; empty = default 5s
+	ShutdownTimeout int               `mapstructure:"shutdown_timeout"` // stdio shutdown grace period in seconds, 0 = default 3s
 }
 
 // TimeoutDuration returns the effective timeout as a time.Duration.
@@ -297,24 +338,33 @@ type ShellConfig struct {
 	Enabled           bool     `mapstructure:"enabled"`
 	AllowedCommands   []string `mapstructure:"allowed_commands"`   // default: ["date"]; empty + allow_unrestricted=true = allow all
 	AllowUnrestricted bool     `mapstructure:"allow_unrestricted"` // opt-in to unrestricted sh -c when no whitelist
-	MaxCommandLength  int      `mapstructure:"max_command_length"` // 0 = use default
+	MaxCommandLength  int      `mapstructure:"max_command_length"` // 0 = use default 4096
 	TimeoutSeconds    int      `mapstructure:"timeout_seconds"`
 	Priority          int      `mapstructure:"priority"`
+	OutputMaxBytes    int      `mapstructure:"output_max_bytes"` // stdout/stderr truncation limit, 0 = use default 64KB
 }
 
 type CDPConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Headless       bool   `mapstructure:"headless"`
-	WsURL          string `mapstructure:"ws_url"`
-	Priority       int    `mapstructure:"priority"`        // tool listing priority (lower = preferred)
-	IdleTimeout    int    `mapstructure:"idle_timeout"`    // seconds, 0 = disabled
-	StartupTimeout int    `mapstructure:"startup_timeout"` // seconds for browser init verify, 0 = use default 30s
+	Enabled            bool           `mapstructure:"enabled"`
+	Headless           bool           `mapstructure:"headless"`
+	WsURL              string         `mapstructure:"ws_url"`
+	Priority           int            `mapstructure:"priority"`             // tool listing priority (lower = preferred)
+	IdleTimeout        int            `mapstructure:"idle_timeout"`         // seconds, 0 = disabled
+	StartupTimeout     int            `mapstructure:"startup_timeout"`      // seconds for browser init verify, 0 = use default 30s
+	ChromeFlags        map[string]any `mapstructure:"chrome_flags"`         // additional chromedp flags, overrides built-in defaults
+	UserAgent          string         `mapstructure:"user_agent"`           // custom User-Agent string; empty = use default
+	HealthCheckTimeout int            `mapstructure:"health_check_timeout"` // seconds for browser health check, 0 = use default 10s
+	NavigationWait     string         `mapstructure:"navigation_wait"`      // post-navigation wait duration, e.g. "2s"; empty = no extra wait
+	ScreenshotQuality  int            `mapstructure:"screenshot_quality"`   // full page screenshot quality 0-100, 0 = use default 100
+	ScreenshotDir      string         `mapstructure:"screenshot_dir"`       // screenshots output directory; empty = use default "screenshots/"
 }
 
 // EmailMCPConfig controls the built-in email MCP tool.
 type EmailMCPConfig struct {
-	Enabled  bool `mapstructure:"enabled"`
-	Priority int  `mapstructure:"priority"` // tool listing priority (lower = preferred)
+	Enabled           bool   `mapstructure:"enabled"`
+	Priority          int    `mapstructure:"priority"`            // tool listing priority (lower = preferred)
+	MaxAttachmentSize int    `mapstructure:"max_attachment_size"` // bytes, 0 = use default 10MB
+	ConnectTimeout    string `mapstructure:"connect_timeout"`     // IMAP/POP3 connection timeout, e.g. "30s"; empty = default 30s
 }
 
 type PoolConfig struct {
@@ -324,6 +374,10 @@ type PoolConfig struct {
 	IdleTimeout         int    `mapstructure:"idle_timeout"`
 	MaxPendingResults   int    `mapstructure:"max_pending_results"`
 	MaxPendingResultLen int    `mapstructure:"max_pending_result_len"` // chars per result in prompt, 0 = no truncation
+	MaxSynthesisRounds  int    `mapstructure:"max_synthesis_rounds"`   // cap on coordinator poll synthesis, 0 = default 3
+	PollInterval        string `mapstructure:"poll_interval"`          // sub-agent ready poll interval, e.g. "200ms"; empty = default 200ms
+	MinReapInterval     string `mapstructure:"min_reap_interval"`      // idle reap minimum interval, e.g. "5s"; empty = default 5s
+	MaxReapInterval     string `mapstructure:"max_reap_interval"`      // idle reap maximum interval, e.g. "30s"; empty = default 30s
 }
 
 type SkillsConfig struct {
@@ -367,8 +421,9 @@ type MetricsConfig struct {
 }
 
 type HealthConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9091"
+	Enabled  bool   `mapstructure:"enabled"`
+	Addr     string `mapstructure:"addr"`     // listen address, e.g. ":9091"
+	Debounce string `mapstructure:"debounce"` // heartbeat debounce interval, e.g. "30s"; empty = default 30s
 }
 
 // FlagsConfig controls optional feature flags.
@@ -398,18 +453,20 @@ type TelemetryConfig struct {
 }
 
 type UpdateConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	CheckInterval string `mapstructure:"check_interval"` // e.g. "24h", "12h", "1h"
-	Channel       string `mapstructure:"channel"`        // "stable" or "pre-release"
-	AutoInstall   bool   `mapstructure:"auto_install"`
+	Enabled        bool   `mapstructure:"enabled"`
+	CheckInterval  string `mapstructure:"check_interval"` // e.g. "24h", "12h", "1h"
+	Channel        string `mapstructure:"channel"`        // "stable" or "pre-release"
+	AutoInstall    bool   `mapstructure:"auto_install"`
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"` // HTTP client timeout, 0 = default 30s
 }
 
 type PluginsConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	Dir            string   `mapstructure:"dir"`             // script plugins directory
-	WebhookURL     string   `mapstructure:"webhook_url"`     // HTTP POST events here
-	WebhookEvents  []string `mapstructure:"webhook_events"`  // event types to send, ["*"] for all
-	HeartbeatTurns int      `mapstructure:"heartbeat_turns"` // emit heartbeat every N turns, 0=off
+	Enabled              bool     `mapstructure:"enabled"`
+	Dir                  string   `mapstructure:"dir"`                    // script plugins directory
+	WebhookURL           string   `mapstructure:"webhook_url"`            // HTTP POST events here
+	WebhookEvents        []string `mapstructure:"webhook_events"`         // event types to send, ["*"] for all
+	HeartbeatTurns       int      `mapstructure:"heartbeat_turns"`        // emit heartbeat every N turns, 0=off
+	ScriptTimeoutSeconds int      `mapstructure:"script_timeout_seconds"` // per-script execution timeout, 0 = default 3s
 }
 
 // ToolSelection is a lightweight config fragment for saving skill/MCP tool choices.

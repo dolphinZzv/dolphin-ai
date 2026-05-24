@@ -1191,7 +1191,7 @@ func (c *Coordinator) installMCPServerFromRepos(name string) error {
 		fetcher.SetLocalDir(filepath.Dir(ex))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), coordTimeout(c.agent.cfg))
 	manifests := fetcher.FetchAll(ctx, c.agent.cfg.MCP.Repos)
 	cancel()
 
@@ -1371,7 +1371,7 @@ func (c *Coordinator) handleInstallAgent(_ context.Context, input json.RawMessag
 		fetcher.SetLocalDir(filepath.Dir(ex))
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), coordTimeout(c.agent.cfg))
 	manifests := fetcher.FetchAllAgentManifests(ctx, c.agent.cfg.Skills.Repos)
 	cancel()
 
@@ -1446,7 +1446,7 @@ func (c *Coordinator) handleSearchAgents(_ context.Context, input json.RawMessag
 		if ex, err := os.Executable(); err == nil {
 			fetcher.SetLocalDir(filepath.Dir(ex))
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), coordTimeout(c.agent.cfg))
 		manifests := fetcher.FetchAllAgentManifests(ctx, c.agent.cfg.Skills.Repos)
 		cancel()
 		for _, m := range manifests {
@@ -1653,7 +1653,7 @@ func downloadGitHubRepo(repo, destDir, subPath string) error {
 		repo = fmt.Sprintf("https://github.com/%s/archive/main.zip", repo)
 	}
 
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: coordHTTPTimeout(nil)}
 	resp, err := client.Get(repo)
 	if err != nil {
 		return fmt.Errorf("download repo: %w", err)
@@ -1791,4 +1791,13 @@ func (t *handlerTool) Definition() mcp.ToolDefinition { return t.def }
 
 func (t *handlerTool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	return t.handler(ctx, input)
+}
+
+// coordHTTPTimeout returns an HTTP client timeout from config.
+// Uses Update.TimeoutSeconds if set, otherwise defaults to 30s.
+func coordHTTPTimeout(cfg *config.Config) time.Duration {
+	if cfg != nil && cfg.Update.TimeoutSeconds > 0 {
+		return time.Duration(cfg.Update.TimeoutSeconds) * time.Second
+	}
+	return 30 * time.Second
 }
