@@ -174,7 +174,7 @@ func (c *Coordinator) registerCoordinatorTools() {
 		c.handleUpdateCommand,
 	)
 	// Self-evolution only: destructive operations
-	if c.cfg.Flags.SelfEvolution {
+	if c.agent.cfg.Flags.SelfEvolution {
 		c.registerCoordTool("delete_skill",
 			"Permanently delete a skill by name. Use this to remove outdated or incorrect skills.",
 			map[string]any{
@@ -404,7 +404,7 @@ func (c *Coordinator) registerCoordinatorTools() {
 		},
 		c.handleToggleCronTask,
 	)
-	if c.cfg.Flags.SelfEvolution {
+	if c.agent.cfg.Flags.SelfEvolution {
 		c.registerCoordTool("config",
 			"Read and modify runtime configuration. Actions: list (show all settings), get (read a path), set (modify a setting), save (persist to disk), delete (reset a setting to its default value). Changes to MCP tool settings (shell/cdp/email/webhook) take effect immediately. Changes to LLM settings take effect on the next conversation turn.",
 			map[string]any{
@@ -454,7 +454,7 @@ func (c *Coordinator) registerCoordinatorTools() {
 	}
 	// Register subsystem tools
 	for _, td := range subsystem.ToolDefs() {
-		if td.SelfEvolution && !c.cfg.Flags.SelfEvolution {
+		if td.SelfEvolution && !c.agent.cfg.Flags.SelfEvolution {
 			continue
 		}
 		c.registerCoordTool(td.Name, td.Description, td.Schema, td.Handler)
@@ -479,7 +479,7 @@ func (c *Coordinator) registerCoordinatorTools() {
 
 func (c *Coordinator) registerCoordTool(name, description string, schema map[string]any, handler func(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error)) {
 	schemaJSON, _ := json.Marshal(schema)
-	c.toolReg.Register(&handlerTool{
+	c.agent.toolReg.Register(&handlerTool{
 		def: mcp.ToolDefinition{
 			Name:        name,
 			Description: description,
@@ -512,8 +512,8 @@ func (c *Coordinator) handleDispatchTask(ctx context.Context, input json.RawMess
 		return &mcp.ToolResult{Content: "dispatch failed: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
-	if c.events != nil {
-		c.events.Emit(ctx, event.Event{
+	if c.agent.events != nil {
+		c.agent.events.Emit(ctx, event.Event{
 			Type:      event.TypeAgentDispatched,
 			SessionID: string(c.pool.ParentSessionID()),
 			Data: map[string]any{
@@ -549,10 +549,10 @@ func (c *Coordinator) handleCreateAgent(_ context.Context, input json.RawMessage
 		}
 	}
 
-	workspace := TempAgentWorkspace(&c.cfg.Pool, params.Name)
+	workspace := TempAgentWorkspace(&c.agent.cfg.Pool, params.Name)
 	timeout := params.Timeout
 	if timeout <= 0 {
-		timeout = c.cfg.Pool.DefaultTimeout
+		timeout = c.agent.cfg.Pool.DefaultTimeout
 	}
 
 	def := &AgentDef{
@@ -564,7 +564,7 @@ func (c *Coordinator) handleCreateAgent(_ context.Context, input json.RawMessage
 		Timeout:   timeout,
 	}
 
-	c.pool.Add(params.Name, def, AgentCoord, c.Agent, c.toolReg)
+	c.pool.Add(params.Name, def, AgentCoord, c.agent, c.agent.toolReg)
 
 	result := fmt.Sprintf("Temporary agent '%s' created (workspace: %s). Use dispatch_task to send it work.",
 		params.Name, workspace)
@@ -647,7 +647,7 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
-	defs := c.toolReg.SearchTools(params.Query)
+	defs := c.agent.toolReg.SearchTools(params.Query)
 	if len(defs) == 0 {
 		return &mcp.ToolResult{Content: fmt.Sprintf("No MCP tools found matching %q.", params.Query)}, nil
 	}
@@ -655,7 +655,7 @@ func (c *Coordinator) handleSearchMCPTools(_ context.Context, input json.RawMess
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "Found %d MCP tool(s) matching %q:\n", len(defs), params.Query)
 	for _, d := range defs {
-		stats := c.toolReg.ToolStats()
+		stats := c.agent.toolReg.ToolStats()
 		usage := ""
 		if s, ok := stats[d.Name]; ok && s.CallCount > 0 {
 			usage = fmt.Sprintf(" (used %d times)", s.CallCount)
@@ -672,15 +672,15 @@ func (c *Coordinator) autoLoadMCPTools() {
 		name    string
 		enabled bool
 	}{
-		{"shell", c.cfg.MCP.Shell.Enabled},
-		{"cdp", c.cfg.MCP.CDP.Enabled},
-		{"email", c.cfg.MCP.Email.Enabled},
-		{"webhook", c.cfg.MCP.Webhook.Enabled},
-		{"web_search", c.cfg.MCP.WebSearch.Enabled},
+		{"shell", c.agent.cfg.MCP.Shell.Enabled},
+		{"cdp", c.agent.cfg.MCP.CDP.Enabled},
+		{"email", c.agent.cfg.MCP.Email.Enabled},
+		{"webhook", c.agent.cfg.MCP.Webhook.Enabled},
+		{"web_search", c.agent.cfg.MCP.WebSearch.Enabled},
 	}
 	for _, t := range enabled {
 		if t.enabled {
-			if _, ok := c.toolReg.Get(t.name); ok {
+			if _, ok := c.agent.toolReg.Get(t.name); ok {
 				c.loadedTools[t.name] = true
 			}
 		}
@@ -701,7 +701,7 @@ func (c *Coordinator) handleLoadMCPTools(_ context.Context, input json.RawMessag
 
 	var loaded, notFound []string
 	for _, name := range params.Tools {
-		if _, ok := c.toolReg.Get(name); ok {
+		if _, ok := c.agent.toolReg.Get(name); ok {
 			c.loadedTools[name] = true
 			loaded = append(loaded, name)
 		} else {
@@ -774,8 +774,8 @@ func (c *Coordinator) handleLoadSkill(ctx context.Context, input json.RawMessage
 
 	c.skills.RecordUsage(params.Name)
 
-	if c.events != nil {
-		c.events.Emit(ctx, event.Event{
+	if c.agent.events != nil {
+		c.agent.events.Emit(ctx, event.Event{
 			Type:      event.TypeSkillLoaded,
 			SessionID: string(c.pool.ParentSessionID()),
 			Data:      map[string]any{"skill": params.Name},
@@ -1035,8 +1035,8 @@ func (c *Coordinator) handleToggleCronTask(_ context.Context, input json.RawMess
 
 func (c *Coordinator) handleReload(ctx context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
 	c.reloadRequested = true
-	if c.events != nil && ctx != nil {
-		c.events.Emit(ctx, event.Event{Type: event.TypeAgentReload})
+	if c.agent.events != nil && ctx != nil {
+		c.agent.events.Emit(ctx, event.Event{Type: event.TypeAgentReload})
 	}
 	zap.S().Infow("reload requested by LLM")
 	return &mcp.ToolResult{
@@ -1061,7 +1061,7 @@ func (c *Coordinator) handleSessionDumpTool(_ context.Context, input json.RawMes
 	if params.Format == "" {
 		params.Format = "list"
 	}
-	sessionPath := filepath.Join(c.sessMgr.Dir(), params.ID+".jsonl")
+	sessionPath := filepath.Join(c.agent.sessMgr.Dir(), params.ID+".jsonl")
 	events, err := session.ReadEvents(sessionPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read session: %w", err)
@@ -1170,12 +1170,12 @@ func (c *Coordinator) handleInstallMCPServer(_ context.Context, input json.RawMe
 	}
 
 	// Check if already installed
-	if _, exists := c.cfg.MCP.Servers[params.Name]; exists {
+	if _, exists := c.agent.cfg.MCP.Servers[params.Name]; exists {
 		return &mcp.ToolResult{Content: fmt.Sprintf("MCP server %q is already installed.", params.Name)}, nil
 	}
 
 	// Fetch from repos
-	if len(c.cfg.MCP.Repos) == 0 {
+	if len(c.agent.cfg.MCP.Repos) == 0 {
 		return &mcp.ToolResult{Content: "No MCP repos configured. Add repos to mcp.repos in config.yaml.", IsError: true}, nil
 	}
 	if err := c.installMCPServerFromRepos(params.Name); err != nil {
@@ -1192,7 +1192,7 @@ func (c *Coordinator) installMCPServerFromRepos(name string) error {
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	manifests := fetcher.FetchAll(ctx, c.cfg.MCP.Repos)
+	manifests := fetcher.FetchAll(ctx, c.agent.cfg.MCP.Repos)
 	cancel()
 
 	var found *config.ToolEntry
@@ -1362,7 +1362,7 @@ func (c *Coordinator) handleInstallAgent(_ context.Context, input json.RawMessag
 	}
 
 	// Fetch agents.json from repos
-	if len(c.cfg.Skills.Repos) == 0 {
+	if len(c.agent.cfg.Skills.Repos) == 0 {
 		return &mcp.ToolResult{Content: "No repos configured. Add repos to skills.repos in config.yaml.", IsError: true}, nil
 	}
 
@@ -1372,7 +1372,7 @@ func (c *Coordinator) handleInstallAgent(_ context.Context, input json.RawMessag
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	manifests := fetcher.FetchAllAgentManifests(ctx, c.cfg.Skills.Repos)
+	manifests := fetcher.FetchAllAgentManifests(ctx, c.agent.cfg.Skills.Repos)
 	cancel()
 
 	var found *config.AgentManifestEntry
@@ -1412,11 +1412,11 @@ func (c *Coordinator) handleInstallAgent(_ context.Context, input json.RawMessag
 	}
 	loadedDef.Name = params.Name
 	if loadedDef.Workspace == "" {
-		loadedDef.Workspace = filepath.Join(c.cfg.Pool.WorkspaceDir, params.Name)
+		loadedDef.Workspace = filepath.Join(c.agent.cfg.Pool.WorkspaceDir, params.Name)
 	}
 	os.MkdirAll(loadedDef.Workspace, 0700)
 
-	c.pool.Add(params.Name, loadedDef, AgentUser, c.Agent, c.toolReg)
+	c.pool.Add(params.Name, loadedDef, AgentUser, c.agent, c.agent.toolReg)
 	zap.S().Infow("installed agent from repo", "name", params.Name, "url", found.URL)
 	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q installed successfully from %s.", params.Name, found.URL)}, nil
 }
@@ -1441,13 +1441,13 @@ func (c *Coordinator) handleSearchAgents(_ context.Context, input json.RawMessag
 	}
 
 	// Remote: fetch agents.json from repos
-	if len(c.cfg.Skills.Repos) > 0 {
+	if len(c.agent.cfg.Skills.Repos) > 0 {
 		fetcher := config.NewRepoFetcher(c.getCacheDir())
 		if ex, err := os.Executable(); err == nil {
 			fetcher.SetLocalDir(filepath.Dir(ex))
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		manifests := fetcher.FetchAllAgentManifests(ctx, c.cfg.Skills.Repos)
+		manifests := fetcher.FetchAllAgentManifests(ctx, c.agent.cfg.Skills.Repos)
 		cancel()
 		for _, m := range manifests {
 			for _, a := range m.Agents {
@@ -1552,11 +1552,11 @@ func (c *Coordinator) handleEnableAgent(_ context.Context, input json.RawMessage
 	}
 	def.Name = params.Name
 	if def.Workspace == "" {
-		def.Workspace = filepath.Join(c.cfg.Pool.WorkspaceDir, params.Name)
+		def.Workspace = filepath.Join(c.agent.cfg.Pool.WorkspaceDir, params.Name)
 	}
 	os.MkdirAll(def.Workspace, 0700)
 
-	c.pool.Add(params.Name, def, AgentUser, c.Agent, c.toolReg)
+	c.pool.Add(params.Name, def, AgentUser, c.agent, c.agent.toolReg)
 	zap.S().Infow("enabled agent", "name", params.Name, "tools", def.Tools)
 	return &mcp.ToolResult{Content: fmt.Sprintf("Agent %q enabled and added to the pool.", params.Name)}, nil
 }

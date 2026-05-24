@@ -15,12 +15,14 @@ import (
 	"dolphin/internal/agent/console"
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/command"
+	ctxpkg "dolphin/internal/context"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
+	"dolphin/internal/subsystem"
 	"dolphin/internal/transport"
 
 	"github.com/rs/xid"
@@ -29,7 +31,7 @@ import (
 
 // Coordinator wraps an Agent with multi-agent coordination capabilities.
 type Coordinator struct {
-	*Agent
+	agent            *Agent
 	pool             *AgentPool
 	skills           *skill.Manager
 	commands         *command.Manager
@@ -96,7 +98,7 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		loaded[name] = true
 	}
 	coord := &Coordinator{
-		Agent:            coordAgent,
+		agent:            coordAgent,
 		pool:             pool,
 		loadedTools:      loaded,
 		buildinRegistry:  buildin.GetRegistry(),
@@ -126,7 +128,7 @@ func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 // dispatch, session logging, and telemetry span creation into each agent's
 // handle, then calls Init() on each agent so they can subscribe to events.
 func (c *Coordinator) initBuildinAgents(ctx context.Context) {
-	if c.events == nil || c.buildinRegistry == nil || len(c.buildinRegistry.List()) == 0 {
+	if c.agent.events == nil || c.buildinRegistry == nil || len(c.buildinRegistry.List()) == 0 {
 		return
 	}
 
@@ -137,7 +139,7 @@ func (c *Coordinator) initBuildinAgents(ctx context.Context) {
 		if c.currentSess != nil {
 			parentID = c.currentSess.ID
 		}
-		result, err := c.RunTask(ctx, prompt, c.basePrompt, c.toolReg, parentID)
+		result, err := c.agent.RunTask(ctx, prompt, c.basePrompt, c.agent.toolReg, parentID)
 		if err != nil {
 			return taskID, err
 		}
@@ -167,7 +169,7 @@ func (c *Coordinator) initBuildinAgents(ctx context.Context) {
 		return func() {}
 	}
 
-	handle := buildin.NewAgentHandle(c.events, dispatchTask, logEvent, startSpan)
+	handle := buildin.NewAgentHandle(c.agent.events, dispatchTask, logEvent, startSpan)
 
 	for _, ba := range c.buildinRegistry.List() {
 		ba.Init(ctx, handle)
@@ -176,7 +178,7 @@ func (c *Coordinator) initBuildinAgents(ctx context.Context) {
 
 	// Emit app:started once across all transports
 	appStartedOnce.Do(func() {
-		c.events.Emit(ctx, event.Event{Type: event.TypeAppStarted})
+		c.agent.events.Emit(ctx, event.Event{Type: event.TypeAppStarted})
 		zap.S().Infow("buildin agents ready")
 	})
 }
@@ -207,7 +209,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	var err error
 	sess, state := c.tryResumeSession(ctx, io)
 	if sess == nil {
-		sess, err = c.sessMgr.NewSession(c.cfg.Session.MaxLoop)
+		sess, err = c.agent.sessMgr.NewSession(c.agent.cfg.Session.MaxLoop)
 		if err != nil {
 			zap.S().Errorw("create session failed", "error", err)
 			return
@@ -218,30 +220,30 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 	defer func() {
 		// Fire transport:disconnect hook
-		if c.hooks != nil {
-			c.hooks.Fire(ctx, hook.PointTransportDisconnect, &hook.Context{
+		if c.agent.hooks != nil {
+			c.agent.hooks.Fire(ctx, hook.PointTransportDisconnect, &hook.Context{
 				SessionID:     string(sess.ID),
 				TransportName: io.Name(),
 				Turn:          state.Turn,
 			})
 		}
 		// Fire session:end hook
-		if c.hooks != nil {
-			c.hooks.Fire(ctx, hook.PointSessionEnd, &hook.Context{
+		if c.agent.hooks != nil {
+			c.agent.hooks.Fire(ctx, hook.PointSessionEnd, &hook.Context{
 				SessionID: string(sess.ID),
 				Turn:      state.Turn,
 			})
 		}
-		c.generateSummary(sess, state)
+		c.agent.generateSummary(sess, state)
 		sess.Close()
-		c.sessMgr.Remove(sess.ID)
+		c.agent.sessMgr.Remove(sess.ID)
 		c.pool.Shutdown()
 	}()
 
 	// Build base system prompt
-	c.ctxBuilder.SetRenderData(c.cfg)
-	c.ctxBuilder.SetSelfEvolution(c.cfg.Flags.SelfEvolution)
-	c.basePrompt, err = c.ctxBuilder.Build()
+	c.agent.ctxBuilder.SetRenderData(ctxpkg.NewRenderData(c.agent.cfg))
+	c.agent.ctxBuilder.SelfEvolution = c.agent.cfg.Flags.SelfEvolution
+	c.basePrompt, err = c.agent.ctxBuilder.Build()
 	if err != nil {
 		zap.S().Errorw("build context failed", "error", err)
 		return
@@ -262,8 +264,8 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	c.pool.SetParentSessionID(sess.ID)
 
 	// Fire session:start hook
-	if c.hooks != nil {
-		c.hooks.Fire(ctx, hook.PointSessionStart, &hook.Context{
+	if c.agent.hooks != nil {
+		c.agent.hooks.Fire(ctx, hook.PointSessionStart, &hook.Context{
 			SessionID: string(sess.ID),
 			Turn:      0,
 			Values:    make(map[string]any),
@@ -271,8 +273,8 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	}
 
 	// Fire transport:connect hook
-	if c.hooks != nil {
-		c.hooks.Fire(ctx, hook.PointTransportConnect, &hook.Context{
+	if c.agent.hooks != nil {
+		c.agent.hooks.Fire(ctx, hook.PointTransportConnect, &hook.Context{
 			SessionID:     string(sess.ID),
 			TransportName: io.Name(),
 		})
@@ -280,8 +282,8 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 
 	zap.S().Debugw("coordinator session started",
 		"session_id", sess.ID,
-		"max_loop", c.cfg.Session.MaxLoop,
-		"model", c.cfg.LLM.Model,
+		"max_loop", c.agent.cfg.Session.MaxLoop,
+		"model", c.agent.cfg.LLM.Model,
 	)
 
 	// Start cron task processor
@@ -293,7 +295,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	// Initialize built-in agents (event subscriptions + session/OTel recording)
 	c.initBuildinAgents(ctx)
 
-	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Coordinator Ready", c.version, runtime.GOOS, runtime.Version(), c.commitHash))
+	io.WriteLine(fmt.Sprintf("dolphin %s (%s/%s) %s — Coordinator Ready", c.agent.version, runtime.GOOS, runtime.Version(), c.agent.commitHash))
 	io.WriteLine(i18n.TL(i18n.KeyCoordReady))
 
 	for {
@@ -301,8 +303,8 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		case <-ctx.Done():
 			state.StopReason = "interrupted"
 			appStoppedOnce.Do(func() {
-				if c.events != nil {
-					c.events.Emit(ctx, event.Event{Type: event.TypeAppStopped})
+				if c.agent.events != nil {
+					c.agent.events.Emit(ctx, event.Event{Type: event.TypeAppStopped})
 				}
 			})
 			return
@@ -316,10 +318,10 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		}
 
 		// Check max loop
-		if state.Turn >= c.cfg.Session.MaxLoop && !state.SummaryGenerated {
+		if state.Turn >= c.agent.cfg.Session.MaxLoop && !state.SummaryGenerated {
 			state.SummaryGenerated = true
 			zap.S().Infow("max loop reached, generating summary", "turns", state.Turn)
-			c.generateSummary(sess, state)
+			c.agent.generateSummary(sess, state)
 			io.WriteLine(i18n.TL(i18n.KeySessionCheckpoint))
 		}
 
@@ -331,8 +333,8 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		}
 
 		// Fire transport:receive hook
-		if c.hooks != nil {
-			c.hooks.Fire(ctx, hook.PointTransportReceive, &hook.Context{
+		if c.agent.hooks != nil {
+			c.agent.hooks.Fire(ctx, hook.PointTransportReceive, &hook.Context{
 				SessionID:     string(sess.ID),
 				Turn:          state.Turn + 1,
 				UserInput:     line,
@@ -341,14 +343,14 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		}
 
 		// Fire user:input hook (can rewrite or reject input)
-		if c.hooks != nil {
+		if c.agent.hooks != nil {
 			hc := &hook.Context{
 				SessionID: string(sess.ID),
 				Turn:      state.Turn + 1,
 				UserInput: line,
 				Values:    make(map[string]any),
 			}
-			if err := c.hooks.Fire(ctx, hook.PointUserInput, hc); err != nil {
+			if err := c.agent.hooks.Fire(ctx, hook.PointUserInput, hc); err != nil {
 				io.WriteLine(fmt.Sprintf("[Rejected: %v]", err))
 				continue
 			}
@@ -407,9 +409,9 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		collected := c.pool.Collect()
 		c.pending = append(c.pending, collected...)
 		// Emit agent:completed events
-		if c.events != nil {
+		if c.agent.events != nil {
 			for _, r := range collected {
-				c.events.Emit(ctx, event.Event{
+				c.agent.events.Emit(ctx, event.Event{
 					Type:      event.TypeAgentCompleted,
 					SessionID: string(sess.ID),
 					Data: map[string]any{
@@ -423,7 +425,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		}
 
 		// Bound pending slice to prevent unbounded growth (P0#1)
-		maxResults := c.cfg.Pool.MaxPendingResults
+		maxResults := c.agent.cfg.Pool.MaxPendingResults
 		if maxResults <= 0 {
 			maxResults = 10
 		}
@@ -443,7 +445,7 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 		// Save LLM request content for /context current
 		c.lastLLMSystemPrompt = dynamicPrompt
 		c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
-		if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
+		if err := c.agent.runTurn(ctx, state, dynamicPrompt, io, c.agent.toolReg, c.loadedTools); err != nil {
 			zap.S().Errorw("turn failed", "turn", state.Turn, "error", err)
 			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyTurnError), err))
 		}
@@ -512,7 +514,7 @@ func (c *Coordinator) collectAgentResults(ctx context.Context, state *LoopState,
 	}
 
 	// Phase 2: Active polling with synthesis round cap.
-	timeout := time.Duration(c.cfg.Pool.DefaultTimeout) * time.Second
+	timeout := time.Duration(c.agent.cfg.Pool.DefaultTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
@@ -589,7 +591,7 @@ func (c *Coordinator) drainAndSynthesize(ctx context.Context, state *LoopState, 
 		Content: provider.TextContent(msg),
 	})
 	c.lastLLMMessages = append([]provider.Message(nil), state.Messages...)
-	if err := c.runTurn(ctx, state, dynamicPrompt, io, c.toolReg, c.loadedTools); err != nil {
+	if err := c.agent.runTurn(ctx, state, dynamicPrompt, io, c.agent.toolReg, c.loadedTools); err != nil {
 		zap.S().Debugw("agent result synthesis turn", "error", err)
 	}
 	state.Messages = saved
@@ -620,7 +622,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 			var sb strings.Builder
 			sb.WriteString("\n## Available Skills\n")
 			sb.WriteString("Skills are specialized capabilities you can load on demand with load_skill.\n")
-			maxTop := c.cfg.Skills.MaxTop
+			maxTop := c.agent.cfg.Skills.MaxTop
 			if maxTop <= 0 {
 				maxTop = 10
 			}
@@ -640,7 +642,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		var sb strings.Builder
 		sb.WriteString("\n## Pending Agent Results\n")
 		// Keep only last N results
-		maxResults := c.cfg.Pool.MaxPendingResults
+		maxResults := c.agent.cfg.Pool.MaxPendingResults
 		if maxResults <= 0 {
 			maxResults = 10
 		}
@@ -651,7 +653,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 		}
 		for _, r := range c.pending[start:] {
 			output := r.Output
-			maxLen := c.cfg.Pool.MaxPendingResultLen
+			maxLen := c.agent.cfg.Pool.MaxPendingResultLen
 			if maxLen > 0 && len(output) > maxLen {
 				output = output[:maxLen] + "..."
 			}
@@ -671,7 +673,7 @@ func (c *Coordinator) buildDynamicPrompt() string {
 	}
 
 	// SubSystems context
-	if md := c.ctxBuilder.LoadSubSystemMD(); md != "" {
+	if md := subsystem.ContextMD(); md != "" {
 		parts = append(parts, md)
 	}
 
@@ -711,13 +713,13 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 	caps := io.Capabilities()
 	if caps.ShowToolDetails {
 		// Interactive: require resume config + user confirmation
-		if !c.cfg.Session.Resume {
+		if !c.agent.cfg.Session.Resume {
 			return nil, nil
 		}
 	}
 	// Non-interactive: always auto-resume
 
-	id, path, turns, err := c.sessMgr.LatestSession()
+	id, path, turns, err := c.agent.sessMgr.LatestSession()
 	if err != nil || id == "" {
 		return nil, nil
 	}
@@ -740,7 +742,7 @@ func (c *Coordinator) tryResumeSession(ctx context.Context, io transport.UserIO)
 	messages := replayMessages(events)
 
 	// Create a child session linked to the old one
-	sess, rerr := c.sessMgr.NewSessionWithParent(c.cfg.Session.MaxLoop, id)
+	sess, rerr := c.agent.sessMgr.NewSessionWithParent(c.agent.cfg.Session.MaxLoop, id)
 	if rerr != nil {
 		zap.S().Errorw("create resumed session failed", "error", rerr)
 		return nil, nil
@@ -909,14 +911,14 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 			if !ok {
 				return
 			}
-			if c.hooks != nil {
-				c.hooks.Fire(ctx, hook.PointSchedulerTaskBefore, &hook.Context{
+			if c.agent.hooks != nil {
+				c.agent.hooks.Fire(ctx, hook.PointSchedulerTaskBefore, &hook.Context{
 					SessionID: string(parentSessionID),
 					TaskName:  task.Name,
 					TaskInput: task.Task,
 				})
 			}
-			result, err := c.RunTask(ctx, task.Task, c.basePrompt, c.toolReg, parentSessionID)
+			result, err := c.agent.RunTask(ctx, task.Task, c.basePrompt, c.agent.toolReg, parentSessionID)
 			if err != nil {
 				c.cronMgr.AddResult(task.Name, false, "", err.Error())
 				zap.S().Errorw("scheduled task failed", "name", task.Name, "error", err)
@@ -924,8 +926,8 @@ func (c *Coordinator) processDueTasks(ctx context.Context, dueCh <-chan schedule
 				c.cronMgr.AddResult(task.Name, result.Success, result.Output, result.Error)
 				zap.S().Infow("scheduled task completed", "name", task.Name, "task_id", result.TaskID)
 			}
-			if c.hooks != nil {
-				c.hooks.Fire(ctx, hook.PointSchedulerTaskAfter, &hook.Context{
+			if c.agent.hooks != nil {
+				c.agent.hooks.Fire(ctx, hook.PointSchedulerTaskAfter, &hook.Context{
 					SessionID: string(parentSessionID),
 					TaskName:  task.Name,
 					TaskInput: task.Task,

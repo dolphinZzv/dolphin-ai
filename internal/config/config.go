@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
@@ -77,135 +76,6 @@ func (c *Config) Clone() *Config {
 	return &cloned
 }
 
-// ProviderConfig defines a single LLM provider endpoint.
-type ProviderConfig struct {
-	Name      string `mapstructure:"name"`
-	Type      string `mapstructure:"type"` // "openai" or "anthropic"
-	BaseURL   string `mapstructure:"base_url"`
-	APIKey    string `mapstructure:"api_key"`
-	Model     string `mapstructure:"model"`
-	MaxTokens int    `mapstructure:"max_tokens"`
-}
-
-type LLMConfig struct {
-	// Legacy single-provider fields (populated by env vars for backward compat).
-	Type      string `mapstructure:"type"`
-	BaseURL   string `mapstructure:"base_url"`
-	APIKey    string `mapstructure:"api_key"`
-	Model     string `mapstructure:"model"`
-	MaxTokens int    `mapstructure:"max_tokens"`
-
-	// Agent-level settings (shared regardless of which provider is active).
-	MaxContextTokens  int     `mapstructure:"max_context_tokens"`
-	Temperature       float64 `mapstructure:"temperature"`
-	MaxSubTurns       int     `mapstructure:"max_sub_turns"`
-	CompressMode      string  `mapstructure:"compress_mode"`
-	SegmentMergeLimit int     `mapstructure:"segment_merge_limit"`
-
-	// Multi-provider: if set, startup selects the first that passes health check.
-	Providers []ProviderConfig `mapstructure:"providers"`
-
-	Limits LimitsConfig `mapstructure:"limits"`
-}
-
-// EffectiveProviders returns the list of provider configs to try at startup.
-// If multi-provider config is set, it returns those. Otherwise, it builds a
-// single entry from the legacy fields (env var overrides).
-func (l *LLMConfig) EffectiveProviders() []ProviderConfig {
-	if len(l.Providers) > 0 {
-		return l.Providers
-	}
-	return []ProviderConfig{{
-		Name:      "default",
-		Type:      l.Type,
-		BaseURL:   l.BaseURL,
-		APIKey:    l.APIKey,
-		Model:     l.Model,
-		MaxTokens: l.MaxTokens,
-	}}
-}
-
-type SessionConfig struct {
-	MaxLoop int    `mapstructure:"max_loop"`
-	Summary bool   `mapstructure:"summary"`
-	MaxAge  string `mapstructure:"max_age"`
-	Resume  bool   `mapstructure:"resume"`
-}
-
-type LimitsConfig struct {
-	Enabled          bool             `mapstructure:"enabled"`
-	SchedulerEnabled bool             `mapstructure:"scheduler_enabled"`
-	Requests         MultiLevelLimits `mapstructure:"requests"`
-	Tokens           TokenMultiLimits `mapstructure:"tokens"`
-	Concurrency      ConcurrencyLimit `mapstructure:"concurrency"`
-	Enforcement      string           `mapstructure:"enforcement"`
-	Retry            RetryConfig      `mapstructure:"retry"`
-	Exempt           ExemptConfig     `mapstructure:"exempt"`
-	ProviderMode     string           `mapstructure:"provider_mode"`
-}
-
-func (c *LimitsConfig) Validate() error {
-	if !c.Enabled {
-		return nil
-	}
-
-	if c.Enforcement != "hard" && c.Enforcement != "soft" && c.Enforcement != "" {
-		return fmt.Errorf("enforcement must be 'hard' or 'soft', got '%s'", c.Enforcement)
-	}
-
-	if c.Enforcement == "soft" && c.Retry.MaxAttempts == 0 {
-		return fmt.Errorf("soft enforcement requires retry.max_attempts > 0")
-	}
-
-	return nil
-}
-
-type MultiLevelLimits struct {
-	Daily   LevelLimit `mapstructure:"daily"`
-	Weekly  LevelLimit `mapstructure:"weekly"`
-	Monthly LevelLimit `mapstructure:"monthly"`
-}
-
-type LevelLimit struct {
-	Max       int    `mapstructure:"max"`
-	ResetCron string `mapstructure:"reset_cron"`
-}
-
-type TokenMultiLimits struct {
-	Daily   TokenLevelLimit `mapstructure:"daily"`
-	Weekly  TokenLevelLimit `mapstructure:"weekly"`
-	Monthly TokenLevelLimit `mapstructure:"monthly"`
-}
-
-type TokenLevelLimit struct {
-	InputMax  int    `mapstructure:"input_max"`
-	OutputMax int    `mapstructure:"output_max"`
-	ResetCron string `mapstructure:"reset_cron"`
-}
-
-type ConcurrencyLimit struct {
-	MaxRunning int `mapstructure:"max_running"`
-}
-
-type RetryConfig struct {
-	MaxAttempts    int           `mapstructure:"max_attempts"`
-	InitialBackoff time.Duration `mapstructure:"initial_backoff"`
-	MaxBackoff     time.Duration `mapstructure:"max_backoff"`
-}
-
-type ExemptConfig struct {
-	Enabled  bool     `mapstructure:"enabled"`
-	Patterns []string `mapstructure:"patterns"`
-}
-
-type CredentialsConfig struct {
-	Enabled    bool     `mapstructure:"enabled"`
-	Store      string   `mapstructure:"store"`
-	Path       string   `mapstructure:"path"`
-	SafeFields []string `mapstructure:"safe_fields"`
-	AllowOnly  []string `mapstructure:"allow_only"`
-}
-
 var sessionsDirOverride string
 
 // SetSessionsDir overrides the sessions directory (for testing).
@@ -225,284 +95,6 @@ func SessionsDir() string {
 		return filepath.Join(UserConfigDir, "sessions")
 	}
 	return filepath.Join(homeDir, UserConfigDir, "sessions")
-}
-
-type TransportConfig struct {
-	Stdio    StdioConfig    `mapstructure:"stdio"`
-	SSH      SSHConfig      `mapstructure:"ssh"`
-	MQTT     MQTTConfig     `mapstructure:"mqtt"`
-	Email    EmailConfig    `mapstructure:"email"`
-	DingTalk DingTalkConfig `mapstructure:"dingtalk"`
-	A2A      A2AConfig      `mapstructure:"a2a"`
-}
-
-// ServersConfig holds standalone server configurations (MQTT broker, etc.).
-// These are independent of transport clients and run as in-process services.
-type ServersConfig struct {
-	MQTTBroker MQTTBrokerConfig `mapstructure:"mqtt_broker"`
-}
-
-// MQTTBrokerConfig configures an embedded MQTT broker server.
-// Separate from transport.mqtt which configures the MQTT client.
-type MQTTBrokerConfig struct {
-	Enabled  bool          `mapstructure:"enabled"`
-	Addr     string        `mapstructure:"addr"`
-	Accounts []MQTTAccount `mapstructure:"accounts"`
-}
-
-// A2AConfig holds configuration for the A2A (Agent-to-Agent) transport.
-// Uses JSON-RPC 2.0 over HTTP, following Google A2A specification.
-type A2AConfig struct {
-	Enabled      bool     `mapstructure:"enabled"`
-	ListenAddr   string   `mapstructure:"listen_addr"`
-	AgentID      string   `mapstructure:"agent_id"`
-	AgentName    string   `mapstructure:"agent_name"`
-	AgentVersion string   `mapstructure:"agent_version"`
-	AgentDesc    string   `mapstructure:"agent_description"`
-	Capabilities []string `mapstructure:"capabilities"`
-	SyncTimeout  string   `mapstructure:"sync_timeout"`
-	APIKey       string   `mapstructure:"api_key"`
-	TLSEnabled   bool     `mapstructure:"tls_enabled"`
-	TLSCertFile  string   `mapstructure:"tls_cert_file"`
-	TLSKeyFile   string   `mapstructure:"tls_key_file"`
-}
-
-type StdioConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	MarkdownRender bool   `mapstructure:"markdown_render"`
-	MarkdownStyle  string `mapstructure:"markdown_style"`
-}
-
-type SSHConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Addr           string `mapstructure:"addr"`
-	HostKey        string `mapstructure:"host_key"`
-	Username       string `mapstructure:"username"`
-	Password       string `mapstructure:"password"`
-	MarkdownRender bool   `mapstructure:"markdown_render"`
-	MarkdownStyle  string `mapstructure:"markdown_style"`
-}
-
-type MQTTAccount struct {
-	Username string `mapstructure:"username"`
-	Password string `mapstructure:"password"`
-}
-
-type MQTTConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Broker         string `mapstructure:"broker"`
-	SubscribeTopic string `mapstructure:"subscribe_topic"`
-	PublishTopic   string `mapstructure:"publish_topic"`
-	ClientID       string `mapstructure:"client_id"`
-	Username       string `mapstructure:"username"`
-	Password       string `mapstructure:"password"`
-}
-
-type EmailConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	Protocol       string   `mapstructure:"protocol"` // "imap" (default) or "pop3"
-	SMTPHost       string   `mapstructure:"smtp_host"`
-	SMTPPort       int      `mapstructure:"smtp_port"`
-	IMAPHost       string   `mapstructure:"imap_host"`
-	IMAPPort       int      `mapstructure:"imap_port"`
-	POP3Host       string   `mapstructure:"pop3_host"` // defaults to IMAPHost / SMTPHost
-	POP3Port       int      `mapstructure:"pop3_port"` // default 995 (TLS)
-	Username       string   `mapstructure:"username"`
-	Password       string   `mapstructure:"password"`
-	From           string   `mapstructure:"from"`
-	UseTLS         bool     `mapstructure:"use_tls"`
-	SkipTLSVerify  bool     `mapstructure:"skip_tls_verify"` // skip TLS cert verification (e.g. self-signed certs)
-	PollInterval   string   `mapstructure:"poll_interval"`   // IMAP poll interval, e.g. "10s"
-	AllowedSenders []string `mapstructure:"allowed_senders"` // only process emails from these addresses
-}
-
-// DingTalkConfig holds configuration for the DingTalk bot transport.
-// Uses Stream mode (WebSocket long connection) — no public IP or callback URL needed.
-// The bot actively connects to DingTalk servers and receives messages via push.
-type DingTalkConfig struct {
-	Enabled      bool   `mapstructure:"enabled"`
-	ClientID     string `mapstructure:"client_id"`     // AppKey from DingTalk Open Platform
-	ClientSecret string `mapstructure:"client_secret"` // AppSecret from DingTalk Open Platform
-}
-
-type MCPConfig struct {
-	Shell       ShellConfig                `mapstructure:"shell"`
-	CDP         CDPConfig                  `mapstructure:"cdp"`
-	Email       EmailMCPConfig             `mapstructure:"email"`
-	Webhook     MCPWebhookConfig           `mapstructure:"webhook"`
-	WebSearch   MCPWebSearchConfig         `mapstructure:"web_search"`
-	Credentials CredentialsConfig          `mapstructure:"credentials"`
-	A2A         MCPA2AConfig               `mapstructure:"a2a"`
-	Servers     map[string]MCPServerConfig `mapstructure:"servers"`
-	Repos       []string                   `mapstructure:"repos"`
-}
-
-type MCPWebhookConfig struct {
-	Enabled  bool                     `mapstructure:"enabled"`
-	Priority int                      `mapstructure:"priority"`
-	Targets  map[string]WebhookTarget `mapstructure:"targets"` // named pre-configured webhook targets
-}
-
-type WebhookTarget struct {
-	URL     string            `mapstructure:"url"`
-	Method  string            `mapstructure:"method"`  // HTTP method, e.g. "POST" (default), "GET"
-	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers
-}
-
-type MCPWebSearchConfig struct {
-	Enabled   bool     `mapstructure:"enabled"`
-	Priority  int      `mapstructure:"priority"`
-	Provider  string   `mapstructure:"provider"`
-	Providers []string `mapstructure:"providers"`
-	APIKey    string   `mapstructure:"api_key"`
-}
-
-type MCPA2AConfig struct {
-	Enabled bool             `mapstructure:"enabled"`
-	Agents  []A2AAgentConfig `mapstructure:"agents"`
-}
-
-type A2AAgentConfig struct {
-	Name   string `mapstructure:"name"`
-	URL    string `mapstructure:"url"`
-	APIKey string `mapstructure:"api_key"`
-}
-
-type MCPServerConfig struct {
-	Type    string            `mapstructure:"type"`    // "stdio", "sse", "http-stream"
-	Command string            `mapstructure:"command"` // for stdio type
-	Args    []string          `mapstructure:"args"`    // for stdio type
-	URL     string            `mapstructure:"url"`     // for sse / http-stream type
-	Headers map[string]string `mapstructure:"headers"` // custom HTTP headers (auth etc.)
-	Timeout int               `mapstructure:"timeout"` // request timeout in seconds, 0 = default 30
-	Enabled *bool             `mapstructure:"enabled"` // nil or true = enabled, false = skip
-}
-
-// TimeoutDuration returns the effective timeout as a time.Duration.
-func TimeoutDuration(sec int) time.Duration {
-	if sec <= 0 {
-		return 30 * time.Second
-	}
-	return time.Duration(sec) * time.Second
-}
-
-type ShellConfig struct {
-	Enabled           bool     `mapstructure:"enabled"`
-	AllowedCommands   []string `mapstructure:"allowed_commands"`   // default: ["date"]; empty + allow_unrestricted=true = allow all
-	AllowUnrestricted bool     `mapstructure:"allow_unrestricted"` // opt-in to unrestricted sh -c when no whitelist
-	MaxCommandLength  int      `mapstructure:"max_command_length"` // 0 = use default
-	TimeoutSeconds    int      `mapstructure:"timeout_seconds"`
-	Priority          int      `mapstructure:"priority"`
-}
-
-type CDPConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Headless       bool   `mapstructure:"headless"`
-	WsURL          string `mapstructure:"ws_url"`
-	Priority       int    `mapstructure:"priority"`        // tool listing priority (lower = preferred)
-	IdleTimeout    int    `mapstructure:"idle_timeout"`    // seconds, 0 = disabled
-	StartupTimeout int    `mapstructure:"startup_timeout"` // seconds for browser init verify, 0 = use default 30s
-}
-
-// EmailMCPConfig controls the built-in email MCP tool.
-type EmailMCPConfig struct {
-	Enabled  bool `mapstructure:"enabled"`
-	Priority int  `mapstructure:"priority"` // tool listing priority (lower = preferred)
-}
-
-type PoolConfig struct {
-	MaxConcurrency      int    `mapstructure:"max_concurrency"`
-	DefaultTimeout      int    `mapstructure:"default_timeout"`
-	WorkspaceDir        string `mapstructure:"workspace_dir"`
-	IdleTimeout         int    `mapstructure:"idle_timeout"`
-	MaxPendingResults   int    `mapstructure:"max_pending_results"`
-	MaxPendingResultLen int    `mapstructure:"max_pending_result_len"` // chars per result in prompt, 0 = no truncation
-}
-
-type SkillsConfig struct {
-	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphin/skills)
-	MaxTop int      `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
-	Repos  []string `mapstructure:"repos"`   // manifest repos, e.g. ["dolphinv/skills"]
-}
-
-// WorkflowsConfig holds configuration for workflow definitions.
-type WorkflowsConfig struct {
-	Dir string `mapstructure:"dir"` // workflows directory (default: .dolphin/workflows)
-}
-
-// AgentsConfig holds configuration for agent discovery.
-type AgentsConfig struct {
-	Repos []string `mapstructure:"repos"` // agent manifest repos, e.g. ["dolphinZzv/demo_agents"]
-}
-
-type PprofConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Addr    string `mapstructure:"addr"` // listen address, e.g. ":6060"
-}
-
-type CrontabConfig struct {
-	File          string `mapstructure:"file"`
-	CheckInterval string `mapstructure:"check_interval"` // e.g. "30s"
-}
-
-type DiaryConfig struct {
-	Dir            string `mapstructure:"dir"`
-	MaxDaySessions int    `mapstructure:"max_day_sessions"`
-	MaxWeekDays    int    `mapstructure:"max_week_days"`
-	MaxMonthWeeks  int    `mapstructure:"max_month_weeks"`
-	MaxYearMonths  int    `mapstructure:"max_year_months"`
-	MaxTotalMB     int    `mapstructure:"max_total_mb"`
-}
-
-type MetricsConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9090"
-}
-
-type HealthConfig struct {
-	Enabled bool   `mapstructure:"enabled"`
-	Addr    string `mapstructure:"addr"` // listen address, e.g. ":9091"
-}
-
-// FlagsConfig controls optional feature flags.
-type FlagsConfig struct {
-	SelfEvolution bool `mapstructure:"self_evolution"` // enable self-evolution: BUILTIN_SKILLS.md + LLM CRUD tools for skills/commands
-}
-
-// ResourceConfig configures the system resource monitor.
-type ResourceConfig struct {
-	Enabled      bool      `mapstructure:"enabled"`       // enable periodic resource monitoring
-	Interval     string    `mapstructure:"interval"`      // sampling interval, e.g. "30s" (default 30s)
-	DiskPaths    []string  `mapstructure:"disk_paths"`    // filesystem paths to monitor (e.g. ["/", "/data"])
-	MaxBandwidth uint64    `mapstructure:"max_bandwidth"` // max network bandwidth in bytes/sec for % calculation (default 125MB/s = 1Gbps)
-	Thresholds   []float64 `mapstructure:"thresholds"`    // percentage thresholds to monitor, sorted ascending (default [20, 40, 60, 80])
-}
-
-// TelemetryConfig holds OpenTelemetry tracing configuration.
-type TelemetryConfig struct {
-	Enabled        bool              `mapstructure:"enabled"`
-	ServiceName    string            `mapstructure:"service_name"`
-	Exporter       string            `mapstructure:"exporter"` // otlp-grpc, otlp-http, stdout
-	OTLPEndpoint   string            `mapstructure:"otlp_endpoint"`
-	OTLPHeaders    map[string]string `mapstructure:"otlp_headers"`
-	SampleRate     float64           `mapstructure:"sample_rate"`
-	LogsEnabled    bool              `mapstructure:"logs_enabled"`
-	MetricsEnabled bool              `mapstructure:"metrics_enabled"`
-}
-
-type UpdateConfig struct {
-	Enabled       bool   `mapstructure:"enabled"`
-	CheckInterval string `mapstructure:"check_interval"` // e.g. "24h", "12h", "1h"
-	Channel       string `mapstructure:"channel"`        // "stable" or "pre-release"
-	AutoInstall   bool   `mapstructure:"auto_install"`
-}
-
-type PluginsConfig struct {
-	Enabled        bool     `mapstructure:"enabled"`
-	Dir            string   `mapstructure:"dir"`             // script plugins directory
-	WebhookURL     string   `mapstructure:"webhook_url"`     // HTTP POST events here
-	WebhookEvents  []string `mapstructure:"webhook_events"`  // event types to send, ["*"] for all
-	HeartbeatTurns int      `mapstructure:"heartbeat_turns"` // emit heartbeat every N turns, 0=off
 }
 
 func Load(cfgFile string) (*Config, error) {
@@ -560,8 +152,6 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_LLM_API_KEY"); v != "" {
 		cfg.LLM.APIKey = v
 	}
-	// Propagate env var or legacy api_key to providers with empty keys.
-	// This lets users set DZ_LLM_API_KEY once and have it apply to all providers.
 	if cfg.LLM.APIKey != "" {
 		for i := range cfg.LLM.Providers {
 			if cfg.LLM.Providers[i].APIKey == "" {
@@ -581,7 +171,6 @@ func Load(cfgFile string) (*Config, error) {
 	if v := os.Getenv("DZ_LLM_MAX_TOKENS"); v != "" {
 		_, _ = fmt.Sscanf(v, "%d", &cfg.LLM.MaxTokens)
 	}
-	// Propagate llm.max_tokens to providers that don't specify their own.
 	if cfg.LLM.MaxTokens > 0 {
 		for i := range cfg.LLM.Providers {
 			if cfg.LLM.Providers[i].MaxTokens <= 0 {
@@ -806,23 +395,6 @@ func DefaultConfig() *Config {
 	return &cfg
 }
 
-// ToolSelection is a lightweight config fragment for saving skill/MCP tool choices.
-type ToolSelection struct {
-	Skills []string `yaml:"skills"`
-	MCP    []string `yaml:"mcp"`
-}
-
-// LoadedConfig is the structure written to config files for tool loading.
-type LoadedConfig struct {
-	Skills LoadedTools `yaml:"skills"`
-	MCP    LoadedTools `yaml:"mcp"`
-}
-
-// LoadedTools holds the list of loaded tool names.
-type LoadedTools struct {
-	Loaded []string `yaml:"loaded"`
-}
-
 // SaveToolSelection persists the user's tool choices to the config file at the given
 // scope ("user" or "project"). It merges with existing loaded tools if any.
 func SaveToolSelection(selection *ToolSelection, scope string) error {
@@ -837,13 +409,11 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 		configPath = filepath.Join(ProjectConfigDir, ConfigFileName+".yaml")
 	}
 
-	// Read existing loaded config
 	existing := LoadedConfig{}
 	if data, err := os.ReadFile(configPath); err == nil {
 		_ = yaml.Unmarshal(data, &existing)
 	}
 
-	// Merge selections, deduplicate
 	skillSet := make(map[string]bool)
 	for _, s := range existing.Skills.Loaded {
 		skillSet[s] = true
@@ -872,15 +442,10 @@ func SaveToolSelection(selection *ToolSelection, scope string) error {
 		return fmt.Errorf("create config dir: %w", err)
 	}
 
-	// Read existing config as full YAML map, merge tool selections, write back.
-	// Read-modify-write avoids YAML corruption from blind append.
 	full := make(map[string]any)
 	if existingData, err := os.ReadFile(configPath); err == nil {
 		_ = yaml.Unmarshal(existingData, &full)
 	}
-	// Merge the merged loaded-tools into the full config.
-	// Deep-merge into existing section maps to avoid overwriting other settings
-	// like mcp.shell or skills.dir.
 	fullSkills, ok := full["skills"].(map[string]any)
 	if !ok {
 		fullSkills = make(map[string]any)
@@ -940,7 +505,6 @@ func (c *Config) LLMConfigured() bool {
 
 // Validate checks the configuration and returns an error for invalid settings.
 func (c *Config) Validate() error {
-	// If multi-provider is configured, validate each entry.
 	if len(c.LLM.Providers) > 0 {
 		for i, p := range c.LLM.Providers {
 			if p.Type != "" && p.Type != "openai" && p.Type != "anthropic" {
@@ -954,7 +518,6 @@ func (c *Config) Validate() error {
 			}
 		}
 	} else {
-		// Validate legacy single-provider fields.
 		if c.LLM.Type != "" && c.LLM.Type != "openai" && c.LLM.Type != "anthropic" {
 			return fmt.Errorf(`llm.type must be "openai" or "anthropic", got %q (check your config file)`, c.LLM.Type)
 		}
@@ -990,154 +553,4 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0, got %d", c.MCP.Shell.TimeoutSeconds)
 	}
 	return nil
-}
-
-func setDefaults(v *viper.Viper) {
-	v.SetDefault("name", "dolphin")
-
-	v.SetDefault("llm.type", "openai")
-	v.SetDefault("llm.base_url", "https://api.openai.com/v1")
-	v.SetDefault("llm.model", "gpt-4o")
-	v.SetDefault("llm.max_tokens", 4096)
-	v.SetDefault("llm.temperature", 0.7)
-	v.SetDefault("llm.max_sub_turns", 10)
-	v.SetDefault("llm.max_context_tokens", 1048576)
-	v.SetDefault("llm.compress_mode", "drop")
-	v.SetDefault("llm.segment_merge_limit", 100)
-
-	v.SetDefault("session.max_loop", 50)
-	v.SetDefault("session.summary", true)
-
-	v.SetDefault("transport.stdio.enabled", true)
-	v.SetDefault("transport.stdio.markdown_render", true)
-	v.SetDefault("transport.stdio.markdown_style", "auto")
-	v.SetDefault("transport.ssh.enabled", false)
-	v.SetDefault("transport.ssh.markdown_render", false)
-	v.SetDefault("transport.ssh.markdown_style", "auto")
-	v.SetDefault("transport.ssh.addr", ":2222")
-	v.SetDefault("transport.ssh.host_key", "~/.ssh/id_ed25519")
-	v.SetDefault("transport.ssh.username", "dolphin")
-	v.SetDefault("transport.ssh.password", "")
-	v.SetDefault("transport.mqtt.enabled", false)
-	v.SetDefault("transport.mqtt.broker", "tcp://localhost:1883")
-	v.SetDefault("transport.mqtt.subscribe_topic", "/agent/dolphin")
-	v.SetDefault("transport.mqtt.publish_topic", "/agent/dolphin/message")
-	v.SetDefault("transport.mqtt.client_id", "dolphin-agent")
-
-	v.SetDefault("servers.mqtt_broker.enabled", true)
-	v.SetDefault("servers.mqtt_broker.addr", ":1883")
-
-	v.SetDefault("transport.email.enabled", false)
-	v.SetDefault("transport.email.smtp_port", 587)
-	v.SetDefault("transport.email.imap_port", 993)
-	v.SetDefault("transport.email.use_tls", true)
-	v.SetDefault("transport.email.poll_interval", "10s")
-	v.SetDefault("transport.email.allowed_senders", []string{})
-
-	v.SetDefault("transport.dingtalk.enabled", false)
-
-	v.SetDefault("transport.a2a.enabled", false)
-	v.SetDefault("transport.a2a.listen_addr", ":8334")
-	v.SetDefault("transport.a2a.agent_id", "dolphin")
-	v.SetDefault("transport.a2a.agent_name", "Dolphin AI Agent")
-	v.SetDefault("transport.a2a.agent_version", "0.1.0")
-	v.SetDefault("transport.a2a.agent_description", "Cross-terminal/email/chat/SSH AI agent")
-	v.SetDefault("transport.a2a.capabilities", []string{"task-execution", "shell-command", "web-search"})
-	v.SetDefault("transport.a2a.sync_timeout", "60s")
-	v.SetDefault("transport.a2a.api_key", "")
-	v.SetDefault("transport.a2a.tls_enabled", false)
-	v.SetDefault("transport.a2a.tls_cert_file", "")
-	v.SetDefault("transport.a2a.tls_key_file", "")
-
-	v.SetDefault("session.max_age", "24h")
-	v.SetDefault("session.resume", false)
-
-	v.SetDefault("mcp.shell.enabled", true)
-	v.SetDefault("mcp.shell.allow_unrestricted", true)
-	v.SetDefault("mcp.shell.allowed_commands", []string{"date"})
-	v.SetDefault("mcp.shell.timeout_seconds", 30)
-	v.SetDefault("mcp.shell.priority", 10)
-	v.SetDefault("mcp.shell.max_command_length", 4096)
-	v.SetDefault("mcp.cdp.enabled", true)
-	v.SetDefault("mcp.cdp.headless", true)
-	v.SetDefault("mcp.cdp.priority", 1000)
-	v.SetDefault("mcp.cdp.idle_timeout", 300)
-	v.SetDefault("mcp.cdp.startup_timeout", 30)
-	v.SetDefault("mcp.email.enabled", true)
-	v.SetDefault("mcp.email.priority", 500)
-
-	v.SetDefault("mcp.webhook.enabled", true)
-	v.SetDefault("mcp.webhook.priority", 100)
-
-	v.SetDefault("mcp.web_search.enabled", true)
-	v.SetDefault("mcp.web_search.priority", 90)
-	v.SetDefault("mcp.web_search.provider", "duckduckgo")
-	v.SetDefault("mcp.web_search.api_key", "")
-
-	v.SetDefault("agent_pool.max_concurrency", 5)
-	v.SetDefault("agent_pool.default_timeout", 300)
-	v.SetDefault("agent_pool.workspace_dir", ".dolphin/workspaces")
-	v.SetDefault("agent_pool.idle_timeout", 600)
-	v.SetDefault("agent_pool.max_pending_results", 10)
-
-	v.SetDefault("skills.dir", ".dolphin/skills")
-	v.SetDefault("skills.max_top", 10)
-	v.SetDefault("skills.repos", []string{})
-
-	v.SetDefault("workflows.dir", ".dolphin/workflows")
-
-	v.SetDefault("crontab.file", ".dolphin/CRONTAB.md")
-	v.SetDefault("crontab.check_interval", "30s")
-
-	v.SetDefault("pprof.enabled", false)
-	v.SetDefault("pprof.addr", "127.0.0.1:6060")
-
-	v.SetDefault("diary.dir", ".dolphin/diary")
-	v.SetDefault("diary.max_day_sessions", 200)
-	v.SetDefault("diary.max_week_days", 7)
-	v.SetDefault("diary.max_month_weeks", 5)
-	v.SetDefault("diary.max_year_months", 12)
-	v.SetDefault("diary.max_total_mb", 500)
-
-	v.SetDefault("metrics.enabled", false)
-	v.SetDefault("metrics.addr", "127.0.0.1:9090")
-
-	v.SetDefault("health.enabled", false)
-	v.SetDefault("health.addr", "127.0.0.1:9091")
-
-	v.SetDefault("telemetry.enabled", false)
-	v.SetDefault("telemetry.service_name", "dolphin")
-	v.SetDefault("telemetry.exporter", "stdout")
-	v.SetDefault("telemetry.otlp_endpoint", "localhost:4317")
-	v.SetDefault("telemetry.otlp_headers", map[string]string{})
-	v.SetDefault("telemetry.sample_rate", 1.0)
-	v.SetDefault("telemetry.logs_enabled", false)
-	v.SetDefault("telemetry.metrics_enabled", false)
-
-	v.SetDefault("flags.self_evolution", false)
-
-	v.SetDefault("resource.enabled", false)
-	v.SetDefault("resource.interval", "30s")
-	v.SetDefault("resource.disk_paths", []string{"/"})
-	v.SetDefault("resource.max_bandwidth", 125000000)
-	v.SetDefault("resource.thresholds", []float64{20, 40, 60, 80})
-
-	v.SetDefault("sync_config", true)
-
-	v.SetDefault("update.enabled", true)
-	v.SetDefault("update.check_interval", "24h")
-	v.SetDefault("update.channel", "stable")
-	v.SetDefault("update.auto_install", false)
-
-	v.SetDefault("log_level", "info")
-	v.SetDefault("log_file", ".dolphin/logs/agent.log")
-	v.SetDefault("log_max_size", 100)
-	v.SetDefault("log_max_age", 30)
-	v.SetDefault("log_max_backup", 3)
-
-	v.SetDefault("plugins.enabled", true)
-	v.SetDefault("plugins.dir", "~/.dolphin/plugins/")
-	v.SetDefault("plugins.webhook_url", "")
-	v.SetDefault("plugins.heartbeat_turns", 0)
-	v.SetDefault("plugins.webhook_events", []string{"*"})
 }

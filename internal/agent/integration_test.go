@@ -10,6 +10,7 @@ import (
 
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
+	ctxpkg "dolphin/internal/context"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 )
@@ -37,7 +38,7 @@ func TestRunFullSessionWelcomeAndExit(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"say hi", "/exit"}}
@@ -77,7 +78,7 @@ func TestRunHelpCommand(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"/help", "/exit"}}
@@ -120,7 +121,7 @@ func TestRunMaxLoopGeneratesSummary(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"first", "second", "/exit"}}
@@ -158,7 +159,7 @@ func TestRunEmptyInputSkipped(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	// empty line should be skipped, then "hello" processed
@@ -205,7 +206,7 @@ func TestRunToolCallAndStreaming(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"do it", "/exit"}}
@@ -247,7 +248,7 @@ func TestRunContextCompressionTriggered(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	// Build up a large message history to trigger compression
@@ -302,7 +303,7 @@ func TestRunMultiToolChain(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"run chain", "/exit"}}
@@ -348,7 +349,7 @@ func TestRunErrorRecovery(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"hello", "/exit"}}
@@ -383,7 +384,7 @@ func TestRunTurnContextCancelled(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -427,7 +428,7 @@ func TestRunTurnWithThinking(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	io := &mockIO{lines: []string{"complex question", "/exit"}}
@@ -473,7 +474,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 			sessMgr:    sessMgr,
 			toolReg:    toolReg,
 			provider:   prov,
-			ctxBuilder: NewContextBuilder(),
+			ctxBuilder: ctxpkg.NewBuilder(),
 		}
 		io := &mockIO{name: "email", lines: []string{"hi", "/exit"}}
 		agt.Run(context.Background(), io)
@@ -501,7 +502,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 			sessMgr:    sessMgr,
 			toolReg:    toolReg,
 			provider:   prov,
-			ctxBuilder: NewContextBuilder(),
+			ctxBuilder: ctxpkg.NewBuilder(),
 		}
 		io := &mockIO{name: "email", lines: []string{"hi again", "/exit"}}
 		agt.Run(context.Background(), io)
@@ -523,7 +524,7 @@ func TestEmailWelcomeOnlyOnFirstConfig(t *testing.T) {
 			sessMgr:    sessMgr,
 			toolReg:    toolReg,
 			provider:   prov,
-			ctxBuilder: NewContextBuilder(),
+			ctxBuilder: ctxpkg.NewBuilder(),
 		}
 		io := &mockIO{name: "stdio", lines: []string{"hi", "/exit"}}
 		agt.Run(context.Background(), io)

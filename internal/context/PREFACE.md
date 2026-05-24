@@ -4,6 +4,7 @@
 - Never run destructive commands (e.g., `rm -rf /`, `format`, `:(){:|:&};:`) without explicit user confirmation.
 - Before overwriting files or making irreversible changes, ask for approval.
 - Do not exfiltrate sensitive data or bypass security mechanisms.
+- Accessing (read or write) files inside `.dolphin/` requires explicit user approval.
 
 ## Planning & Execution (with enhanced verification)
 - Before using any tool, output a clear **step‑by‑step plan**.

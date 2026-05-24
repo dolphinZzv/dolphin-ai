@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"dolphin/internal/subsystem"
-
 	"go.uber.org/zap"
 )
 
@@ -38,7 +36,107 @@ type cachedFile struct {
 	modTime time.Time
 }
 
-// Builder assembles the system prompt from context files.
+// SectionProvider provides a named section to the system prompt.
+// Implementations are registered via Builder.RegisterSectionProvider.
+type SectionProvider interface {
+	// Name returns the section identifier (e.g. "soul", "preface", "subsystems").
+	// Used for priority overrides and dedup.
+	Name() string
+
+	// Content returns the markdown content. Return "" to skip injection.
+	// The agentName parameter is the target agent's name, or "" for the
+	// default (coordinator) agent.
+	Content(agentName string) string
+}
+
+// SectionProviderWithPath is an optional extension for SectionProviders
+// that can report the file path of their content source for display.
+type SectionProviderWithPath interface {
+	SectionProvider
+
+	// Path returns the resolved file path for the given agent, or "".
+	Path(agentName string) string
+}
+
+// NewSectionProviderFunc creates a SectionProvider from a function.
+func NewSectionProviderFunc(name string, fn func(agentName string) string) *SectionProviderFunc {
+	return &SectionProviderFunc{name: name, fn: fn}
+}
+
+// SectionProviderFunc wraps a function as a SectionProvider.
+type SectionProviderFunc struct {
+	name string
+	fn   func(agentName string) string
+}
+
+func (f *SectionProviderFunc) Name() string { return f.name }
+func (f *SectionProviderFunc) Content(agentName string) string {
+	if f.fn == nil {
+		return ""
+	}
+	return f.fn(agentName)
+}
+
+// compile-time interface check.
+var _ SectionProvider = (*SectionProviderFunc)(nil)
+
+// fileProvider loads content from a file with the standard fallback chain.
+type fileProvider struct {
+	b             *Builder
+	name          string // "soul", "agents", etc.
+	filename      string // "SOUL.md", "AGENTS.md", etc.
+	heading       string // "## Soul\n", "## Agent Definitions\n", etc.
+	agentSpecific bool   // if true, checks agentDir first (for AGENTS.md, RULES.md, USER.md)
+	userDirOnly   bool   // if true, only checks user dir (for SYSTEM.md)
+}
+
+func (p *fileProvider) Name() string { return p.name }
+
+func (p *fileProvider) Content(agentName string) string {
+	if p.userDirOnly {
+		path := filepath.Join(p.b.userDir, p.filename)
+		content, ok := p.b.loadCached(path)
+		if !ok || content == "" {
+			return ""
+		}
+		return p.heading + content
+	}
+	var agentDir string
+	if p.agentSpecific && agentName != "" {
+		agentDir = filepath.Join(p.b.projectDir, "agents", agentName)
+	}
+	content := p.b.loadFileFallback(agentDir, p.filename)
+	if content == "" {
+		return ""
+	}
+	return p.heading + content
+}
+
+func (p *fileProvider) Path(agentName string) string {
+	if p.userDirOnly {
+		return filepath.Join(p.b.userDir, p.filename)
+	}
+	var agentDir string
+	if p.agentSpecific && agentName != "" {
+		agentDir = filepath.Join(p.b.projectDir, "agents", agentName)
+	}
+	return p.b.resolveFileFallback(agentDir, p.filename)
+}
+
+// compile-time interface checks.
+var (
+	_ SectionProvider         = (*fileProvider)(nil)
+	_ SectionProviderWithPath = (*fileProvider)(nil)
+)
+
+// registeredProvider pairs a SectionProvider with its priority and display name.
+type registeredProvider struct {
+	provider    SectionProvider
+	priority    int
+	displayName string // shown in LoadedSections output
+}
+
+// Builder assembles the system prompt from registered section providers.
 type Builder struct {
 	projectDir string
 	userDir    string
@@ -46,14 +144,16 @@ type Builder struct {
 	statCache  map[string]cachedFile
 	rdata      *RenderData
 
+	providers []registeredProvider
+
 	// SelfEvolution controls whether SELF_EVOLUTION_SKILLS.md is included
 	// in the built prompt. When enabled, LLM tools for config CRUD, skill
 	// management, command management, reload, and context are documented.
 	SelfEvolution bool
 
 	// SectionPriority overrides default section priorities.
-	// Key is section name: "soul", "preface", "builtin_skills",
-	// "self_evo_skills", "agents", "rules", "user", "system".
+	// Key is section provider name: "soul", "preface", "builtin_skills",
+	// "self_evo_skills", "agents", "rules", "user", "system", "subsystems".
 	// Value is the priority (lower = earlier in prompt).
 	SectionPriority map[string]int
 
@@ -90,10 +190,77 @@ func (b *Builder) LoadSection(name string) string {
 	}
 }
 
-// LoadSubSystemMD returns aggregated context markdown from all registered
-// subsystems. Returns empty string if no subsystems have context to inject.
-func (b *Builder) LoadSubSystemMD() string {
-	return subsystem.ContextMD()
+// RegisterSectionProvider registers a section provider with the given priority
+// and display name (used in LoadedSections output, e.g. "SOUL.md").
+func (b *Builder) RegisterSectionProvider(provider SectionProvider, priority int, displayName string) {
+	b.providers = append(b.providers, registeredProvider{
+		provider:    provider,
+		priority:    priority,
+		displayName: displayName,
+	})
+}
+
+// SectionContent returns the content of the first registered provider with the given name.
+// Returns "" if no provider is found or the provider returns empty content.
+func (b *Builder) SectionContent(name, agentName string) string {
+	for _, rp := range b.providers {
+		if rp.provider.Name() == name {
+			return rp.provider.Content(agentName)
+		}
+	}
+	return ""
+}
+
+// registerBuiltinProviders registers all built-in section providers.
+func registerBuiltinProviders(b *Builder) {
+	// SOUL.md (project > user > system, optional)
+	b.RegisterSectionProvider(&fileProvider{
+		b: b, name: "soul", filename: "SOUL.md", heading: "## Soul\n",
+	}, PrioritySoul, "SOUL.md")
+
+	// PREFACE (embedded, always)
+	b.RegisterSectionProvider(NewSectionProviderFunc("preface",
+		func(agentName string) string { return DefaultPreface },
+	), PriorityPreface, "PREFACE.md")
+
+	// BUILTIN SKILLS (embedded, conditional on non-empty)
+	b.RegisterSectionProvider(NewSectionProviderFunc("builtin_skills",
+		func(agentName string) string { return BuiltinSkills },
+	), PriorityBuiltinSkills, "BUILTIN_SKILLS.md")
+
+	// SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
+	b.RegisterSectionProvider(NewSectionProviderFunc("self_evo_skills",
+		func(agentName string) string {
+			if !b.SelfEvolution || SelfEvolutionSkills == "" {
+				return ""
+			}
+			return SelfEvolutionSkills
+		},
+	), PrioritySelfEvoSkills, "SELF_EVOLUTION.md")
+
+	// AGENTS.md (agent > project > user > system, agent-specific)
+	b.RegisterSectionProvider(&fileProvider{
+		b: b, name: "agents", filename: "AGENTS.md",
+		heading: "## Agent Definitions\n", agentSpecific: true,
+	}, PriorityAgents, "AGENTS.md")
+
+	// RULES.md (agent > project > user > system, agent-specific)
+	b.RegisterSectionProvider(&fileProvider{
+		b: b, name: "rules", filename: "RULES.md",
+		heading: "## Rules\n", agentSpecific: true,
+	}, PriorityRules, "RULES.md")
+
+	// USER.md (agent > project > user > system, agent-specific)
+	b.RegisterSectionProvider(&fileProvider{
+		b: b, name: "user", filename: "USER.md",
+		heading: "## User Context\n", agentSpecific: true,
+	}, PriorityUser, "USER.md")
+
+	// SYSTEM.md (user dir only — generated once, injected every startup)
+	b.RegisterSectionProvider(&fileProvider{
+		b: b, name: "system", filename: "SYSTEM.md",
+		heading: "## System\n", userDirOnly: true,
+	}, PrioritySystem, "SYSTEM.md")
 }
 
 func NewBuilder() *Builder {
@@ -101,12 +268,14 @@ func NewBuilder() *Builder {
 	if err != nil {
 		zap.S().Warnw("cannot determine home directory, user-level context files disabled", "error", err)
 	}
-	return &Builder{
+	b := &Builder{
 		projectDir: ".dolphin",
 		userDir:    filepath.Join(home, ".dolphin"),
 		systemDir:  "/etc/dolphin",
 		statCache:  make(map[string]cachedFile),
 	}
+	registerBuiltinProviders(b)
+	return b
 }
 
 // SetRenderData sets the template render data for variable injection in context files.
@@ -131,114 +300,37 @@ func (b *Builder) sectionPriority(name string, defaultPriority int) int {
 }
 
 // BuildForAgent builds a system prompt for a specific agent.
-// For each context file, agent-specific directory is checked first, then
-// the default locations: current > project > user > system.
+// Sections are provided by registered SectionProvider instances, ordered
+// by priority (ascending). Default priorities can be overridden via
+// Builder.SectionPriority.
 //
-//	agentDir = .dolphin/agents/<name>/
-//	SOUL.md:	./ > projectDir > userDir > systemDir (optional)
-//	order for AGENTS.md: agentDir > ./ > projectDir > userDir > systemDir
-//	order for RULES.md:  agentDir > ./ > projectDir > userDir > systemDir
-//	order for USER.md:   agentDir > ./ > projectDir > userDir > systemDir
-//	SYSTEM.md: user dir only — generated once, injected every startup
-//
-// Sections are ordered by priority (ascending). Default priorities can be
-// overridden via Builder.SectionPriority.
+// Additional section providers can be registered externally via
+// RegisterSectionProvider (e.g. from agent/context.go for the subsystems
+// provider).
 func (b *Builder) BuildForAgent(agentName string) (string, error) {
-	var agentDir string
-	if agentName != "" {
-		agentDir = filepath.Join(b.projectDir, "agents", agentName)
-	}
-
-	var secs []section
 	b.loadedSections = nil
 
-	// SOUL.md (project > user > system, optional)
-	if soul := b.loadFileFallback("", "SOUL.md"); soul != "" {
-		content := "## Soul\n" + soul
-		secs = append(secs, section{
-			priority: b.sectionPriority("soul", PrioritySoul),
-			content:  content,
+	var secs []section
+	for _, rp := range b.providers {
+		content := rp.provider.Content(agentName)
+		if content == "" {
+			continue
+		}
+		priority := b.sectionPriority(rp.provider.Name(), rp.priority)
+		secs = append(secs, section{priority: priority, content: content})
+
+		var secPath string
+		if pp, ok := rp.provider.(SectionProviderWithPath); ok {
+			secPath = pp.Path(agentName)
+		}
+		b.loadedSections = append(b.loadedSections, SectionInfo{
+			Name:     rp.displayName,
+			Priority: priority,
+			Size:     len(content),
+			Path:     secPath,
 		})
-		secPath := b.resolveFileFallback("", "SOUL.md")
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SOUL.md", Priority: b.sectionPriority("soul", PrioritySoul), Size: len(content), Path: secPath})
 	}
 
-	// PREFACE (embedded, always)
-	content := DefaultPreface
-	secs = append(secs, section{
-		priority: b.sectionPriority("preface", PriorityPreface),
-		content:  content,
-	})
-	b.loadedSections = append(b.loadedSections, SectionInfo{Name: "PREFACE.md", Priority: b.sectionPriority("preface", PriorityPreface), Size: len(content)})
-
-	// BUILTIN SKILLS (embedded, always)
-	if BuiltinSkills != "" {
-		content := BuiltinSkills
-		secs = append(secs, section{
-			priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills),
-			content:  content,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "BUILTIN_SKILLS.md", Priority: b.sectionPriority("builtin_skills", PriorityBuiltinSkills), Size: len(content)})
-	}
-
-	// SELF-EVOLUTION SKILLS (embedded, only when SelfEvolution is enabled)
-	if b.SelfEvolution && SelfEvolutionSkills != "" {
-		content := SelfEvolutionSkills
-		secs = append(secs, section{
-			priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills),
-			content:  content,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SELF_EVOLUTION.md", Priority: b.sectionPriority("self_evo_skills", PrioritySelfEvoSkills), Size: len(content)})
-	}
-
-	// AGENTS.md (agent > project > user > system)
-	if agents := b.loadFileFallback(agentDir, "AGENTS.md"); agents != "" {
-		content := "## Agent Definitions\n" + agents
-		secs = append(secs, section{
-			priority: b.sectionPriority("agents", PriorityAgents),
-			content:  content,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "AGENTS.md", Priority: b.sectionPriority("agents", PriorityAgents), Size: len(content), Path: b.resolveFileFallback(agentDir, "AGENTS.md")})
-	}
-
-	// RULES.md
-	if rules := b.loadFileFallback(agentDir, "RULES.md"); rules != "" {
-		content := "## Rules\n" + rules
-		secs = append(secs, section{
-			priority: b.sectionPriority("rules", PriorityRules),
-			content:  content,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "RULES.md", Priority: b.sectionPriority("rules", PriorityRules), Size: len(content), Path: b.resolveFileFallback(agentDir, "RULES.md")})
-	}
-
-	// USER.md
-	if user := b.loadFileFallback(agentDir, "USER.md"); user != "" {
-		content := "## User Context\n" + user
-		secs = append(secs, section{
-			priority: b.sectionPriority("user", PriorityUser),
-			content:  content,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "USER.md", Priority: b.sectionPriority("user", PriorityUser), Size: len(content), Path: b.resolveFileFallback(agentDir, "USER.md")})
-	}
-
-	// SYSTEM.md (user dir only — generated once, injected every startup)
-	if sys := b.loadSystemMD(); sys != "" {
-		content := "## System\n" + sys
-		secs = append(secs, section{
-			priority: b.sectionPriority("system", PrioritySystem),
-			content:  content,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SYSTEM.md", Priority: b.sectionPriority("system", PrioritySystem), Size: len(content), Path: filepath.Join(b.userDir, "SYSTEM.md")})
-	}
-
-	// SubSystems (programmatic, from subsystem registry)
-	if md := b.LoadSubSystemMD(); md != "" {
-		secs = append(secs, section{
-			priority: b.sectionPriority("subsystems", PrioritySubSystems),
-			content:  md,
-		})
-		b.loadedSections = append(b.loadedSections, SectionInfo{Name: "SUBSYSTEMS.md", Priority: b.sectionPriority("subsystems", PrioritySubSystems), Size: len(md)})
-	}
 	// Sort by priority ascending
 	sort.Slice(secs, func(i, j int) bool {
 		return secs[i].priority < secs[j].priority

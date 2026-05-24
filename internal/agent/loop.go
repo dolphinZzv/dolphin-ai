@@ -23,6 +23,8 @@ import (
 
 	"dolphin/internal/agent/compressor"
 	"dolphin/internal/agent/provider"
+	ctxpkg "dolphin/internal/context"
+	"dolphin/internal/subsystem"
 
 	"go.uber.org/zap"
 )
@@ -33,7 +35,7 @@ type Agent struct {
 	sessMgr            *session.Manager
 	toolReg            *mcp.Registry
 	provider           provider.Provider
-	ctxBuilder         *ContextBuilder
+	ctxBuilder         *ctxpkg.Builder
 	compressor         compressor.Compressor
 	hooks              *hook.Registry
 	events             *event.EventBus
@@ -67,12 +69,17 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 	providers := cfg.LLM.EffectiveProviders()
 	provider, selIdx := selectProvider(cfg)
 
+	b := ctxpkg.NewBuilder()
+	b.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("subsystems",
+		func(agentName string) string { return subsystem.ContextMD() },
+	), ctxpkg.PrioritySubSystems, "SUBSYSTEMS.md")
+
 	a := &Agent{
 		cfg:                cfg,
 		sessMgr:            sessMgr,
 		toolReg:            toolReg,
 		provider:           provider,
-		ctxBuilder:         NewContextBuilder(),
+		ctxBuilder:         b,
 		availableProviders: providers,
 		providerIndex:      selIdx,
 	}
@@ -358,7 +365,7 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 	}()
 
 	// Build system prompt
-	a.ctxBuilder.SetRenderData(a.cfg)
+	a.ctxBuilder.SetRenderData(ctxpkg.NewRenderData(a.cfg))
 	systemPrompt, err := a.ctxBuilder.Build()
 	if err != nil {
 		zap.S().Errorw("build context failed", "error", err)

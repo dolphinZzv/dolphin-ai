@@ -73,17 +73,20 @@ type Event struct {
 // indefinitely.
 type Handler func(ctx context.Context, evt Event)
 
-// handlerEntry wraps a handler with a unique ID for unsubscribe support.
+// handlerEntry wraps a handler with a buffered channel and unique ID.
 type handlerEntry struct {
 	id      string
 	handler Handler
+	ch      chan Event
 }
 
 // EventBus dispatches events to subscribers. It is safe for concurrent use.
+// Each subscriber has a dedicated goroutine that reads from a buffered channel.
+// When a subscriber's channel is full, events are dropped with a warning.
 type EventBus struct {
 	mu       sync.RWMutex
-	subs     map[Type][]handlerEntry // exact-type subscribers
-	wildcard []handlerEntry          // "*" subscribers
+	subs     map[Type][]*handlerEntry // exact-type subscribers
+	wildcard []*handlerEntry          // "*" subscribers
 
 	buffer int
 
@@ -103,7 +106,7 @@ func NewEventBus(bufferSize int) *EventBus {
 		bufferSize = 256
 	}
 	return &EventBus{
-		subs:          make(map[Type][]handlerEntry),
+		subs:          make(map[Type][]*handlerEntry),
 		buffer:        bufferSize,
 		webhookEvents: make(map[Type]bool),
 		webhookClient: &http.Client{Timeout: 10 * time.Second},
@@ -116,14 +119,28 @@ func (b *EventBus) On(t Type, h Handler) (unsubscribe func()) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	entry := handlerEntry{id: xid.New().String(), handler: h}
+	entry := &handlerEntry{
+		id:      xid.New().String(),
+		handler: h,
+		ch:      make(chan Event, b.buffer),
+	}
 
 	if t == "*" {
 		b.wildcard = append(b.wildcard, entry)
-		return func() { b.removeHandler("", entry.id) }
+	} else {
+		b.subs[t] = append(b.subs[t], entry)
 	}
-	b.subs[t] = append(b.subs[t], entry)
+	go b.eventLoop(entry)
+
 	return func() { b.removeHandler(t, entry.id) }
+}
+
+// eventLoop reads events from the handler's channel and dispatches them.
+// Runs in a dedicated goroutine per handler subscription.
+func (b *EventBus) eventLoop(entry *handlerEntry) {
+	for evt := range entry.ch {
+		b.dispatch(context.Background(), entry.handler, evt)
+	}
 }
 
 func (b *EventBus) removeHandler(t Type, id string) {
@@ -183,13 +200,9 @@ func (b *EventBus) Emit(ctx context.Context, evt Event) {
 	}
 
 	b.mu.RLock()
-	handlers := make([]Handler, 0, len(b.subs[evt.Type])+len(b.wildcard))
-	for _, e := range b.subs[evt.Type] {
-		handlers = append(handlers, e.handler)
-	}
-	for _, e := range b.wildcard {
-		handlers = append(handlers, e.handler)
-	}
+	entries := make([]*handlerEntry, 0, len(b.subs[evt.Type])+len(b.wildcard))
+	entries = append(entries, b.subs[evt.Type]...)
+	entries = append(entries, b.wildcard...)
 	logWriter := b.logWriter
 	webhookURL := b.webhookURL
 	shouldWebhook := b.webhookEvents[evt.Type]
@@ -205,9 +218,14 @@ func (b *EventBus) Emit(ctx context.Context, evt Event) {
 		go b.sendWebhook(ctx, webhookURL, evt)
 	}
 
-	// Dispatch to subscriber handlers
-	for _, h := range handlers {
-		go b.dispatch(ctx, h, evt)
+	// Dispatch to subscriber channels (non-blocking send).
+	// If a handler's channel is full, the event is dropped.
+	for _, entry := range entries {
+		select {
+		case entry.ch <- evt:
+		default:
+			zap.S().Warnw("event handler buffer full, dropping event", "type", string(evt.Type))
+		}
 	}
 }
 

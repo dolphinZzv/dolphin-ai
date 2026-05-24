@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"dolphin/internal/config"
+	ctxpkg "dolphin/internal/context"
 	"dolphin/internal/mcp"
 	"dolphin/internal/mcp/shell"
 	"dolphin/internal/session"
@@ -275,7 +276,7 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	}()
 
 	// Build system prompt for this agent
-	inst.agent.ctxBuilder.SetRenderData(inst.agent.cfg)
+	inst.agent.ctxBuilder.SetRenderData(ctxpkg.NewRenderData(inst.agent.cfg))
 	systemPrompt, err := inst.agent.ctxBuilder.BuildForAgent(inst.Def.Name)
 	if err != nil {
 		zap.S().Errorw("build agent context failed", "agent", inst.Def.Name, "error", err)

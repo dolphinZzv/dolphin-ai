@@ -149,8 +149,8 @@ func (c *Coordinator) printHelp(io transport.UserIO) {
 	sb.WriteString("\n\n")
 	sb.WriteString(i18n.TL(i18n.KeyHelpTopMCP))
 	sb.WriteString("\n")
-	stats := c.toolReg.ToolStats()
-	toolDefs := c.toolReg.MostUsedTools(10)
+	stats := c.agent.toolReg.ToolStats()
+	toolDefs := c.agent.toolReg.MostUsedTools(10)
 	if len(toolDefs) > 0 {
 		for _, t := range toolDefs {
 			usage := ""
@@ -195,7 +195,7 @@ func (c *Coordinator) printAgents(io transport.UserIO) {
 }
 
 func (c *Coordinator) printMCP(io transport.UserIO) {
-	toolDefs := c.toolReg.List()
+	toolDefs := c.agent.toolReg.List()
 	if len(toolDefs) == 0 {
 		io.WriteLine("No MCP tools loaded.")
 		return
@@ -465,7 +465,7 @@ func (c *Coordinator) printCronTasks(io transport.UserIO) {
 }
 
 func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
-	providers := c.availableProviders
+	providers := c.agent.availableProviders
 	if len(providers) == 0 {
 		io.WriteLine("No providers configured")
 		return
@@ -478,7 +478,7 @@ func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
 		io.WriteLine("  " + strings.Repeat("-", 55))
 		for i, pc := range providers {
 			status := ""
-			if i == c.providerIndex {
+			if i == c.agent.providerIndex {
 				status = "← active"
 			}
 			io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", pc.Name, pc.Model, status))
@@ -490,8 +490,8 @@ func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
 
 	// Switch to named provider
 	name := args[0]
-	if c.switchToProvider(name) {
-		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.provider.Name()))
+	if c.agent.switchToProvider(name) {
+		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.agent.provider.Name()))
 	} else {
 		io.WriteLine(fmt.Sprintf("provider.Provider %q not found or unhealthy", name))
 	}
@@ -513,8 +513,8 @@ func (c *Coordinator) handleCancelCmd(args []string, io transport.UserIO) {
 
 func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io transport.UserIO) {
 	io.WriteLine(i18n.TL(i18n.KeyStatusHeader))
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusProvider), c.provider.Name()))
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusModel), c.cfg.LLM.Model))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusProvider), c.agent.provider.Name()))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusModel), c.agent.cfg.LLM.Model))
 
 	if sess != nil {
 		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusSession), sess.ID, state.Turn))
@@ -531,7 +531,7 @@ func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io t
 	}
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusAgents), len(agents), busy))
 
-	tools := c.toolReg.List()
+	tools := c.agent.toolReg.List()
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusMCPTools), len(tools)))
 
 	if c.skills != nil {
@@ -567,7 +567,7 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 		if !strings.HasSuffix(sectionName, ".md") {
 			sectionName += ".md"
 		}
-		content := c.ctxBuilder.LoadSection(sectionName)
+		content := c.agent.ctxBuilder.LoadSection(sectionName)
 		if content == "" {
 			io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSectionNF), sectionName))
 			return
@@ -585,9 +585,9 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 	}
 	io.WriteLine(fmt.Sprintf("Session:      %s", sessionID))
 	io.WriteLine(fmt.Sprintf("Tokens:       in=%d [cache=%d miss=%d] out=%d", c.totalInputTokens, c.totalCachedTokens, c.totalMissedTokens, c.totalOutputTokens))
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextProvider), c.cfg.LLM.Model, c.provider.Name()))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextProvider), c.agent.cfg.LLM.Model, c.agent.provider.Name()))
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextConfigPath), len(configurablePaths)))
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextMCPTools), len(c.toolReg.List())))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextMCPTools), len(c.agent.toolReg.List())))
 
 	agents := c.pool.List()
 	busyCount := 0
@@ -615,9 +615,9 @@ func (c *Coordinator) printContext(args []string, io transport.UserIO) {
 	var m runtime.MemStats
 	runtime.ReadMemStats(&m)
 	io.WriteLine(fmt.Sprintf("Memory:       %d MB used", m.Alloc/1024/1024))
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSelfEvolve), c.cfg.Flags.SelfEvolution))
+	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyContextSelfEvolve), c.agent.cfg.Flags.SelfEvolution))
 	io.WriteLine("")
-	if loaded := c.ctxBuilder.LoadedSections(); len(loaded) > 0 {
+	if loaded := c.agent.ctxBuilder.LoadedSections(); len(loaded) > 0 {
 		io.WriteLine(i18n.TL(i18n.KeyContextSectionsHd))
 		for _, s := range loaded {
 			size := formatSize(s.Size)
@@ -678,7 +678,7 @@ func (c *Coordinator) printCurrentContext(io transport.UserIO) {
 }
 
 func (c *Coordinator) handleSessions(io transport.UserIO) {
-	dir := c.sessMgr.Dir()
+	dir := c.agent.sessMgr.Dir()
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		io.WriteLine(fmt.Sprintf("Cannot read sessions dir: %v", err))
@@ -737,7 +737,7 @@ func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
 	if len(args) > 1 {
 		formatType = args[1]
 	}
-	sessionPath := filepath.Join(c.sessMgr.Dir(), args[0]+".jsonl")
+	sessionPath := filepath.Join(c.agent.sessMgr.Dir(), args[0]+".jsonl")
 	events, err := session.ReadEvents(sessionPath)
 	if err != nil {
 		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
@@ -781,7 +781,7 @@ func (c *Coordinator) handleSession(args []string, io transport.UserIO) {
 		sessionID = string(c.currentSess.ID)
 	}
 
-	sessionPath := filepath.Join(c.sessMgr.Dir(), sessionID+".jsonl")
+	sessionPath := filepath.Join(c.agent.sessMgr.Dir(), sessionID+".jsonl")
 	events, err := session.ReadEvents(sessionPath)
 	if err != nil {
 		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
@@ -880,7 +880,7 @@ func (c *Coordinator) dumpSessionMermaid(events []session.SessionEvent, id strin
 }
 
 func (c *Coordinator) printTransport(io transport.UserIO) {
-	tc := c.cfg.Transport
+	tc := c.agent.cfg.Transport
 	io.WriteLine("Transports:")
 	if tc.Stdio.Enabled {
 		io.WriteLine("  stdio     enabled")
@@ -917,7 +917,7 @@ func (c *Coordinator) handleConfigListCmd(io transport.UserIO) {
 			io.WriteLine(fmt.Sprintf("── %s ──", section))
 			lastSection = section
 		}
-		val := entry.get(c.cfg)
+		val := entry.get(c.agent.cfg)
 		io.WriteLine(fmt.Sprintf("  %s = %v", entry.path, formatValue(val)))
 		io.WriteLine(fmt.Sprintf("    %s", entry.description))
 	}
@@ -941,13 +941,13 @@ func (c *Coordinator) handleConfigGetCmd(args []string, io transport.UserIO) {
 			return
 		}
 		for _, ch := range children {
-			val := ch.get(c.cfg)
+			val := ch.get(c.agent.cfg)
 			io.WriteLine(fmt.Sprintf("%s = %v", ch.path, formatValue(val)))
 			io.WriteLine(fmt.Sprintf("  %s", ch.description))
 		}
 		return
 	}
-	val := entry.get(c.cfg)
+	val := entry.get(c.agent.cfg)
 	io.WriteLine(fmt.Sprintf("%s = %v", entry.path, formatValue(val)))
 	io.WriteLine(fmt.Sprintf("  %s", entry.description))
 }
@@ -968,20 +968,20 @@ func (c *Coordinator) handleConfigSetCmd(args []string, io transport.UserIO) {
 		return
 	}
 
-	oldVal := entry.get(c.cfg)
+	oldVal := entry.get(c.agent.cfg)
 	coerced, err := coerceValue(valueStr, oldVal)
 	if err != nil {
 		io.WriteLine(fmt.Sprintf("Invalid value for %s: %v", path, err))
 		return
 	}
 
-	if err = entry.set(c.cfg, coerced); err != nil {
+	if err = entry.set(c.agent.cfg, coerced); err != nil {
 		io.WriteLine(fmt.Sprintf("Failed to set %s: %v", path, err))
 		return
 	}
 
 	if entry.needsSync {
-		c.rebuildCompressor()
+		c.agent.rebuildCompressor()
 		zap.S().Infow("config changed: compressor rebuilt", "path", path)
 	}
 
@@ -992,7 +992,7 @@ func (c *Coordinator) handleConfigSetCmd(args []string, io transport.UserIO) {
 			zap.S().Warnw("failed to parse existing config", "path", filePath, "error", err)
 		}
 	}
-	overlayConfig(existing, c.cfg)
+	overlayConfig(existing, c.agent.cfg)
 	data, err := yaml.Marshal(existing)
 	if err != nil {
 		io.WriteLine(fmt.Sprintf("Set %s = %v (was: %v). WARN: failed to persist: %v", path, formatValue(coerced), formatValue(oldVal), err))
@@ -1047,7 +1047,7 @@ func (c *Coordinator) handleFeedback(args []string, io transport.UserIO) {
 		io.WriteLine("Please provide your feedback text as arguments.")
 		return
 	}
-	ecfg := c.cfg.Transport.Email
+	ecfg := c.agent.cfg.Transport.Email
 	if ecfg.SMTPHost == "" {
 		io.WriteLine("Email SMTP not configured. Set transport.email in config.yaml to send feedback.")
 		return
@@ -1165,12 +1165,12 @@ func (c *Coordinator) handleNew(sess *session.Session, state *LoopState, io tran
 	oldID := sess.ID
 
 	// Generate summary and close the old session
-	c.generateSummary(sess, state)
+	c.agent.generateSummary(sess, state)
 	sess.Close()
-	c.sessMgr.Remove(sess.ID)
+	c.agent.sessMgr.Remove(sess.ID)
 
 	// Create a new child session
-	newSess, err := c.sessMgr.NewSession(c.cfg.Session.MaxLoop)
+	newSess, err := c.agent.sessMgr.NewSession(c.agent.cfg.Session.MaxLoop)
 	if err != nil {
 		io.WriteLine(fmt.Sprintf("Failed to create new session: %v", err))
 		return

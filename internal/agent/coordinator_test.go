@@ -13,6 +13,7 @@ import (
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
+	ctxpkg "dolphin/internal/context"
 	"dolphin/internal/event"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp"
@@ -442,7 +443,7 @@ func TestCoordinatorRunExitCommand(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -475,7 +476,7 @@ func TestCoordinatorRunHelpCommand(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -522,7 +523,7 @@ func TestCoordinatorRunSkillsCommand(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -561,7 +562,7 @@ func TestCoordinatorRunCommandsListing(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -614,7 +615,7 @@ func TestCoordinatorRunCustomCommandDispatchedToLLM(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -661,7 +662,7 @@ func TestCoordinatorRunUnknownSlashFallsThrough(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -694,7 +695,7 @@ func TestCoordinatorRunCancelAllTasks(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -778,7 +779,7 @@ func TestCoordinatorCancelSpecificTask(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -912,7 +913,7 @@ func TestCoordinatorHandleSearchMCPToolsNoResults(t *testing.T) {
 	toolReg := mcp.NewRegistry(cfg)
 	toolReg.Register(&mockTool{name: "shell"})
 
-	agt := &Agent{cfg: cfg, toolReg: toolReg, ctxBuilder: NewContextBuilder()}
+	agt := &Agent{cfg: cfg, toolReg: toolReg, ctxBuilder: ctxpkg.NewBuilder()}
 	c := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
 	result, err := c.handleSearchMCPTools(context.Background(), json.RawMessage(`{"query":"nonexistent"}`))
 	if err != nil {
@@ -931,7 +932,7 @@ func TestCoordinatorHandleSearchMCPToolsWithResults(t *testing.T) {
 	toolReg.Register(&mockTool{name: "shell"})
 	toolReg.Register(&mockTool{name: "read_file"})
 
-	agt := &Agent{cfg: cfg, toolReg: toolReg, ctxBuilder: NewContextBuilder()}
+	agt := &Agent{cfg: cfg, toolReg: toolReg, ctxBuilder: ctxpkg.NewBuilder()}
 	c := NewCoordinator(agt, NewAgentPool(context.Background(), PoolConfig{}))
 	result, err := c.handleSearchMCPTools(context.Background(), json.RawMessage(`{"query":"shell"}`))
 	if err != nil {
@@ -1370,7 +1371,7 @@ func TestE2ETransportErrorSkipsSummary(t *testing.T) {
 
 func TestConfigToolList(t *testing.T) {
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{"action": "list"})
 	result, err := c.handleConfig(context.Background(), input)
 	if err != nil {
@@ -1390,7 +1391,7 @@ func TestConfigToolList(t *testing.T) {
 func TestConfigToolGet(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.LLM.MaxSubTurns = 7
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{"action": "get", "path": "llm.max_sub_turns"})
 	result, err := c.handleConfig(context.Background(), input)
 	if err != nil {
@@ -1406,7 +1407,7 @@ func TestConfigToolGet(t *testing.T) {
 
 func TestConfigToolGetInvalidPath(t *testing.T) {
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{"action": "get", "path": "nonexistent.path"})
 	result, err := c.handleConfig(context.Background(), input)
 	if err != nil {
@@ -1421,7 +1422,7 @@ func TestConfigToolSetInt(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = true
 	cfg.MCP.Shell.TimeoutSeconds = 30
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
@@ -1444,7 +1445,7 @@ func TestConfigToolSetBool(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = true
 	cfg.MCP.CDP.Headless = false
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
@@ -1467,7 +1468,7 @@ func TestConfigToolSetString(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = true
 	cfg.LLM.CompressMode = "drop"
-	c := &Coordinator{Agent: &Agent{cfg: cfg, compressor: &compressor.DropCompressor{}}}
+	c := &Coordinator{agent: &Agent{cfg: cfg, compressor: &compressor.DropCompressor{}}}
 
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
@@ -1489,7 +1490,7 @@ func TestConfigToolSetString(t *testing.T) {
 func TestConfigToolSetInvalidPath(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = true
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
 		"path":   "mcp.nonexistent",
@@ -1507,7 +1508,7 @@ func TestConfigToolSetInvalidPath(t *testing.T) {
 func TestConfigToolSetWrongType(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = true
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
 		"path":   "mcp.shell.enabled",
@@ -1526,7 +1527,7 @@ func TestConfigToolSave(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = true
 	cfg.MCP.Shell.TimeoutSeconds = 99
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	// Save to project config path (within allowed config dir)
 	savePath := filepath.Join(config.ProjectConfigDir, "test-"+config.ConfigFileName+".yaml")
 
@@ -1555,7 +1556,7 @@ func TestConfigToolSave(t *testing.T) {
 
 func TestConfigToolUnknownAction(t *testing.T) {
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{"action": "invalid"})
 	result, err := c.handleConfig(context.Background(), input)
 	if err != nil {
@@ -1569,7 +1570,7 @@ func TestConfigToolUnknownAction(t *testing.T) {
 func TestConfigToolSetWithoutSelfEvolution(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = false
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]any{
 		"action": "set",
 		"path":   "mcp.shell.timeout_seconds",
@@ -1590,7 +1591,7 @@ func TestConfigToolSetWithoutSelfEvolution(t *testing.T) {
 func TestConfigToolSaveWithoutSelfEvolution(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = false
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{
 		"action": "save",
 	})
@@ -1609,7 +1610,7 @@ func TestConfigToolSaveWithoutSelfEvolution(t *testing.T) {
 func TestConfigToolDeleteWithoutSelfEvolution(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = false
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]any{
 		"action": "delete",
 		"path":   "mcp.shell.timeout_seconds",
@@ -1629,7 +1630,7 @@ func TestConfigToolDeleteWithoutSelfEvolution(t *testing.T) {
 func TestConfigToolListWithoutSelfEvolution(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = false
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{"action": "list"})
 	result, err := c.handleConfig(context.Background(), input)
 	if err != nil {
@@ -1646,7 +1647,7 @@ func TestConfigToolListWithoutSelfEvolution(t *testing.T) {
 func TestConfigToolGetWithoutSelfEvolution(t *testing.T) {
 	cfg := config.DefaultConfig()
 	cfg.Flags.SelfEvolution = false
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{
 		"action": "get",
 		"path":   "mcp.shell.timeout_seconds",
@@ -1662,7 +1663,7 @@ func TestConfigToolGetWithoutSelfEvolution(t *testing.T) {
 
 func TestHandleReload(t *testing.T) {
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg, events: event.NewEventBus(10)}}
+	c := &Coordinator{agent: &Agent{cfg: cfg, events: event.NewEventBus(10)}}
 	_, err := c.handleReload(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1679,7 +1680,7 @@ func TestHandleReloadEmitsEvent(t *testing.T) {
 		received <- evt
 	})
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg, events: bus}}
+	c := &Coordinator{agent: &Agent{cfg: cfg, events: bus}}
 	_, err := c.handleReload(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1696,7 +1697,7 @@ func TestHandleReloadEmitsEvent(t *testing.T) {
 
 func TestHandleReloadWithoutEvents(t *testing.T) {
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	_, err := c.handleReload(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1710,7 +1711,7 @@ func TestHandleContextTool(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.DefaultConfig()
 	c := &Coordinator{
-		Agent: &Agent{cfg: cfg},
+		agent: &Agent{cfg: cfg},
 		pool:  NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
 	}
 	result, err := c.handleContextTool(ctx, nil)
@@ -1730,11 +1731,11 @@ func TestPrintContextConsole(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.DefaultConfig()
 	c := &Coordinator{
-		Agent: &Agent{
+		agent: &Agent{
 			cfg:        cfg,
 			provider:   &mockProvider{},
 			toolReg:    mcp.NewRegistry(cfg),
-			ctxBuilder: NewContextBuilder(),
+			ctxBuilder: ctxpkg.NewBuilder(),
 		},
 		pool: NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
 	}
@@ -1817,7 +1818,7 @@ func TestCoordinatorSkillNewViaRun(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -1860,7 +1861,7 @@ func TestCoordinatorStatusCommand(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -1913,7 +1914,7 @@ func TestCoordinatorStatusCommandMinimal(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -1949,7 +1950,7 @@ func TestCoordinatorSessionsCommandNoSessions(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -1993,7 +1994,7 @@ func TestCoordinatorSessionsCommandWithSessions(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -2026,7 +2027,7 @@ func TestCoordinatorHelpIncludesStatusAndSessions(t *testing.T) {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 
 	pool := NewAgentPool(context.Background(), PoolConfig{})
@@ -2046,7 +2047,7 @@ func TestCoordinatorHelpIncludesStatusAndSessions(t *testing.T) {
 
 func TestConfigToolListShowsAllRegisteredPaths(t *testing.T) {
 	cfg := config.DefaultConfig()
-	c := &Coordinator{Agent: &Agent{cfg: cfg}}
+	c := &Coordinator{agent: &Agent{cfg: cfg}}
 	input, _ := json.Marshal(map[string]string{"action": "list"})
 	result, err := c.handleConfig(context.Background(), input)
 	if err != nil {

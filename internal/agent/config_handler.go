@@ -406,17 +406,17 @@ func (c *Coordinator) handleConfig(ctx context.Context, input json.RawMessage) (
 	case "get":
 		return c.handleConfigGet(params.Path)
 	case "set":
-		if !c.cfg.Flags.SelfEvolution {
+		if !c.agent.cfg.Flags.SelfEvolution {
 			return configWriteErr(), nil
 		}
 		return c.handleConfigSet(params.Path, params.Value)
 	case "save":
-		if !c.cfg.Flags.SelfEvolution {
+		if !c.agent.cfg.Flags.SelfEvolution {
 			return configWriteErr(), nil
 		}
 		return c.handleConfigSave(params.File)
 	case "delete":
-		if !c.cfg.Flags.SelfEvolution {
+		if !c.agent.cfg.Flags.SelfEvolution {
 			return configWriteErr(), nil
 		}
 		return c.handleConfigDelete(params.Path)
@@ -439,7 +439,7 @@ func (c *Coordinator) handleConfigList() (*mcp.ToolResult, error) {
 			fmt.Fprintf(&b, "\n── %s ──\n", section)
 			lastSection = section
 		}
-		val := entry.get(c.cfg)
+		val := entry.get(c.agent.cfg)
 		fmt.Fprintf(&b, "  %s = %v\n", entry.path, formatValue(val))
 		fmt.Fprintf(&b, "    %s\n", entry.description)
 	}
@@ -462,12 +462,12 @@ func (c *Coordinator) handleConfigGet(path string) (*mcp.ToolResult, error) {
 		var b strings.Builder
 		fmt.Fprintf(&b, "=== %s ===\n\n", path)
 		for _, ch := range children {
-			val := ch.get(c.cfg)
+			val := ch.get(c.agent.cfg)
 			fmt.Fprintf(&b, "%s = %v\n  %s\n\n", ch.path, formatValue(val), ch.description)
 		}
 		return &mcp.ToolResult{Content: b.String()}, nil
 	}
-	val := entry.get(c.cfg)
+	val := entry.get(c.agent.cfg)
 	return &mcp.ToolResult{
 		Content: fmt.Sprintf("%s = %v\n%s", entry.path, formatValue(val), entry.description),
 	}, nil
@@ -481,13 +481,13 @@ func (c *Coordinator) handleConfigSet(path string, value any) (*mcp.ToolResult, 
 	if entry == nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("unknown path %q — use list to see all paths", path), IsError: true}, nil
 	}
-	oldVal := entry.get(c.cfg)
-	if err := entry.set(c.cfg, value); err != nil {
+	oldVal := entry.get(c.agent.cfg)
+	if err := entry.set(c.agent.cfg, value); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("set %s: %v", path, err), IsError: true}, nil
 	}
 
 	if entry.needsSync {
-		c.rebuildCompressor()
+		c.agent.rebuildCompressor()
 		zap.S().Infow("config changed: compressor rebuilt", "path", path)
 	}
 
@@ -525,7 +525,7 @@ func (c *Coordinator) handleConfigSave(filePath string) (*mcp.ToolResult, error)
 	}
 
 	// Overlay all tracked config values onto the map
-	overlayConfig(existing, c.cfg)
+	overlayConfig(existing, c.agent.cfg)
 
 	// Marshal and write
 	data, err := yaml.Marshal(existing)
@@ -559,7 +559,7 @@ func (c *Coordinator) handleConfigDelete(path string) (*mcp.ToolResult, error) {
 	if entry == nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("unknown path %q — use list to see all paths", path), IsError: true}, nil
 	}
-	oldVal := entry.get(c.cfg)
+	oldVal := entry.get(c.agent.cfg)
 	var zero any
 	switch oldVal.(type) {
 	case string:
@@ -575,11 +575,11 @@ func (c *Coordinator) handleConfigDelete(path string) (*mcp.ToolResult, error) {
 	default:
 		zero = nil
 	}
-	if err := entry.set(c.cfg, zero); err != nil {
+	if err := entry.set(c.agent.cfg, zero); err != nil {
 		return &mcp.ToolResult{Content: fmt.Sprintf("delete %s: %v", path, err), IsError: true}, nil
 	}
 	if entry.needsSync {
-		c.rebuildCompressor()
+		c.agent.rebuildCompressor()
 	}
 	zap.S().Infow("config deleted (reset to zero)", "path", path, "old", oldVal)
 	return &mcp.ToolResult{

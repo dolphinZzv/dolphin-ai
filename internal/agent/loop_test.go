@@ -12,6 +12,7 @@ import (
 
 	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
+	ctxpkg "dolphin/internal/context"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
@@ -148,7 +149,7 @@ func newTestAgent(cfg *config.Config, provider provider.Provider) *Agent {
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   provider,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 }
 
@@ -799,7 +800,7 @@ func newTestAgentWithProvider(cfg *config.Config, prov provider.Provider) *Agent
 		sessMgr:    sessMgr,
 		toolReg:    toolReg,
 		provider:   prov,
-		ctxBuilder: NewContextBuilder(),
+		ctxBuilder: ctxpkg.NewBuilder(),
 	}
 }
 

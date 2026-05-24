@@ -1,0 +1,153 @@
+package config
+
+import "github.com/spf13/viper"
+
+func setDefaults(v *viper.Viper) {
+	v.SetDefault("name", "dolphin")
+
+	v.SetDefault("llm.type", "openai")
+	v.SetDefault("llm.base_url", "https://api.openai.com/v1")
+	v.SetDefault("llm.model", "gpt-4o")
+	v.SetDefault("llm.max_tokens", 4096)
+	v.SetDefault("llm.temperature", 0.7)
+	v.SetDefault("llm.max_sub_turns", 10)
+	v.SetDefault("llm.max_context_tokens", 1048576)
+	v.SetDefault("llm.compress_mode", "drop")
+	v.SetDefault("llm.segment_merge_limit", 100)
+
+	v.SetDefault("session.max_loop", 50)
+	v.SetDefault("session.summary", true)
+
+	v.SetDefault("transport.stdio.enabled", true)
+	v.SetDefault("transport.stdio.markdown_render", true)
+	v.SetDefault("transport.stdio.markdown_style", "auto")
+	v.SetDefault("transport.ssh.enabled", false)
+	v.SetDefault("transport.ssh.markdown_render", false)
+	v.SetDefault("transport.ssh.markdown_style", "auto")
+	v.SetDefault("transport.ssh.addr", ":2222")
+	v.SetDefault("transport.ssh.host_key", "~/.ssh/id_ed25519")
+	v.SetDefault("transport.ssh.username", "dolphin")
+	v.SetDefault("transport.ssh.password", "")
+	v.SetDefault("transport.mqtt.enabled", false)
+	v.SetDefault("transport.mqtt.broker", "tcp://localhost:1883")
+	v.SetDefault("transport.mqtt.subscribe_topic", "/agent/dolphin")
+	v.SetDefault("transport.mqtt.publish_topic", "/agent/dolphin/message")
+	v.SetDefault("transport.mqtt.client_id", "dolphin-agent")
+
+	v.SetDefault("servers.mqtt_broker.enabled", true)
+	v.SetDefault("servers.mqtt_broker.addr", ":1883")
+
+	v.SetDefault("transport.email.enabled", false)
+	v.SetDefault("transport.email.smtp_port", 587)
+	v.SetDefault("transport.email.imap_port", 993)
+	v.SetDefault("transport.email.use_tls", true)
+	v.SetDefault("transport.email.poll_interval", "10s")
+	v.SetDefault("transport.email.allowed_senders", []string{})
+
+	v.SetDefault("transport.dingtalk.enabled", false)
+
+	v.SetDefault("transport.a2a.enabled", false)
+	v.SetDefault("transport.a2a.listen_addr", ":8334")
+	v.SetDefault("transport.a2a.agent_id", "dolphin")
+	v.SetDefault("transport.a2a.agent_name", "Dolphin AI Agent")
+	v.SetDefault("transport.a2a.agent_version", "0.1.0")
+	v.SetDefault("transport.a2a.agent_description", "Cross-terminal/email/chat/SSH AI agent")
+	v.SetDefault("transport.a2a.capabilities", []string{"task-execution", "shell-command", "web-search"})
+	v.SetDefault("transport.a2a.sync_timeout", "60s")
+	v.SetDefault("transport.a2a.api_key", "")
+	v.SetDefault("transport.a2a.tls_enabled", false)
+	v.SetDefault("transport.a2a.tls_cert_file", "")
+	v.SetDefault("transport.a2a.tls_key_file", "")
+
+	v.SetDefault("session.max_age", "24h")
+	v.SetDefault("session.resume", false)
+
+	v.SetDefault("mcp.shell.enabled", true)
+	v.SetDefault("mcp.shell.allow_unrestricted", true)
+	v.SetDefault("mcp.shell.allowed_commands", []string{"date"})
+	v.SetDefault("mcp.shell.timeout_seconds", 30)
+	v.SetDefault("mcp.shell.priority", 10)
+	v.SetDefault("mcp.shell.max_command_length", 4096)
+	v.SetDefault("mcp.cdp.enabled", true)
+	v.SetDefault("mcp.cdp.headless", true)
+	v.SetDefault("mcp.cdp.priority", 1000)
+	v.SetDefault("mcp.cdp.idle_timeout", 300)
+	v.SetDefault("mcp.cdp.startup_timeout", 30)
+	v.SetDefault("mcp.email.enabled", true)
+	v.SetDefault("mcp.email.priority", 500)
+
+	v.SetDefault("mcp.webhook.enabled", true)
+	v.SetDefault("mcp.webhook.priority", 100)
+
+	v.SetDefault("mcp.web_search.enabled", true)
+	v.SetDefault("mcp.web_search.priority", 90)
+	v.SetDefault("mcp.web_search.provider", "duckduckgo")
+	v.SetDefault("mcp.web_search.api_key", "")
+
+	v.SetDefault("agent_pool.max_concurrency", 5)
+	v.SetDefault("agent_pool.default_timeout", 300)
+	v.SetDefault("agent_pool.workspace_dir", ".dolphin/workspaces")
+	v.SetDefault("agent_pool.idle_timeout", 600)
+	v.SetDefault("agent_pool.max_pending_results", 10)
+
+	v.SetDefault("skills.dir", ".dolphin/skills")
+	v.SetDefault("skills.max_top", 10)
+	v.SetDefault("skills.repos", []string{})
+
+	v.SetDefault("workflows.dir", ".dolphin/workflows")
+
+	v.SetDefault("crontab.file", ".dolphin/CRONTAB.md")
+	v.SetDefault("crontab.check_interval", "30s")
+
+	v.SetDefault("pprof.enabled", false)
+	v.SetDefault("pprof.addr", "127.0.0.1:6060")
+
+	v.SetDefault("diary.dir", ".dolphin/diary")
+	v.SetDefault("diary.max_day_sessions", 200)
+	v.SetDefault("diary.max_week_days", 7)
+	v.SetDefault("diary.max_month_weeks", 5)
+	v.SetDefault("diary.max_year_months", 12)
+	v.SetDefault("diary.max_total_mb", 500)
+
+	v.SetDefault("metrics.enabled", false)
+	v.SetDefault("metrics.addr", "127.0.0.1:9090")
+
+	v.SetDefault("health.enabled", false)
+	v.SetDefault("health.addr", "127.0.0.1:9091")
+
+	v.SetDefault("telemetry.enabled", false)
+	v.SetDefault("telemetry.service_name", "dolphin")
+	v.SetDefault("telemetry.exporter", "stdout")
+	v.SetDefault("telemetry.otlp_endpoint", "localhost:4317")
+	v.SetDefault("telemetry.otlp_headers", map[string]string{})
+	v.SetDefault("telemetry.sample_rate", 1.0)
+	v.SetDefault("telemetry.logs_enabled", false)
+	v.SetDefault("telemetry.metrics_enabled", false)
+
+	v.SetDefault("flags.self_evolution", false)
+
+	v.SetDefault("resource.enabled", false)
+	v.SetDefault("resource.interval", "30s")
+	v.SetDefault("resource.disk_paths", []string{"/"})
+	v.SetDefault("resource.max_bandwidth", 125000000)
+	v.SetDefault("resource.thresholds", []float64{20, 40, 60, 80})
+
+	v.SetDefault("sync_config", true)
+
+	v.SetDefault("update.enabled", true)
+	v.SetDefault("update.check_interval", "24h")
+	v.SetDefault("update.channel", "stable")
+	v.SetDefault("update.auto_install", false)
+
+	v.SetDefault("log_level", "info")
+	v.SetDefault("log_file", ".dolphin/logs/agent.log")
+	v.SetDefault("log_max_size", 100)
+	v.SetDefault("log_max_age", 30)
+	v.SetDefault("log_max_backup", 3)
+
+	v.SetDefault("plugins.enabled", true)
+	v.SetDefault("plugins.dir", "~/.dolphin/plugins/")
+	v.SetDefault("plugins.webhook_url", "")
+	v.SetDefault("plugins.heartbeat_turns", 0)
+	v.SetDefault("plugins.webhook_events", []string{"*"})
+}

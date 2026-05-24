@@ -9,12 +9,14 @@ import (
 )
 
 func testBuilder(projectDir, userDir, systemDir string) *Builder {
-	return &Builder{
+	b := &Builder{
 		projectDir: projectDir,
 		userDir:    userDir,
 		systemDir:  systemDir,
 		statCache:  make(map[string]cachedFile),
 	}
+	registerBuiltinProviders(b)
+	return b
 }
 
 func TestBuilderDefault(t *testing.T) {
