@@ -3,6 +3,7 @@ package stdio
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -100,6 +101,9 @@ func (t *StdioTransport) ReadLine() (string, error) {
 	for {
 		line, err := t.rl.Readline()
 		if err != nil {
+			if errors.Is(err, readline.ErrInterrupt) {
+				continue
+			}
 			return line, err
 		}
 		transport.MsgsReceived.Inc()

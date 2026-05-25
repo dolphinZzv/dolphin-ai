@@ -382,6 +382,7 @@ type PoolConfig struct {
 	WorkerStopTimeout   string `mapstructure:"worker_stop_timeout"`    // worker shutdown grace period, e.g. "5s"; empty = default 5s
 	MaxStaleDuration    string `mapstructure:"max_stale_duration"`     // max age for error agents before workspace cleanup, e.g. "1h"; empty = default 1h
 	EnableAgentLog      bool   `mapstructure:"enable_agent_log"`       // write agent execution log to workspace/agent.log
+	MaxAgentMessages    int    `mapstructure:"max_agent_messages"`     // max conversation messages retained per subagent, 0 = unlimited (default 100)
 }
 
 type SkillsConfig struct {

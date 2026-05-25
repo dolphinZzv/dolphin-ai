@@ -18,6 +18,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/mcp"
 	"dolphin/internal/scheduler"
+	scope "dolphin/internal/scope"
 	"dolphin/internal/session"
 	"dolphin/internal/subsystem"
 	"dolphin/internal/transport"
@@ -482,6 +483,36 @@ func (c *Coordinator) registerCoordinatorTools() {
 		)
 	}
 	// Register subsystem tools
+	// Scope routing tools (handlers check for nil scopeRouter internally)
+	c.registerCoordTool("resolve_file_scopes",
+		"Resolve file paths to scope names. Use this before dispatch_to_scope to determine which scope agent handles the files.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"paths": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "File paths to resolve (relative to project root)",
+				},
+			},
+			"required": []string{"paths"},
+		},
+		c.handleResolveFileScopes,
+	)
+	c.registerCoordTool("dispatch_to_scope",
+		"Dispatch a task to a scope agent and wait for the result. Use resolve_file_scopes first to find the right scope. This is synchronous — you get the result in the same turn.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"scope":   map[string]any{"type": "string", "description": "Scope name (from resolve_file_scopes)"},
+				"task":    map[string]any{"type": "string", "description": "Detailed task description"},
+				"timeout": map[string]any{"type": "integer", "description": "Timeout in seconds (optional)"},
+			},
+			"required": []string{"scope", "task"},
+		},
+		c.handleDispatchToScope,
+	)
+
 	for _, td := range subsystem.ToolDefs() {
 		if td.SelfEvolution && !c.agent.cfg.Flags.SelfEvolution {
 			continue
@@ -792,6 +823,88 @@ func (c *Coordinator) handleLoadMCPTools(_ context.Context, input json.RawMessag
 }
 
 // ---- Skill handlers ----
+func (c *Coordinator) handleResolveFileScopes(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.scopeRouter == nil {
+		return &mcp.ToolResult{Content: "Scope routing is not configured. Create .dolphin/agents/scopes.yaml to define scopes.", IsError: true}, nil
+	}
+	var params struct {
+		Paths []string `json:"paths"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if len(params.Paths) == 0 {
+		return &mcp.ToolResult{Content: "No file paths provided.", IsError: true}, nil
+	}
+	result, err := c.scopeRouter.Resolve(params.Paths)
+	if err != nil {
+		return &mcp.ToolResult{Content: "resolve failed: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if len(result) == 0 {
+		return &mcp.ToolResult{Content: "No scopes match the given paths."}, nil
+	}
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Resolved %d file(s) to %d scope(s):\n", len(params.Paths), len(result))
+	for scopeName, paths := range result {
+		fmt.Fprintf(&sb, "- %s: %s\n", scopeName, strings.Join(paths, ", "))
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) handleDispatchToScope(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.scopeRouter == nil {
+		return &mcp.ToolResult{Content: "Scope routing is not configured. Create .dolphin/agents/scopes.yaml to define scopes.", IsError: true}, nil
+	}
+	var params struct {
+		Scope   string `json:"scope"`
+		Task    string `json:"task"`
+		Timeout int    `json:"timeout,omitempty"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+	if params.Scope == "" {
+		return &mcp.ToolResult{Content: "scope is required", IsError: true}, nil
+	}
+	if params.Task == "" {
+		return &mcp.ToolResult{Content: "task is required", IsError: true}, nil
+	}
+
+	task := scope.DispatchTask{
+		ID:      xid.New().String(),
+		Input:   params.Task,
+		Timeout: params.Timeout,
+	}
+
+	// Use a reasonable timeout for the dispatch call
+	timeout := params.Timeout
+	if timeout <= 0 {
+		timeout = c.agent.cfg.Pool.DefaultTimeout
+		if timeout <= 0 {
+			timeout = 120
+		}
+	}
+	dispatchCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	results, err := c.scopeRouter.Dispatch(dispatchCtx, params.Scope, task)
+	if err != nil {
+		if dispatchCtx.Err() != nil {
+			return &mcp.ToolResult{Content: fmt.Sprintf("Scope dispatch to %q timed out after %ds", params.Scope, timeout), IsError: true}, nil
+		}
+		return &mcp.ToolResult{Content: fmt.Sprintf("Scope dispatch to %q failed: %v", params.Scope, err), IsError: true}, nil //nolint:nilerr
+	}
+
+	var sb strings.Builder
+	for _, r := range results {
+		if r.Success {
+			fmt.Fprintf(&sb, "[%s] Result:\n%s\n", r.AgentName, r.Output)
+		} else {
+			fmt.Fprintf(&sb, "[%s] Error: %s\n", r.AgentName, r.Error)
+		}
+	}
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
 
 func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	if c.skills == nil {

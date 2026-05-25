@@ -139,6 +139,20 @@ func (q *resultQueue) len() int {
 	return len(q.items)
 }
 
+// findByID looks up a result by task ID and removes it from the queue.
+// Returns nil if not found. Non-blocking.
+func (q *resultQueue) findByID(taskID string) *TaskResult {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i, r := range q.items {
+		if r.TaskID == taskID {
+			q.items = append(q.items[:i], q.items[i+1:]...)
+			return &r
+		}
+	}
+	return nil
+}
+
 // AgentInstance is a live agent managed by the pool.
 type AgentInstance struct {
 	Def   *AgentDef
@@ -250,6 +264,10 @@ type AgentPool struct {
 	coordinatorCtx  context.Context
 	cancel          context.CancelFunc
 	parentSessionID session.SessionID
+
+	// OnRemoveAgent is called when an agent is removed from the pool (via Remove or reaper).
+	// Used by Coordinator to clean up MultiIO registrations.
+	OnRemoveAgent func(name string)
 }
 
 // PoolConfig holds pool configuration (subset of config.PoolConfig for decoupling).
@@ -269,6 +287,7 @@ type PoolConfig struct {
 	GroupLimits         map[string]int // per-group concurrency caps (empty = use global)
 	MaxStaleDuration    time.Duration  // max age for error agents before workspace cleanup (default 1h)
 	EnableAgentLog      bool           // write agent execution log to workspace/agent.log
+	MaxAgentMessages    int            // max conversation messages retained per subagent, 0 = unlimited (default 100)
 }
 
 // NewPoolConfigFromConfig converts a config.PoolConfig to the agent-level
@@ -289,6 +308,7 @@ func NewPoolConfigFromConfig(cfg config.PoolConfig) PoolConfig {
 		WorkerStopTimeout:   parseDurationOpt(cfg.WorkerStopTimeout, 5*time.Second),
 		MaxStaleDuration:    parseDurationOpt(cfg.MaxStaleDuration, 1*time.Hour),
 		EnableAgentLog:      cfg.EnableAgentLog,
+		MaxAgentMessages:    cfg.MaxAgentMessages,
 	}
 }
 
@@ -600,6 +620,13 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 		result.Status = "completed"
 	}
 
+	// Cap message history to prevent unbounded growth (P0 memory leak).
+	// The compressor is the primary mechanism; this is a safety net for default DropCompressor.
+	maxMsgs := p.cfg.MaxAgentMessages
+	if maxMsgs > 0 && inst.loopState != nil && len(inst.loopState.Messages) > maxMsgs {
+		inst.loopState.Messages = inst.loopState.Messages[len(inst.loopState.Messages)-maxMsgs:]
+	}
+
 	// Track task result
 	if result.Success {
 		taskCompleted.Inc()
@@ -702,6 +729,13 @@ func (p *AgentPool) recordDispatch(agentName string) {
 // Collect drains all completed task results (non-blocking).
 func (p *AgentPool) Collect() []TaskResult {
 	return p.results.popAll()
+}
+
+// PollResult looks up a completed result by task ID. Returns nil if not
+// yet available. Non-blocking — intended for synchronous wait-and-poll
+// patterns like scope router dispatch.
+func (p *AgentPool) PollResult(taskID string) *TaskResult {
+	return p.results.findByID(taskID)
 }
 
 // Cancel cancels a specific task by ID. Returns true if a matching running
@@ -875,10 +909,14 @@ func (p *AgentPool) Remove(name string) bool {
 	inst, ok := p.agents[name]
 	if ok {
 		delete(p.agents, name)
+		delete(p.mailboxes, name)
 		agentPoolSize.Add(-1)
 		if TelemetryCallbacks.OnPoolSize != nil {
 			TelemetryCallbacks.OnPoolSize(int64(len(p.agents)))
 		}
+	}
+	if p.OnRemoveAgent != nil {
+		p.OnRemoveAgent(name)
 	}
 	p.mu.Unlock()
 	if ok {
@@ -1018,8 +1056,12 @@ func (p *AgentPool) reapIdleAgents() {
 				if st == "error" && p.cfg.MaxStaleDuration > 0 && time.Since(cr) > p.cfg.MaxStaleDuration {
 					zap.S().Infow("reaping stale error agent", "name", name)
 					delete(p.agents, name)
+					delete(p.mailboxes, name)
 					agentPoolSize.Add(-1)
 					inst.closeTasks()
+					if p.OnRemoveAgent != nil {
+						p.OnRemoveAgent(name)
+					}
 					reap = append(reap, inst)
 					continue
 				}
@@ -1040,8 +1082,12 @@ func (p *AgentPool) reapIdleAgents() {
 				if !lastRun.IsZero() && time.Since(lastRun) > p.cfg.IdleTimeout {
 					zap.S().Infow("reaping idle coordinator-created agent", "name", name)
 					delete(p.agents, name)
+					delete(p.mailboxes, name)
 					agentPoolSize.Add(-1)
 					inst.closeTasks()
+					if p.OnRemoveAgent != nil {
+						p.OnRemoveAgent(name)
+					}
 					reap = append(reap, inst)
 				}
 			}

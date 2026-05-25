@@ -39,6 +39,7 @@ const (
 	AgentUser    AgentKind = iota // from .dolphin/agents/<name>/
 	AgentCoord                    // created by coordinator at runtime
 	AgentBuildin                  // system built-in, event-triggered
+	AgentScope                    // registered from scopes.yaml
 )
 
 func (k AgentKind) String() string {
@@ -49,6 +50,8 @@ func (k AgentKind) String() string {
 		return "temp"
 	case AgentBuildin:
 		return "buildin"
+	case AgentScope:
+		return "scope"
 	default:
 		return "unknown"
 	}

@@ -35,6 +35,7 @@ import (
 	"dolphin/internal/plugin"
 	"dolphin/internal/resource"
 	"dolphin/internal/scheduler"
+	scope "dolphin/internal/scope"
 	servermqtt "dolphin/internal/server/mqtt"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
@@ -261,6 +262,18 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 	pm.Activate()
 
+	// Load scope definitions for file-path-based agent routing
+	scopeMgr, err := scope.LoadScopes(filepath.Join(".dolphin", "agents", "scopes.yaml"))
+	if err != nil {
+		zap.S().Warnw("failed to load scopes, continuing without scope routing", "error", err)
+		scopeMgr = nil
+	}
+	if scopeMgr != nil && len(scopeMgr.Warnings) > 0 {
+		for _, w := range scopeMgr.Warnings {
+			zap.S().Warnw("scope validation warning", "detail", w)
+		}
+	}
+
 	// Factory: creates a new coordinator per transport connection
 	newCoordinator := func() *agent.Coordinator {
 		agt := agent.New(cfg, sessMgr, toolRegistry)
@@ -276,11 +289,52 @@ func runAgent(cmd *cobra.Command, args []string) error {
 				pool.Add(name, def, agent.AgentUser, agt, toolRegistry)
 			}
 		}
+		// Register scope agents from scopes.yaml
+		if scopeMgr != nil {
+			for _, s := range scopeMgr.Scopes() {
+				// Check name conflict with existing agents
+				conflict := false
+				for _, a := range pool.List() {
+					if a.Name == s.Name {
+						zap.S().Errorw("scope agent name conflicts with existing agent, skipping",
+							"scope", s.Name, "existing_kind", a.Kind)
+						conflict = true
+						break
+					}
+				}
+				if conflict {
+					continue
+				}
+				roleText := "## Role\n" + s.Role
+				if s.Context != "" {
+					roleText += "\n\n## Additional Context\n" + s.Context
+				}
+				def := &agent.AgentDef{
+					Name:      s.Name,
+					Role:      roleText,
+					Tools:     s.Tools,
+					Skills:    s.Skills,
+					Workflows: s.Workflows,
+					Timeout:   s.Timeout,
+				}
+				if len(s.Tools) == 0 {
+					zap.S().Warnw("scope agent has no explicit tools, all MCP tools will be available",
+						"scope", s.Name)
+				}
+				pool.Add(s.Name, def, agent.AgentScope, agt, toolRegistry)
+			}
+			zap.S().Infow("scope agents registered", "count", len(scopeMgr.Scopes()))
+		}
 		coord := agent.NewCoordinator(agt, pool)
 		coord.SetSkillManager(skillMgr)
 		coord.SetCommandManager(cmdMgr)
 		coord.SetWorkflowManager(wfmr)
 		coord.SetCronManager(cronMgr)
+		// Set scope router if scopes are configured
+		if scopeMgr != nil {
+			router := scope.NewRouter(scope.RouterConfig{Type: "local"}, scopeMgr, &poolDispatcher{pool: pool})
+			coord.SetScopeRouter(router)
+		}
 		return coord
 	}
 
@@ -882,4 +936,31 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	}
 
 	return g.Run()
+}
+
+// poolDispatcher adapts agent.AgentPool to scope.Dispatcher.
+type poolDispatcher struct {
+	pool *agent.AgentPool
+}
+
+func (d *poolDispatcher) Dispatch(agentName string, task scope.DispatchTask) error {
+	return d.pool.Dispatch(agentName, agent.Task{
+		ID:      task.ID,
+		Input:   task.Input,
+		Timeout: task.Timeout,
+	})
+}
+
+func (d *poolDispatcher) PollResult(taskID string) *scope.DispatchResult {
+	r := d.pool.PollResult(taskID)
+	if r == nil {
+		return nil
+	}
+	return &scope.DispatchResult{
+		TaskID:    r.TaskID,
+		AgentName: r.AgentName,
+		Output:    r.Output,
+		Error:     r.Error,
+		Success:   r.Success,
+	}
 }

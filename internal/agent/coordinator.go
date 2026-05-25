@@ -25,6 +25,7 @@ import (
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp/shell"
 	"dolphin/internal/scheduler"
+	scope "dolphin/internal/scope"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
 	"dolphin/internal/subsystem"
@@ -62,6 +63,9 @@ type Coordinator struct {
 	// last LLM request content (for /context current display)
 	lastLLMSystemPrompt string
 	lastLLMMessages     []provider.Message
+
+	// scopeRouter handles scope-based agent routing, nil if not configured
+	scopeRouter scope.ScopeRouter
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -135,6 +139,11 @@ func (c *Coordinator) SetWorkflowManager(mgr *workflowpkg.Manager) {
 // SetCronManager sets the cron task manager for scheduled tasks.
 func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 	c.cronMgr = mgr
+}
+
+// SetScopeRouter sets the scope router for file-path-based agent routing.
+func (c *Coordinator) SetScopeRouter(r scope.ScopeRouter) {
+	c.scopeRouter = r
 }
 
 // initBuildinAgents initializes all registered built-in agents. It wires
@@ -211,6 +220,11 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 	multiIO := transport.NewMultiIO(io)
 	io = multiIO
 	c.multiIO = multiIO
+
+	// Wire up agent removal callback to clean up MultiIO registrations (P1 memory leak).
+	c.pool.OnRemoveAgent = func(name string) {
+		c.multiIO.UnregisterAgent(name)
+	}
 
 	// Inject workspace as shell working directory
 	if wd := c.agent.cfg.Workspace; wd != "" {
@@ -472,9 +486,10 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 				collected := c.pool.Collect()
 				c.pending = append(c.pending, collected...)
 				for _, r := range collected {
-					// Skip agents with SubAgentIO — their output was already streamed
-					// to the user in real-time via SubAgentIO passthrough.
-					if c.multiIO != nil {
+					// Skip successful results from agents with SubAgentIO — their
+					// output was already streamed in real-time. Errors must still
+					// be shown since they are NOT streamed through SubAgentIO.
+					if c.multiIO != nil && r.Success {
 						registered := false
 						for _, name := range c.multiIO.AgentNames() {
 							if name == r.AgentName {
@@ -854,6 +869,20 @@ func (c *Coordinator) buildDynamicPrompt() string {
 			}
 			parts = append(parts, sb.String())
 		}
+	}
+
+	// Scope routing section
+	if c.scopeRouter != nil && len(c.scopeRouter.Scopes()) > 0 {
+		parts = append(parts, `## Scope Routing
+
+When a task involves file changes, use these tools BEFORE Coordinator Instructions apply:
+1. resolve_file_scopes — resolve file paths to scope agents
+2. dispatch_to_scope — dispatch a task to a scope agent (synchronous, waits for result)
+
+Example:
+  User: "modify src/ui/button.tsx colors"
+  → resolve_file_scopes(["src/ui/button.tsx"]) → see which scope matches
+  → dispatch_to_scope("frontend", {task: "modify button colors"})`)
 	}
 
 	// Coordinator instructions

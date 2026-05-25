@@ -145,6 +145,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("agent_pool.worker_stop_timeout", "5s")
 	v.SetDefault("agent_pool.max_stale_duration", "1h")
 	v.SetDefault("agent_pool.enable_agent_log", false)
+	v.SetDefault("agent_pool.max_agent_messages", 100)
 
 	v.SetDefault("skills.dir", ".dolphin/skills")
 	v.SetDefault("skills.max_top", 10)
