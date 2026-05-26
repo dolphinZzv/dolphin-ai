@@ -83,3 +83,6 @@ logs
 # Local fallback manifests (repo-specific)
 testdata/demo_agents.json
 textual/
+
+# E2E tests (interactive, excluded from CI)
+tests/e2e/

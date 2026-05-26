@@ -118,12 +118,7 @@ func (t *sseTransport) listenSSE(ctx context.Context) {
 
 		resp, err := t.client.Do(req) //nolint:bodyclose
 		if err != nil {
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(sseReconnectDelay(t.cfg.ReconnectDelay)):
-				continue
-			}
+			continue
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
@@ -245,11 +240,18 @@ func (t *sseTransport) setHeaders(req *http.Request) {
 	}
 }
 
-// NewHTTPClient creates an http.Client with the configured timeout.
+// NewHTTPClient creates an http.Client with the configured timeout and connection pooling.
 func NewHTTPClient(timeoutSec int) *http.Client {
 	d := 30 * time.Second
 	if timeoutSec > 0 {
 		d = time.Duration(timeoutSec) * time.Second
 	}
-	return &http.Client{Timeout: d}
+	return &http.Client{
+		Timeout: d,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
 }

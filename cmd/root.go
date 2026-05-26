@@ -30,6 +30,7 @@ import (
 	"dolphin/internal/mcp/llm"
 	mcpshell "dolphin/internal/mcp/shell"
 	"dolphin/internal/mcp/webhook"
+	"dolphin/internal/mcp/webhost"
 	"dolphin/internal/mcp/websearch"
 	"dolphin/internal/metrics"
 	"dolphin/internal/plugin"
@@ -167,6 +168,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	if cfg.MCP.Webhook.Enabled {
 		toolRegistry.Register(webhook.New(cfg))
 		zap.S().Infow("webhook tool registered")
+	}
+	if cfg.MCP.Webhost.Enabled {
+		toolRegistry.Register(webhost.New(cfg))
+		zap.S().Infow("webhost tool registered")
 	}
 	if cfg.MCP.WebSearch.Enabled {
 		toolRegistry.Register(websearch.New(cfg))

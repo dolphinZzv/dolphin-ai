@@ -493,9 +493,9 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 					io.WriteLine("Exit cancelled.")
 					continue
 				}
-				state.StopReason = "user_exit"
-				return
 			}
+			state.StopReason = "user_exit"
+			return
 		}
 		if line == "/mcp" {
 			toolDefs := a.toolReg.List()

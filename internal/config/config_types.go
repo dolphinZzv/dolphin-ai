@@ -269,11 +269,19 @@ type MCPConfig struct {
 	CDP         CDPConfig                  `mapstructure:"cdp"`
 	Email       EmailMCPConfig             `mapstructure:"email"`
 	Webhook     MCPWebhookConfig           `mapstructure:"webhook"`
+	Webhost     MCPWebHostConfig           `mapstructure:"webhost"`
 	WebSearch   MCPWebSearchConfig         `mapstructure:"web_search"`
 	Credentials CredentialsConfig          `mapstructure:"credentials"`
 	A2A         MCPA2AConfig               `mapstructure:"a2a"`
 	Servers     map[string]MCPServerConfig `mapstructure:"servers"`
 	Repos       []string                   `mapstructure:"repos"`
+}
+
+type MCPWebHostConfig struct {
+	Enabled        bool   `mapstructure:"enabled"`
+	URL            string `mapstructure:"url"`             // WebHost HTTP server URL, e.g. "http://localhost:9223/mcp/call"
+	Priority       int    `mapstructure:"priority"`        // tool priority, 0 = default (100)
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"` // HTTP client timeout, 0 = use default 30s
 }
 
 type MCPWebhookConfig struct {

@@ -36,6 +36,7 @@ type Tool struct {
 	initialized   bool
 	lastUsedAt    time.Time
 	idleStop      chan struct{}
+	idleWG        sync.WaitGroup
 }
 
 func New(cfg *config.Config) *Tool {
@@ -103,8 +104,30 @@ func (c *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 	c.lastUsedAt = time.Now()
 	c.mu.Unlock()
 
-	zap.S().Debugw("cdp executing", "action", params.Action, "headless", c.cfg.Headless)
+	start := time.Now()
+	zap.S().Infow("cdp execute started", "action", params.Action, "headless", c.cfg.Headless)
 
+	result, err := c.executeAction(browserCtx, params)
+	duration := time.Since(start)
+
+	if err != nil {
+		zap.S().Warnw("cdp execute error", "action", params.Action, "duration", duration, "error", err)
+		return result, err
+	}
+	if result.IsError {
+		zap.S().Warnw("cdp execute completed with error", "action", params.Action, "duration", duration)
+	} else {
+		zap.S().Infow("cdp execute completed", "action", params.Action, "duration", duration)
+	}
+	return result, nil
+}
+
+func (c *Tool) executeAction(browserCtx context.Context, params struct {
+	Action   string `json:"action"`
+	URL      string `json:"url,omitempty"`
+	Selector string `json:"selector,omitempty"`
+	Script   string `json:"script,omitempty"`
+}) (*mcp.ToolResult, error) {
 	switch params.Action {
 	case "navigate":
 		return c.navigate(browserCtx, params.URL)
@@ -126,23 +149,22 @@ func (c *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolRes
 
 func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.initialized {
-		healthTimeout := c.cfg.HealthCheckTimeout
-		if healthTimeout <= 0 {
-			healthTimeout = 10
-		}
-		healthCtx, healthCancel := context.WithTimeout(c.browserCtx, time.Duration(healthTimeout)*time.Second)
-		defer func() { healthCancel() }()
-		var ok bool
-		if err := chromedp.Run(healthCtx, chromedp.Evaluate("!!window.chrome", &ok)); err == nil && ok {
-			healthCancel = func() {}
+		c.mu.Unlock()
+		if c.checkBrowserHealth(ctx) {
+			c.mu.Lock()
 			return c.browserCtx, nil
-		} else {
-			zap.S().Warnw("cdp browser appears dead, reinitializing", "error", err)
-			c.shutdownBrowser()
 		}
+		c.mu.Lock()
+		// Re-check if still initialized after reacquiring lock
+		// (another goroutine may have already shut down)
+		if !c.initialized {
+			c.mu.Unlock()
+			return c.getBrowser(ctx)
+		}
+		zap.S().Warn("cdp browser health check failed, reinitializing")
+		c.shutdownBrowser()
+		c.mu.Lock()
 	}
 
 	if c.cfg.WsURL != "" {
@@ -154,13 +176,13 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 		c.browserCancel = browserCancel
 	} else {
 		if _, err := findBrowser(); err != nil {
+			c.mu.Unlock()
 			return nil, err
 		}
 
 		allocOpts := []chromedp.ExecAllocatorOption{
 			chromedp.Flag("headless", c.cfg.Headless),
 		}
-		// Apply chrome flags from config (sorted for deterministic order).
 		if len(c.cfg.ChromeFlags) > 0 {
 			keys := make([]string, 0, len(c.cfg.ChromeFlags))
 			for k := range c.cfg.ChromeFlags {
@@ -184,8 +206,27 @@ func (c *Tool) getBrowser(ctx context.Context) (context.Context, error) {
 
 	c.initialized = true
 	zap.S().Debugw("cdp browser initialized", "headless", c.cfg.Headless, "remote", c.cfg.WsURL != "")
+	browserCtx := c.browserCtx
+	c.mu.Unlock()
 
-	return c.browserCtx, nil
+	return browserCtx, nil
+}
+
+// checkBrowserHealth verifies the browser is responsive without holding the lock.
+func (c *Tool) checkBrowserHealth(ctx context.Context) bool {
+	healthTimeout := c.cfg.HealthCheckTimeout
+	if healthTimeout <= 0 {
+		healthTimeout = 10
+	}
+	healthCtx, cancel := context.WithTimeout(ctx, time.Duration(healthTimeout)*time.Second)
+	defer cancel()
+
+	var ok bool
+	if err := chromedp.Run(healthCtx, chromedp.Evaluate("!!window.chrome", &ok)); err != nil {
+		zap.S().Debugw("cdp browser health check error", "error", err)
+		return false
+	}
+	return ok
 }
 
 func (c *Tool) shutdownBrowser() {
@@ -211,10 +252,13 @@ func (c *Tool) Shutdown() {
 	}
 	c.shutdownBrowser()
 	c.mu.Unlock()
+	c.idleWG.Wait()
 }
 
 func (c *Tool) startIdleWatcher(timeout time.Duration) {
+	c.idleWG.Add(1)
 	go func() {
+		defer c.idleWG.Done()
 		ticker := time.NewTicker(timeout / 2)
 		defer ticker.Stop()
 		for {
