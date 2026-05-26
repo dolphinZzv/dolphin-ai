@@ -44,57 +44,6 @@ dolphin speaks five transports, and you can enable any combination of them:
 
 All transports share the same agent instance, tools, and session state. Switch between them freely.
 
-## Commands
-
-Dolphin provides built-in slash commands available in any transport. Use `/help` to see the full list in-session.
-
-### Session management
-
-| Command | Description |
-|---------|-------------|
-| `/exit` or `exit` or `quit` | Exit the agent |
-| `/new` | Start a fresh session (previous session is summarized) |
-| `/status` | Show session and agent status |
-| `/cancel [id]` | Cancel all running tasks, or a specific task by ID |
-| `/reload` | Reload the agent |
-
-### Information
-
-| Command | Description |
-|---------|-------------|
-| `/help` | Show this help text |
-| `/mcp` | List all registered MCP tools |
-| `/agents [name]` | List agents and their status; details for a specific agent |
-| `/skills [sub]` | List skills. Subcommands: `new`, `delete`, `show` |
-| `/commands [sub]` | List user-defined commands. Subcommands: `new`, `delete`, `show` |
-| `/workflow [sub]` | List available workflows. Subcommands: `new`, `delete`, `show` |
-| `/sessions [sub]` | List past sessions. Subcommand: `dump <id>` |
-| `/context [sub]` | Show context summary. Subcommands: `system`, `current`, `<section>` |
-| `/transport` | Show enabled transports |
-
-### Configuration
-
-| Command | Description |
-|---------|-------------|
-| `/config [sub]` | View or modify config. Subcommands: `get`, `set` |
-| `/model [name]` | List or switch LLM model |
-| `/provider [sub]` | List or switch LLM provider. Subcommand: `switch [name]` |
-
-### Tasks
-
-| Command | Description |
-|---------|-------------|
-| `/crontab` | View scheduled cron tasks |
-
-### Other
-
-| Command | Description |
-|---------|-------------|
-| `/forget <name>` | Reset conversation context for an agent |
-| `/feedback` | Send feedback to the development team via email |
-
-Subcommands are specified like `/command subcommand [args]`, e.g. `/skills new`. Use `/help <command>` for detailed usage on specific commands.
-
 ## Getting started
 
 ### Quick start
