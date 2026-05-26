@@ -27,16 +27,6 @@ export DZ_LLM_MODEL="deepseek-v4-flash"
 
 首次运行时，小海豚会引导你完成设置向导——选择角色、生成配置文件和系统提示文件。详见[快速开始指南](docs/quickstart/)。
 
-## 核心特性
-
-- **多传输层**：终端、SSH、MQTT、邮件 — 同一 Agent 无处不在
-- **工具丰富**：Shell 命令、浏览器自动化（CDP）、MCP 工具、Webhook
-- **多 Agent 协作**：并行子 Agent 执行复杂工作流
-- **技能系统**：通过 Markdown 文件按需加载技能
-- **定时任务**：CRONTAB.md 文件定义周期性任务
-- **会话持久化**：自动检查点、摘要、日记聚合
-- **可扩展**：插件系统，支持 Hook 和 Event
-
 ## 分发渠道
 
 - [GitHub](https://github.com/dolphinZzv/dolphin)

@@ -25,16 +25,6 @@ export DZ_LLM_MODEL="gpt-4o"
 
 On the first run, Dolphin will prompt you to generate a config file and a system prompt file. See the [Quick Start guide](docs/quickstart/) for other providers.
 
-## Key Features
-
-- **Multi-transport**: Terminal, SSH, MQTT, Email — one agent everywhere
-- **Rich tools**: Shell commands, browser automation (CDP), MCP tools, webhooks
-- **Multi-agent**: Parallel sub-agents for complex workflows
-- **Skills**: On-demand skill loading via Markdown files
-- **Scheduling**: CRONTAB.md for recurring tasks
-- **Session persistence**: Auto-checkpoints, summaries, diary aggregation
-- **Extensible**: Plugin system with hooks and events
-
 ## Distribution
 
 - [GitHub](https://github.com/dolphinZzv/dolphin)
