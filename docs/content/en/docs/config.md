@@ -20,7 +20,7 @@ This document describes every configuration field in `config.yaml`. All settings
 
 ---
 
-## LLM (`llm`)
+## LLM
 
 Controls the LLM provider, model selection, and generation parameters.
 
@@ -46,7 +46,7 @@ These fields are used when `providers` is empty. They can also be set via `DZ_LL
 | `llm.retry.max_attempts` | `int` | `3` | Max retry attempts for transient LLM API failures (not rate-limit retry). |
 | `llm.retry.backoff_base` | `string` | `"1s"` | Exponential backoff base duration (e.g. `"1s"`, `"2s"`). |
 
-### Multi-Provider (`llm.providers`)
+### Multi-Provider
 
 When `providers` is configured, startup tries each entry in order with a health check and uses the first that responds. If a provider has an empty `api_key`, it inherits from `llm.api_key` (or `DZ_LLM_API_KEY`). Similarly, empty `max_tokens` inherits from `llm.max_tokens`.
 
@@ -77,7 +77,7 @@ llm:
 
 ---
 
-## Sessions (`session`)
+## Sessions
 
 Controls session persistence, auto-checkpoint, and cleanup.
 
@@ -92,11 +92,11 @@ Controls session persistence, auto-checkpoint, and cleanup.
 
 ---
 
-## MCP Tools (`mcp`)
+## MCP Tools
 
 Configures the Model Context Protocol tools available to the agent.
 
-### Shell (`mcp.shell`)
+### Shell
 
 Executes shell commands.
 
@@ -109,7 +109,7 @@ Executes shell commands.
 | `mcp.shell.allowed_commands` | `[]string` | `[]` | Allowlist of command names (empty = allow all). Populated automatically in restrictive mode. |
 | `mcp.shell.output_max_bytes` | `int` | `65536` | Stdout/stderr truncation limit in bytes. |
 
-### CDP Browser (`mcp.cdp`)
+### CDP Browser
 
 Chrome DevTools Protocol — browser automation.
 
@@ -128,7 +128,7 @@ Chrome DevTools Protocol — browser automation.
 | `mcp.cdp.chrome_flags` | `map` | `{disable-gpu, no-sandbox, ...}` | Additional chromedp launch flags, overrides built-in defaults. |
 | `mcp.cdp.user_agent` | `string` | `"Mozilla/5.0 ..."` | Custom User-Agent string. Empty = use Chrome default. |
 
-### Email MCP (`mcp.email`)
+### Email MCP
 
 Email send/search/fetch tool (requires `transport.email` to be configured separately).
 
@@ -139,7 +139,7 @@ Email send/search/fetch tool (requires `transport.email` to be configured separa
 | `mcp.email.max_attachment_size` | `int` | `10485760` | Max attachment size in bytes. |
 | `mcp.email.connect_timeout` | `string` | `"30s"` | IMAP/POP3 connection timeout (e.g. `"30s"`, `"10s"`). |
 
-### Webhook MCP (`mcp.webhook`)
+### Webhook MCP
 
 HTTP webhook tool for sending requests to external services.
 
@@ -160,7 +160,7 @@ mcp:
         headers: {Authorization: "Bearer my-token"}
 ```
 
-### WebSearch MCP (`mcp.web_search`)
+### WebSearch MCP
 
 Web search tool with multiple provider support. Providers are registered via `init()` in their respective files under `internal/mcp/websearch/`. The LLM-visible enum is the intersection of configured `providers` and registered implementations.
 
@@ -191,7 +191,7 @@ mcp:
     api_key: "your-key"
 ```
 
-### External MCP Servers (`mcp.servers`)
+### External MCP Servers
 
 Connect to external MCP servers. Each key is a server name.
 
@@ -219,7 +219,7 @@ mcp:
       headers: {Authorization: "Bearer token"}
 ```
 
-### MCP Repos (`mcp.repos`)
+### MCP Repos
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
@@ -227,7 +227,7 @@ mcp:
 
 ---
 
-## Agent Pool (`agent_pool`)
+## Agent Pool
 
 Controls concurrent sub-agent execution.
 
@@ -246,7 +246,7 @@ Controls concurrent sub-agent execution.
 
 ---
 
-## Skills (`skills`)
+## Skills
 
 Manages skill files that teach the agent new capabilities.
 
@@ -258,11 +258,11 @@ Manages skill files that teach the agent new capabilities.
 
 ---
 
-## Transports (`transport`)
+## Transports
 
 Controls how the agent communicates: local terminal, SSH, MQTT, email, or DingTalk.
 
-### Stdio (`transport.stdio`)
+### Stdio
 
 Local terminal I/O.
 
@@ -270,7 +270,7 @@ Local terminal I/O.
 |-------|------|---------|-------------|
 | `transport.stdio.enabled` | `bool` | `true` | Enable local terminal interaction. Env: `DZ_TRANSPORT_STDIO_ENABLED`. |
 
-### SSH (`transport.ssh`)
+### SSH
 
 Remote shell access.
 
@@ -285,7 +285,7 @@ Remote shell access.
 | `transport.ssh.markdown_render` | `bool` | `false` | Render markdown in SSH terminal output. |
 | `transport.ssh.markdown_style` | `string` | `""` | CSS theme for rendered markdown (e.g. `"dracula"`, `"github"`). |
 
-### MQTT (`transport.mqtt`)
+### MQTT
 
 MQTT messaging transport.
 
@@ -305,7 +305,7 @@ MQTT messaging transport.
 | `transport.mqtt.ping_timeout_seconds` | `int` | `10` | MQTT ping response timeout in seconds. |
 | `transport.mqtt.max_reconnect_seconds` | `int` | `30` | Maximum reconnect backoff interval in seconds. |
 
-### Email (`transport.email`)
+### Email
 
 Email transport — receives instructions and sends responses via SMTP/IMAP.
 
@@ -363,7 +363,7 @@ sequenceDiagram
     end
 ```
 
-### DingTalk (`transport.dingtalk`)
+### DingTalk
 
 DingTalk bot transport via Stream mode (WebSocket long connection). The bot actively connects to DingTalk servers — no public IP or callback URL needed.
 
@@ -391,7 +391,7 @@ transport:
     client_secret: "your-appsecret"
 ```
 
-### A2A (`transport.a2a`)
+### A2A
 
 Agent-to-Agent (A2A) JSON-RPC communication over HTTP. Implements Google's Agent-to-Agent protocol.
 
@@ -416,9 +416,7 @@ Agent-to-Agent (A2A) JSON-RPC communication over HTTP. Implements Google's Agent
 
 ---
 
-## Crontab (`crontab`)
-
-## Crontab (`crontab`)
+## Crontab
 
 Scheduled task management.
 
@@ -429,7 +427,7 @@ Scheduled task management.
 
 ---
 
-## Diary (`diary`)
+## Diary
 
 Aggregates session summaries into a hierarchical diary (day → week → month → year).
 
@@ -444,7 +442,7 @@ Aggregates session summaries into a hierarchical diary (day → week → month �
 
 ---
 
-## Plugins (`plugins`)
+## Plugins
 
 Dolphin has two extension systems:
 
@@ -477,7 +475,7 @@ plugins:
 
 ---
 
-## Update (`update`)
+## Update
 
 Automatic update checking and installation.
 
@@ -491,7 +489,7 @@ Automatic update checking and installation.
 
 ---
 
-## Health (`health`)
+## Health
 
 HTTP health check endpoint.
 
@@ -512,7 +510,7 @@ HTTP health check endpoint.
 
 ---
 
-## Pprof (`pprof`)
+## Pprof
 
 Go pprof profiling endpoints. For debugging performance issues.
 
@@ -523,7 +521,7 @@ Go pprof profiling endpoints. For debugging performance issues.
 
 ---
 
-## Metrics (`metrics`)
+## Metrics
 
 Prometheus-style metrics endpoint.
 

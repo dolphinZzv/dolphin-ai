@@ -20,7 +20,7 @@ weight: 20
 
 ---
 
-## LLM 提供商 (`llm`)
+## LLM 提供商
 
 控制 LLM 提供商、模型选择及生成参数。
 
@@ -46,7 +46,7 @@ weight: 20
 | `llm.retry.max_attempts` | `int` | `3` | LLM 调用失败后的最大重试次数（瞬态错误，非限流）。 |
 | `llm.retry.backoff_base` | `string` | `"1s"` | 指数退避基础时长（如 `"1s"`、`"2s"`）。 |
 
-### 多提供商 (`llm.providers`)
+### 多提供商
 
 配置 `providers` 后，启动时会逐个检测，自动选择第一个可用的。provider 的 `api_key` 为空时会继承自 `llm.api_key`（或 `DZ_LLM_API_KEY`），`max_tokens` 为 0 时会继承自 `llm.max_tokens`。
 
@@ -82,7 +82,7 @@ llm:
 
 ---
 
-## 会话 (`session`)
+## 会话
 
 控制会话持久化、自动检查点和清理。
 
@@ -97,11 +97,11 @@ llm:
 
 ---
 
-## MCP 工具 (`mcp`)
+## MCP 工具
 
 配置 agent 可用的 Model Context Protocol 工具。
 
-### Shell (`mcp.shell`)
+### Shell
 
 执行 shell 命令。
 
@@ -114,7 +114,7 @@ llm:
 | `mcp.shell.allowed_commands` | `[]string` | `[]` | 命令白名单（空列表 = 允许所有）。限制模式下自动设置。 |
 | `mcp.shell.output_max_bytes` | `int` | `65536` | 标准输出/错误截断字节上限。 |
 
-### CDP 浏览器 (`mcp.cdp`)
+### CDP 浏览器
 
 Chrome DevTools Protocol — 浏览器自动化。
 
@@ -133,7 +133,7 @@ Chrome DevTools Protocol — 浏览器自动化。
 | `mcp.cdp.chrome_flags` | `map` | `{disable-gpu, no-sandbox, ...}` | 额外 chromedp 启动标志，覆盖内置默认值。 |
 | `mcp.cdp.user_agent` | `string` | `"Mozilla/5.0 ..."` | 自定义 User-Agent。空字符串 = 使用 Chrome 默认值。 |
 
-### 邮件 MCP (`mcp.email`)
+### 邮件 MCP
 
 邮件发送/搜索/读取工具（需要同时配置 `transport.email`）。
 
@@ -144,7 +144,7 @@ Chrome DevTools Protocol — 浏览器自动化。
 | `mcp.email.max_attachment_size` | `int` | `10485760` | 附件大小上限（字节）。 |
 | `mcp.email.connect_timeout` | `string` | `"30s"` | IMAP/POP3 连接超时（如 `"30s"`、`"10s"`）。 |
 
-### Webhook MCP (`mcp.webhook`)
+### Webhook MCP
 
 HTTP webhook 工具，用于向外部服务发送请求。
 
@@ -165,7 +165,7 @@ mcp:
         headers: {Authorization: "Bearer my-token"}
 ```
 
-### 网页搜索 MCP (`mcp.web_search`)
+### 网页搜索 MCP
 
 网页搜索工具，支持多搜索引擎。每个 provider 在 `internal/mcp/websearch/` 下通过 `init() + registerProvider()` 自注册。LLM 可用的枚举列表 = 配置中 `providers` 与已注册 provider 的交集。
 
@@ -196,7 +196,7 @@ mcp:
     api_key: "your-key"
 ```
 
-### 外部 MCP 服务器 (`mcp.servers`)
+### 外部 MCP 服务器
 
 连接到外部的 MCP 服务器。每个键是一个服务器名称。
 
@@ -224,7 +224,7 @@ mcp:
       headers: {Authorization: "Bearer token"}
 ```
 
-### MCP 仓库 (`mcp.repos`)
+### MCP 仓库
 
 | 字段 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
@@ -232,7 +232,7 @@ mcp:
 
 ---
 
-## Agent 池 (`agent_pool`)
+## Agent 池
 
 控制并发的子 agent 执行。
 
@@ -251,7 +251,7 @@ mcp:
 
 ---
 
-## 技能 (`skills`)
+## 技能
 
 管理技能文件，让 agent 学习新能力。
 
@@ -263,11 +263,11 @@ mcp:
 
 ---
 
-## 传输层 (`transport`)
+## 传输层
 
 控制 agent 的通信方式：本地终端、SSH、MQTT、邮件或钉钉。
 
-### Stdio (`transport.stdio`)
+### Stdio
 
 本地终端 I/O。
 
@@ -275,7 +275,7 @@ mcp:
 |------|------|--------|------|
 | `transport.stdio.enabled` | `bool` | `true` | 启用本地终端交互。环境变量：`DZ_TRANSPORT_STDIO_ENABLED`。 |
 
-### SSH (`transport.ssh`)
+### SSH
 
 远程 shell 访问。
 
@@ -290,7 +290,7 @@ mcp:
 | `transport.ssh.markdown_render` | `bool` | `false` | 在 SSH 终端输出中渲染 Markdown。 |
 | `transport.ssh.markdown_style` | `string` | `""` | 渲染 Markdown 的 CSS 主题（如 `"dracula"`、`"github"`）。 |
 
-### MQTT (`transport.mqtt`)
+### MQTT
 
 MQTT 消息传输。
 
@@ -310,7 +310,7 @@ MQTT 消息传输。
 | `transport.mqtt.ping_timeout_seconds` | `int` | `10` | MQTT ping 响应超时秒数。 |
 | `transport.mqtt.max_reconnect_seconds` | `int` | `30` | 最大重连回退间隔秒数。 |
 
-### 邮件 (`transport.email`)
+### 邮件
 
 邮件传输层 — 通过 SMTP/IMAP 接收指令和发送回复。
 
@@ -368,7 +368,7 @@ sequenceDiagram
     end
 ```
 
-### 钉钉 (`transport.dingtalk`)
+### 钉钉
 
 钉钉机器人传输 — 基于 Stream 模式（WebSocket 长连接），机器人主动连接钉钉服务器，无需公网 IP 或回调地址。
 
@@ -396,7 +396,7 @@ transport:
     client_secret: "your-appsecret"
 ```
 
-### A2A (`transport.a2a`)
+### A2A
 
 Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 协议规范。
 
@@ -421,7 +421,7 @@ Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 
 
 ---
 
-## 定时任务 (`crontab`)
+## 定时任务
 
 定时任务管理。
 
@@ -432,7 +432,7 @@ Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 
 
 ---
 
-## 日记 (`diary`)
+## 日记
 
 将会话摘要聚合为分层日记（日 → 周 → 月 → 年）。
 
@@ -447,7 +447,7 @@ Agent-to-Agent（A2A）JSON-RPC 通信，基于 HTTP 协议。实现 Google A2A 
 
 ---
 
-## 插件 (`plugins`)
+## 插件
 
 小海豚提供两套扩展机制：
 
@@ -480,7 +480,7 @@ plugins:
 
 ---
 
-## 更新 (`update`)
+## 更新
 
 自动更新检查与安装。
 
@@ -494,7 +494,7 @@ plugins:
 
 ---
 
-## 健康检查 (`health`)
+## 健康检查
 
 HTTP 健康检查端点。
 
@@ -515,7 +515,7 @@ HTTP 健康检查端点。
 
 ---
 
-## Pprof (`pprof`)
+## Pprof
 
 Go pprof 性能分析端点。用于调试性能问题。
 
@@ -526,7 +526,7 @@ Go pprof 性能分析端点。用于调试性能问题。
 
 ---
 
-## 指标 (`metrics`)
+## 指标
 
 Prometheus 风格指标端点。
 
