@@ -38,6 +38,10 @@ func New(cfg *config.Config) (transport.Transport, error) {
 	}, nil
 }
 
+func (t *DingTalkTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	t.cfg = &newCfg.Transport.DingTalk
+}
+
 func (t *DingTalkTransport) Name() string { return "dingtalk" }
 
 func (t *DingTalkTransport) Banner() string {

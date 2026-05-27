@@ -108,6 +108,12 @@ func New(cfg *config.Config) *Tool {
 	}
 }
 
+// OnConfigChange re-points the config sub-pointer and recreates the HTTP client.
+func (w *Tool) OnConfigChange(oldCfg, newCfg *config.Config) {
+	w.cfg = &newCfg.MCP.WebSearch
+	w.client = &http.Client{Timeout: websearchTimeout(w.cfg)}
+}
+
 func (w *Tool) Definition() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "web_search",

@@ -518,6 +518,11 @@ type FlagsConfig struct {
 	SelfEvolution bool `mapstructure:"self_evolution"` // enable self-evolution: BUILTIN_SKILLS.md + LLM CRUD tools for skills/commands
 }
 
+// DynamicConfigConfig controls the dynamic config reload system.
+type DynamicConfigConfig struct {
+	Enabled bool `mapstructure:"enabled"` // enable file watcher / remote source polling
+}
+
 // ResourceConfig configures the system resource monitor.
 type ResourceConfig struct {
 	Enabled      bool      `mapstructure:"enabled"`       // enable periodic resource monitoring

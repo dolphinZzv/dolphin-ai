@@ -87,6 +87,11 @@ func New(cfg *config.Config) *Tool {
 	return &Tool{cfg: cfg, schema: schema}
 }
 
+// OnConfigChange re-points the full config pointer on hot-reload.
+func (e *Tool) OnConfigChange(oldCfg, newCfg *config.Config) {
+	e.cfg = newCfg
+}
+
 func (e *Tool) Definition() mcp.ToolDefinition {
 	return mcp.ToolDefinition{
 		Name:        "email",

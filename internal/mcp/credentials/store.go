@@ -42,6 +42,11 @@ func NewFileStore(cfg *config.CredentialsConfig) *FileStore {
 	return fs
 }
 
+// OnConfigChange re-points the config sub-pointer on hot-reload.
+func (fs *FileStore) OnConfigChange(oldCfg, newCfg *config.Config) {
+	fs.cfg = &newCfg.Credentials
+}
+
 func (fs *FileStore) load() {
 	data, err := os.ReadFile(fs.path)
 	if err != nil {

@@ -46,6 +46,10 @@ func New(cfg *config.Config) (transport.Transport, error) {
 	return t, nil
 }
 
+func (t *MQTTTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	t.cfg = &newCfg.Transport.MQTT
+}
+
 func (t *MQTTTransport) Name() string { return "mqtt" }
 
 func (t *MQTTTransport) Banner() string {

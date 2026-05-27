@@ -195,6 +195,8 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("health.debounce", "30s")
 
+	v.SetDefault("dynamic_config.enabled", true)
+
 	v.SetDefault("sync_config", true)
 
 	v.SetDefault("update.enabled", true)

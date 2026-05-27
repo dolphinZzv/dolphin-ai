@@ -98,6 +98,10 @@ func (t *EmailTransport) FetchLatestUnseen() *EmailMessage {
 	return t.pollOnce()
 }
 
+func (t *EmailTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	t.cfg = &newCfg.Transport.Email
+}
+
 func (t *EmailTransport) Name() string { return "email" }
 
 func (t *EmailTransport) Banner() string {

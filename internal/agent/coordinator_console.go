@@ -500,7 +500,16 @@ func (c *Coordinator) handleStatus(sess *session.Session, state *LoopState, io t
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusAgents), len(agents), busy))
 
 	tools := c.agent.toolReg.List()
+	mcpCfg := &c.agent.cfg.MCP
 	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusMCPTools), len(tools)))
+	io.WriteLine(fmt.Sprintf("  Shell     %s", enabledDisabled(mcpCfg.Shell.Enabled)))
+	io.WriteLine(fmt.Sprintf("  CDP       %s", enabledDisabled(mcpCfg.CDP.Enabled)))
+	io.WriteLine(fmt.Sprintf("  Email     %s", enabledDisabled(mcpCfg.Email.Enabled)))
+	io.WriteLine(fmt.Sprintf("  Webhook   %s", enabledDisabled(mcpCfg.Webhook.Enabled)))
+	io.WriteLine(fmt.Sprintf("  WebHost   %s", enabledDisabled(mcpCfg.Webhost.Enabled)))
+	io.WriteLine(fmt.Sprintf("  WebSearch %s", enabledDisabled(mcpCfg.WebSearch.Enabled)))
+	io.WriteLine(fmt.Sprintf("  LLM       %s", enabledDisabled(mcpCfg.LLM.Enabled)))
+	io.WriteLine(fmt.Sprintf("  A2A       %s", enabledDisabled(mcpCfg.A2A.Enabled)))
 
 	if c.skills != nil {
 		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyStatusSkills), len(c.skills.List())))
@@ -983,4 +992,11 @@ func splitIntoChunks(s string, maxLines int) []string {
 		chunks = append(chunks, strings.Join(lines[i:end], "\n"))
 	}
 	return chunks
+}
+
+func enabledDisabled(v bool) string {
+	if v {
+		return "enabled"
+	}
+	return "disabled"
 }

@@ -55,7 +55,8 @@ import (
 
 	appctx "dolphin/internal/context"
 
-	"github.com/oklog/run"
+	"dolphin/internal/actor"
+
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
@@ -105,11 +106,12 @@ func NewRootCmd() *cobra.Command {
 }
 
 func runAgent(cmd *cobra.Command, args []string) error {
-	// Load config
-	cfg, err := config.Load(cfgFile)
-	if err != nil {
+	// Create config manager and load
+	mgr := config.NewManager(cfgFile)
+	if err := mgr.Load(); err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
+	cfg := mgr.Get()
 
 	// Apply language config override (empty = auto-detect from env)
 	if cfg.Language != "" {
@@ -207,8 +209,6 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	_, coordErr := os.Stat(agentsDir)
 	hasAgents := coordErr == nil
 
-	poolCfg := agent.NewPoolConfigFromConfig(cfg.Pool)
-
 	// Pre-load user-created agent definitions
 	var agentDefs map[string]*agent.AgentDef
 	if hasAgents {
@@ -247,8 +247,16 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	}
 
 	bus := event.NewEventBus(256)
+	mgr.Subscribe(bus)
 	pm := plugin.NewManager(hooks, bus)
 	toolRegistry.SetEventBus(bus)
+
+	// Subscribe remaining global components for config hot-reload.
+	mgr.Subscribe(toolRegistry)
+	mgr.Subscribe(logLevelSubscriber{})
+	if cronMgr != nil {
+		mgr.Subscribe(cronMgr)
+	}
 
 	// Configure webhook delivery
 	if cfg.Plugins.WebhookURL != "" {
@@ -285,6 +293,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	// Factory: creates a new coordinator per transport connection
 	newCoordinator := func() *agent.Coordinator {
+		cfg := mgr.Get()
 		agt := agent.New(cfg, sessMgr, toolRegistry)
 		agt.SetVersion(Version)
 		agt.SetBuildTime(BuildTime)
@@ -292,6 +301,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		agt.SetHooks(hooks)
 		agt.SetEventBus(bus)
 		agt.SetHeartbeatInterval(cfg.Plugins.HeartbeatTurns)
+		poolCfg := agent.NewPoolConfigFromConfig(cfg.Pool)
 		pool := agent.NewAgentPool(context.Background(), poolCfg)
 		if hasAgents {
 			for name, def := range agentDefs {
@@ -350,6 +360,8 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 		coord.SetWorkflowManager(wfmr)
 		coord.SetCronManager(cronMgr)
+		// Wire /reload command to trigger config reload
+		agt.SetReloadFunc(func() error { return mgr.Load() })
 		// Set scope router if scopes are configured
 		if scopeMgr != nil {
 			router := scope.NewRouter(scope.RouterConfig{Type: "local"}, scopeMgr, &poolDispatcher{pool: pool})
@@ -379,7 +391,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		}
 	}
 	printBanner(cfg, configPath)
-	return runActorGroup(cfg, toolRegistry, cdpTool, sessMgr, bus, newCoordinator)
+	return runActorGroup(cfg, mgr, toolRegistry, cdpTool, sessMgr, bus, newCoordinator)
 }
 
 func warnNoLLM(cfg *config.Config) {
@@ -538,27 +550,58 @@ func printBanner(cfg *config.Config, configPath string) {
 	fmt.Fprintln(os.Stderr)
 }
 
-func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.Tool, sessMgr *session.Manager, bus *event.EventBus, newCoordinator func() *agent.Coordinator) error {
-	var g run.Group
+func runActorGroup(cfg *config.Config, mgr *config.Manager, toolRegistry *mcp.Registry, cdpTool *cdp.Tool, sessMgr *session.Manager, bus *event.EventBus, newCoordinator func() *agent.Coordinator) error {
+	var g actor.ActorGroup
 	actorCount := 0
 
-	// Signal handling actor
+	// Signal handling actor (SIGTERM → shutdown, SIGHUP → reload config)
 	{
 		sigCh := make(chan os.Signal, 1)
-		g.Add(func() error {
-			signal.Notify(sigCh, syscall.SIGTERM)
-			sig := <-sigCh
-			zap.S().Infow("shutting down", "signal", sig)
-			return fmt.Errorf("received signal %v", sig)
-		}, func(err error) {
-			signal.Stop(sigCh)
-			close(sigCh)
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			mcpshell.Shutdown()
-			if err := telemetry.Shutdown(shutdownCtx); err != nil {
-				zap.S().Warnw("telemetry shutdown error", "error", err)
-			}
+		g.Add(actor.Actor{
+			Name: "signal",
+			Execute: func() error {
+				signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGHUP)
+				for sig := range sigCh {
+					switch sig {
+					case syscall.SIGHUP:
+						zap.S().Infow("config reload triggered by SIGHUP")
+						if err := mgr.Load(); err != nil {
+							zap.S().Errorw("config reload failed on SIGHUP", "error", err)
+						} else {
+							zap.S().Infow("config reloaded via SIGHUP")
+						}
+					case syscall.SIGTERM:
+						zap.S().Infow("shutting down", "signal", sig)
+						return fmt.Errorf("received signal %v", sig)
+					}
+				}
+				return nil
+			},
+			Interrupt: func(err error) {
+				signal.Stop(sigCh)
+				close(sigCh)
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				mcpshell.Shutdown()
+				if err := telemetry.Shutdown(shutdownCtx); err != nil {
+					zap.S().Warnw("telemetry shutdown error", "error", err)
+				}
+			},
+		})
+		actorCount++
+	}
+
+	// Config file watcher actor
+	{
+		ctx, cancel := context.WithCancel(context.Background())
+		g.Add(actor.Actor{
+			Name: "config-watch",
+			Execute: func() error {
+				return mgr.Watch(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount++
 	}
@@ -566,12 +609,16 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	// Session reaper actor
 	if maxAge, err := time.ParseDuration(cfg.Session.MaxAge); err == nil && maxAge > 0 {
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			sessMgr.StartReaper(ctx, maxAge, maxAge/4)
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cancel()
+		g.Add(actor.Actor{
+			Name: "reaper",
+			Execute: func() error {
+				sessMgr.StartReaper(ctx, maxAge, maxAge/4)
+				<-ctx.Done()
+				return nil
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount++
 	} else if err != nil {
@@ -588,25 +635,30 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			MaxYearMonths:  cfg.Diary.MaxYearMonths,
 			MaxTotalMB:     cfg.Diary.MaxTotalMB,
 		}, config.SessionsDir())
+		mgr.Subscribe(d)
 		go func() { d.Sync() }()
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			for {
-				now := time.Now()
-				next := time.Date(now.Year(), now.Month(), now.Day(), 20, 0, 0, 0, now.Location())
-				if now.After(next) {
-					next = next.AddDate(0, 0, 1)
+		g.Add(actor.Actor{
+			Name: "diary",
+			Execute: func() error {
+				for {
+					now := time.Now()
+					next := time.Date(now.Year(), now.Month(), now.Day(), 20, 0, 0, 0, now.Location())
+					if now.After(next) {
+						next = next.AddDate(0, 0, 1)
+					}
+					select {
+					case <-ctx.Done():
+						return nil
+					case <-time.After(next.Sub(now)):
+						d.Sync()
+					}
 				}
-				select {
-				case <-ctx.Done():
-					return nil
-				case <-time.After(next.Sub(now)):
-					d.Sync()
-				}
-			}
-		}, func(err error) {
-			cancel()
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount++
 	}
@@ -618,15 +670,19 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			zap.S().Warnw("invalid update.check_interval, update checker disabled", "value", cfg.Update.CheckInterval, "error", err)
 		} else {
 			ctx, cancel := context.WithCancel(context.Background())
-			g.Add(func() error {
-				return update.StartChecker(ctx, update.CheckerConfig{
-					Enabled:       cfg.Update.Enabled,
-					CheckInterval: interval,
-					Channel:       cfg.Update.Channel,
-					AutoInstall:   cfg.Update.AutoInstall,
-				}, Version)
-			}, func(err error) {
-				cancel()
+			g.Add(actor.Actor{
+				Name: "updater",
+				Execute: func() error {
+					return update.StartChecker(ctx, update.CheckerConfig{
+						Enabled:       cfg.Update.Enabled,
+						CheckInterval: interval,
+						Channel:       cfg.Update.Channel,
+						AutoInstall:   cfg.Update.AutoInstall,
+					}, Version)
+				},
+				Interrupt: func(err error) {
+					cancel()
+				},
 			})
 			actorCount++
 		}
@@ -651,11 +707,15 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			})
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return t.Start(ctx)
-		}, func(err error) {
-			cancel()
-			t.Close()
+		g.Add(actor.Actor{
+			Name: "ssh",
+			Execute: func() error {
+				return t.Start(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+				t.Close()
+			},
 		})
 		actorCount++
 	}
@@ -667,9 +727,14 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			return fmt.Errorf("mqtt broker: %w", err)
 		}
 		defer broker.Close()
-		// Point transport client at the embedded broker if not already set to an external one.
+		// Wire transport MQTT client to the embedded broker's actual address.
+		// This must happen after broker.Start() since ClientAddr() resolves the
+		// listening port (important when Addr uses port 0).
 		if cfg.Transport.MQTT.Enabled {
-			cfg.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", broker.ClientAddr())
+			c := mgr.Get()
+			if c != nil {
+				c.Transport.MQTT.Broker = fmt.Sprintf("tcp://%s", broker.ClientAddr())
+			}
 		}
 	}
 
@@ -683,6 +748,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if err != nil {
 			return fmt.Errorf("mqtt transport: %w", err)
 		}
+		if sub, ok := t.(config.Subscriber); ok {
+			mgr.Subscribe(sub)
+		}
 		uio := t.(transport.UserIO)
 
 		if bp, ok := t.(transport.BannerProvider); ok {
@@ -690,21 +758,29 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return t.Start(ctx)
-		}, func(err error) {
-			cancel()
-			t.Close()
+		g.Add(actor.Actor{
+			Name: "mqtt-server",
+			Execute: func() error {
+				return t.Start(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+				t.Close()
+			},
 		})
-		g.Add(func() error {
-			go func() {
-				newCoordinator().Run(ctx, uio)
-				zap.S().Errorw("coordinator exited unexpectedly")
-			}()
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cancel()
+		g.Add(actor.Actor{
+			Name: "mqtt",
+			Execute: func() error {
+				go func() {
+					newCoordinator().Run(ctx, uio)
+					zap.S().Errorw("coordinator exited unexpectedly")
+				}()
+				<-ctx.Done()
+				return nil
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount += 2
 	}
@@ -719,6 +795,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if err != nil {
 			return fmt.Errorf("email transport: %w", err)
 		}
+		if sub, ok := t.(config.Subscriber); ok {
+			mgr.Subscribe(sub)
+		}
 		uio := t.(transport.UserIO)
 
 		if bp, ok := t.(transport.BannerProvider); ok {
@@ -726,21 +805,29 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return t.Start(ctx)
-		}, func(err error) {
-			cancel()
-			t.Close()
+		g.Add(actor.Actor{
+			Name: "email-server",
+			Execute: func() error {
+				return t.Start(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+				t.Close()
+			},
 		})
-		g.Add(func() error {
-			go func() {
-				newCoordinator().Run(ctx, uio)
-				zap.S().Errorw("coordinator exited unexpectedly")
-			}()
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cancel()
+		g.Add(actor.Actor{
+			Name: "email",
+			Execute: func() error {
+				go func() {
+					newCoordinator().Run(ctx, uio)
+					zap.S().Errorw("coordinator exited unexpectedly")
+				}()
+				<-ctx.Done()
+				return nil
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount += 2
 	}
@@ -755,6 +842,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if err != nil {
 			return fmt.Errorf("dingtalk transport: %w", err)
 		}
+		if sub, ok := t.(config.Subscriber); ok {
+			mgr.Subscribe(sub)
+		}
 		uio := t.(transport.UserIO)
 
 		if bp, ok := t.(transport.BannerProvider); ok {
@@ -762,21 +852,29 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return t.Start(ctx)
-		}, func(err error) {
-			cancel()
-			t.Close()
+		g.Add(actor.Actor{
+			Name: "dingtalk-server",
+			Execute: func() error {
+				return t.Start(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+				t.Close()
+			},
 		})
-		g.Add(func() error {
-			go func() {
-				newCoordinator().Run(ctx, uio)
-				zap.S().Errorw("coordinator exited unexpectedly")
-			}()
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cancel()
+		g.Add(actor.Actor{
+			Name: "dingtalk",
+			Execute: func() error {
+				go func() {
+					newCoordinator().Run(ctx, uio)
+					zap.S().Errorw("coordinator exited unexpectedly")
+				}()
+				<-ctx.Done()
+				return nil
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount += 2
 	}
@@ -791,6 +889,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if err != nil {
 			return fmt.Errorf("a2a transport: %w", err)
 		}
+		if sub, ok := t.(config.Subscriber); ok {
+			mgr.Subscribe(sub)
+		}
 		uio := t.(transport.UserIO)
 
 		if bp, ok := t.(transport.BannerProvider); ok {
@@ -798,21 +899,29 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return t.Start(ctx)
-		}, func(err error) {
-			cancel()
-			t.Close()
+		g.Add(actor.Actor{
+			Name: "a2a-server",
+			Execute: func() error {
+				return t.Start(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+				t.Close()
+			},
 		})
-		g.Add(func() error {
-			go func() {
-				newCoordinator().Run(ctx, uio)
-				zap.S().Errorw("coordinator exited unexpectedly")
-			}()
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cancel()
+		g.Add(actor.Actor{
+			Name: "a2a",
+			Execute: func() error {
+				go func() {
+					newCoordinator().Run(ctx, uio)
+					zap.S().Errorw("coordinator exited unexpectedly")
+				}()
+				<-ctx.Done()
+				return nil
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount += 2
 	}
@@ -827,15 +936,22 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		if err != nil {
 			return fmt.Errorf("stdio transport: %w", err)
 		}
+		if sub, ok := t.(config.Subscriber); ok {
+			mgr.Subscribe(sub)
+		}
 		uio := t.(transport.UserIO)
 
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			newCoordinator().Run(ctx, uio)
-			return nil
-		}, func(err error) {
-			cancel()
-			t.Close()
+		g.Add(actor.Actor{
+			Name: "stdio",
+			Execute: func() error {
+				newCoordinator().Run(ctx, uio)
+				return nil
+			},
+			Interrupt: func(err error) {
+				cancel()
+				t.Close()
+			},
 		})
 		actorCount++
 	}
@@ -853,15 +969,19 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyPprofBanner), cfg.Pprof.Addr))
 		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyPprofURL), host))
-		g.Add(func() error {
-			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-				return fmt.Errorf("pprof server: %w", err)
-			}
-			return nil
-		}, func(err error) {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			srv.Shutdown(shutdownCtx)
+		g.Add(actor.Actor{
+			Name: "pprof",
+			Execute: func() error {
+				if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+					return fmt.Errorf("pprof server: %w", err)
+				}
+				return nil
+			},
+			Interrupt: func(err error) {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				srv.Shutdown(shutdownCtx)
+			},
 		})
 		actorCount++
 	}
@@ -869,12 +989,16 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	// CDP shutdown actor
 	if cdpTool != nil {
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			<-ctx.Done()
-			return nil
-		}, func(err error) {
-			cdpTool.Shutdown()
-			cancel()
+		g.Add(actor.Actor{
+			Name: "cdp",
+			Execute: func() error {
+				<-ctx.Done()
+				return nil
+			},
+			Interrupt: func(err error) {
+				cdpTool.Shutdown()
+				cancel()
+			},
 		})
 		actorCount++
 	}
@@ -890,15 +1014,19 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			Handler:           mux,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
-		g.Add(func() error {
-			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-				return fmt.Errorf("metrics server: %w", err)
-			}
-			return nil
-		}, func(err error) {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			srv.Shutdown(shutdownCtx)
+		g.Add(actor.Actor{
+			Name: "metrics",
+			Execute: func() error {
+				if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+					return fmt.Errorf("metrics server: %w", err)
+				}
+				return nil
+			},
+			Interrupt: func(err error) {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				srv.Shutdown(shutdownCtx)
+			},
 		})
 		actorCount++
 	}
@@ -923,15 +1051,19 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			Handler:           mux,
 			ReadHeaderTimeout: 10 * time.Second,
 		}
-		g.Add(func() error {
-			if err := srv.ListenAndServe(); err != http.ErrServerClosed {
-				return fmt.Errorf("health server: %w", err)
-			}
-			return nil
-		}, func(err error) {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			srv.Shutdown(shutdownCtx)
+		g.Add(actor.Actor{
+			Name: "health",
+			Execute: func() error {
+				if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+					return fmt.Errorf("health server: %w", err)
+				}
+				return nil
+			},
+			Interrupt: func(err error) {
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+				defer cancel()
+				srv.Shutdown(shutdownCtx)
+			},
 		})
 		actorCount++
 	}
@@ -939,11 +1071,16 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	// Resource monitor actor
 	if cfg.Resource.Enabled {
 		rMonitor := resource.New(resource.ConfigFrom(cfg.Resource), bus)
+		mgr.Subscribe(rMonitor)
 		ctx, cancel := context.WithCancel(context.Background())
-		g.Add(func() error {
-			return rMonitor.Start(ctx)
-		}, func(err error) {
-			cancel()
+		g.Add(actor.Actor{
+			Name: "resource-monitor",
+			Execute: func() error {
+				return rMonitor.Start(ctx)
+			},
+			Interrupt: func(err error) {
+				cancel()
+			},
 		})
 		actorCount++
 	}
@@ -953,6 +1090,15 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 	}
 
 	return g.Run()
+}
+
+// logLevelSubscriber handles runtime log level changes from config reload.
+type logLevelSubscriber struct{}
+
+func (logLevelSubscriber) OnConfigChange(oldCfg, newCfg *config.Config) {
+	if oldCfg.Log.Level != newCfg.Log.Level {
+		logger.SetLevel(newCfg.Log.Level)
+	}
 }
 
 // poolDispatcher adapts agent.AgentPool to scope.Dispatcher.

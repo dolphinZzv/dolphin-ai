@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -111,6 +112,38 @@ func (r *Registry) Register(t Tool) {
 // SetEventBus sets the event bus for emitting MCP server notifications.
 func (r *Registry) SetEventBus(bus *event.EventBus) {
 	r.bus = bus
+}
+
+// configSubscriber is an optional interface for tools that need config change
+// notifications to re-point stale config pointers or recreate resources.
+type configSubscriber interface {
+	OnConfigChange(oldCfg, newCfg *config.Config)
+}
+
+// OnConfigChange handles MCP config hot-reload. Re-points the config pointer,
+// reloads external MCP servers if server definitions changed, and propagates
+// the change to all registered tools that implement configSubscriber.
+func (r *Registry) OnConfigChange(oldCfg, newCfg *config.Config) {
+	serversChanged := !reflect.DeepEqual(oldCfg.MCP.Servers, newCfg.MCP.Servers)
+
+	r.mu.Lock()
+	r.cfg = &newCfg.MCP
+
+	// Propagate to tools that implement configSubscriber.
+	for _, tool := range r.tools {
+		if cs, ok := tool.(configSubscriber); ok {
+			cs.OnConfigChange(oldCfg, newCfg)
+		}
+	}
+	r.mu.Unlock()
+
+	if serversChanged {
+		r.CloseServers()
+		ctx := context.Background()
+		if err := r.LoadServers(ctx); err != nil {
+			zap.S().Warnw("mcp servers reload failed", "error", err)
+		}
+	}
 }
 
 // LoadServers starts external MCP servers defined in config and registers their tools.

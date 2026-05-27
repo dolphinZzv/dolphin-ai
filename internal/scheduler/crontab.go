@@ -209,6 +209,26 @@ func parseEntries(data []byte) ([]*CronTask, error) {
 	return tasks, nil
 }
 
+// OnConfigChange handles crontab config hot-reload. Updates the internal config
+// and reloads the crontab file.
+func (m *Manager) OnConfigChange(oldCfg, newCfg *config.Config) {
+	m.mu.Lock()
+	m.cfg = newCfg.Crontab
+	m.filePath = newCfg.Crontab.File
+	interval, _ := time.ParseDuration(newCfg.Crontab.CheckInterval)
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+	m.checkInterval = interval
+	m.mu.Unlock()
+
+	// Reload tasks from the (possibly new) crontab file.
+	// Note: Load() acquires its own lock, so we must release ours first.
+	if err := m.Load(); err != nil {
+		zap.S().Warnw("crontab reload failed after config change", "error", err)
+	}
+}
+
 // Start launches the background ticker that checks for due tasks.
 // Returns the due tasks channel for the consumer (coordinator) to drain.
 func (m *Manager) Start(ctx context.Context) <-chan CronTask {

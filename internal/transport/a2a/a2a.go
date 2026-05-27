@@ -167,6 +167,10 @@ func New(cfg *config.Config) (transport.Transport, error) {
 	}, nil
 }
 
+func (t *A2ATransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	t.cfg = &newCfg.Transport.A2A
+}
+
 func (t *A2ATransport) Name() string { return "a2a" }
 
 func (t *A2ATransport) Banner() string {
