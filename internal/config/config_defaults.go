@@ -34,9 +34,10 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("transport.ssh.read_timeout", "5m")
 	v.SetDefault("transport.ssh.markdown_style", "auto")
 	v.SetDefault("transport.ssh.addr", ":2222")
-	v.SetDefault("transport.ssh.host_key", "~/.ssh/id_ed25519")
+	v.SetDefault("transport.ssh.host_key", "") // empty = ~/.dolphin/ssh_host_key
 	v.SetDefault("transport.ssh.username", "dolphin")
 	v.SetDefault("transport.ssh.password", "")
+	v.SetDefault("transport.ssh.authorized_keys", "~/.ssh/authorized_keys")
 	v.SetDefault("transport.mqtt.enabled", false)
 	v.SetDefault("transport.mqtt.broker", "tcp://localhost:1883")
 	v.SetDefault("transport.mqtt.subscribe_topic", "/agent/dolphin")

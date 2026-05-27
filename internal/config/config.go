@@ -299,8 +299,7 @@ func Load(cfgFile string) (*Config, error) {
 		}
 	}
 
-	// Auto-generate SSH password if empty. Fails closed — if generation fails,
-	// the SSH transport will refuse to start (checked in NewSSHTransport).
+	// Auto-generate SSH password as fallback when system auth (PAM/pubkey) is unavailable.
 	if cfg.Transport.SSH.Enabled && cfg.Transport.SSH.Password == "" {
 		hd, err := os.UserHomeDir()
 		if err != nil {

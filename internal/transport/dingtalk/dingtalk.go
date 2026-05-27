@@ -40,6 +40,10 @@ func New(cfg *config.Config) (transport.Transport, error) {
 
 func (t *DingTalkTransport) Name() string { return "dingtalk" }
 
+func (t *DingTalkTransport) Banner() string {
+	return "  DingTalk bot active (Stream mode)\n"
+}
+
 func (t *DingTalkTransport) Context() string {
 	return "Connected via DingTalk bot (Stream mode). " +
 		"The user is on a mobile device. Keep responses concise."

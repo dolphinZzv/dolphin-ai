@@ -169,6 +169,10 @@ func New(cfg *config.Config) (transport.Transport, error) {
 
 func (t *A2ATransport) Name() string { return "a2a" }
 
+func (t *A2ATransport) Banner() string {
+	return fmt.Sprintf("  A2A listening on %s, agent: %s\n", t.cfg.ListenAddr, t.cfg.AgentID)
+}
+
 func (t *A2ATransport) Context() string {
 	return fmt.Sprintf("Connected via A2A (Agent-to-Agent, Google). Listener: %s. Agent ID: %s.", t.cfg.ListenAddr, t.cfg.AgentID)
 }
