@@ -29,7 +29,7 @@ class WebKitSession: NSObject, Sendable {
     private var didCleanup = false
     private let urlField = NSTextField()
     private let urlContainer = ThemeAwareView()
-    private let tabBarView = NSView()
+    private let tabBarView = ThemeAwareView()
     private let tabBarHeight: CGFloat = 28
     private let tabDefaultWidth: CGFloat = 200
     private let tabMinWidth: CGFloat = 100
@@ -106,9 +106,14 @@ class WebKitSession: NSObject, Sendable {
 
         urlContainer.onAppearanceChange = { [weak self] in
             guard let self = self else { return }
-            self.urlContainer.layer?.borderColor = NSColor.separatorColor.cgColor
-            self.urlContainer.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-            self.rebuildTabBar()
+            self.urlContainer.effectiveAppearance.performAsCurrentDrawingAppearance {
+                self.urlContainer.layer?.borderColor = NSColor.separatorColor.cgColor
+                self.urlContainer.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+            }
+        }
+
+        tabBarView.onAppearanceChange = { [weak self] in
+            self?.rebuildTabBar()
         }
 
         // Global event monitor: block mouse/key events when non-interactive
@@ -135,11 +140,7 @@ class WebKitSession: NSObject, Sendable {
         backButton.target = self
         backButton.action = #selector(goBack)
         backButton.controlSize = .small
-        if #available(macOS 11.0, *) {
-            backButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")
-        } else {
-            backButton.title = "◀"
-        }
+        backButton.image = NSImage(systemSymbolName: "chevron.left", accessibilityDescription: "Back")
         contentView.addSubview(backButton)
 
         forwardButton.bezelStyle = .shadowlessSquare
@@ -147,11 +148,7 @@ class WebKitSession: NSObject, Sendable {
         forwardButton.target = self
         forwardButton.action = #selector(goForward)
         forwardButton.controlSize = .small
-        if #available(macOS 11.0, *) {
-            forwardButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Forward")
-        } else {
-            forwardButton.title = "▶"
-        }
+        forwardButton.image = NSImage(systemSymbolName: "chevron.right", accessibilityDescription: "Forward")
         contentView.addSubview(forwardButton)
 
         // Loading progress bar
@@ -329,9 +326,11 @@ class WebKitSession: NSObject, Sendable {
                 let tab = NSView(frame: NSRect(x: x, y: 0, width: btnW, height: self.tabBarHeight))
                 tab.wantsLayer = true
                 tab.layer?.cornerRadius = 4
-                tab.layer?.backgroundColor = isActive
-                    ? NSColor.controlBackgroundColor.cgColor
-                    : NSColor.separatorColor.withAlphaComponent(0.25).cgColor
+                self.tabBarView.effectiveAppearance.performAsCurrentDrawingAppearance {
+                    tab.layer?.backgroundColor = isActive
+                        ? NSColor.controlBackgroundColor.cgColor
+                        : NSColor.separatorColor.withAlphaComponent(0.25).cgColor
+                }
                 tab.autoresizingMask = [.width, .height]
                 self.tabBarView.addSubview(tab)
 

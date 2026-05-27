@@ -105,7 +105,6 @@ final class EventBufferTests: XCTestCase {
         let baseTime = Int64(Date().timeIntervalSince1970)
 
         let event1 = Event(method: "web/console", params: ["msg": "1"])
-        var event2Timestamp = Int64(Date().timeIntervalSince1970) + 1
         let event2 = Event(method: "web/console", params: ["msg": "2"])
 
         buffer.append(event1)

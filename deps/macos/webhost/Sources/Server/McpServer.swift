@@ -456,7 +456,8 @@ class McpServer {
         lock.unlock()
 
         guard let session = session else {
-            return JsonRpcResponse(id: requestId, error: .sessionNotFound)
+            // Idempotent close: session already gone, return success.
+            return JsonRpcResponse(id: requestId, result: JsonRpcResult(success: true))
         }
 
         // Cleanup and release on main thread. cleanup() must be called while

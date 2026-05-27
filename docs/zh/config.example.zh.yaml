@@ -213,11 +213,12 @@ plugins:
 # echo "$json"
 
 # ── 可观测性 ──────────────────────────────────────────────
-log_level: info
-log_file: .dolphin/logs/agent.log
-log_max_size: 100        # 单文件大小，超过后滚动（单位 MB）
-log_max_age: 30          # 旧日志保留天数
-log_max_backup: 3        # 保留的旧日志文件数
+log:
+  level: info
+  file: .dolphin/logs/agent.log
+  max_size: 100        # 单文件大小，超过后滚动（单位 MB）
+  max_age: 30          # 旧日志保留天数
+  max_backup: 3        # 保留的旧日志文件数
 
 pprof:
   enabled: false

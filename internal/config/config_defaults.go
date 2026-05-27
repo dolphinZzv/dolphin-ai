@@ -199,11 +199,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("update.auto_install", false)
 	v.SetDefault("update.timeout_seconds", 30)
 
-	v.SetDefault("log_level", "info")
-	v.SetDefault("log_file", ".dolphin/logs/agent.log")
-	v.SetDefault("log_max_size", 100)
-	v.SetDefault("log_max_age", 30)
-	v.SetDefault("log_max_backup", 3)
+	v.SetDefault("log.level", "info")
+	v.SetDefault("log.file", ".dolphin/logs/agent.log")
+	v.SetDefault("log.max_size", 100)
+	v.SetDefault("log.max_age", 30)
+	v.SetDefault("log.max_backup", 3)
 
 	v.SetDefault("plugins.enabled", true)
 	v.SetDefault("plugins.dir", "~/.dolphin/plugins/")

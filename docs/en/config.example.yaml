@@ -211,11 +211,12 @@ plugins:
 # echo "$json"
 
 # ── Observability ─────────────────────────────────────────
-log_level: info
-log_file: .dolphin/logs/agent.log
-log_max_size: 100        # MB before rotation
-log_max_age: 30          # days to retain old logs
-log_max_backup: 3        # max old log files to keep
+log:
+  level: info
+  file: .dolphin/logs/agent.log
+  max_size: 100        # MB before rotation
+  max_age: 30          # days to retain old logs
+  max_backup: 3        # max old log files to keep
 
 pprof:
   enabled: false

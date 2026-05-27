@@ -153,8 +153,8 @@ func runConfigShow(cmd *cobra.Command, args []string) error {
 	fmt.Printf("  Dir:     %s\n", cfg.Plugins.Dir)
 	fmt.Println()
 
-	fmt.Printf(i18n.TL(i18n.KeyCfgShowLogLevel)+"\n", cfg.LogLevel)
-	fmt.Printf(i18n.TL(i18n.KeyCfgShowLogFile)+"\n", cfg.LogFile)
+	fmt.Printf(i18n.TL(i18n.KeyCfgShowLogLevel)+"\n", cfg.Log.Level)
+	fmt.Printf(i18n.TL(i18n.KeyCfgShowLogFile)+"\n", cfg.Log.File)
 
 	return nil
 }

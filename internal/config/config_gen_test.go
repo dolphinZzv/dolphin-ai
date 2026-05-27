@@ -161,8 +161,8 @@ func TestGenerateRestrictiveConfigFile(t *testing.T) {
 	if cfg.MCP.Webhook.Enabled {
 		t.Error("restrictive: expected webhook disabled")
 	}
-	if cfg.LogLevel != "warn" {
-		t.Errorf("restrictive: expected log_level warn, got %q", cfg.LogLevel)
+	if cfg.Log.Level != "warn" {
+		t.Errorf("restrictive: expected log_level warn, got %q", cfg.Log.Level)
 	}
 	if cfg.Plugins.Enabled {
 		t.Error("restrictive: expected plugins disabled")

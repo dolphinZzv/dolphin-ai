@@ -25,6 +25,15 @@ var (
 	ConfigFileName   = "config"
 )
 
+// LogConfig holds logging configuration.
+type LogConfig struct {
+	Level     string `mapstructure:"level"`
+	File      string `mapstructure:"file"`
+	MaxSize   int    `mapstructure:"max_size"`
+	MaxAge    int    `mapstructure:"max_age"`
+	MaxBackup int    `mapstructure:"max_backup"`
+}
+
 type Config struct {
 	Name        string            `mapstructure:"name"`
 	ID          string            `mapstructure:"id"`
@@ -46,11 +55,7 @@ type Config struct {
 	Telemetry   TelemetryConfig   `mapstructure:"telemetry"`
 	Diary       DiaryConfig       `mapstructure:"diary"`
 	Update      UpdateConfig      `mapstructure:"update"`
-	LogLevel    string            `mapstructure:"log_level"`
-	LogFile     string            `mapstructure:"log_file"`
-	LogMaxSize  int               `mapstructure:"log_max_size"`
-	LogMaxAge   int               `mapstructure:"log_max_age"`
-	LogMaxBack  int               `mapstructure:"log_max_backup"`
+	Log         LogConfig         `mapstructure:"log"`
 	Plugins     PluginsConfig     `mapstructure:"plugins"`
 	Flags       FlagsConfig       `mapstructure:"flags"`
 	Resource    ResourceConfig    `mapstructure:"resource"`
@@ -181,10 +186,10 @@ func Load(cfgFile string) (*Config, error) {
 		}
 	}
 	if v := os.Getenv("DZ_LOG_LEVEL"); v != "" {
-		cfg.LogLevel = v
+		cfg.Log.Level = v
 	}
 	if v := os.Getenv("DZ_LOG_FILE"); v != "" {
-		cfg.LogFile = v
+		cfg.Log.File = v
 	}
 	if v := os.Getenv("DZ_MQTT_BROKER"); v != "" {
 		cfg.Transport.MQTT.Broker = v

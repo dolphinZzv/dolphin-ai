@@ -185,8 +185,12 @@ diary:
   max_total_mb: 500           # total diary size limit, deletes oldest year
 
 # ── Observability ─────────────────────────────────────────
-log_level: info
-log_file: .dolphin/logs/agent.log
+log:
+  level: info
+  file: .dolphin/logs/agent.log
+  max_size: 100
+  max_age: 30
+  max_backup: 3
 
 # ── Silent Update ──────────────────────────────────────────
 update:
@@ -375,8 +379,12 @@ diary:
   max_total_mb: 500           # 日记总大小上限，超出则删除最旧年份
 
 # ── 可观测性 ──────────────────────────────────────────────
-log_level: info
-log_file: .dolphin/logs/agent.log
+log:
+  level: info
+  file: .dolphin/logs/agent.log
+  max_size: 100
+  max_age: 30
+  max_backup: 3
 
 # ── 静默更新 ──────────────────────────────────────────────
 update:
@@ -440,7 +448,9 @@ func GenerateRestrictiveConfigFile(lang i18n.Lang) (string, error) {
 				"enabled": false,
 			},
 		},
-		"log_level": "warn",
+		"log": map[string]any{
+			"level": "warn",
+		},
 		"plugins": map[string]any{
 			"enabled": false,
 		},

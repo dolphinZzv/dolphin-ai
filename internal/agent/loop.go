@@ -781,7 +781,7 @@ func (a *Agent) runTurn(ctx context.Context, state *LoopState, systemPrompt stri
 		a.executeToolCalls(ctx, io, state, toolCalls, toolReg, caps, i, maxSubTurns)
 	}
 
-	if a.cfg.LogLevel == "debug" {
+	if a.cfg.Log.Level == "debug" {
 		io.WriteLine("\n[Max tool call iterations reached. Ending turn.]")
 	}
 	return nil
@@ -1076,12 +1076,12 @@ func (a *Agent) logLLMResponse(ctx context.Context, io transport.UserIO, state *
 			"cached_tokens", usage.CachedInputTokens,
 			"tool_calls", len(toolCalls),
 		)
-		if a.cfg.LogLevel == "debug" && io != nil {
+		if a.cfg.Log.Level == "debug" && io != nil {
 			io.WriteLine(fmt.Sprintf("turn: %d model: %s sess: %s tokens: in=%d [cache=%d miss=%d] out=%d (total: in=%d out=%d cache=%d miss=%d)",
 				state.Sess.Turn, a.cfg.LLM.Model, state.Sess.ID, usage.InputTokens, usage.CachedInputTokens, usage.MissedInputTokens, usage.OutputTokens,
 				state.TotalInputTokens, state.TotalOutputTokens, state.TotalCachedTokens, state.TotalMissedTokens))
 		}
-	} else if a.cfg.LogLevel == "debug" && io != nil {
+	} else if a.cfg.Log.Level == "debug" && io != nil {
 		io.WriteLine("  tokens: -")
 	}
 	if a.hooks != nil {
@@ -1184,7 +1184,7 @@ func (a *Agent) executeToolCalls(ctx context.Context, io transport.UserIO, state
 			"is_error", err != nil || (result != nil && result.IsError),
 			"result_len", len(resultContent),
 		)
-		if a.cfg.LogLevel == "debug" && caps.ShowToolDetails && resultContent != "" {
+		if a.cfg.Log.Level == "debug" && caps.ShowToolDetails && resultContent != "" {
 			argsCompact := compactJSON(tc.Arguments, 200)
 			io.WriteLine(fmt.Sprintf("[%s](%d/%d) %s", tc.Name, subTurn+1, maxSubTurns, argsCompact))
 		}

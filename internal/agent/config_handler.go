@@ -360,14 +360,14 @@ var configurablePaths = []configEntry{
 	},
 	// Logging
 	{
-		path: "log_level", description: "Log level (debug, info, warn, error)",
-		get: func(c *config.Config) any { return c.LogLevel },
+		path: "log.level", description: "Log level (debug, info, warn, error)",
+		get: func(c *config.Config) any { return c.Log.Level },
 		set: func(c *config.Config, v any) error {
 			s, err := toString(v)
 			if err != nil {
 				return err
 			}
-			c.LogLevel = s
+			c.Log.Level = s
 			return nil
 		},
 	},

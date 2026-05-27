@@ -48,9 +48,21 @@ struct JsonRpcRequest: Sendable {
         self.id = id
         self.method = method
         if let p = params {
-            let name = p["name"] as? String ?? method
-            let args = p["arguments"] as? [String: Any] ?? p
-            self.params = JsonRpcParams(name: name, arguments: args.mapValues { AnyCodable($0) })
+            // Name can be String directly or wrapped in AnyCodable (from test JSON construction)
+            let name: String
+            if let s = p["name"] as? String { name = s }
+            else if let ac = p["name"] as? AnyCodable, let s = ac.value as? String { name = s }
+            else { name = method }
+
+            // Arguments can be [String: Any] directly or wrapped in AnyCodable
+            let args: [String: Any]
+            if let dict = p["arguments"] as? [String: Any] { args = dict }
+            else if let ac = p["arguments"] as? AnyCodable, let dict = ac.value as? [String: Any] { args = dict }
+            else { args = p }
+
+            self.params = JsonRpcParams(name: name, arguments: args.mapValues { v in
+                (v as? AnyCodable) ?? AnyCodable(v)
+            })
         } else {
             self.params = nil
         }

@@ -14,7 +14,9 @@ struct Event: Sendable {
     func toJson() -> String {
         let paramsJson = params.mapValues { AnyCodable($0) }
         let wrapper = EventWrapper(jsonrpc: "2.0", method: method, params: paramsJson)
-        guard let data = try? JSONEncoder().encode(wrapper),
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .withoutEscapingSlashes
+        guard let data = try? encoder.encode(wrapper),
               let json = String(data: data, encoding: .utf8) else {
             return ""
         }
@@ -35,7 +37,7 @@ struct WebEvent {
 
     static func navigation(_ url: String, status: String, progress: Int? = nil) -> Event {
         var params = ["url": url, "status": status] as [String: Any]
-        if let p = progress { params["progress"] = String(p) }
+        if let p = progress { params["progress"] = p }
         return Event(method: "web/navigation", params: params)
     }
 

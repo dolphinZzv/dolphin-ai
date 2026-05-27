@@ -38,11 +38,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem.button {
-            if #available(macOS 11.0, *) {
-                button.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "WebHost")
-            } else {
-                button.title = "WH"
-            }
+            button.image = NSImage(systemSymbolName: "globe", accessibilityDescription: "WebHost")
         }
 
         let menu = NSMenu()
@@ -133,22 +129,15 @@ func createWindow() -> NSWindow {
     stack.alignment = .centerX
     stack.distribution = .fill
 
-    let iconView: NSView
-    if #available(macOS 11.0, *) {
-        let imgView: NSImageView
-        if let image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil) {
-            imgView = NSImageView(image: image)
-        } else {
-            imgView = NSImageView()
-        }
-        imgView.setFrameSize(NSSize(width: 48, height: 48))
-        imgView.contentTintColor = .controlAccentColor
-        iconView = imgView
+    let imgView: NSImageView
+    if let image = NSImage(systemSymbolName: "globe", accessibilityDescription: nil) {
+        imgView = NSImageView(image: image)
     } else {
-        let label = NSTextField(labelWithString: "WebHost")
-        label.font = NSFont.boldSystemFont(ofSize: 24)
-        iconView = label
+        imgView = NSImageView()
     }
+    imgView.setFrameSize(NSSize(width: 48, height: 48))
+    imgView.contentTintColor = .controlAccentColor
+    let iconView: NSView = imgView
 
     let statusLabel = NSTextField(labelWithString: "WebHost starting...")
     statusLabel.font = NSFont.systemFont(ofSize: 14)

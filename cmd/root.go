@@ -125,9 +125,9 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Apply --verbose/--quiet log level override
 	switch {
 	case verbose:
-		cfg.LogLevel = "debug"
+		cfg.Log.Level = "debug"
 	case quiet:
-		cfg.LogLevel = "error"
+		cfg.Log.Level = "error"
 	}
 
 	// Setup logging
@@ -193,7 +193,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 
 	tools := toolRegistry.List()
 	zap.S().Infow("total mcp tools available", "count", len(tools))
-	if cfg.LogLevel == "debug" {
+	if cfg.Log.Level == "debug" {
 		for _, t := range tools {
 			zap.S().Debugw("mcp tool", "name", t.Name, "source", t.Source, "desc", t.Description)
 		}
@@ -380,11 +380,11 @@ func warnNoLLM(cfg *config.Config) {
 
 func setupLogging(cfg *config.Config) {
 	logger.Init(logger.Config{
-		Level:     cfg.LogLevel,
-		File:      cfg.LogFile,
-		MaxSize:   cfg.LogMaxSize,
-		MaxAge:    cfg.LogMaxAge,
-		MaxBackup: cfg.LogMaxBack,
+		Level:     cfg.Log.Level,
+		File:      cfg.Log.File,
+		MaxSize:   cfg.Log.MaxSize,
+		MaxAge:    cfg.Log.MaxAge,
+		MaxBackup: cfg.Log.MaxBackup,
 	})
 }
 
