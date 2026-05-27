@@ -524,54 +524,19 @@ func (c *Config) LLMConfigured() bool {
 	return c.LLM.APIKey != ""
 }
 
-// Validate checks the configuration and returns an error for invalid settings.
+// Validate checks the configuration by delegating to sub-type validators.
 func (c *Config) Validate() error {
-	if len(c.LLM.Providers) > 0 {
-		for i, p := range c.LLM.Providers {
-			if p.Type != "" && p.Type != "openai" && p.Type != "anthropic" {
-				return fmt.Errorf(`llm.providers[%d].type must be "openai" or "anthropic", got %q (check your config file)`, i, p.Type)
-			}
-			if p.APIKey == "" {
-				return fmt.Errorf("llm.providers[%d].api_key is required — set via config file or DZ_LLM_API_KEY env var", i)
-			}
-			if p.Model == "" {
-				return fmt.Errorf("llm.providers[%d].model is required — set via config file or DZ_LLM_MODEL env var", i)
-			}
-		}
-	} else {
-		if c.LLM.Type != "" && c.LLM.Type != "openai" && c.LLM.Type != "anthropic" {
-			return fmt.Errorf(`llm.type must be "openai" or "anthropic", got %q (check your config file)`, c.LLM.Type)
-		}
+	if err := c.LLM.Validate(); err != nil {
+		return err
 	}
-	if c.LLM.MaxTokens <= 0 {
-		return fmt.Errorf("llm.max_tokens must be > 0, got %d (set in config or DZ_LLM_MAX_TOKENS env var)", c.LLM.MaxTokens)
+	if err := c.Session.Validate(); err != nil {
+		return err
 	}
-	if c.LLM.MaxContextTokens <= 0 {
-		return fmt.Errorf("llm.max_context_tokens must be > 0, got %d", c.LLM.MaxContextTokens)
+	if err := c.Pool.Validate(); err != nil {
+		return err
 	}
-	if c.LLM.MaxSubTurns <= 0 {
-		return fmt.Errorf("llm.max_sub_turns must be > 0, got %d", c.LLM.MaxSubTurns)
-	}
-	if c.LLM.Temperature < 0 || c.LLM.Temperature > 2 {
-		return fmt.Errorf("llm.temperature must be between 0 and 2, got %.1f", c.LLM.Temperature)
-	}
-	if c.Session.MaxLoop <= 0 {
-		return fmt.Errorf("session.max_loop must be > 0, got %d", c.Session.MaxLoop)
-	}
-	if c.Pool.MaxConcurrency <= 0 {
-		return fmt.Errorf("agent_pool.max_concurrency must be > 0, got %d", c.Pool.MaxConcurrency)
-	}
-	if c.Pool.DefaultTimeout <= 0 {
-		return fmt.Errorf("agent_pool.default_timeout must be > 0, got %d", c.Pool.DefaultTimeout)
-	}
-	if c.Pool.MaxPendingResults <= 0 {
-		return fmt.Errorf("agent_pool.max_pending_results must be > 0, got %d", c.Pool.MaxPendingResults)
-	}
-	if c.Pool.MaxPendingResultLen <= 0 {
-		c.Pool.MaxPendingResultLen = 500
-	}
-	if c.MCP.Shell.TimeoutSeconds <= 0 {
-		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0, got %d", c.MCP.Shell.TimeoutSeconds)
+	if err := c.MCP.Validate(); err != nil {
+		return err
 	}
 	return nil
 }

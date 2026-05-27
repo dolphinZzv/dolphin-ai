@@ -370,7 +370,7 @@ func TestSkills_SearchFetchesRemote(t *testing.T) {
 func TestNewSkillsCmd_HasSubcommands(t *testing.T) {
 	cmd := NewSkillsCmd()
 	subs := cmd.Commands()
-	expected := map[string]bool{"list": false, "search": false, "install": false, "new": false, "disable": false, "enable": false, "uninstall": false}
+	expected := map[string]bool{"list": false, "search": false, "install": false, "new": false, "disable": false, "enable": false, "uninstall": false, "show": false}
 	for _, sub := range subs {
 		if _, ok := expected[sub.Name()]; !ok {
 			t.Errorf("unexpected subcommand: %s", sub.Name())
@@ -384,15 +384,19 @@ func TestNewSkillsCmd_HasSubcommands(t *testing.T) {
 	}
 }
 
-func TestRunSkillsList_InvalidConfig(t *testing.T) {
-	// Point cfgFile at a directory — ReadFile on a directory returns an error
-	// that is not fs.ErrNotExist, so config.Load will propagate it.
+func TestSkillsList_InvalidConfig(t *testing.T) {
+	// With an invalid config path, the cobra command handles it gracefully.
 	cfgFile = t.TempDir()
 	defer func() { cfgFile = "" }()
 
-	err := runSkillsList(nil, nil)
-	if err == nil {
-		t.Fatal("expected error with invalid config")
+	cmd := NewSkillsCmd()
+	cmd.SetArgs([]string{"list"})
+
+	// Should not panic and should not return an error — just prints
+	// "Skills system not available" to stdout.
+	err := cmd.Execute()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

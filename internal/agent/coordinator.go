@@ -24,6 +24,7 @@ import (
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp/shell"
+	"dolphin/internal/registry"
 	"dolphin/internal/scheduler"
 	scope "dolphin/internal/scope"
 	"dolphin/internal/session"
@@ -45,6 +46,8 @@ type Coordinator struct {
 	workflows        *workflowpkg.Manager
 	cronMgr          *scheduler.Manager
 	console          *console.Console
+	reg              *registry.Registry          // unified command registry
+	consoleDisp      *registry.ConsoleDispatcher // REPL dispatcher
 	basePrompt       string
 	pending          []TaskResult    // results collected but not yet in LLM context
 	loadedTools      map[string]bool // MCP tools loaded by LLM via load_mcp_tools
@@ -66,6 +69,25 @@ type Coordinator struct {
 
 	// scopeRouter handles scope-based agent routing, nil if not configured
 	scopeRouter scope.ScopeRouter
+
+	// promptSections are registered dynamic prompt sections evaluated each turn.
+	promptSections []PromptSection
+}
+
+// PromptSection contributes a section of text to the dynamic prompt.
+// Return "" to skip the section.
+type PromptSection interface {
+	Content() string
+}
+
+// sectionFunc adapts a function to PromptSection.
+type sectionFunc func() string
+
+func (f sectionFunc) Content() string { return f() }
+
+// addPromptSection registers a prompt section.
+func (c *Coordinator) addPromptSection(s PromptSection) {
+	c.promptSections = append(c.promptSections, s)
 }
 
 // NewCoordinator creates a coordinator from an existing Agent and agent pool.
@@ -80,23 +102,21 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		comp = &compressor.DropCompressor{}
 	}
 	coordAgent := &Agent{
-		cfg:                agent.cfg.Clone(),
-		sessMgr:            agent.sessMgr,
-		toolReg:            coordReg,
-		provider:           agent.provider,
-		ctxBuilder:         agent.ctxBuilder,
-		compressor:         comp,
-		hooks:              agent.hooks,
-		events:             agent.events,
-		version:            agent.version,
-		buildTime:          agent.buildTime,
-		commitHash:         agent.commitHash,
-		availableProviders: agent.availableProviders,
-		providerIndex:      agent.providerIndex,
+		cfg:        agent.cfg.Clone(),
+		sessMgr:    agent.sessMgr,
+		toolReg:    coordReg,
+		provider:   agent.provider,
+		ctxBuilder: agent.ctxBuilder,
+		compressor: comp,
+		hooks:      agent.hooks,
+		events:     agent.events,
+		version:    agent.version,
+		buildTime:  agent.buildTime,
+		commitHash: agent.commitHash,
 	}
 	// Core coordinator tools always available; MCP tools loaded on demand.
 	coreTools := []string{"dispatch_task", "create_agent", "get_agent_status",
-		"cancel_task", "delete_agent", "search_skills", "load_skill",
+		"cancel_task", "delete_agent", "search_workflows", "search_skills", "load_skill",
 		"add_cron_task", "remove_cron_task", "list_cron_tasks", "toggle_cron_task",
 		"config", "load_mcp_tools", "search_mcp_tools"}
 	if agent.cfg.Flags.SelfEvolution {
@@ -116,7 +136,37 @@ func NewCoordinator(agent *Agent, pool *AgentPool) *Coordinator {
 		buildinRegistry:  buildin.GetRegistry(),
 		buildinCancelFns: make(map[string][]func()),
 	}
+	// Unified command registry: cobra-centric, shared by CLI/REPL/tool.
+	coord.reg = registry.New()
+	coord.consoleDisp = registry.NewConsoleDispatcher(coord.reg)
+	subsysProviders := subsystem.Providers()
+	for _, p := range subsysProviders {
+		if pws, ok := p.(subsystem.ProviderWithSpec); ok {
+			for _, s := range pws.CommandSpecs() {
+				if spec, ok := s.(*registry.CommandSpec); ok {
+					coord.reg.Register(spec)
+				}
+			}
+		}
+	}
+
+	// Register sessions commands (shared cobra definition for CLI and REPL).
+	coord.reg.Register(&registry.CommandSpec{
+		Cobra:    session.SessionsCommand(),
+		Category: registry.CatSession,
+	})
+
 	coord.onboardConsole()
+
+	// Register dynamic prompt sections (evaluated each turn in order).
+	coord.addPromptSection(sectionFunc(coord.availableAgentsSection))
+	coord.addPromptSection(sectionFunc(coord.availableSkillsSection))
+	coord.addPromptSection(sectionFunc(coord.pendingResultsSection))
+	coord.addPromptSection(sectionFunc(coord.subsystemsSection))
+	coord.addPromptSection(sectionFunc(coord.incomingMessagesSection))
+	coord.addPromptSection(sectionFunc(coord.scopeRoutingSection))
+	coord.addPromptSection(sectionFunc(coord.coordinatorInstructionsSection))
+
 	return coord
 }
 
@@ -144,6 +194,13 @@ func (c *Coordinator) SetCronManager(mgr *scheduler.Manager) {
 // SetScopeRouter sets the scope router for file-path-based agent routing.
 func (c *Coordinator) SetScopeRouter(r scope.ScopeRouter) {
 	c.scopeRouter = r
+}
+
+// RegisterCommandSpec adds a command spec to the unified registry.
+// This is used for specs that depend on coordinator state (skills, commands)
+// and must be registered after the manager is set via SetSkillManager etc.
+func (c *Coordinator) RegisterCommandSpec(spec *registry.CommandSpec) {
+	c.reg.Register(spec)
 }
 
 // initBuildinAgents initializes all registered built-in agents. It wires
@@ -448,6 +505,16 @@ func (c *Coordinator) Run(ctx context.Context, io transport.UserIO) {
 				continue
 			}
 			line = hc.UserInput
+		}
+
+		// Registry dispatch (new cobra-centric commands)
+		if c.consoleDisp != nil {
+			if handled, sig := c.consoleDisp.Execute(line, io); handled {
+				if sig == registry.SignalReload {
+					c.reloadRequested = true
+				}
+				continue
+			}
 		}
 
 		// Handle commands
@@ -772,108 +839,133 @@ func (c *Coordinator) drainAndSynthesize(ctx context.Context, state *LoopState, 
 	return true
 }
 
-// buildDynamicPrompt returns the full system prompt including available agents
-// and any pending results from completed agent tasks.
+// buildDynamicPrompt returns the full system prompt including registered
+// dynamic sections (agents, skills, pending results, etc.).
 func (c *Coordinator) buildDynamicPrompt() string {
 	var parts []string
 	parts = append(parts, c.basePrompt)
+	for _, s := range c.promptSections {
+		if content := s.Content(); content != "" {
+			parts = append(parts, content)
+		}
+	}
+	return strings.Join(parts, "\n\n")
+}
 
-	// Available agents
+// --- Dynamic prompt section implementations ---
+
+func (c *Coordinator) availableAgentsSection() string {
+	if c.pool == nil {
+		return ""
+	}
 	agents := c.pool.List()
-	if len(agents) > 0 {
-		var sb strings.Builder
-		sb.WriteString("\n## Available Agents\n")
-		for _, a := range agents {
-			fmt.Fprintf(&sb, "- %s: %s\n", a.Name, a.Role)
-		}
-		parts = append(parts, sb.String())
+	if len(agents) == 0 {
+		return ""
 	}
+	var sb strings.Builder
+	sb.WriteString("## Available Agents\n")
+	for _, a := range agents {
+		fmt.Fprintf(&sb, "- %s: %s\n", a.Name, a.Role)
+	}
+	return sb.String()
+}
 
-	// Available skills (top N by usage)
-	if c.skills != nil {
-		skills := c.skills.List() // use TopSkills when tracked
-		if len(skills) > 0 {
-			var sb strings.Builder
-			sb.WriteString("\n## Available Skills\n")
-			sb.WriteString("Skills are specialized capabilities you can load on demand with load_skill.\n")
-			maxTop := c.agent.cfg.Skills.MaxTop
-			if maxTop <= 0 {
-				maxTop = 10
-			}
-			topSkills := c.skills.TopSkills(maxTop)
-			for _, s := range topSkills {
-				fmt.Fprintf(&sb, "- %s: %s\n", s.Name, s.Description)
-			}
-			if len(skills) > maxTop {
-				fmt.Fprintf(&sb, "\n  [%d more skills available — use search_skills to find them]\n", len(skills)-maxTop)
-			}
-			parts = append(parts, sb.String())
+func (c *Coordinator) availableSkillsSection() string {
+	if c.skills == nil {
+		return ""
+	}
+	skills := c.skills.List()
+	if len(skills) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## Available Skills\n")
+	sb.WriteString("Skills are specialized capabilities you can load on demand with load_skill.\n")
+	maxTop := c.agent.cfg.Skills.MaxTop
+	if maxTop <= 0 {
+		maxTop = 10
+	}
+	topSkills := c.skills.TopSkills(maxTop)
+	for _, s := range topSkills {
+		fmt.Fprintf(&sb, "- %s: %s\n", s.Name, s.Description)
+	}
+	if len(skills) > maxTop {
+		fmt.Fprintf(&sb, "\n  [%d more skills available — use search_skills to find them]\n", len(skills)-maxTop)
+	}
+	return sb.String()
+}
+
+func (c *Coordinator) pendingResultsSection() string {
+	if len(c.pending) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## Pending Agent Results\n")
+	maxResults := c.agent.cfg.Pool.MaxPendingResults
+	if maxResults <= 0 {
+		maxResults = 10
+	}
+	start := 0
+	if len(c.pending) > maxResults {
+		start = len(c.pending) - maxResults
+		fmt.Fprintf(&sb, "[%d older results omitted]\n", start)
+	}
+	for _, r := range c.pending[start:] {
+		output := r.Output
+		maxLen := c.agent.cfg.Pool.MaxPendingResultLen
+		if maxLen > 0 && len(output) > maxLen {
+			output = output[:maxLen] + "..."
+		}
+		statusIcon := "✓"
+		if !r.Success {
+			statusIcon = "✗"
+		}
+		fmt.Fprintf(&sb, "%s %s (%s): %s in %dms\n",
+			statusIcon, r.AgentName, r.TaskID, r.Status, r.DurationMs)
+		if output != "" {
+			sb.WriteString("  " + strings.ReplaceAll(output, "\n", "\n  ") + "\n")
+		} else if r.Error != "" {
+			sb.WriteString("  error: " + r.Error + "\n")
 		}
 	}
+	return sb.String()
+}
 
-	// Pending agent results
-	if len(c.pending) > 0 {
-		var sb strings.Builder
-		sb.WriteString("\n## Pending Agent Results\n")
-		// Keep only last N results
-		maxResults := c.agent.cfg.Pool.MaxPendingResults
-		if maxResults <= 0 {
-			maxResults = 10
-		}
-		start := 0
-		if len(c.pending) > maxResults {
-			start = len(c.pending) - maxResults
-			fmt.Fprintf(&sb, "[%d older results omitted]\n", start)
-		}
-		for _, r := range c.pending[start:] {
-			output := r.Output
-			maxLen := c.agent.cfg.Pool.MaxPendingResultLen
-			if maxLen > 0 && len(output) > maxLen {
-				output = output[:maxLen] + "..."
-			}
-			statusIcon := "✓"
-			if !r.Success {
-				statusIcon = "✗"
-			}
-			fmt.Fprintf(&sb, "%s %s (%s): %s in %dms\n",
-				statusIcon, r.AgentName, r.TaskID, r.Status, r.DurationMs)
-			if output != "" {
-				sb.WriteString("  " + strings.ReplaceAll(output, "\n", "\n  ") + "\n")
-			} else if r.Error != "" {
-				sb.WriteString("  error: " + r.Error + "\n")
-			}
-		}
-		parts = append(parts, sb.String())
-	}
-
-	// SubSystems context
+func (c *Coordinator) subsystemsSection() string {
 	if md := subsystem.ContextMD(); md != "" {
-		parts = append(parts, md)
+		return md
 	}
+	return ""
+}
 
-	// Agent messages (non-empty mailboxes in the pool)
-	if c.pool != nil {
-		agents := c.pool.List()
-		var msgLines []string
-		for _, a := range agents {
-			msgs := c.pool.ReadMessages(a.Name)
-			for _, m := range msgs {
-				msgLines = append(msgLines, fmt.Sprintf("- from %s to %s [%s]: %s", m.From, m.To, m.Subject, m.Body))
-			}
-		}
-		if len(msgLines) > 0 {
-			var sb strings.Builder
-			sb.WriteString("\n## Incoming Messages\n")
-			for _, line := range msgLines {
-				sb.WriteString(line + "\n")
-			}
-			parts = append(parts, sb.String())
+func (c *Coordinator) incomingMessagesSection() string {
+	if c.pool == nil {
+		return ""
+	}
+	agents := c.pool.List()
+	var msgLines []string
+	for _, a := range agents {
+		msgs := c.pool.ReadMessages(a.Name)
+		for _, m := range msgs {
+			msgLines = append(msgLines, fmt.Sprintf("- from %s to %s [%s]: %s", m.From, m.To, m.Subject, m.Body))
 		}
 	}
+	if len(msgLines) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## Incoming Messages\n")
+	for _, line := range msgLines {
+		sb.WriteString(line + "\n")
+	}
+	return sb.String()
+}
 
-	// Scope routing section
-	if c.scopeRouter != nil && len(c.scopeRouter.Scopes()) > 0 {
-		parts = append(parts, `## Scope Routing
+func (c *Coordinator) scopeRoutingSection() string {
+	if c.scopeRouter == nil || len(c.scopeRouter.Scopes()) == 0 {
+		return ""
+	}
+	return `## Scope Routing
 
 When a task involves file changes, use these tools BEFORE Coordinator Instructions apply:
 1. resolve_file_scopes — resolve file paths to scope agents
@@ -882,11 +974,11 @@ When a task involves file changes, use these tools BEFORE Coordinator Instructio
 Example:
   User: "modify src/ui/button.tsx colors"
   → resolve_file_scopes(["src/ui/button.tsx"]) → see which scope matches
-  → dispatch_to_scope("frontend", {task: "modify button colors"})`)
-	}
+  → dispatch_to_scope("frontend", {task: "modify button colors"})`
+}
 
-	// Coordinator instructions
-	parts = append(parts, `## Coordinator Instructions
+func (c *Coordinator) coordinatorInstructionsSection() string {
+	return `## Coordinator Instructions
 You are a coordinator agent. Your job:
 1. Handle simple requests directly using your tools.
 2. For complex or specialized work, delegate to an available agent using dispatch_task.
@@ -894,9 +986,7 @@ You are a coordinator agent. Your job:
 4. Tasks dispatched to agents run asynchronously — you'll see results in the next turn.
 5. Always synthesize multiple agent results into a coherent response for the user.
 6. You can dispatch multiple tasks concurrently in a single turn.
-7. Common MCP tools (shell, cdp, email, webhook) are pre-loaded when enabled. Use search_mcp_tools only when you need tools beyond these.`)
-
-	return strings.Join(parts, "\n\n")
+7. Common MCP tools (shell, cdp, email, webhook) are pre-loaded when enabled. Use search_mcp_tools only when you need tools beyond these.`
 }
 
 // parseCommandName extracts the command name from a /command line.

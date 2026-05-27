@@ -4,137 +4,239 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/smtp"
 	"os"
 	"path/filepath"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"dolphin/internal/agent/console"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/i18n"
+	"dolphin/internal/registry"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 
+	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
-// onboardConsole registers all built-in console commands.
+// cmdUserIO adapts a cobra.Command's OutOrStdout to the transport.UserIO
+// interface, so existing handler methods can be reused from cobra RunE closures.
+type cmdUserIO struct{ cmd *cobra.Command }
+
+func (w *cmdUserIO) WriteLine(s string) error {
+	fmt.Fprintln(w.cmd.OutOrStdout(), s)
+	return nil
+}
+
+func (w *cmdUserIO) WriteString(s string) error {
+	fmt.Fprint(w.cmd.OutOrStdout(), s)
+	return nil
+}
+
+func (w *cmdUserIO) ReadLine() (string, error) {
+	return "", io.EOF
+}
+
+func (w *cmdUserIO) Flush() error { return nil }
+
+func (w *cmdUserIO) Capabilities() transport.Capabilities { return transport.Capabilities{} }
+
+func (w *cmdUserIO) Context() string { return "" }
+
+func (w *cmdUserIO) Name() string { return "cmd" }
+
+// onboardConsole registers all built-in console commands in the unified
+// registry. The old console is kept as an empty fallthrough for safety.
 func (c *Coordinator) onboardConsole() {
 	con := console.New()
-
-	con.Add(&console.Command{
-		Name: "help", Desc: i18n.TL(i18n.KeyHelpHelp),
-		Handler: func(args []string, io transport.UserIO) { c.printHelp(io) },
-	})
-	con.Add(&console.Command{
-		Name: "sessions", Desc: i18n.TL(i18n.KeyHelpSessions),
-		Children: []*console.Command{
-			{Name: "dump", Desc: "Dump session events by ID", Handler: func(args []string, io transport.UserIO) { c.handleSessionDump(args, io) }},
-		},
-		Handler: func(args []string, io transport.UserIO) { c.handleSessions(io) },
-	})
-	con.Add(&console.Command{
-		Name: "session", Desc: "Dump current or specified session as Mermaid diagram",
-		Handler: func(args []string, io transport.UserIO) { c.handleSession(args, io) },
-	})
-	con.Add(&console.Command{
-		Name: "mcp", Desc: i18n.TL(i18n.KeyHelpMCP),
-		Handler: func(args []string, io transport.UserIO) { c.printMCP(io) },
-	})
-	con.Add(&console.Command{
-		Name: "agents", Desc: i18n.TL(i18n.KeyHelpAgents),
-		Handler: func(args []string, io transport.UserIO) { c.printAgents(io, args) },
-	})
-	con.Add(&console.Command{
-		Name: "crontab", Desc: i18n.TL(i18n.KeyHelpCron),
-		Handler: func(args []string, io transport.UserIO) { c.printCronTasks(io) },
-	})
-	con.Add(&console.Command{
-		Name: "skills",
-		Desc: i18n.TL(i18n.KeyHelpSkills),
-		Children: []*console.Command{
-			{Name: "new", Desc: "Create a new skill template", Handler: func(args []string, io transport.UserIO) { c.handleSkillNew(args, io) }},
-			{Name: "delete", Desc: "Delete a skill", Handler: func(args []string, io transport.UserIO) { c.handleSkillDelete(args, io) }},
-			{Name: "show", Desc: "Show skill content", Handler: func(args []string, io transport.UserIO) { c.handleSkillShow(args, io) }},
-		},
-		Handler: func(args []string, io transport.UserIO) { c.printSkills(io) },
-	})
-	con.Add(&console.Command{
-		Name: "commands",
-		Desc: i18n.TL(i18n.KeyHelpCommands),
-		Children: []*console.Command{
-			{Name: "new", Desc: "Create a new command template", Handler: func(args []string, io transport.UserIO) { c.handleCmdNew(args, io) }},
-			{Name: "delete", Desc: "Delete a command", Handler: func(args []string, io transport.UserIO) { c.handleCmdDelete(args, io) }},
-			{Name: "show", Desc: "Show command content", Handler: func(args []string, io transport.UserIO) { c.handleCmdShow(args, io) }},
-		},
-		Handler: func(args []string, io transport.UserIO) { c.printCommands(io) },
-	})
-	con.Add(&console.Command{
-		Name: "workflow", Desc: i18n.TL(i18n.KeyHelpWorkflow),
-		Children: []*console.Command{
-			{Name: "new", Desc: "Create a new workflow template", Handler: func(args []string, io transport.UserIO) { c.handleWorkflowNew(args, io) }},
-			{Name: "delete", Desc: "Delete a workflow", Handler: func(args []string, io transport.UserIO) { c.handleWorkflowDelete(args, io) }},
-			{Name: "show", Desc: "Show workflow content", Handler: func(args []string, io transport.UserIO) { c.handleWorkflowShow(args, io) }},
-		},
-		Handler: func(args []string, io transport.UserIO) { c.printWorkflows(io) },
-	})
-	con.Add(&console.Command{
-		Name: "model", Desc: i18n.TL(i18n.KeyHelpModel),
-		Handler: func(args []string, io transport.UserIO) { c.handleModelCmd(args, io) },
-	})
-	con.Add(&console.Command{
-		Name: "cancel", Desc: "Cancel running tasks",
-		Handler: func(args []string, io transport.UserIO) { c.handleCancelCmd(args, io) },
-	})
-	con.Add(&console.Command{
-		Name: "forget", Desc: "Reset conversation context for an agent",
-		Handler: func(args []string, io transport.UserIO) {
-			if len(args) == 0 {
-				io.WriteLine("Usage: /forget <agentname>")
-				io.WriteLine("Example: /forget sheller")
-				return
-			}
-			if err := c.pool.Forget(args[0]); err != nil {
-				io.WriteLine(fmt.Sprintf("Error: %v", err))
-			} else {
-				io.WriteLine(fmt.Sprintf("Agent %q conversation context reset.", args[0]))
-			}
-		},
-	})
-	con.Add(&console.Command{
-		Name: "context", Desc: i18n.TL(i18n.KeyHelpContext),
-		Handler: func(args []string, io transport.UserIO) { c.printContext(args, io) },
-	})
-	con.Add(&console.Command{
-		Name: "feedback", Desc: "Send feedback to the development team via email",
-		Handler: func(args []string, io transport.UserIO) { c.handleFeedback(args, io) },
-	})
-	con.Add(&console.Command{
-		Name: "transport", Desc: "Show enabled transports",
-		Handler: func(args []string, io transport.UserIO) { c.printTransport(io) },
-	})
-	con.Add(&console.Command{
-		Name: "config", Desc: i18n.TL(i18n.KeyHelpConfig),
-		Children: []*console.Command{
-			{Name: "get", Desc: "Get a config value by path (e.g. llm.temperature)", Handler: func(args []string, io transport.UserIO) { c.handleConfigGetCmd(args, io) }},
-			{Name: "set", Desc: "Set a config value by path (e.g. llm.temperature 0.8)", Handler: func(args []string, io transport.UserIO) { c.handleConfigSetCmd(args, io) }},
-		},
-		Handler: func(args []string, io transport.UserIO) { c.handleConfigListCmd(io) },
-	})
-	con.Add(&console.Command{
-		Name: "reload", Desc: i18n.TL(i18n.KeyHelpReload),
-		Handler: func(args []string, io transport.UserIO) {
-			c.reloadRequested = true
-			io.WriteLine("Reloading agent...")
-		},
-	})
-
 	c.console = con
+
+	reg := c.reg
+
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "help",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c.printHelp(&cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatSystem,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "mcp",
+			Short:  "List MCP tools",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c.printMCP(&cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatMCP,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "agents",
+			Short:  "List agents and their status",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c.printAgents(&cmdUserIO{cmd: cmd}, args)
+				return nil
+			},
+		},
+		Category: registry.CatAgent,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "crontab",
+			Short:  "List scheduled tasks",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c.printCronTasks(&cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatCron,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "model",
+			Short:  "Show or switch the active model",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c.handleModelCmd(args, &cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatConfig,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "cancel",
+			Short:  "Cancel running tasks",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c.handleCancelCmd(args, &cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatAgent,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "forget",
+			Short:  "Reset agent conversation context",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				if len(args) == 0 {
+					fmt.Fprintln(cmd.OutOrStdout(), "Usage: /forget <agentname>")
+					fmt.Fprintln(cmd.OutOrStdout(), "Example: /forget sheller")
+					return nil
+				}
+				if err := c.pool.Forget(args[0]); err != nil {
+					fmt.Fprintln(cmd.OutOrStdout(), "Error:", err)
+				} else {
+					fmt.Fprintf(cmd.OutOrStdout(), "Agent %q conversation context reset.\n", args[0])
+				}
+				return nil
+			},
+		},
+		Category: registry.CatAgent,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "context",
+			Short:  "Show agent context summary",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c.printContext(args, &cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatAgent,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "feedback",
+			Short:  "Send feedback to the development team",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				c.handleFeedback(args, &cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatSystem,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "transport",
+			Short:  "Show transport configuration",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c.printTransport(&cmdUserIO{cmd: cmd})
+				return nil
+			},
+		},
+		Category: registry.CatSystem,
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra: &cobra.Command{
+			Use:    "reload",
+			Short:  "Reload the agent",
+			Hidden: true,
+			RunE: func(cmd *cobra.Command, _ []string) error {
+				c.reloadRequested = true
+				fmt.Fprintln(cmd.OutOrStdout(), "Reloading agent...")
+				return nil
+			},
+		},
+		Category: registry.CatSystem,
+		Signal:   registry.SignalReload,
+	})
+
+	// Config command with get/set subcommands.
+	configCmd := &cobra.Command{
+		Use:    "config",
+		Short:  "Read and modify runtime configuration",
+		Hidden: true,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			c.handleConfigListCmd(&cmdUserIO{cmd: cmd})
+			return nil
+		},
+	}
+	configCmd.AddCommand(&cobra.Command{
+		Use:    "get",
+		Short:  "Read a configuration value by path",
+		Hidden: true,
+		Args:   cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c.handleConfigGetCmd(args, &cmdUserIO{cmd: cmd})
+			return nil
+		},
+	})
+	configCmd.AddCommand(&cobra.Command{
+		Use:    "set",
+		Short:  "Modify a configuration value",
+		Hidden: true,
+		Args:   cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c.handleConfigSetCmd(args, &cmdUserIO{cmd: cmd})
+			return nil
+		},
+	})
+	reg.Register(&registry.CommandSpec{
+		Cobra:    configCmd,
+		Category: registry.CatConfig,
+	})
 }
 
 func (c *Coordinator) printHelp(io transport.UserIO) {
@@ -276,299 +378,6 @@ func (c *Coordinator) printMCP(io transport.UserIO) {
 	io.WriteLine("")
 }
 
-func (c *Coordinator) printSkills(io transport.UserIO) {
-	if c.skills == nil {
-		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
-		io.WriteLine(i18n.TL(i18n.KeyNoSkillsHint))
-		return
-	}
-
-	skills := c.skills.List()
-	if len(skills) == 0 {
-		io.WriteLine(i18n.TL(i18n.KeyNoSkills))
-		io.WriteLine(i18n.TL(i18n.KeyNoSkillsHint))
-		return
-	}
-
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillHeader), "SKILL", "USAGE", "DESCRIPTION"))
-	io.WriteLine("----------------------------------------------------------")
-	for _, s := range skills {
-		usage := "0"
-		if s.CallCount > 0 {
-			usage = fmt.Sprintf("%d", s.CallCount)
-		}
-		io.WriteLine(fmt.Sprintf("%-20s %-8s %s", s.Name, usage, s.Description))
-	}
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeySkillSearchHint))
-	io.WriteLine(i18n.TL(i18n.KeySkillDeleteUsage))
-	io.WriteLine(i18n.TL(i18n.KeySkillShowUsage))
-	io.WriteLine("")
-}
-
-func (c *Coordinator) handleSkillNew(args []string, io transport.UserIO) {
-	if c.skills == nil {
-		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
-		return
-	}
-
-	if len(args) == 0 {
-		io.WriteLine(i18n.TL(i18n.KeySkillNewUsage))
-		return
-	}
-
-	name := args[0]
-
-	if err := c.skills.NewTemplate(name, ""); err != nil {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewError), err))
-		return
-	}
-
-	dir := c.skills.Dir()
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillNewCreated), name, dir))
-}
-
-func (c *Coordinator) handleSkillDelete(args []string, io transport.UserIO) {
-	if c.skills == nil {
-		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
-		return
-	}
-
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		io.WriteLine(i18n.TL(i18n.KeySkillDeleteUsage))
-		return
-	}
-
-	if _, ok := c.skills.Get(name); !ok {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillShowFail), name))
-		return
-	}
-
-	if err := c.skills.Unregister(name); err != nil {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillDeleteFail), name, err))
-		return
-	}
-
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillDeleteDone), name))
-}
-
-func (c *Coordinator) handleSkillShow(args []string, io transport.UserIO) {
-	if c.skills == nil {
-		io.WriteLine(i18n.TL(i18n.KeySkillsNotAvail))
-		return
-	}
-
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		io.WriteLine(i18n.TL(i18n.KeySkillShowUsage))
-		return
-	}
-
-	s, ok := c.skills.Get(name)
-	if !ok {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillShowFail), name))
-		return
-	}
-
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySkillShowHeader), name))
-	io.WriteLine(s.Content)
-	io.WriteLine("")
-}
-
-func (c *Coordinator) printCommands(io transport.UserIO) {
-	if c.commands == nil {
-		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
-		return
-	}
-	cmds := c.commands.List()
-	if len(cmds) == 0 {
-		io.WriteLine(i18n.TL(i18n.KeyNoCommands))
-		io.WriteLine(i18n.TL(i18n.KeyNoCommandsHint))
-		return
-	}
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCommandHeader), "COMMAND", "DESCRIPTION"))
-	io.WriteLine("------------------------------------------")
-	for _, cmd := range cmds {
-		io.WriteLine(fmt.Sprintf("/%-19s  %s", cmd.Name, cmd.Description))
-	}
-	io.WriteLine("")
-	io.WriteLine(i18n.TL(i18n.KeyCommandRunHint))
-	io.WriteLine(i18n.TL(i18n.KeyCmdNewUsage))
-	io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
-	io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
-	io.WriteLine("")
-}
-
-func (c *Coordinator) printWorkflows(io transport.UserIO) {
-	if c.workflows == nil {
-		return
-	}
-	wfs := c.workflows.List()
-	if len(wfs) == 0 {
-		io.WriteLine("No workflows found.")
-		io.WriteLine("Use `dolphin workflow new <name>` or `dolphin workflow init` to create one.")
-		return
-	}
-	for _, w := range wfs {
-		io.WriteLine(fmt.Sprintf("/%s: %s", w.Name, w.Description))
-	}
-	io.WriteLine("")
-	io.WriteLine("Use `dolphin workflow show <name>` to view steps.")
-}
-
-func (c *Coordinator) handleWorkflowNew(args []string, io transport.UserIO) {
-	if c.workflows == nil {
-		return
-	}
-	if len(args) == 0 {
-		io.WriteLine("Usage: /workflow new <name>")
-		return
-	}
-	name := args[0]
-	if err := c.workflows.NewTemplate(name, ""); err != nil {
-		io.WriteLine(fmt.Sprintf("Failed to create workflow: %v", err))
-		return
-	}
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyWorkflowCLICreated), name, c.workflows.Dir()))
-	io.WriteLine(i18n.TL(i18n.KeyWorkflowCLIEdit))
-}
-
-func (c *Coordinator) handleWorkflowDelete(args []string, io transport.UserIO) {
-	if c.workflows == nil {
-		return
-	}
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		io.WriteLine("Usage: /workflow delete <name>")
-		return
-	}
-	if _, ok := c.workflows.Get(name); !ok {
-		io.WriteLine(fmt.Sprintf("Workflow %q not found.", name))
-		return
-	}
-	if err := c.workflows.Unregister(name); err != nil {
-		io.WriteLine(fmt.Sprintf("Failed to delete workflow: %v", err))
-		return
-	}
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyWorkflowCLIDeleted), name))
-}
-
-func (c *Coordinator) handleWorkflowShow(args []string, io transport.UserIO) {
-	if c.workflows == nil {
-		return
-	}
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		io.WriteLine("Usage: /workflow show <name>")
-		return
-	}
-	w, ok := c.workflows.Get(name)
-	if !ok {
-		io.WriteLine(fmt.Sprintf("Workflow %q not found.", name))
-		return
-	}
-	io.WriteLine(fmt.Sprintf("--- %s ---", w.Name))
-	if w.Description != "" {
-		io.WriteLine(fmt.Sprintf("Description: %s", w.Description))
-	}
-	io.WriteLine(w.Content)
-	io.WriteLine("")
-}
-
-func (c *Coordinator) handleCmdNew(args []string, io transport.UserIO) {
-	if c.commands == nil {
-		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
-		return
-	}
-
-	if len(args) == 0 {
-
-		io.WriteLine(i18n.TL(i18n.KeyCmdNewUsage))
-		return
-	}
-
-	name := args[0]
-	description := name
-	if len(args) > 1 {
-		description = strings.Join(args[1:], " ")
-	}
-
-	if err := c.commands.NewTemplate(name, description); err != nil {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdNewError), err))
-		return
-	}
-
-	dir := c.commands.Dir()
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdNewCreated), name, dir))
-}
-
-func (c *Coordinator) handleCmdDelete(args []string, io transport.UserIO) {
-	if c.commands == nil {
-		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
-		return
-	}
-
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		io.WriteLine(i18n.TL(i18n.KeyCmdDeleteUsage))
-		return
-	}
-
-	if _, ok := c.commands.Get(name); !ok {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdShowFail), name))
-		return
-	}
-
-	if err := c.commands.Unregister(name); err != nil {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdDeleteFail), name, err))
-		return
-	}
-
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdDeleteDone), name))
-}
-
-func (c *Coordinator) handleCmdShow(args []string, io transport.UserIO) {
-	if c.commands == nil {
-		io.WriteLine(i18n.TL(i18n.KeyCommandsNotAvail))
-		return
-	}
-
-	name := ""
-	if len(args) > 0 {
-		name = args[0]
-	}
-	if name == "" {
-		io.WriteLine(i18n.TL(i18n.KeyCmdShowUsage))
-		return
-	}
-
-	cmd, ok := c.commands.Get(name)
-	if !ok {
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdShowFail), name))
-		return
-	}
-
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeyCmdShowHeader), name))
-	io.WriteLine(cmd.Content)
-	io.WriteLine("")
-}
-
 func (c *Coordinator) printCronTasks(io transport.UserIO) {
 	if c.cronMgr == nil {
 		io.WriteLine(i18n.TL(i18n.KeyCronNotAvail))
@@ -612,20 +421,25 @@ func (c *Coordinator) printCronTasks(io transport.UserIO) {
 }
 
 func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
-	providers := c.agent.availableProviders
-	if len(providers) == 0 {
-		io.WriteLine("No providers configured")
+	fp, ok := c.agent.provider.(*provider.FailoverProvider)
+	if !ok {
+		io.WriteLine("Provider does not support failover.")
 		return
 	}
 
 	if len(args) == 0 {
+		cfgs := fp.Configs()
+		if len(cfgs) == 0 {
+			io.WriteLine("No providers configured")
+			return
+		}
 		// List providers
 		io.WriteLine("Available providers (type:model):")
 		io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", "NAME", "MODEL", "STATUS"))
 		io.WriteLine("  " + strings.Repeat("-", 55))
-		for i, pc := range providers {
+		for i, pc := range cfgs {
 			status := ""
-			if i == c.agent.providerIndex {
+			if i == fp.CurrentIndex() {
 				status = "← active"
 			}
 			io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", pc.Name, pc.Model, status))
@@ -637,7 +451,14 @@ func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
 
 	// Switch to named provider
 	name := args[0]
-	if c.agent.switchToProvider(name) {
+	if fp.SwitchTo(name) {
+		cc := fp.CurrentConfig()
+		c.agent.cfg.LLM.Type = cc.Type
+		c.agent.cfg.LLM.BaseURL = cc.BaseURL
+		c.agent.cfg.LLM.APIKey = cc.APIKey
+		c.agent.cfg.LLM.Model = cc.Model
+		c.agent.cfg.LLM.MaxTokens = cc.MaxTokens
+		c.agent.rebuildCompressor()
 		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.agent.provider.Name()))
 	} else {
 		io.WriteLine(fmt.Sprintf("provider.Provider %q not found or unhealthy", name))
@@ -822,208 +643,6 @@ func (c *Coordinator) printCurrentContext(io transport.UserIO) {
 		}
 		io.WriteLine("")
 	}
-}
-
-func (c *Coordinator) handleSessions(io transport.UserIO) {
-	dir := c.agent.sessMgr.Dir()
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		io.WriteLine(fmt.Sprintf("Cannot read sessions dir: %v", err))
-		return
-	}
-
-	type sessInfo struct {
-		id           string
-		turns        int
-		inputTokens  int
-		outputTokens int
-		mod          time.Time
-	}
-	var sessions []sessInfo
-	for _, entry := range entries {
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, "-summary.json") {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		id := strings.TrimSuffix(name, ".jsonl")
-		sessPath := filepath.Join(dir, name)
-		turns, _ := session.CountTurns(sessPath)
-		inTok, outTok, _ := session.CountTokens(sessPath)
-		sessions = append(sessions, sessInfo{id: id, turns: turns, inputTokens: inTok, outputTokens: outTok, mod: info.ModTime()})
-	}
-
-	if len(sessions) == 0 {
-		io.WriteLine(i18n.TL(i18n.KeyNoSessions))
-		io.WriteLine("")
-		return
-	}
-
-	// Sort by modification time, most recent first
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].mod.After(sessions[j].mod)
-	})
-
-	io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionsHeader), len(sessions)))
-	for _, s := range sessions {
-		ago := time.Since(s.mod).Truncate(time.Second).String()
-		io.WriteLine(fmt.Sprintf(i18n.TL(i18n.KeySessionRow), s.id, s.turns, ago+" ago", s.inputTokens, s.outputTokens))
-	}
-	io.WriteLine("")
-}
-
-func (c *Coordinator) handleSessionDump(args []string, io transport.UserIO) {
-	if len(args) == 0 {
-		io.WriteLine("Usage: /sessions dump <session-id> [list|mermaid]")
-		return
-	}
-	formatType := "list"
-	if len(args) > 1 {
-		formatType = args[1]
-	}
-	sessionPath := filepath.Join(c.agent.sessMgr.Dir(), args[0]+".jsonl")
-	events, err := session.ReadEvents(sessionPath)
-	if err != nil {
-		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
-		return
-	}
-	switch formatType {
-	case "mermaid":
-		c.dumpSessionMermaid(events, args[0], io)
-	default:
-		c.dumpSessionList(events, args[0], io)
-	}
-}
-func (c *Coordinator) handleSession(args []string, io transport.UserIO) {
-	// Default: dump current session as mermaid
-	formatType := "mermaid"
-	sessionID := ""
-
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		switch {
-		case arg == "list" || arg == "mermaid":
-			formatType = arg
-		case strings.HasPrefix(arg, "-type="):
-			formatType = strings.TrimPrefix(arg, "-type=")
-		case arg == "-type" && i+1 < len(args):
-			i++
-			formatType = args[i]
-		default:
-			if sessionID == "" {
-				sessionID = arg
-			}
-		}
-	}
-
-	// Use current session if no ID specified
-	if sessionID == "" {
-		if c.currentSess == nil {
-			io.WriteLine("No active session")
-			return
-		}
-		sessionID = string(c.currentSess.ID)
-	}
-
-	sessionPath := filepath.Join(c.agent.sessMgr.Dir(), sessionID+".jsonl")
-	events, err := session.ReadEvents(sessionPath)
-	if err != nil {
-		io.WriteLine(fmt.Sprintf("Failed to read session: %v", err))
-		return
-	}
-
-	switch formatType {
-	case "list":
-		c.dumpSessionList(events, sessionID, io)
-	default:
-		c.dumpSessionMermaid(events, sessionID, io)
-	}
-}
-
-func (c *Coordinator) dumpSessionList(events []session.SessionEvent, id string, io transport.UserIO) {
-	io.WriteLine(fmt.Sprintf("Session: %s (%d events)\n", id, len(events)))
-	for _, evt := range events {
-		line := fmt.Sprintf("[T%d %s] %s", evt.Turn, evt.Timestamp.Format("15:04:05"), evt.Type)
-		if evt.Role != "" {
-			line += fmt.Sprintf(" (%s)", evt.Role)
-		}
-		if evt.ToolName != "" {
-			line += fmt.Sprintf(" tool=%s", evt.ToolName)
-		}
-		if len(evt.Content) > 0 {
-			content := string(evt.Content)
-			if len(content) > 200 {
-				content = content[:200] + "..."
-			}
-			line += ": " + content
-		}
-		io.WriteLine(line)
-	}
-	io.WriteLine("")
-}
-
-func (c *Coordinator) dumpSessionMermaid(events []session.SessionEvent, id string, io transport.UserIO) {
-	io.WriteLine("sequenceDiagram")
-	io.WriteLine(fmt.Sprintf("    participant User as User"))
-	io.WriteLine(fmt.Sprintf("    participant Agent as Agent"))
-	toolNames := make(map[string]bool)
-	for _, evt := range events {
-		if evt.ToolName != "" {
-			toolNames[evt.ToolName] = true
-		}
-	}
-	for name := range toolNames {
-		io.WriteLine(fmt.Sprintf("    participant %s as %s", strings.ReplaceAll(name, "-", "_"), name))
-	}
-	io.WriteLine("")
-	var lastTurn int
-	for _, evt := range events {
-		if evt.Turn != lastTurn {
-			io.WriteLine(fmt.Sprintf("    Note over User,Agent: Turn %d", evt.Turn))
-			lastTurn = evt.Turn
-		}
-		switch evt.Role {
-		case "user":
-			content := string(evt.Content)
-			if len(content) > 80 {
-				content = content[:80] + "..."
-			}
-			io.WriteLine(fmt.Sprintf("    User->>Agent: %s", content))
-		case "assistant":
-			if evt.ToolName != "" {
-				toolName := strings.ReplaceAll(evt.ToolName, "-", "_")
-				input := string(evt.ToolInput)
-				if len(input) > 60 {
-					input = input[:60] + "..."
-				}
-				io.WriteLine(fmt.Sprintf("    Agent->>+%s: %s", toolName, input))
-			} else {
-				content := string(evt.Content)
-				if len(content) > 80 {
-					content = content[:80] + "..."
-				}
-				io.WriteLine(fmt.Sprintf("    Agent-->>User: %s", content))
-			}
-		default:
-			// Tool result events
-			if evt.ToolName != "" && evt.Type == "tool_result" {
-				toolName := strings.ReplaceAll(evt.ToolName, "-", "_")
-				result := string(evt.Content)
-				if len(result) > 80 {
-					result = result[:80] + "..."
-				}
-				prefix := "-->>-"
-				if evt.IsError {
-					prefix = "-x->-"
-				}
-				io.WriteLine(fmt.Sprintf("    %s%sAgent: %s", toolName, prefix, result))
-			}
-		}
-	}
-	io.WriteLine("")
 }
 
 func (c *Coordinator) printTransport(io transport.UserIO) {

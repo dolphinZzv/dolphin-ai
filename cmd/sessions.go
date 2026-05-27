@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
@@ -19,42 +18,27 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// NewSessionsCmd creates the sessions command tree for CLI use.
 func NewSessionsCmd() *cobra.Command {
-	cmd := &cobra.Command{
-		Use:   i18n.TL(i18n.KeyCmdSessionsUse),
-		Short: i18n.TL(i18n.KeyCmdSessionsShort),
-		RunE:  runSessionsList,
+	cmd := session.SessionsCommand()
+
+	// Replace dump subcommand with CLI-enhanced version (adds --server/--open)
+	oldDump := findSubCommand(cmd, "dump")
+	if oldDump != nil {
+		cmd.RemoveCommand(oldDump)
 	}
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   i18n.TL(i18n.KeyCmdSessionsShowUse),
-		Short: i18n.TL(i18n.KeyCmdSessionsShowShort),
-		Args:  cobra.ExactArgs(1),
-		RunE:  runSessionsShow,
-	})
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   i18n.TL(i18n.KeyCmdSessionsLogUse),
-		Short: i18n.TL(i18n.KeyCmdSessionsLogShort),
-		Args:  cobra.ExactArgs(1),
-		RunE:  runSessionsLog,
-	})
-
-	cmd.AddCommand(&cobra.Command{
-		Use:   i18n.TL(i18n.KeyCmdSessionsRmUse),
-		Short: i18n.TL(i18n.KeyCmdSessionsRmShort),
-		Args:  cobra.ExactArgs(1),
-		RunE:  runSessionsRemove,
-	})
-
 	dumpCmd := &cobra.Command{
-		Use:   i18n.TL(i18n.KeyCmdSessionsDumpUse),
+		Use:   i18n.TL(i18n.KeyCmdSessionsDumpUse) + " [list|mermaid]",
 		Short: i18n.TL(i18n.KeyCmdSessionsDumpShort),
-		Args:  cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			server, _ := cmd.Flags().GetBool("server")
-			open, _ := cmd.Flags().GetBool("open")
-			return runSessionsDumpDo(args[0], server, open)
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(c *cobra.Command, args []string) error {
+			server, _ := c.Flags().GetBool("server")
+			open, _ := c.Flags().GetBool("open")
+			if server || open {
+				return runSessionsDumpDo(args[0], server, open)
+			}
+			// Delegate to the shared handler for normal dump
+			return oldDump.RunE(c, args)
 		},
 	}
 	dumpCmd.Flags().Bool("server", false, "serve diagram as a local web page")
@@ -64,267 +48,18 @@ func NewSessionsCmd() *cobra.Command {
 	return cmd
 }
 
-func runSessionsList(cmd *cobra.Command, args []string) error {
-	sessionDir := config.SessionsDir()
-
-	entries, err := os.ReadDir(sessionDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println(i18n.TL(i18n.KeySessNoDir))
-			return nil
+// findSubCommand finds a subcommand by name.
+func findSubCommand(cmd *cobra.Command, name string) *cobra.Command {
+	for _, sub := range cmd.Commands() {
+		if sub.Name() == name {
+			return sub
 		}
-		return fmt.Errorf("read session directory: %w", err)
-	}
-
-	type sessInfo struct {
-		id        string
-		startedAt time.Time
-		state     string
-		path      string
-		inTokens  int
-		outTokens int
-	}
-
-	var sessions []sessInfo
-	summaryIDs := make(map[string]bool)
-
-	for _, entry := range entries {
-		name := entry.Name()
-		if strings.HasSuffix(name, "-summary.json") {
-			sid := strings.TrimSuffix(name, "-summary.json")
-			summaryIDs[sid] = true
-			info, err := entry.Info()
-			if err != nil {
-				continue
-			}
-			// Parse token counts from summary file
-			var inTok, outTok int
-			if data, err := os.ReadFile(filepath.Join(sessionDir, name)); err == nil {
-				var sum session.Summary
-				if json.Unmarshal(data, &sum) == nil {
-					inTok = sum.InputTokens
-					outTok = sum.OutputTokens
-				}
-			}
-			sessions = append(sessions, sessInfo{
-				id:        sid,
-				startedAt: info.ModTime(),
-				state:     "completed",
-				path:      filepath.Join(sessionDir, name),
-				inTokens:  inTok,
-				outTokens: outTok,
-			})
-		}
-	}
-
-	for _, entry := range entries {
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".jsonl") {
-			continue
-		}
-		sid := strings.TrimSuffix(name, ".jsonl")
-		if summaryIDs[sid] {
-			continue
-		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		sessions = append(sessions, sessInfo{
-			id:        sid,
-			startedAt: info.ModTime(),
-			state:     "active",
-			path:      filepath.Join(sessionDir, name),
-		})
-	}
-
-	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].startedAt.After(sessions[j].startedAt)
-	})
-
-	if len(sessions) == 0 {
-		fmt.Println(i18n.TL(i18n.KeySessNone))
-		return nil
-	}
-
-	fmt.Printf(i18n.TL(i18n.KeySessDirLabel)+"\n\n", sessionDir)
-	for _, s := range sessions {
-		age := time.Since(s.startedAt).Round(time.Second)
-		fmt.Printf("  %-24s  %s  %s  %s  in=%d out=%d\n", s.id[:min(len(s.id), 20)]+"...", s.startedAt.Format("2006-01-02 15:04"), s.state, age, s.inTokens, s.outTokens)
-	}
-	fmt.Println()
-	return nil
-}
-
-func runSessionsShow(cmd *cobra.Command, args []string) error {
-	sid := args[0]
-	sessionDir := config.SessionsDir()
-
-	eventsPath := filepath.Join(sessionDir, sid+".jsonl")
-	events, err := session.ReadEvents(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("session %q not found", sid)
-		}
-		return fmt.Errorf("read session: %w", err)
-	}
-
-	if len(events) == 0 {
-		fmt.Println(i18n.TL(i18n.KeySessNoEvents))
-		return nil
-	}
-
-	fmt.Printf(i18n.TL(i18n.KeySessHeader)+"\n", sid)
-	fmt.Printf("Duration: %s — %s (%d events)\n",
-		events[0].Timestamp.Format("2006-01-02 15:04:05"),
-		events[len(events)-1].Timestamp.Format("15:04:05"),
-		len(events),
-	)
-	fmt.Println()
-
-	type turnEvents struct {
-		turn   int
-		events []session.SessionEvent
-	}
-	turnMap := make(map[int]*turnEvents)
-	var turnOrder []int
-	for _, evt := range events {
-		t := evt.Turn
-		if _, ok := turnMap[t]; !ok {
-			turnMap[t] = &turnEvents{turn: t}
-			turnOrder = append(turnOrder, t)
-		}
-		turnMap[t].events = append(turnMap[t].events, evt)
-	}
-
-	for _, t := range turnOrder {
-		te := turnMap[t]
-		var inTok, outTok int
-		for _, evt := range te.events {
-			inTok += evt.InputTokens
-			outTok += evt.OutputTokens
-		}
-		tokStr := ""
-		if inTok > 0 || outTok > 0 {
-			tokStr = fmt.Sprintf(" (tokens: %d in / %d out)", inTok, outTok)
-		}
-		fmt.Printf("--- Turn %d%s ---\n", t, tokStr)
-		for _, evt := range te.events {
-			switch evt.Type {
-			case session.EventMessage:
-				role := evt.Role
-				if role == "" {
-					role = "unknown"
-				}
-				content := strings.TrimSpace(string(evt.Content))
-				if content != "" {
-					fmt.Printf("  [%s] %s\n", role, content)
-				}
-			case session.EventToolCall:
-				if evt.ToolName != "" {
-					input := strings.TrimSpace(string(evt.ToolInput))
-					if len(input) > 200 {
-						input = input[:200] + "..."
-					}
-					fmt.Printf("  [tool] %s(%s)\n", evt.ToolName, input)
-				}
-			case session.EventToolResult:
-				result := extractTextContent(string(evt.ToolResult))
-				if result == "" {
-					result = "(empty)"
-				}
-				if len(result) > 300 {
-					result = result[:300] + "..."
-				}
-				isErr := ""
-				if evt.IsError {
-					isErr = " ERROR"
-				}
-				fmt.Printf("  [result%s] %s\n", isErr, result)
-			case session.EventSystem:
-				content := strings.TrimSpace(string(evt.Content))
-				if content != "" {
-					fmt.Printf("  [system] %s\n", content)
-				}
-			case session.EventSummary:
-				content := strings.TrimSpace(string(evt.Content))
-				if content != "" {
-					fmt.Printf("  [summary] %s\n", content)
-				}
-			case session.EventCompression:
-				content := strings.TrimSpace(string(evt.Content))
-				if content != "" {
-					fmt.Printf("  [compress] %s\n", content)
-				}
-			}
-		}
-		fmt.Println()
 	}
 	return nil
 }
 
-func runSessionsLog(cmd *cobra.Command, args []string) error {
-	sid := args[0]
-	sessionDir := config.SessionsDir()
-
-	sumPath := filepath.Join(sessionDir, sid+"-summary.json")
-	if data, err := os.ReadFile(sumPath); err == nil {
-		fmt.Println(string(data))
-		return nil
-	}
-
-	eventsPath := filepath.Join(sessionDir, sid+".jsonl")
-	events, err := session.ReadEvents(eventsPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("session %q not found", sid)
-		}
-		return fmt.Errorf("read session: %w", err)
-	}
-
-	fmt.Printf("Session: %s\n", sid)
-	fmt.Printf("Events:  %d\n", len(events))
-	fmt.Println()
-	for _, evt := range events {
-		t := evt.Timestamp.Format("15:04:05")
-		content := strings.TrimSpace(string(evt.Content))
-		if len(content) > 100 {
-			content = content[:100] + "..."
-		}
-		fmt.Printf("  [%s] turn=%d %s", t, evt.Turn, evt.Type)
-		if evt.Role != "" {
-			fmt.Printf(" role=%s", evt.Role)
-		}
-		if evt.ToolName != "" {
-			fmt.Printf(" tool=%s", evt.ToolName)
-		}
-		if content != "" {
-			fmt.Printf(" %q", content)
-		}
-		fmt.Println()
-	}
-	return nil
-}
-
-func runSessionsRemove(cmd *cobra.Command, args []string) error {
-	sid := args[0]
-	sessionDir := config.SessionsDir()
-
-	remPath := filepath.Join(sessionDir, sid+".jsonl")
-	if err := os.Remove(remPath); err != nil {
-		if os.IsNotExist(err) {
-			return fmt.Errorf("session %q not found", sid)
-		}
-		return fmt.Errorf("remove session: %w", err)
-	}
-
-	sumPath := filepath.Join(sessionDir, sid+"-summary.json")
-	_ = os.Remove(sumPath)
-
-	fmt.Printf(i18n.TL(i18n.KeySessRemoved)+"\n", sid)
-	return nil
-}
-
+// runSessionsDumpDo generates a Mermaid sequence diagram for the session and
+// optionally serves it as a local web page.
 func runSessionsDumpDo(sid string, serve, openBrowser bool) error {
 	sessionDir := config.SessionsDir()
 
@@ -459,7 +194,6 @@ func runSessionsDumpDo(sid string, serve, openBrowser bool) error {
 }
 
 func extractTextContent(raw string) string {
-	// Try nested structure: [{"type":"tool_result","content":[{"type":"text","text":"..."}]}]
 	var nestedBlocks []struct {
 		Type    string `json:"type"`
 		Content []struct {
@@ -485,7 +219,6 @@ func extractTextContent(raw string) string {
 		}
 	}
 
-	// Try flat structure: [{"type":"text","text":"..."}]
 	var msgBlocks []struct {
 		Type     string `json:"type"`
 		Text     string `json:"text"`

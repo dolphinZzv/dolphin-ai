@@ -51,6 +51,24 @@ var (
 	providers []Provider
 )
 
+// ProviderWithSpec is an optional extension to Provider that contributes
+// commands to the unified command registry instead of (or in addition to)
+// returning ToolDefs. CommandSpecs returns a slice where each element is
+// a *registry.CommandSpec (cast at the call site to avoid import cycle).
+type ProviderWithSpec interface {
+	Provider
+	CommandSpecs() []any
+}
+
+// Providers returns a snapshot of all registered providers.
+func Providers() []Provider {
+	mu.RLock()
+	defer mu.RUnlock()
+	out := make([]Provider, len(providers))
+	copy(out, providers)
+	return out
+}
+
 // Register adds a provider to the global registry. Called at startup.
 // Panics if a provider with the same name is already registered.
 func Register(p Provider) {

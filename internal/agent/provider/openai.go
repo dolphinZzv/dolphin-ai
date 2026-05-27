@@ -446,6 +446,10 @@ func (p *OpenAIProvider) buildMessagesRaw(req ProviderRequest) []map[string]any 
 			if len(toolCalls) > 0 {
 				msg["tool_calls"] = toolCalls
 			}
+			// Safety: API requires content or tool_calls on assistant messages.
+			if len(textParts) == 0 && len(toolCalls) == 0 {
+				msg["content"] = " "
+			}
 			msgs = append(msgs, msg)
 
 		case "tool":

@@ -4,6 +4,7 @@ package telemetry
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -36,8 +37,11 @@ var (
 
 	// Span truncation limits (configurable via telemetry.input_max_len / output_max_len)
 	// 0 = unlimited.
-	spanInputMaxLen  = 2048
-	spanOutputMaxLen = 2048
+	spanInputMaxLen  = 0
+	spanOutputMaxLen = 0
+
+	// traceFile holds the file handle for the "file" exporter, closed on Shutdown.
+	traceFile io.WriteCloser
 )
 
 // otlpTarget holds parsed OTLP endpoint parts shared by all three signals.
@@ -98,7 +102,7 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) error {
 	otel.SetTracerProvider(tracerProvider)
 
 	// ---- logs (optional) ----
-	if cfg.LogsEnabled && cfg.Exporter != "stdout" {
+	if cfg.LogsEnabled && cfg.Exporter != "stdout" && cfg.Exporter != "file" {
 		logExp, lerr := newLogExporter(ctx, cfg)
 		if lerr != nil {
 			return fmt.Errorf("telemetry: create log exporter: %w", lerr)
@@ -110,7 +114,7 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) error {
 	}
 
 	// ---- metrics (optional) ----
-	if cfg.MetricsEnabled && cfg.Exporter != "stdout" {
+	if cfg.MetricsEnabled && cfg.Exporter != "stdout" && cfg.Exporter != "file" {
 		metricExp, merr := newMetricExporter(ctx, cfg)
 		if merr != nil {
 			return fmt.Errorf("telemetry: create metric exporter: %w", merr)
@@ -132,6 +136,9 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) error {
 	endpoint := cfg.OTLPEndpoint
 	if tgt, e := parseOTLPTarget(cfg.OTLPEndpoint); e == nil {
 		endpoint = tgt.host
+	}
+	if cfg.Exporter == "file" {
+		endpoint = cfg.TraceFilePath
 	}
 	signals := []string{"traces"}
 	if cfg.LogsEnabled {
@@ -181,6 +188,11 @@ func Shutdown(ctx context.Context) error {
 			errs = append(errs, "metrics: "+err.Error())
 		}
 	}
+	if traceFile != nil {
+		if err := traceFile.Close(); err != nil {
+			errs = append(errs, "trace_file: "+err.Error())
+		}
+	}
 	if len(errs) > 0 {
 		return fmt.Errorf("telemetry shutdown errors: %s", strings.Join(errs, "; "))
 	}
@@ -225,6 +237,16 @@ func newTraceExporter(ctx context.Context, cfg config.TelemetryConfig) (sdktrace
 		return otlptracehttp.New(ctx, opts...)
 	case "stdout":
 		return stdouttrace.New(stdouttrace.WithPrettyPrint())
+	case "file":
+		if cfg.TraceFilePath == "" {
+			return nil, fmt.Errorf("trace_file path is empty for file exporter")
+		}
+		f, err := os.Create(cfg.TraceFilePath)
+		if err != nil {
+			return nil, fmt.Errorf("create trace file: %w", err)
+		}
+		traceFile = f
+		return stdouttrace.New(stdouttrace.WithPrettyPrint(), stdouttrace.WithWriter(f))
 	default:
 		return nil, fmt.Errorf("unknown exporter: %q", cfg.Exporter)
 	}

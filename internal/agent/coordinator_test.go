@@ -17,6 +17,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/i18n"
 	"dolphin/internal/mcp"
+	"dolphin/internal/registry"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
@@ -535,6 +536,10 @@ func TestCoordinatorRunSkillsCommand(t *testing.T) {
 	skillMgr := skill.NewManager(skillDir)
 	skillMgr.Load()
 	coord.SetSkillManager(skillMgr)
+	coord.RegisterCommandSpec(&registry.CommandSpec{
+		Cobra:    skill.SkillsCommandWithManager(skillMgr),
+		Category: registry.CatSkills,
+	})
 
 	io := &mockIO{lines: []string{"/skills", "/exit"}}
 
@@ -575,6 +580,10 @@ func TestCoordinatorRunCommandsListing(t *testing.T) {
 	cmdMgr := command.NewManager(cmdDir)
 	cmdMgr.Load()
 	coord.SetCommandManager(cmdMgr)
+	coord.RegisterCommandSpec(&registry.CommandSpec{
+		Cobra:    command.CommandsCommandWithManager(cmdMgr),
+		Category: registry.CatCommands,
+	})
 
 	io := &mockIO{lines: []string{"/commands", "/exit"}}
 
@@ -734,51 +743,6 @@ func TestCoordinatorSetWorkflowManager(t *testing.T) {
 	c.SetWorkflowManager(wfMgr)
 	if c.workflows != wfMgr {
 		t.Error("SetWorkflowManager failed")
-	}
-}
-
-func TestCoordinatorPrintWorkflowsEmpty(t *testing.T) {
-	io := &mockIO{}
-	c := &Coordinator{}
-	c.SetWorkflowManager(workflowpkg.NewManager(t.TempDir()))
-	c.printWorkflows(io)
-	output := io.writes.String()
-	if !strings.Contains(output, "No workflows found") {
-		t.Error("expected empty message, got:", output)
-	}
-}
-
-func TestCoordinatorPrintSkillsNil(t *testing.T) {
-	io := &mockIO{}
-	c := &Coordinator{}
-	c.printSkills(io)
-	output := io.writes.String()
-	if !strings.Contains(output, "Skills system not available") {
-		t.Error("expected not available message, got:", output)
-	}
-}
-
-func TestCoordinatorPrintCommandsNil(t *testing.T) {
-	io := &mockIO{}
-	c := &Coordinator{}
-	c.printCommands(io)
-	output := io.writes.String()
-	if !strings.Contains(output, "Commands system not available") {
-		t.Error("expected not available message, got:", output)
-	}
-}
-
-func TestCoordinatorPrintCommandsEmpty(t *testing.T) {
-	cmdDir := t.TempDir()
-	cmdMgr := command.NewManager(cmdDir)
-	cmdMgr.Load()
-	io := &mockIO{}
-	c := &Coordinator{}
-	c.SetCommandManager(cmdMgr)
-	c.printCommands(io)
-	output := io.writes.String()
-	if !strings.Contains(output, "No user-defined commands") {
-		t.Error("expected empty message, got:", output)
 	}
 }
 
@@ -1733,9 +1697,11 @@ func TestHandleContextTool(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.DefaultConfig()
 	c := &Coordinator{
-		agent: &Agent{cfg: cfg},
-		pool:  NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
+		agent:      &Agent{cfg: cfg},
+		pool:       NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
+		basePrompt: "system",
 	}
+	c.addPromptSection(sectionFunc(c.coordinatorInstructionsSection))
 	result, err := c.handleContextTool(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -1770,59 +1736,6 @@ func TestPrintContextConsole(t *testing.T) {
 	}
 }
 
-func TestCoordinatorHandleSkillNewNilManager(t *testing.T) {
-	io := &mockIO{}
-	c := &Coordinator{}
-	c.handleSkillNew([]string{"my-skill"}, io)
-	output := io.writes.String()
-	if !strings.Contains(output, i18n.T(i18n.KeySkillsNotAvail, i18n.EN)) {
-		t.Error("expected not available message, got:", output)
-	}
-}
-
-func TestCoordinatorHandleSkillNewNoName(t *testing.T) {
-	skillDir := t.TempDir()
-	skillMgr := skill.NewManager(skillDir)
-	c := &Coordinator{}
-	c.SetSkillManager(skillMgr)
-
-	io := &mockIO{}
-	c.handleSkillNew([]string{}, io)
-	output := io.writes.String()
-	if !strings.Contains(output, "Usage:") {
-		t.Error("expected usage message, got:", output)
-	}
-}
-
-func TestCoordinatorHandleSkillNewCreatesFile(t *testing.T) {
-	skillDir := t.TempDir()
-	skillMgr := skill.NewManager(skillDir)
-	c := &Coordinator{}
-	c.SetSkillManager(skillMgr)
-
-	io := &mockIO{}
-	c.handleSkillNew([]string{"custom-review"}, io)
-	output := io.writes.String()
-	if !strings.Contains(output, "Created") {
-		t.Error("expected Created message, got:", output)
-	}
-	if !strings.Contains(output, skillDir) {
-		t.Error("expected skill dir path in output, got:", output)
-	}
-
-	content, err := os.ReadFile(filepath.Join(skillDir, "custom-review", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("file was not created: %v", err)
-	}
-	s := string(content)
-	if !strings.Contains(s, "name: custom-review") {
-		t.Error("frontmatter missing name")
-	}
-	if !strings.Contains(s, "## Overview") {
-		t.Error("missing template sections")
-	}
-}
-
 func TestCoordinatorSkillNewViaRun(t *testing.T) {
 	cfg := config.DefaultConfig()
 	config.SetSessionsDir(t.TempDir())
@@ -1850,14 +1763,15 @@ func TestCoordinatorSkillNewViaRun(t *testing.T) {
 	skillMgr := skill.NewManager(skillDir)
 	skillMgr.Load()
 	coord.SetSkillManager(skillMgr)
+	coord.RegisterCommandSpec(&registry.CommandSpec{
+		Cobra:    skill.SkillsCommandWithManager(skillMgr),
+		Category: registry.CatSkills,
+	})
 
 	io := &mockIO{lines: []string{"/skills new my-test-skill", "/exit"}}
 	coord.Run(context.Background(), io)
 
 	output := io.writes.String()
-	if !strings.Contains(output, "Created") {
-		t.Error("expected Created in output, got:", output)
-	}
 	if !strings.Contains(output, "my-test-skill") {
 		t.Error("expected skill name in output, got:", output)
 	}

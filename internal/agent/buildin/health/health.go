@@ -5,6 +5,7 @@ import (
 	_ "embed"
 	"time"
 
+	"dolphin/internal/agent/buildin"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 )
@@ -17,11 +18,11 @@ type healthAgent struct{}
 func (a *healthAgent) Name() string   { return "$buildin.health" }
 func (a *healthAgent) Prompt() string { return healthPrompt }
 
-func (a *healthAgent) Init(ctx context.Context, handle *AgentHandle) {
+func (a *healthAgent) Init(ctx context.Context, handle *buildin.AgentHandle) {
 	var lastFired time.Time
 
 	handle.Subscribe(event.TypeHeartbeat, func(ctx context.Context, evt event.Event) {
-		if time.Since(lastFired) < healthDebounce(handle.cfg) {
+		if time.Since(lastFired) < healthDebounce(handle.Cfg) {
 			return
 		}
 		lastFired = time.Now()
@@ -30,7 +31,7 @@ func (a *healthAgent) Init(ctx context.Context, handle *AgentHandle) {
 	})
 }
 
-func init() { Register(&healthAgent{}) }
+func init() { buildin.Register(&healthAgent{}) }
 
 func healthDebounce(cfg *config.Config) time.Duration {
 	if cfg == nil {

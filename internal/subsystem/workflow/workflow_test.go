@@ -509,7 +509,17 @@ func TestManager_ToolDefs_SelfEvolution(t *testing.T) {
 		}
 	}
 
-	for _, name := range []string{"create_workflow", "update_workflow", "delete_workflow", "enable_workflow", "disable_workflow"} {
+	for _, name := range []string{"create_workflow", "update_workflow"} {
+		d := findDef(defs, name)
+		if d == nil {
+			t.Fatalf("missing tool %q", name)
+		}
+		if d.SelfEvolution {
+			t.Errorf("tool %q should not be self-evolution (like skills create/update)", name)
+		}
+	}
+
+	for _, name := range []string{"delete_workflow", "enable_workflow", "disable_workflow"} {
 		d := findDef(defs, name)
 		if d == nil {
 			t.Fatalf("missing tool %q", name)

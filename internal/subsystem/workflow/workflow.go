@@ -27,8 +27,10 @@ import (
 	"time"
 
 	"dolphin/internal/mcp"
+	"dolphin/internal/registry"
 	"dolphin/internal/subsystem"
 
+	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -123,6 +125,33 @@ func (m *Manager) Get(name string) (*Workflow, bool) {
 	defer m.mu.RUnlock()
 	w, ok := m.workflows[name]
 	return w, ok
+}
+
+// Search returns workflows whose name or description matches the query.
+// Multiple space-separated terms are ORed — any term can match.
+func (m *Manager) Search(query string) []*Workflow {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	terms := strings.Fields(strings.ToLower(query))
+	if len(terms) == 0 {
+		return nil
+	}
+	var results []*Workflow
+	for _, w := range m.workflows {
+		name := strings.ToLower(w.Name)
+		desc := strings.ToLower(w.Description)
+		for _, t := range terms {
+			if strings.Contains(name, t) || strings.Contains(desc, t) {
+				results = append(results, w)
+				break
+			}
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Name < results[j].Name
+	})
+	return results
 }
 
 // List returns all workflows sorted by name.
@@ -414,7 +443,7 @@ func (m *Manager) ToolDefs() []subsystem.ToolDef {
 				"required": []string{"name", "description", "content"},
 			},
 			Handler:       m.handleCreate,
-			SelfEvolution: true,
+			SelfEvolution: false,
 		},
 		{
 			Name:        "update_workflow",
@@ -429,7 +458,7 @@ func (m *Manager) ToolDefs() []subsystem.ToolDef {
 				"required": []string{"name", "description", "content"},
 			},
 			Handler:       m.handleUpdate,
-			SelfEvolution: true,
+			SelfEvolution: false,
 		},
 		{
 			Name:        "delete_workflow",
@@ -469,6 +498,124 @@ func (m *Manager) ToolDefs() []subsystem.ToolDef {
 			},
 			Handler:       m.handleDisable,
 			SelfEvolution: true,
+		},
+	}
+}
+
+// CommandSpecs implements subsystem.ProviderWithSpec, returning cobra
+// command specs for workflow management in CLI/REPL contexts.
+func (m *Manager) CommandSpecs() []any {
+	root := &cobra.Command{
+		Use:   "workflow",
+		Short: "Manage workflow definitions",
+	}
+
+	root.AddCommand(&cobra.Command{
+		Use:   "list",
+		Short: "List all workflows",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			wfs := m.List()
+			if len(wfs) == 0 {
+				fmt.Fprintln(cmd.OutOrStdout(), "No workflows found.")
+				return nil
+			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "%-30s %s\n", "NAME", "DESCRIPTION")
+			fmt.Fprintln(out, strings.Repeat("-", 80))
+			for _, w := range wfs {
+				fmt.Fprintf(out, "%-30s %s\n", w.Name, w.Description)
+			}
+			return nil
+		},
+	})
+
+	root.AddCommand(&cobra.Command{
+		Use:   "show",
+		Short: "Show a workflow's content",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			w, ok := m.Get(args[0])
+			if !ok {
+				return fmt.Errorf("workflow %q not found", args[0])
+			}
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "--- %s ---\n", w.Name)
+			if w.Description != "" {
+				fmt.Fprintf(out, "Description: %s\n\n", w.Description)
+			}
+			fmt.Fprintln(out, w.Content)
+			return nil
+		},
+	})
+
+	root.AddCommand(&cobra.Command{
+		Use:   "new",
+		Short: "Create a new workflow template",
+		Args:  cobra.RangeArgs(1, 2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			desc := name
+			if len(args) > 1 {
+				desc = args[1]
+			}
+			if err := m.NewTemplate(name, desc); err != nil {
+				return fmt.Errorf("create workflow: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Workflow %q created in %s\n", name, m.Dir())
+			fmt.Fprintln(cmd.OutOrStdout(), "Edit the WORKFLOW.md file to add steps.")
+			return nil
+		},
+	})
+
+	root.AddCommand(&cobra.Command{
+		Use:   "delete",
+		Short: "Delete a workflow",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if _, ok := m.Get(name); !ok {
+				return fmt.Errorf("workflow %q not found", name)
+			}
+			if err := m.Unregister(name); err != nil {
+				return fmt.Errorf("delete workflow: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Workflow %q deleted.\n", name)
+			return nil
+		},
+	})
+
+	root.AddCommand(&cobra.Command{
+		Use:   "disable",
+		Short: "Disable a workflow",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if err := m.Disable(name); err != nil {
+				return fmt.Errorf("disable workflow: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Workflow %q disabled.\n", name)
+			return nil
+		},
+	})
+
+	root.AddCommand(&cobra.Command{
+		Use:   "enable",
+		Short: "Enable a disabled workflow",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if err := m.Enable(name); err != nil {
+				return fmt.Errorf("enable workflow: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Workflow %q enabled.\n", name)
+			return nil
+		},
+	})
+
+	return []any{
+		&registry.CommandSpec{
+			Cobra:    root,
+			Category: registry.CatWorkflows,
 		},
 	}
 }
