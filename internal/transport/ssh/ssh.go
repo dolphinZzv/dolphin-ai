@@ -3,6 +3,7 @@ package ssh
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -11,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/user"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -37,41 +39,64 @@ type SSHTransport struct {
 
 func New(cfg *config.Config) (transport.Transport, error) {
 	sshCfg := cfg.Transport.SSH
-	if sshCfg.Password == "" {
-		return nil, fmt.Errorf("ssh password is empty — set transport.ssh.password in config or ensure auto-generation succeeds")
-	}
-	serverCfg := &gossh.ServerConfig{
-		PasswordCallback: func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
-			zap.S().Debugw("ssh password auth", "user", conn.User())
-			if conn.User() != sshCfg.Username {
-				return nil, fmt.Errorf("unauthorized user: %s", conn.User())
-			}
-			if subtle.ConstantTimeCompare(password, []byte(sshCfg.Password)) != 1 {
-				return nil, fmt.Errorf("invalid password")
-			}
-			return &gossh.Permissions{}, nil
-		},
+	serverCfg := &gossh.ServerConfig{}
+
+	// Password auth: check against the configured password (if set).
+	serverCfg.PasswordCallback = func(conn gossh.ConnMetadata, password []byte) (*gossh.Permissions, error) {
+		zap.S().Debugw("ssh password auth attempt", "user", conn.User(), "remote", conn.RemoteAddr())
+
+		allowed := sshCfg.AllowedUsers
+		if len(allowed) == 0 && sshCfg.Username != "" {
+			allowed = []string{sshCfg.Username}
+		}
+		if !isUserAllowed(conn.User(), allowed) {
+			return nil, fmt.Errorf("ssh: unauthorized user: %s", conn.User())
+		}
+		if sshCfg.Password == "" {
+			return nil, fmt.Errorf("ssh: password auth not configured")
+		}
+		if subtle.ConstantTimeCompare(password, []byte(sshCfg.Password)) != 1 {
+			return nil, fmt.Errorf("ssh: invalid password for %s", conn.User())
+		}
+
+		zap.S().Infow("ssh password auth succeeded", "user", conn.User())
+		return &gossh.Permissions{}, nil
 	}
 
+	// Public key auth: check ~/.ssh/authorized_keys for the connecting user.
+	serverCfg.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
+		zap.S().Debugw("ssh pubkey auth attempt", "user", conn.User(), "remote", conn.RemoteAddr())
+
+		if len(sshCfg.AllowedUsers) > 0 && !isUserAllowed(conn.User(), sshCfg.AllowedUsers) {
+			return nil, fmt.Errorf("ssh: unauthorized user: %s", conn.User())
+		}
+		if err := checkAuthorizedKey(conn.User(), key, sshCfg.AuthorizedKeys); err != nil {
+			return nil, fmt.Errorf("ssh: pubkey auth failed for %s: %w", conn.User(), err)
+		}
+
+		zap.S().Infow("ssh pubkey auth succeeded", "user", conn.User())
+		return &gossh.Permissions{}, nil
+	}
+
+	// Resolve host key path: always use a dedicated dolphin key, never
+	// the user's personal ~/.ssh/id_ed25519.
 	hostKey := cfg.Transport.SSH.HostKey
 	if hostKey == "" {
-		hostKey = "~/.ssh/id_ed25519"
+		home, _ := os.UserHomeDir()
+		hostKey = filepath.Join(home, ".dolphin", "ssh_host_key")
 	}
 
 	signer, err := loadHostKey(hostKey)
 	if err != nil {
-		home, _ := os.UserHomeDir()
-		autoKeyPath := filepath.Join(home, ".dolphin", "ssh_host_key")
-		signer, err = loadHostKey(autoKeyPath)
+		// Key file doesn't exist yet — generate and persist it so the
+		// host key is stable across restarts and known_hosts stays valid.
+		zap.S().Infow("generating persistent SSH host key", "path", hostKey)
+		signer, err = genAndSaveKey(hostKey)
 		if err != nil {
-			zap.S().Infow("generating persistent SSH host key", "path", autoKeyPath)
-			signer, err = genAndSaveKey(autoKeyPath)
+			zap.S().Warnw("failed to persist host key, using ephemeral key; known_hosts will change each restart", "error", err)
+			signer, err = genEphemeralKey()
 			if err != nil {
-				zap.S().Warnw("falling back to ephemeral SSH host key", "error", err)
-				signer, err = genEphemeralKey()
-				if err != nil {
-					return nil, fmt.Errorf("generate host key: %w", err)
-				}
+				return nil, fmt.Errorf("generate host key: %w", err)
 			}
 		}
 	}
@@ -83,12 +108,109 @@ func New(cfg *config.Config) (transport.Transport, error) {
 	}, nil
 }
 
+// checkAuthorizedKey checks if the given public key matches a line in the
+// user's authorized_keys file. If cfgPath is non-empty, it is used directly;
+// if empty the function resolves the user's home directory and checks
+// .ssh/authorized_keys and .ssh/authorized_keys2.
+func checkAuthorizedKey(username string, presentedKey gossh.PublicKey, cfgPath string) error {
+	var paths []string
+
+	if cfgPath != "" {
+		// Custom path — resolve tilde with the user's home dir if available,
+		// or fall back to os.UserHomeDir for relative expansion.
+		home := homeDirFor(username)
+		if home == "" {
+			home, _ = os.UserHomeDir()
+		}
+		paths = []string{expandTilde(cfgPath, home)}
+	} else {
+		// Default: look up the user to find their .ssh directory.
+		home := homeDirFor(username)
+		if home == "" {
+			return fmt.Errorf("unknown user: %s", username)
+		}
+		paths = []string{
+			filepath.Join(home, ".ssh", "authorized_keys"),
+			filepath.Join(home, ".ssh", "authorized_keys2"),
+		}
+	}
+
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(data), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			pub, _, _, _, err := gossh.ParseAuthorizedKey([]byte(line))
+			if err != nil {
+				continue
+			}
+			// Compare marshaled bytes since KeysEqual may be unavailable.
+			if bytes.Equal(pub.Marshal(), presentedKey.Marshal()) {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("no matching authorized key found")
+}
+
+// isUserAllowed checks that the connecting user is in the allowed list.
+// An empty list means no restriction (allows any authenticated user).
+func isUserAllowed(user string, allowedUsers []string) bool {
+	if len(allowedUsers) == 0 {
+		return true
+	}
+	for _, u := range allowedUsers {
+		if u == user {
+			return true
+		}
+	}
+	return false
+}
+
+// homeDirFor returns the home directory for the given username, or "" if the
+// user cannot be looked up.
+func homeDirFor(username string) string {
+	u, err := user.Lookup(username)
+	if err != nil {
+		return ""
+	}
+	return u.HomeDir
+}
+
+// expandTilde replaces a leading "~" with the given home directory.
+func expandTilde(path, homeDir string) string {
+	if strings.HasPrefix(path, "~/") {
+		return filepath.Join(homeDir, path[2:])
+	}
+	if path == "~" {
+		return homeDir
+	}
+	return path
+}
+
 // SetSessionHandler sets the handler for incoming SSH sessions.
 func (t *SSHTransport) SetSessionHandler(h func(context.Context, transport.UserIO)) {
 	t.handler = h
 }
 
 func (t *SSHTransport) Name() string { return "ssh" }
+
+func (t *SSHTransport) Banner() string {
+	addr := t.cfg.Addr
+	if addr == "" {
+		addr = ":2222"
+	}
+	user := t.cfg.Username
+	if user == "" {
+		user = "<user>"
+	}
+	return fmt.Sprintf("  SSH server: %s (ssh %s@<host> -p %s)\n", addr, user, addr[1:])
+}
 
 func (t *SSHTransport) Start(ctx context.Context) error {
 	select {

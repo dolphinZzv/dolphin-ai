@@ -48,6 +48,12 @@ type SessionTransport interface {
 	SetSessionHandler(func(context.Context, UserIO))
 }
 
+// BannerProvider is an optional interface that transports can implement to
+// provide a startup banner describing how to connect or use the transport.
+type BannerProvider interface {
+	Banner() string
+}
+
 // Truncate truncates a string to max characters, appending "..." if needed.
 func Truncate(s string, max int) string {
 	if len(s) <= max {

@@ -100,6 +100,10 @@ func (t *EmailTransport) FetchLatestUnseen() *EmailMessage {
 
 func (t *EmailTransport) Name() string { return "email" }
 
+func (t *EmailTransport) Banner() string {
+	return fmt.Sprintf("  Email IMAP: %s:%d, SMTP: %s:%d, from: %s\n", t.cfg.IMAPHost, t.cfg.IMAPPort, t.cfg.SMTPHost, t.cfg.SMTPPort, t.cfg.From)
+}
+
 func (t *EmailTransport) Context() string {
 	return fmt.Sprintf("Connected via email (IMAP: %s:%d, SMTP: %s:%d). User replies may be delayed by minutes. Be patient, self-contained, and thorough — each response is a separate email.",
 		t.cfg.IMAPHost, t.cfg.IMAPPort, t.cfg.SMTPHost, t.cfg.SMTPPort)

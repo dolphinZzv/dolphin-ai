@@ -482,7 +482,7 @@ func printBanner(cfg *config.Config, configPath string) {
 		}
 	}
 
-	// Collect enabled transports
+	// Collect enabled transport names
 	var transports []string
 	if cfg.Transport.Stdio.Enabled {
 		transports = append(transports, "stdio")
@@ -638,13 +638,6 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 				newCoordinator().Run(ctx, io)
 			})
 		}
-		addr := cfg.Transport.SSH.Addr
-		if addr == "" {
-			addr = ":2222"
-		}
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransSSHServer), addr))
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransSSHConnect)+"\n", cfg.Transport.SSH.Username, addr[1:]))
-
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
 			return t.Start(ctx)
@@ -680,8 +673,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 		uio := t.(transport.UserIO)
 
-		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransMQTTActive))
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransMQTTBroker)+"\n\n", cfg.Transport.MQTT.Broker, cfg.Transport.MQTT.SubscribeTopic, cfg.Transport.MQTT.ClientID))
+		if bp, ok := t.(transport.BannerProvider); ok {
+			fmt.Fprint(os.Stderr, bp.Banner())
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -715,12 +709,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 		uio := t.(transport.UserIO)
 
-		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransEmailActive))
-		fmt.Fprintf(os.Stderr, i18n.TL(i18n.KeyTransEmailIMAP)+"\n",
-			cfg.Transport.Email.IMAPHost, cfg.Transport.Email.IMAPPort,
-			cfg.Transport.Email.PollInterval)
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransEmailSMTP)+"\n", cfg.Transport.Email.SMTPHost, cfg.Transport.Email.SMTPPort))
-		fmt.Fprint(os.Stderr, fmt.Sprintf(i18n.TL(i18n.KeyTransEmailHint)+"\n\n", cfg.Transport.Email.From))
+		if bp, ok := t.(transport.BannerProvider); ok {
+			fmt.Fprint(os.Stderr, bp.Banner())
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -754,7 +745,9 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 		}
 		uio := t.(transport.UserIO)
 
-		fmt.Fprint(os.Stderr, i18n.TL(i18n.KeyTransDingTalk))
+		if bp, ok := t.(transport.BannerProvider); ok {
+			fmt.Fprint(os.Stderr, bp.Banner())
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {
@@ -787,6 +780,10 @@ func runActorGroup(cfg *config.Config, toolRegistry *mcp.Registry, cdpTool *cdp.
 			return fmt.Errorf("a2a transport: %w", err)
 		}
 		uio := t.(transport.UserIO)
+
+		if bp, ok := t.(transport.BannerProvider); ok {
+			fmt.Fprint(os.Stderr, bp.Banner())
+		}
 
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(func() error {

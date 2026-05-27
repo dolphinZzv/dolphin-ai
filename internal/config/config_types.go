@@ -249,14 +249,16 @@ type StdioConfig struct {
 }
 
 type SSHConfig struct {
-	Enabled        bool   `mapstructure:"enabled"`
-	Addr           string `mapstructure:"addr"`
-	HostKey        string `mapstructure:"host_key"`
-	Username       string `mapstructure:"username"`
-	Password       string `mapstructure:"password"`
-	MarkdownRender bool   `mapstructure:"markdown_render"`
-	MarkdownStyle  string `mapstructure:"markdown_style"`
-	ReadTimeout    string `mapstructure:"read_timeout"` // ReadLine deadline, e.g. "5m"; empty = default 5m
+	Enabled        bool     `mapstructure:"enabled"`
+	Addr           string   `mapstructure:"addr"`
+	HostKey        string   `mapstructure:"host_key"`
+	Username       string   `mapstructure:"username"`
+	Password       string   `mapstructure:"password"`
+	AuthorizedKeys string   `mapstructure:"authorized_keys"` // path to authorized_keys, default ~/.ssh/authorized_keys
+	AllowedUsers   []string `mapstructure:"allowed_users"`   // empty = allow any authenticated user; set = only these users
+	MarkdownRender bool     `mapstructure:"markdown_render"`
+	MarkdownStyle  string   `mapstructure:"markdown_style"`
+	ReadTimeout    string   `mapstructure:"read_timeout"` // ReadLine deadline, e.g. "5m"; empty = default 5m
 }
 
 type MQTTAccount struct {
