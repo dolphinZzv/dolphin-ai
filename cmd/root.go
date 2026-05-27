@@ -233,6 +233,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	hooks := hook.NewRegistry()
 
 	// Init OpenTelemetry tracing
+	cfg.Telemetry.ServiceVersion = fmt.Sprintf("%s (%s)", Version, CommitHash)
 	if err := telemetry.Init(context.Background(), cfg.Telemetry); err != nil {
 		zap.S().Warnw("telemetry init failed, continuing without tracing", "error", err)
 	} else if cfg.Telemetry.Enabled {

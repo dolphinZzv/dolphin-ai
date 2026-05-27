@@ -71,7 +71,7 @@ func Init(ctx context.Context, cfg config.TelemetryConfig) error {
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceName(cfg.ServiceName),
-			attribute.String("service.version", "dev"),
+			attribute.String("service.version", cfg.ServiceVersion),
 		),
 	)
 	if err != nil {

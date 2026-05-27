@@ -22,7 +22,6 @@ const tracerName = "dolphin/agent"
 // spanStore bridges span references across hook points that don't share Values maps.
 var spanStore sync.Map
 
-func sessionKey(sid string) string              { return "session:" + sid }
 func turnKey(sid string, turn int) string       { return fmt.Sprintf("turn:%s:%d", sid, turn) }
 func turnErrorKey(sid string, turn int) string  { return fmt.Sprintf("turn_error:%s:%d", sid, turn) }
 func llmKey(sid string, turn int) string        { return fmt.Sprintf("llm:%s:%d", sid, turn) }
@@ -68,12 +67,6 @@ func RegisterHooks(reg *hook.Registry) {
 
 func sessionStartHook(ctx context.Context, hc *hook.Context) error {
 	RecordSessionStart()
-	tr := Tracer(tracerName)
-	_, span := tr.Start(ctx, "session",
-		trace.WithSpanKind(trace.SpanKindServer),
-	)
-	span.SetAttributes(attribute.String("session.id", hc.SessionID))
-	spanStore.Store(sessionKey(hc.SessionID), span)
 	return nil
 }
 
@@ -90,12 +83,6 @@ func sessionEndHook(ctx context.Context, hc *hook.Context) error {
 		last.End()
 	}
 
-	if v, ok := spanStore.LoadAndDelete(sessionKey(sid)); ok {
-		span := v.(trace.Span)
-		span.SetAttributes(attribute.Int("turn.count", hc.Turn))
-		span.SetStatus(codes.Ok, "")
-		span.End()
-	}
 	RecordSessionEnd()
 	return nil
 }
@@ -118,17 +105,18 @@ func userInputHook(ctx context.Context, hc *hook.Context) error {
 		}
 	}
 
-	// Parent: session span.
-	var parentCtx context.Context
-	if v, ok := spanStore.Load(sessionKey(sid)); ok {
-		parentCtx = childContext(v.(trace.Span))
-	} else {
-		parentCtx = ctx
+	// Start a new trace for each user input.
+	traceName := truncate(hc.UserInput, 10)
+	if traceName == "" {
+		traceName = "unnamed"
 	}
+	parentCtx := context.Background()
 
 	RecordTurn(ctx)
+	fmt.Printf("============= %s", tracerName)
 	tr := Tracer(tracerName)
-	_, span := tr.Start(parentCtx, "turn",
+
+	_, span := tr.Start(parentCtx, traceName,
 		trace.WithSpanKind(trace.SpanKindServer),
 	)
 	span.SetAttributes(
@@ -381,16 +369,21 @@ func errorHook(ctx context.Context, hc *hook.Context) error {
 // ---- scheduler ----
 
 func schedulerTaskBeforeHook(ctx context.Context, hc *hook.Context) error {
-	tr := Tracer(tracerName)
-	_, span := tr.Start(ctx, "scheduler.task",
-		trace.WithSpanKind(trace.SpanKindInternal),
-	)
-	span.SetAttributes(
-		attribute.String("task.name", hc.TaskName),
-		attribute.String("session.id", hc.SessionID),
-	)
-	spanStore.Store(schedulerTimingKey(hc.SessionID, hc.TaskName), span)
-	spanStore.Store(schedulerTimingKey(hc.SessionID, hc.TaskName+"_start"), time.Now())
+	sid := hc.SessionID
+	turn := hc.Turn
+
+	if turnSpan, ok := spanStore.Load(turnKey(sid, turn)); ok {
+		tr := Tracer(tracerName)
+		_, span := tr.Start(childContext(turnSpan.(trace.Span)), "scheduler.task",
+			trace.WithSpanKind(trace.SpanKindInternal),
+		)
+		span.SetAttributes(
+			attribute.String("task.name", hc.TaskName),
+			attribute.String("session.id", hc.SessionID),
+		)
+		spanStore.Store(schedulerTimingKey(hc.SessionID, hc.TaskName), span)
+		spanStore.Store(schedulerTimingKey(hc.SessionID, hc.TaskName+"_start"), time.Now())
+	}
 	RecordSchedulerTask(ctx, hc.TaskName)
 	return nil
 }
@@ -418,16 +411,21 @@ func schedulerTaskAfterHook(ctx context.Context, hc *hook.Context) error {
 // ---- transport ----
 
 func transportConnectHook(ctx context.Context, hc *hook.Context) error {
-	tr := Tracer(tracerName)
-	_, span := tr.Start(ctx, "transport.connect",
-		trace.WithSpanKind(trace.SpanKindInternal),
-	)
-	span.SetAttributes(
-		attribute.String("transport.name", hc.TransportName),
-		attribute.String("session.id", hc.SessionID),
-	)
-	span.SetStatus(codes.Ok, "")
-	span.End()
+	sid := hc.SessionID
+	turn := hc.Turn
+
+	if turnSpan, ok := spanStore.Load(turnKey(sid, turn)); ok {
+		tr := Tracer(tracerName)
+		_, span := tr.Start(childContext(turnSpan.(trace.Span)), "transport.connect",
+			trace.WithSpanKind(trace.SpanKindInternal),
+		)
+		span.SetAttributes(
+			attribute.String("transport.name", hc.TransportName),
+			attribute.String("session.id", hc.SessionID),
+		)
+		span.SetStatus(codes.Ok, "")
+		span.End()
+	}
 	RecordTransportConnect(ctx)
 	return nil
 }
@@ -438,33 +436,45 @@ func transportDisconnectHook(ctx context.Context, hc *hook.Context) error {
 }
 
 func transportReceiveHook(ctx context.Context, hc *hook.Context) error {
-	tr := Tracer(tracerName)
-	_, span := tr.Start(ctx, "transport.receive",
-		trace.WithSpanKind(trace.SpanKindServer),
-	)
-	span.SetAttributes(
-		attribute.String("transport.name", hc.TransportName),
-		attribute.String("session.id", hc.SessionID),
-		attribute.Int("turn.number", hc.Turn),
-	)
-	span.SetStatus(codes.Ok, "")
-	span.End()
+	sid := hc.SessionID
+	turn := hc.Turn
+
+	if turnSpan, ok := spanStore.Load(turnKey(sid, turn)); ok {
+		tr := Tracer(tracerName)
+		_, span := tr.Start(childContext(turnSpan.(trace.Span)), "transport.receive",
+			trace.WithSpanKind(trace.SpanKindServer),
+		)
+		span.SetAttributes(
+			attribute.String("transport.name", hc.TransportName),
+			attribute.String("session.id", sid),
+			attribute.Int("turn.number", turn),
+			attribute.String("output", truncate(hc.UserInput, 256)),
+		)
+		span.SetStatus(codes.Ok, "")
+		span.End()
+	}
 	RecordTransportRx(ctx, hc.TransportName)
 	return nil
 }
 
 func transportSendHook(ctx context.Context, hc *hook.Context) error {
-	tr := Tracer(tracerName)
-	_, span := tr.Start(ctx, "transport.send",
-		trace.WithSpanKind(trace.SpanKindServer),
-	)
-	span.SetAttributes(
-		attribute.String("transport.name", hc.TransportName),
-		attribute.String("session.id", hc.SessionID),
-		attribute.Int("turn.number", hc.Turn),
-	)
-	span.SetStatus(codes.Ok, "")
-	span.End()
+	sid := hc.SessionID
+	turn := hc.Turn
+
+	if turnSpan, ok := spanStore.Load(turnKey(sid, turn)); ok {
+		tr := Tracer(tracerName)
+		_, span := tr.Start(childContext(turnSpan.(trace.Span)), "transport.send",
+			trace.WithSpanKind(trace.SpanKindServer),
+		)
+		span.SetAttributes(
+			attribute.String("transport.name", hc.TransportName),
+			attribute.String("session.id", hc.SessionID),
+			attribute.Int("turn.number", hc.Turn),
+			attribute.String("input", truncate(hc.UserOutput, 256)),
+		)
+		span.SetStatus(codes.Ok, "")
+		span.End()
+	}
 	RecordTransportTx(ctx, hc.TransportName)
 	return nil
 }

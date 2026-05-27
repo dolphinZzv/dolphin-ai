@@ -274,6 +274,7 @@ func (w *Tool) callTool(ctx context.Context, toolName string, args map[string]an
 		span.RecordError(err)
 		return &mcp.ToolResult{Content: fmt.Sprintf("encode request: %v", err), IsError: true}, nil
 	}
+	span.SetAttributes(attribute.String("input", truncateString(string(payload), 1024)))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.cfg.URL, bytes.NewReader(payload))
 	if err != nil {
@@ -329,15 +330,19 @@ func (w *Tool) callTool(ctx context.Context, toolName string, args map[string]an
 		}, nil
 	}
 
-	span.SetStatus(codes.Ok, "")
-
 	// Pretty-print the result JSON for the LLM.
 	var result any
 	if err := json.Unmarshal(rpcResp.Result, &result); err != nil {
-		return &mcp.ToolResult{Content: string(rpcResp.Result)}, nil
+		output := string(rpcResp.Result)
+		span.SetAttributes(attribute.String("output", truncateString(output, 2048)))
+		span.SetStatus(codes.Ok, "")
+		return &mcp.ToolResult{Content: output}, nil
 	}
 	formatted, _ := json.MarshalIndent(result, "", "  ")
-	return &mcp.ToolResult{Content: string(formatted)}, nil
+	output := string(formatted)
+	span.SetAttributes(attribute.String("output", truncateString(output, 2048)))
+	span.SetStatus(codes.Ok, "")
+	return &mcp.ToolResult{Content: output}, nil
 }
 
 func webhostTimeout(cfg config.MCPWebHostConfig) time.Duration {
@@ -345,4 +350,11 @@ func webhostTimeout(cfg config.MCPWebHostConfig) time.Duration {
 		return 30 * time.Second
 	}
 	return time.Duration(cfg.TimeoutSeconds) * time.Second
+}
+
+func truncateString(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }

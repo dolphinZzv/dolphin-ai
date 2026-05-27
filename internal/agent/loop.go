@@ -919,15 +919,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 	toolIdx := -1
 	var finalUsage *provider.Usage
 
-	// Hook: transport:send — fires before delivering response to transport
-	if a.hooks != nil {
-		a.hooks.Fire(ctx, hook.PointTransportSend, &hook.Context{
-			SessionID:     sessionID,
-			Turn:          turn,
-			TransportName: io.Name(),
-		})
-	}
-
 	// Hook: response:before — last chance to abort before output
 	if a.hooks != nil {
 		hc := &hook.Context{
@@ -936,6 +927,16 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 			Values:    make(map[string]any),
 		}
 		if err := a.hooks.Fire(ctx, hook.PointBeforeResponse, hc); err != nil {
+			// Hook: transport:send — fires after response content is ready
+			if a.hooks != nil {
+				a.hooks.Fire(ctx, hook.PointTransportSend, &hook.Context{
+					SessionID:     sessionID,
+					Turn:          turn,
+					TransportName: io.Name(),
+					UserOutput:    textBuf.String(),
+				})
+			}
+
 			return &streamResult{err: fmt.Errorf("response blocked: %w", err)}
 		}
 	}

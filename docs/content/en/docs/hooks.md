@@ -54,7 +54,7 @@ flowchart TB
 | `transport:connect` | Transport connection established | `SessionID`, `TransportName` |
 | `transport:disconnect` | Transport connection closed | `SessionID`, `TransportName`, `Turn` |
 | `transport:receive` | Message received from transport | `SessionID`, `Turn`, `UserInput`, `TransportName` |
-| `transport:send` | Message sent to transport | `SessionID`, `Turn`, `TransportName` |
+| `transport:send` | Message sent to transport | `SessionID`, `Turn`, `TransportName`, `UserOutput` |
 
 ### Scheduler Hooks
 
@@ -149,6 +149,14 @@ flowchart LR
 - **Read**: `Error` — execution error
 - **OTel span**: `tool.<name>` sets `tool.result`, status
 - **OTel metrics**: call count, error count, duration
+
+### `transport:receive`
+- **Read**: `UserInput` — raw message received from transport
+- **OTel span**: `transport.receive` with `output` attribute (user input content)
+
+### `transport:send`
+- **Read**: `UserOutput` — response content sent to transport
+- **OTel span**: `transport.send` with `input` attribute (response content)
 
 ## Telemetry Configuration
 

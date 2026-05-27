@@ -457,6 +457,7 @@ type ResourceConfig struct {
 type TelemetryConfig struct {
 	Enabled        bool              `mapstructure:"enabled"`
 	ServiceName    string            `mapstructure:"service_name"`
+	ServiceVersion string            `mapstructure:"service_version"`
 	Exporter       string            `mapstructure:"exporter"` // otlp-grpc, otlp-http, stdout
 	OTLPEndpoint   string            `mapstructure:"otlp_endpoint"`
 	OTLPHeaders    map[string]string `mapstructure:"otlp_headers"`

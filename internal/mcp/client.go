@@ -144,6 +144,7 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 	span.SetAttributes(
 		attribute.String("server.name", c.name),
 		attribute.String("tool.name", name),
+		attribute.String("input", truncateString(string(arguments), 1024)),
 	)
 	defer span.End()
 
@@ -197,6 +198,7 @@ func (c *ServerClient) CallTool(ctx context.Context, name string, arguments json
 	} else {
 		span.SetStatus(codes.Ok, "")
 	}
+	span.SetAttributes(attribute.String("output", truncateString(text, 2048)))
 
 	return &ToolResult{Content: text, IsError: result.IsError}, nil
 }

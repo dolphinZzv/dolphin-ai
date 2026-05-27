@@ -73,6 +73,7 @@ type Context struct {
 
 	// Transport fields (transport:*)
 	TransportName string // transport name (e.g. "stdio", "ssh", "dingtalk")
+	UserOutput    string // transport:send — response content sent to transport
 
 	// Values persists across hook points within a single turn. Plugins use it
 	// to pass data from one point to another (e.g. timing from tool:before → tool:after).
