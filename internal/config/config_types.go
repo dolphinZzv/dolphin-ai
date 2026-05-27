@@ -68,12 +68,54 @@ func (l *LLMConfig) EffectiveProviders() []ProviderConfig {
 	}}
 }
 
+// Validate checks LLM config fields and returns an error for invalid values.
+func (l *LLMConfig) Validate() error {
+	if len(l.Providers) > 0 {
+		for i, p := range l.Providers {
+			if p.Type != "" && p.Type != "openai" && p.Type != "anthropic" {
+				return fmt.Errorf(`llm.providers[%d].type must be "openai" or "anthropic", got %q`, i, p.Type)
+			}
+			if p.APIKey == "" {
+				return fmt.Errorf("llm.providers[%d].api_key is required", i)
+			}
+			if p.Model == "" {
+				return fmt.Errorf("llm.providers[%d].model is required", i)
+			}
+		}
+	} else {
+		if l.Type != "" && l.Type != "openai" && l.Type != "anthropic" {
+			return fmt.Errorf(`llm.type must be "openai" or "anthropic", got %q`, l.Type)
+		}
+	}
+	if l.MaxTokens <= 0 {
+		return fmt.Errorf("llm.max_tokens must be > 0, got %d", l.MaxTokens)
+	}
+	if l.MaxContextTokens <= 0 {
+		return fmt.Errorf("llm.max_context_tokens must be > 0, got %d", l.MaxContextTokens)
+	}
+	if l.MaxSubTurns <= 0 {
+		return fmt.Errorf("llm.max_sub_turns must be > 0, got %d", l.MaxSubTurns)
+	}
+	if l.Temperature < 0 || l.Temperature > 2 {
+		return fmt.Errorf("llm.temperature must be between 0 and 2, got %.1f", l.Temperature)
+	}
+	return nil
+}
+
 type SessionConfig struct {
 	MaxLoop   int    `mapstructure:"max_loop"`
 	Summary   bool   `mapstructure:"summary"`
 	MaxAge    string `mapstructure:"max_age"`
 	Resume    bool   `mapstructure:"resume"`
 	MaxSizeMB int    `mapstructure:"max_size_mb"` // max session file size in MB, 0 = default 10
+}
+
+// Validate checks session config fields.
+func (s *SessionConfig) Validate() error {
+	if s.MaxLoop <= 0 {
+		return fmt.Errorf("session.max_loop must be > 0, got %d", s.MaxLoop)
+	}
+	return nil
 }
 
 type LimitsConfig struct {
@@ -272,9 +314,18 @@ type MCPConfig struct {
 	Webhost     MCPWebHostConfig           `mapstructure:"webhost"`
 	WebSearch   MCPWebSearchConfig         `mapstructure:"web_search"`
 	Credentials CredentialsConfig          `mapstructure:"credentials"`
+	LLM         MCPSimpleConfig            `mapstructure:"llm"`
 	A2A         MCPA2AConfig               `mapstructure:"a2a"`
 	Servers     map[string]MCPServerConfig `mapstructure:"servers"`
 	Repos       []string                   `mapstructure:"repos"`
+}
+
+// Validate checks MCP config fields.
+func (m *MCPConfig) Validate() error {
+	if m.Shell.TimeoutSeconds <= 0 {
+		return fmt.Errorf("mcp.shell.timeout_seconds must be > 0, got %d", m.Shell.TimeoutSeconds)
+	}
+	return nil
 }
 
 type MCPWebHostConfig struct {
@@ -307,6 +358,10 @@ type MCPWebSearchConfig struct {
 	UserAgent        string            `mapstructure:"user_agent"`         // User-Agent for provider requests; empty = provider default
 	MaxResults       int               `mapstructure:"max_results"`        // max results per provider query, 0 = provider default
 	ProviderBaseURLs map[string]string `mapstructure:"provider_base_urls"` // per-provider base URL override, e.g. duckduckgo: https://html.duckduckgo.com/html/
+}
+
+type MCPSimpleConfig struct {
+	Enabled bool `mapstructure:"enabled"`
 }
 
 type MCPA2AConfig struct {
@@ -393,6 +448,23 @@ type PoolConfig struct {
 	MaxAgentMessages    int    `mapstructure:"max_agent_messages"`     // max conversation messages retained per subagent, 0 = unlimited (default 100)
 }
 
+// Validate checks agent pool config fields.
+func (p *PoolConfig) Validate() error {
+	if p.MaxConcurrency <= 0 {
+		return fmt.Errorf("agent_pool.max_concurrency must be > 0, got %d", p.MaxConcurrency)
+	}
+	if p.DefaultTimeout <= 0 {
+		return fmt.Errorf("agent_pool.default_timeout must be > 0, got %d", p.DefaultTimeout)
+	}
+	if p.MaxPendingResults <= 0 {
+		return fmt.Errorf("agent_pool.max_pending_results must be > 0, got %d", p.MaxPendingResults)
+	}
+	if p.MaxPendingResultLen <= 0 {
+		p.MaxPendingResultLen = 500
+	}
+	return nil
+}
+
 type SkillsConfig struct {
 	Dir    string   `mapstructure:"dir"`     // skills directory (default: .dolphin/skills)
 	MaxTop int      `mapstructure:"max_top"` // number of top skills to show in prompt (default: 10)
@@ -466,6 +538,7 @@ type TelemetryConfig struct {
 	MetricsEnabled bool              `mapstructure:"metrics_enabled"`
 	InputMaxLen    int               `mapstructure:"input_max_len"`  // LLM input truncation for span attributes (default 2048)
 	OutputMaxLen   int               `mapstructure:"output_max_len"` // LLM output truncation for span attributes (default 2048)
+	TraceFilePath  string            `mapstructure:"trace_file"`     // file path for "file" exporter
 }
 
 type UpdateConfig struct {

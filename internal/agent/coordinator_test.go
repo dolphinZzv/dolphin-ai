@@ -1733,9 +1733,11 @@ func TestHandleContextTool(t *testing.T) {
 	ctx := context.Background()
 	cfg := config.DefaultConfig()
 	c := &Coordinator{
-		agent: &Agent{cfg: cfg},
-		pool:  NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
+		agent:      &Agent{cfg: cfg},
+		pool:       NewAgentPool(ctx, NewPoolConfigFromConfig(cfg.Pool)),
+		basePrompt: "system",
 	}
+	c.addPromptSection(sectionFunc(c.coordinatorInstructionsSection))
 	result, err := c.handleContextTool(ctx, nil)
 	if err != nil {
 		t.Fatal(err)

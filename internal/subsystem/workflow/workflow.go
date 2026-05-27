@@ -125,6 +125,33 @@ func (m *Manager) Get(name string) (*Workflow, bool) {
 	return w, ok
 }
 
+// Search returns workflows whose name or description matches the query.
+// Multiple space-separated terms are ORed — any term can match.
+func (m *Manager) Search(query string) []*Workflow {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	terms := strings.Fields(strings.ToLower(query))
+	if len(terms) == 0 {
+		return nil
+	}
+	var results []*Workflow
+	for _, w := range m.workflows {
+		name := strings.ToLower(w.Name)
+		desc := strings.ToLower(w.Description)
+		for _, t := range terms {
+			if strings.Contains(name, t) || strings.Contains(desc, t) {
+				results = append(results, w)
+				break
+			}
+		}
+	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].Name < results[j].Name
+	})
+	return results
+}
+
 // List returns all workflows sorted by name.
 func (m *Manager) List() []*Workflow {
 	m.mu.RLock()
@@ -414,7 +441,7 @@ func (m *Manager) ToolDefs() []subsystem.ToolDef {
 				"required": []string{"name", "description", "content"},
 			},
 			Handler:       m.handleCreate,
-			SelfEvolution: true,
+			SelfEvolution: false,
 		},
 		{
 			Name:        "update_workflow",
@@ -429,7 +456,7 @@ func (m *Manager) ToolDefs() []subsystem.ToolDef {
 				"required": []string{"name", "description", "content"},
 			},
 			Handler:       m.handleUpdate,
-			SelfEvolution: true,
+			SelfEvolution: false,
 		},
 		{
 			Name:        "delete_workflow",

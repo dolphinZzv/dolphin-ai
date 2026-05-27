@@ -91,9 +91,7 @@ func (m *Manager) Load() error {
 				skill := parseSkillFile(data, name+".md")
 				if skill != nil {
 					skill.Source = dir
-					if _, exists := m.skills[skill.Name]; !exists {
-						m.skills[skill.Name] = skill
-					}
+					m.skills[skill.Name] = skill
 				}
 			} else if strings.HasSuffix(name, ".md") {
 				// Backward compat: flat .md files at top level
@@ -104,9 +102,7 @@ func (m *Manager) Load() error {
 				skill := parseSkillFile(data, name)
 				if skill != nil {
 					skill.Source = dir
-					if _, exists := m.skills[skill.Name]; !exists {
-						m.skills[skill.Name] = skill
-					}
+					m.skills[skill.Name] = skill
 				}
 			}
 		}
@@ -206,16 +202,24 @@ func (m *Manager) GetForAgent(name string, allowed []string) (*Skill, bool) {
 }
 
 // Search returns skills whose name or description matches the query.
+// Multiple space-separated terms are ORed — any term can match.
 func (m *Manager) Search(query string) []*Skill {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	q := strings.ToLower(query)
+	terms := strings.Fields(strings.ToLower(query))
+	if len(terms) == 0 {
+		return nil
+	}
 	var results []*Skill
 	for _, s := range m.skills {
-		if strings.Contains(strings.ToLower(s.Name), q) ||
-			strings.Contains(strings.ToLower(s.Description), q) {
-			results = append(results, s)
+		name := strings.ToLower(s.Name)
+		desc := strings.ToLower(s.Description)
+		for _, t := range terms {
+			if strings.Contains(name, t) || strings.Contains(desc, t) {
+				results = append(results, s)
+				break
+			}
 		}
 	}
 	sort.Slice(results, func(i, j int) bool {

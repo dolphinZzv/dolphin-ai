@@ -177,8 +177,10 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		toolRegistry.Register(websearch.New(cfg))
 		zap.S().Infow("web_search tool registered")
 	}
-	toolRegistry.Register(llm.New(cfg))
-	zap.S().Infow("llm tool registered")
+	if cfg.MCP.LLM.Enabled {
+		toolRegistry.Register(llm.New(cfg))
+		zap.S().Infow("llm tool registered")
+	}
 	if cfg.MCP.A2A.Enabled {
 		toolRegistry.Register(a2a.New(cfg))
 		toolRegistry.Register(a2a.NewListTool(cfg))

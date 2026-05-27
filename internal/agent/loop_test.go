@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -98,7 +98,7 @@ type mockIO struct {
 
 func (m *mockIO) ReadLine() (string, error) {
 	if m.readIdx >= len(m.lines) {
-		return "", fmt.Errorf("no more input")
+		return "", errors.New("no more input")
 	}
 	line := m.lines[m.readIdx]
 	m.readIdx++
@@ -306,38 +306,6 @@ func (t *mockToolLargeResult) Definition() mcp.ToolDefinition {
 }
 func (t *mockToolLargeResult) Execute(_ context.Context, _ json.RawMessage) (*mcp.ToolResult, error) {
 	return &mcp.ToolResult{Content: strings.Repeat("x", 5000)}, nil
-}
-
-func TestIsRetryable(t *testing.T) {
-	tests := []struct {
-		err  error
-		want bool
-	}{
-		{fmt.Errorf("429 too many requests"), true},
-		{fmt.Errorf("500 internal"), true},
-		{fmt.Errorf("502 bad gateway"), true},
-		{fmt.Errorf("503 unavailable"), true},
-		{fmt.Errorf("connection refused"), true},
-		{fmt.Errorf("timeout exceeded"), true},
-		{fmt.Errorf("EOF"), true},
-		{fmt.Errorf("400 bad request"), false},
-		{fmt.Errorf("invalid input"), false},
-		{fmt.Errorf("permission denied"), false},
-	}
-	for _, tt := range tests {
-		got := isRetryable(tt.err)
-		if got != tt.want {
-			t.Errorf("isRetryable(%q) = %v, want %v", tt.err.Error(), got, tt.want)
-		}
-	}
-}
-
-func TestIsRetryableSubstringInWord(t *testing.T) {
-	// "timeout" as part of another word should still match
-	err := fmt.Errorf("notimeoutmate")
-	if !isRetryable(err) {
-		t.Errorf("expected true for 'notimeoutmate' (contains timeout)")
-	}
 }
 
 func TestEstimateTokensPureASCII(t *testing.T) {

@@ -22,7 +22,7 @@ type BuildinAgent interface {
 // All actions are automatically recorded to session and OTel via the
 // injected callbacks.
 type AgentHandle struct {
-	cfg          *config.Config
+	Cfg          *config.Config
 	bus          *event.EventBus
 	dispatchTask func(ctx context.Context, agentName, prompt string) (string, error)
 	logEvent     func(ctx context.Context, evtType string, data map[string]any)
@@ -38,7 +38,7 @@ func NewAgentHandle(
 	startSpan func(ctx context.Context, agentName, triggerEvent string) func(),
 ) *AgentHandle {
 	return &AgentHandle{
-		cfg:          cfg,
+		Cfg:          cfg,
 		bus:          bus,
 		dispatchTask: dispatchTask,
 		logEvent:     logEvent,

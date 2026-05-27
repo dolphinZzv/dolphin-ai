@@ -26,8 +26,9 @@ func SanitizeToolPairing(messages []Message) []Message {
 
 		// Collect all tool_result IDs from consecutive tool messages after this assistant.
 		found := make(map[string]bool)
-		for j := i + 1; j < len(cleaned) && cleaned[j].Role == "tool"; j++ {
-			for _, id := range extractToolResultIDs(cleaned[j].Content) {
+		toolEnd := i + 1
+		for ; toolEnd < len(cleaned) && cleaned[toolEnd].Role == "tool"; toolEnd++ {
+			for _, id := range extractToolResultIDs(cleaned[toolEnd].Content) {
 				found[id] = true
 			}
 		}
@@ -47,6 +48,12 @@ func SanitizeToolPairing(messages []Message) []Message {
 				"found_results", found,
 			)
 			cleaned[i].Content = stripOrphanedToolUses(cleaned[i].Content, found)
+		}
+
+		// If no tool_use blocks remain in the assistant message, remove trailing
+		// tool messages — the API requires tool messages to follow a tool_calls assistant.
+		if len(extractToolUseIDs(cleaned[i].Content)) == 0 {
+			cleaned = append(cleaned[:i+1], cleaned[toolEnd:]...)
 		}
 	}
 	return cleaned

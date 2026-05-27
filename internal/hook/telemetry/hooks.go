@@ -29,7 +29,6 @@ func llmTimingKey(sid string, turn int) string  { return fmt.Sprintf("llm_time:%
 func llmModelKey(sid string, turn int) string   { return fmt.Sprintf("llm_model:%s:%d", sid, turn) }
 func toolKey(sid string, turn int) string       { return fmt.Sprintf("tool:%s:%d", sid, turn) }
 func toolTimingKey(sid string, turn int) string { return fmt.Sprintf("tool_time:%s:%d", sid, turn) }
-func responseKey(sid string, turn int) string   { return fmt.Sprintf("response:%s:%d", sid, turn) }
 func schedulerTimingKey(sid, name string) string {
 	return fmt.Sprintf("scheduler_time:%s:%s", sid, name)
 }
@@ -49,7 +48,6 @@ func RegisterHooks(reg *hook.Registry) {
 	reg.Register(hook.PointAfterLLM, 100, afterLLMHook)
 	reg.Register(hook.PointBeforeTool, 100, beforeToolHook)
 	reg.Register(hook.PointAfterTool, 100, afterToolHook)
-	reg.Register(hook.PointBeforeResponse, 100, beforeResponseHook)
 	reg.Register(hook.PointOnError, 100, errorHook)
 
 	// Scheduler
@@ -113,7 +111,6 @@ func userInputHook(ctx context.Context, hc *hook.Context) error {
 	parentCtx := context.Background()
 
 	RecordTurn(ctx)
-	fmt.Printf("============= %s", tracerName)
 	tr := Tracer(tracerName)
 
 	_, span := tr.Start(parentCtx, traceName,
@@ -122,7 +119,7 @@ func userInputHook(ctx context.Context, hc *hook.Context) error {
 	span.SetAttributes(
 		attribute.String("session.id", sid),
 		attribute.Int("turn.number", turn),
-		attribute.String("user.input", truncate(hc.UserInput, 256)),
+		attribute.String("input", truncate(hc.UserInput, spanInputMaxLen)),
 	)
 	spanStore.Store(turnKey(sid, turn), span)
 	return nil
@@ -154,11 +151,19 @@ func beforeLLMHook(ctx context.Context, hc *hook.Context) error {
 	model := ""
 	if req, ok := hc.Request.(*provider.ProviderRequest); ok {
 		model = req.Model
-		span.SetAttributes(
+		attrs := []attribute.KeyValue{
 			attribute.String("gen_ai.request.model", model),
 			attribute.Int("gen_ai.request.max_tokens", req.MaxTokens),
 			attribute.Int("message.count", len(req.Messages)),
-		)
+		}
+		if len(req.Tools) > 0 {
+			names := make([]string, len(req.Tools))
+			for i, t := range req.Tools {
+				names[i] = t.Name
+			}
+			attrs = append(attrs, attribute.StringSlice("gen_ai.request.tools", names))
+		}
+		span.SetAttributes(attrs...)
 		if req.System != "" || len(req.Messages) > 0 {
 			span.SetAttributes(attribute.String("input", inputMessages(req)))
 		}
@@ -181,17 +186,6 @@ func afterLLMHook(ctx context.Context, hc *hook.Context) error {
 		elapsed = time.Since(v.(time.Time))
 	}
 
-	// End response span first (created by beforeResponseHook).
-	if v, ok := spanStore.LoadAndDelete(responseKey(sid, turn)); ok {
-		rsp := v.(trace.Span)
-		if hc.Error != nil {
-			rsp.SetStatus(codes.Error, hc.Error.Error())
-		} else {
-			rsp.SetStatus(codes.Ok, "")
-		}
-		rsp.End()
-	}
-
 	v, ok := spanStore.LoadAndDelete(llmKey(sid, turn))
 	if !ok {
 		return nil
@@ -208,6 +202,10 @@ func afterLLMHook(ctx context.Context, hc *hook.Context) error {
 	if resp, ok := hc.Response.(*provider.ProviderResponse); ok {
 		if len(resp.Content) > 0 {
 			span.SetAttributes(attribute.String("output", truncateResponseContent(resp.Content, spanOutputMaxLen)))
+			// Also set output on the turn span (root)
+			if v, ok := spanStore.Load(turnKey(sid, turn)); ok {
+				v.(trace.Span).SetAttributes(attribute.String("output", truncateResponseContent(resp.Content, spanOutputMaxLen)))
+			}
 		}
 		if resp.Usage != nil {
 			inputTokens = int64(resp.Usage.InputTokens)
@@ -260,7 +258,7 @@ func beforeToolHook(ctx context.Context, hc *hook.Context) error {
 		attribute.String("tool.name", hc.ToolName),
 	)
 	if len(hc.ToolArgs) > 0 {
-		span.SetAttributes(attribute.String("tool.args", truncateJSON(hc.ToolArgs, 256)))
+		span.SetAttributes(attribute.String("input", truncateJSON(hc.ToolArgs, spanInputMaxLen)))
 	}
 
 	RecordToolCall(ctx, hc.ToolName)
@@ -292,7 +290,7 @@ func afterToolHook(ctx context.Context, hc *hook.Context) error {
 			span.SetStatus(codes.Error, truncate(result.Content, 256))
 			hasError = true
 		} else {
-			span.SetAttributes(attribute.String("tool.result", truncate(result.Content, 256)))
+			span.SetAttributes(attribute.String("output", truncate(result.Content, spanOutputMaxLen)))
 		}
 	}
 
@@ -312,31 +310,6 @@ func afterToolHook(ctx context.Context, hc *hook.Context) error {
 	return nil
 }
 
-// ---- response ----
-
-func beforeResponseHook(ctx context.Context, hc *hook.Context) error {
-	sid := hc.SessionID
-	turn := hc.Turn
-
-	var parentCtx context.Context
-	if v, ok := spanStore.Load(turnKey(sid, turn)); ok {
-		parentCtx = childContext(v.(trace.Span))
-	} else {
-		parentCtx = ctx
-	}
-
-	tr := Tracer(tracerName)
-	_, span := tr.Start(parentCtx, "response.deliver",
-		trace.WithSpanKind(trace.SpanKindServer),
-	)
-	span.SetAttributes(
-		attribute.String("session.id", sid),
-		attribute.Int("turn.number", turn),
-	)
-	spanStore.Store(responseKey(sid, turn), span)
-	return nil
-}
-
 // ---- error ----
 
 func errorHook(ctx context.Context, hc *hook.Context) error {
@@ -353,7 +326,6 @@ func errorHook(ctx context.Context, hc *hook.Context) error {
 		turnKey(sid, turn),
 		llmKey(sid, turn),
 		toolKey(sid, turn),
-		responseKey(sid, turn),
 	} {
 		if v, ok := spanStore.Load(key); ok {
 			span := v.(trace.Span)
@@ -448,7 +420,7 @@ func transportReceiveHook(ctx context.Context, hc *hook.Context) error {
 			attribute.String("transport.name", hc.TransportName),
 			attribute.String("session.id", sid),
 			attribute.Int("turn.number", turn),
-			attribute.String("output", truncate(hc.UserInput, 256)),
+			attribute.String("input", truncate(hc.UserInput, spanInputMaxLen)),
 		)
 		span.SetStatus(codes.Ok, "")
 		span.End()
@@ -470,7 +442,7 @@ func transportSendHook(ctx context.Context, hc *hook.Context) error {
 			attribute.String("transport.name", hc.TransportName),
 			attribute.String("session.id", hc.SessionID),
 			attribute.Int("turn.number", hc.Turn),
-			attribute.String("input", truncate(hc.UserOutput, 256)),
+			attribute.String("output", truncate(hc.UserOutput, spanOutputMaxLen)),
 		)
 		span.SetStatus(codes.Ok, "")
 		span.End()

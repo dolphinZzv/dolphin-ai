@@ -139,6 +139,17 @@ func (c *Coordinator) registerCoordinatorTools() {
 		},
 		c.handleSearchSkills,
 	)
+	c.registerCoordTool("search_workflows",
+		"Search available workflows by name or description. Workflows define step-by-step instructions the LLM must follow.",
+		map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"query": map[string]any{"type": "string", "description": "Search query (matched against workflow name and description)"},
+			},
+			"required": []string{"query"},
+		},
+		c.handleSearchWorkflows,
+	)
 	c.registerCoordTool("load_skill",
 		"Load a skill's full content. Use this when you need the detailed instructions for a specific skill (e.g., for code review, data analysis).",
 		map[string]any{
@@ -544,6 +555,7 @@ func (c *Coordinator) registerCoordTool(name, description string, schema map[str
 			Name:        name,
 			Description: description,
 			InputSchema: schemaJSON,
+			Source:      "mcp",
 		},
 		handler: handler,
 	})
@@ -933,6 +945,32 @@ func (c *Coordinator) handleSearchSkills(_ context.Context, input json.RawMessag
 		fmt.Fprintf(&sb, "- %s: %s%s\n", s.Name, s.Description, usage)
 	}
 	sb.WriteString("\nUse load_skill to load the full content of a skill.")
+	return &mcp.ToolResult{Content: sb.String()}, nil
+}
+
+func (c *Coordinator) handleSearchWorkflows(_ context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
+	if c.workflows == nil {
+		return &mcp.ToolResult{Content: "Workflows system is not available.", IsError: true}, nil
+	}
+
+	var params struct {
+		Query string `json:"query"`
+	}
+	if err := json.Unmarshal(input, &params); err != nil {
+		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
+	}
+
+	results := c.workflows.Search(params.Query)
+	if len(results) == 0 {
+		return &mcp.ToolResult{Content: fmt.Sprintf("No workflows found matching %q.", params.Query)}, nil
+	}
+
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Found %d workflow(s) matching %q:\n", len(results), params.Query)
+	for _, w := range results {
+		fmt.Fprintf(&sb, "- %s: %s\n", w.Name, w.Description)
+	}
+	sb.WriteString("\nUse load_workflow to load the full content of a workflow.")
 	return &mcp.ToolResult{Content: sb.String()}, nil
 }
 
@@ -1615,14 +1653,30 @@ func (c *Coordinator) handleSearchAgents(_ context.Context, input json.RawMessag
 		return &mcp.ToolResult{Content: "invalid input: " + err.Error(), IsError: true}, nil //nolint:nilerr
 	}
 
+	terms := strings.Fields(strings.ToLower(params.Query))
+
+	// matchAny returns true if the query is empty or any term matches name/desc.
+	matchAny := func(name, desc string) bool {
+		if len(terms) == 0 {
+			return true
+		}
+		name = strings.ToLower(name)
+		desc = strings.ToLower(desc)
+		for _, t := range terms {
+			if strings.Contains(name, t) || strings.Contains(desc, t) {
+				return true
+			}
+		}
+		return false
+	}
+
 	// Collect results: local agents + remote
 	var results []string
 
 	// Local agents from pool
 	agents := c.pool.List()
 	for _, a := range agents {
-		if params.Query == "" || strings.Contains(strings.ToLower(a.Name), strings.ToLower(params.Query)) ||
-			strings.Contains(strings.ToLower(a.Role), strings.ToLower(params.Query)) {
+		if params.Query == "" || matchAny(a.Name, a.Role) {
 			results = append(results, fmt.Sprintf("- %s [%s] %s (tasks: %d)", a.Name, a.Kind, a.Role, a.TasksDone))
 		}
 	}
@@ -1638,13 +1692,12 @@ func (c *Coordinator) handleSearchAgents(_ context.Context, input json.RawMessag
 		cancel()
 		for _, m := range manifests {
 			for _, a := range m.Agents {
-				if params.Query != "" && !strings.Contains(strings.ToLower(a.Name), strings.ToLower(params.Query)) &&
-					!strings.Contains(strings.ToLower(a.Description), strings.ToLower(params.Query)) {
-					continue
-				}
 				desc := a.Description
 				if desc == "" {
 					desc = a.Role
+				}
+				if params.Query != "" && !matchAny(a.Name, desc) {
+					continue
 				}
 				results = append(results, fmt.Sprintf("- %s [remote/%s] %s", a.Name, m.Name, desc))
 			}

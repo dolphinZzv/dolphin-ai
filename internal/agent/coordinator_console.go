@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dolphin/internal/agent/console"
+	"dolphin/internal/agent/provider"
 	"dolphin/internal/config"
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
@@ -612,20 +613,25 @@ func (c *Coordinator) printCronTasks(io transport.UserIO) {
 }
 
 func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
-	providers := c.agent.availableProviders
-	if len(providers) == 0 {
-		io.WriteLine("No providers configured")
+	fp, ok := c.agent.provider.(*provider.FailoverProvider)
+	if !ok {
+		io.WriteLine("Provider does not support failover.")
 		return
 	}
 
 	if len(args) == 0 {
+		cfgs := fp.Configs()
+		if len(cfgs) == 0 {
+			io.WriteLine("No providers configured")
+			return
+		}
 		// List providers
 		io.WriteLine("Available providers (type:model):")
 		io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", "NAME", "MODEL", "STATUS"))
 		io.WriteLine("  " + strings.Repeat("-", 55))
-		for i, pc := range providers {
+		for i, pc := range cfgs {
 			status := ""
-			if i == c.agent.providerIndex {
+			if i == fp.CurrentIndex() {
 				status = "← active"
 			}
 			io.WriteLine("  " + fmt.Sprintf("%-20s %-30s %s", pc.Name, pc.Model, status))
@@ -637,7 +643,14 @@ func (c *Coordinator) handleModelCmd(args []string, io transport.UserIO) {
 
 	// Switch to named provider
 	name := args[0]
-	if c.agent.switchToProvider(name) {
+	if fp.SwitchTo(name) {
+		cc := fp.CurrentConfig()
+		c.agent.cfg.LLM.Type = cc.Type
+		c.agent.cfg.LLM.BaseURL = cc.BaseURL
+		c.agent.cfg.LLM.APIKey = cc.APIKey
+		c.agent.cfg.LLM.Model = cc.Model
+		c.agent.cfg.LLM.MaxTokens = cc.MaxTokens
+		c.agent.rebuildCompressor()
 		io.WriteLine(fmt.Sprintf("Switched to %s (%s)", name, c.agent.provider.Name()))
 	} else {
 		io.WriteLine(fmt.Sprintf("provider.Provider %q not found or unhealthy", name))

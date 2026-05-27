@@ -128,6 +128,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("mcp.web_search.max_results", 10)
 	v.SetDefault("mcp.web_search.provider_base_urls", map[string]string{})
 
+	v.SetDefault("mcp.llm.enabled", true)
 	v.SetDefault("mcp.a2a.enabled", true)
 	v.SetDefault("mcp.a2a.timeout_seconds", 30)
 	v.SetDefault("mcp.a2a.default_rpc_path", "/rpc")
