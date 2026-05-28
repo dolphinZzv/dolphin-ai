@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"reflect"
 	"runtime"
 	"sort"
 	"strings"
@@ -44,6 +45,7 @@ type Agent struct {
 	buildTime         string
 	commitHash        string
 	limitsManager     *limits.LimitsManager
+	reloadFunc        func() error
 }
 
 // LoopState holds state for a single agent run.
@@ -66,19 +68,29 @@ type LoopState struct {
 func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *Agent {
 	provider := selectProvider(cfg)
 
-	b := ctxpkg.NewBuilder()
-	b.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("workspace",
+	a := &Agent{
+		cfg:        cfg,
+		sessMgr:    sessMgr,
+		toolReg:    toolReg,
+		provider:   provider,
+		ctxBuilder: ctxpkg.NewBuilder(),
+	}
+	if cfg.LLM.Limits.Enabled {
+		a.limitsManager = limits.NewLimitsManager(&cfg.LLM.Limits)
+	}
+
+	a.ctxBuilder.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("workspace",
 		func(agentName string) string {
 			if agentName != "" {
 				return ""
 			}
-			return "## Workspace\n" + cfg.Workspace
+			return "## Workspace\n" + a.cfg.Workspace
 		},
 	), ctxpkg.PriorityWorkspace, "WORKSPACE")
-	b.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("subsystems",
+	a.ctxBuilder.RegisterSectionProvider(ctxpkg.NewSectionProviderFunc("subsystems",
 		func(agentName string) string { return subsystem.ContextMD() },
 	), ctxpkg.PrioritySubSystems, "SUBSYSTEMS.md")
-	b.SetToolLister(func() []ctxpkg.ToolInfo {
+	a.ctxBuilder.SetToolLister(func() []ctxpkg.ToolInfo {
 		defs := toolReg.List()
 		info := make([]ctxpkg.ToolInfo, len(defs))
 		for i, d := range defs {
@@ -91,23 +103,14 @@ func New(cfg *config.Config, sessMgr *session.Manager, toolReg *mcp.Registry) *A
 		return info
 	})
 
-	a := &Agent{
-		cfg:        cfg,
-		sessMgr:    sessMgr,
-		toolReg:    toolReg,
-		provider:   provider,
-		ctxBuilder: b,
-	}
-	if cfg.LLM.Limits.Enabled {
-		a.limitsManager = limits.NewLimitsManager(&cfg.LLM.Limits)
-	}
 	a.rebuildCompressor()
 	return a
 }
 
-func (a *Agent) SetVersion(v string)    { a.version = v }
-func (a *Agent) SetBuildTime(t string)  { a.buildTime = t }
-func (a *Agent) SetCommitHash(h string) { a.commitHash = h }
+func (a *Agent) SetVersion(v string)           { a.version = v }
+func (a *Agent) SetBuildTime(t string)         { a.buildTime = t }
+func (a *Agent) SetCommitHash(h string)        { a.commitHash = h }
+func (a *Agent) SetReloadFunc(fn func() error) { a.reloadFunc = fn }
 
 func (a *Agent) rebuildCompressor() {
 	timeout := time.Duration(a.cfg.LLM.CompressTimeoutSeconds) * time.Second
@@ -125,6 +128,32 @@ func (a *Agent) rebuildCompressor() {
 		a.compressor = compressor.NewTopicCompressor(a.provider, timeout)
 	default:
 		a.compressor = &compressor.DropCompressor{}
+	}
+}
+
+// OnConfigChange handles config hot-reload for the Agent.
+// It re-points the config pointer and rebuilds provider/compressor/limits if
+// their respective sections changed.
+func (a *Agent) OnConfigChange(oldCfg, newCfg *config.Config) {
+	a.cfg = newCfg
+
+	if !reflect.DeepEqual(oldCfg.LLM.Providers, newCfg.LLM.Providers) ||
+		oldCfg.LLM.Type != newCfg.LLM.Type ||
+		oldCfg.LLM.BaseURL != newCfg.LLM.BaseURL {
+		a.provider = selectProvider(newCfg)
+	}
+
+	if oldCfg.LLM.CompressMode != newCfg.LLM.CompressMode ||
+		oldCfg.LLM.CompressTimeoutSeconds != newCfg.LLM.CompressTimeoutSeconds {
+		a.rebuildCompressor()
+	}
+
+	if !reflect.DeepEqual(oldCfg.LLM.Limits, newCfg.LLM.Limits) {
+		if newCfg.LLM.Limits.Enabled {
+			a.limitsManager = limits.NewLimitsManager(&newCfg.LLM.Limits)
+		} else {
+			a.limitsManager = nil
+		}
 	}
 }
 
@@ -495,6 +524,21 @@ func (a *Agent) Run(ctx context.Context, io transport.UserIO) {
 				}
 			}
 			io.WriteLine(sb.String())
+			continue
+		}
+		if line == "/reload" {
+			if a.reloadFunc != nil {
+				io.WriteLine("Reloading configuration...")
+				if err := a.reloadFunc(); err != nil {
+					io.WriteLine(fmt.Sprintf("[Reload error: %v]", err))
+					zap.S().Errorw("config reload failed", "error", err)
+				} else {
+					io.WriteLine("Configuration reloaded.")
+					zap.S().Infow("config reloaded via /reload command")
+				}
+			} else {
+				io.WriteLine("Reload not available.")
+			}
 			continue
 		}
 		if line == "" {
@@ -896,10 +940,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 		}
 	}
 
-	if caps.Streaming {
-		io.WriteLine("")
-	}
-
 	for chunk := range streamCh {
 		select {
 		case <-ctx.Done():
@@ -948,10 +988,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 				}
 			}
 		}
-	}
-
-	if caps.Streaming && textBuf.Len() > 0 {
-		io.WriteLine("")
 	}
 
 	// Build tool calls from accumulated buffers

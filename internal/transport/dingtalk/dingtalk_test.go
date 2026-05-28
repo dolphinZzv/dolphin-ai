@@ -23,15 +23,74 @@ func loadDingTalkConfig(t *testing.T) *config.DingTalkConfig {
 	return &cfg.Transport.DingTalk
 }
 
+func TestDingTalkOnConfigChangeCredentialChange(t *testing.T) {
+	dt := &DingTalkTransport{
+		cfg:         &config.DingTalkConfig{ClientID: "old_id", ClientSecret: "old_secret"},
+		msgCh:       make(chan string, 1024),
+		closeCh:     make(chan struct{}),
+		reconnectCh: make(chan struct{}, 1),
+	}
+
+	oldCfg := &config.Config{}
+	oldCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "old_id", ClientSecret: "old_secret"}
+
+	newCfg := &config.Config{}
+	newCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "new_id", ClientSecret: "new_secret"}
+
+	dt.OnConfigChange(oldCfg, newCfg)
+
+	// Verify the config pointer was updated
+	if dt.cfg.ClientID != "new_id" {
+		t.Errorf("cfg.ClientID = %q, want new_id", dt.cfg.ClientID)
+	}
+	if dt.cfg.ClientSecret != "new_secret" {
+		t.Errorf("cfg.ClientSecret = %q, want new_secret", dt.cfg.ClientSecret)
+	}
+
+	// Verify reconnect signal was sent
+	select {
+	case <-dt.reconnectCh:
+		// expected
+	default:
+		t.Error("expected reconnectCh signal after credential change")
+	}
+}
+
+func TestDingTalkOnConfigChangeNoChange(t *testing.T) {
+	dt := &DingTalkTransport{
+		cfg:         &config.DingTalkConfig{ClientID: "same_id", ClientSecret: "same_secret"},
+		msgCh:       make(chan string, 1024),
+		closeCh:     make(chan struct{}),
+		reconnectCh: make(chan struct{}, 1),
+	}
+
+	oldCfg := &config.Config{}
+	oldCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "same_id", ClientSecret: "same_secret"}
+
+	newCfg := &config.Config{}
+	newCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "same_id", ClientSecret: "same_secret"}
+
+	dt.OnConfigChange(oldCfg, newCfg)
+
+	// Verify no reconnect signal was sent
+	select {
+	case <-dt.reconnectCh:
+		t.Error("expected NO reconnectCh signal when credentials unchanged")
+	default:
+		// expected
+	}
+}
+
 func TestDingTalkStreamConnect(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping dingtalk integration test in short mode")
 	}
 	cfg := loadDingTalkConfig(t)
 	dt := &DingTalkTransport{
-		cfg:     cfg,
-		msgCh:   make(chan string, 1024),
-		closeCh: make(chan struct{}),
+		cfg:         cfg,
+		msgCh:       make(chan string, 1024),
+		closeCh:     make(chan struct{}),
+		reconnectCh: make(chan struct{}, 1),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)

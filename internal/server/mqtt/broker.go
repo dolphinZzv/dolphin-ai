@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"reflect"
 
 	"dolphin/internal/config"
 
@@ -79,6 +80,30 @@ func (b *Broker) ClientAddr() string {
 		host = "localhost"
 	}
 	return net.JoinHostPort(host, port)
+}
+
+// OnConfigChange handles broker config hot-reload. If the address or accounts
+// changed, the broker restarts itself with the new configuration.
+func (b *Broker) OnConfigChange(oldCfg, newCfg *config.Config) {
+	oldS := oldCfg.Servers.MQTTBroker
+	newS := newCfg.Servers.MQTTBroker
+
+	if oldS.Addr == newS.Addr && reflect.DeepEqual(oldS.Accounts, newS.Accounts) {
+		return
+	}
+
+	b.cfg = newS
+
+	// Close existing server and restart with new config.
+	if b.server != nil {
+		b.server.Close()
+		b.server = nil
+	}
+	if err := b.Start(); err != nil {
+		zap.S().Errorw("mqtt broker restart failed", "error", err)
+	} else {
+		zap.S().Infow("mqtt broker restarted with new config", "addr", newS.Addr)
+	}
 }
 
 func buildLedger(accounts []config.MQTTAccount) *auth.Ledger {

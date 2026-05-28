@@ -9,8 +9,11 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"reflect"
 	"sync"
 	"time"
+
+	"dolphin/internal/config"
 
 	"github.com/rs/xid"
 	"go.uber.org/zap"
@@ -190,6 +193,23 @@ func (b *EventBus) SetWebhook(url string, filter []Type) {
 		}
 		b.webhookEvents[t] = true
 	}
+}
+
+// OnConfigChange handles config reload for the EventBus. If webhook URL or
+// event filter changed, it re-configures webhook delivery.
+func (b *EventBus) OnConfigChange(oldCfg, newCfg *config.Config) {
+	if oldCfg.Plugins.WebhookURL == newCfg.Plugins.WebhookURL &&
+		reflect.DeepEqual(oldCfg.Plugins.WebhookEvents, newCfg.Plugins.WebhookEvents) {
+		return
+	}
+	eventTypes := make([]Type, len(newCfg.Plugins.WebhookEvents))
+	for i, et := range newCfg.Plugins.WebhookEvents {
+		eventTypes[i] = Type(et)
+	}
+	if len(eventTypes) == 0 {
+		eventTypes = []Type{"*"}
+	}
+	b.SetWebhook(newCfg.Plugins.WebhookURL, eventTypes)
 }
 
 // Emit dispatches an event to all matching subscribers. The call is non-blocking.

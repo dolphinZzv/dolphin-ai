@@ -35,6 +35,19 @@ func New(cfg *config.Config) *Tool {
 	}
 }
 
+// OnConfigChange rebuilds the provider snapshot from the new config.
+func (t *Tool) OnConfigChange(oldCfg, newCfg *config.Config) {
+	providers := newCfg.LLM.EffectiveProviders()
+	t.providers = providers
+	if len(providers) > 0 {
+		t.defaultProv = providers[0].Name
+		t.defaultModel = providers[0].Model
+	} else {
+		t.defaultProv = ""
+		t.defaultModel = ""
+	}
+}
+
 func (t *Tool) Definition() mcp.ToolDefinition {
 	providerEnum := make([]string, 0, len(t.providers))
 	for _, p := range t.providers {

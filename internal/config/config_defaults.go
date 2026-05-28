@@ -147,6 +147,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("agent_pool.worker_stop_timeout", "5s")
 	v.SetDefault("agent_pool.max_stale_duration", "1h")
 	v.SetDefault("agent_pool.enable_agent_log", false)
+	v.SetDefault("agent_pool.agent_log_max_size", 100)
+	v.SetDefault("agent_pool.agent_log_max_age", 30)
+	v.SetDefault("agent_pool.agent_log_max_backups", 3)
 	v.SetDefault("agent_pool.max_agent_messages", 100)
 
 	v.SetDefault("skills.dir", ".dolphin/skills")
@@ -194,6 +197,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("resource.thresholds", []float64{20, 40, 60, 80})
 
 	v.SetDefault("health.debounce", "30s")
+
+	v.SetDefault("dynamic_config.enabled", true)
 
 	v.SetDefault("sync_config", true)
 

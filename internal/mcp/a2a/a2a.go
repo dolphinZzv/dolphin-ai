@@ -25,12 +25,23 @@ func New(cfg *config.Config) *Tool {
 	}
 }
 
+// OnConfigChange re-points the config sub-pointer and recreates the HTTP client.
+func (t *Tool) OnConfigChange(oldCfg, newCfg *config.Config) {
+	t.cfg = &newCfg.MCP.A2A
+	t.client = &http.Client{Timeout: a2aTimeout(t.cfg)}
+}
+
 type ListTool struct {
 	cfg *config.MCPA2AConfig
 }
 
 func NewListTool(cfg *config.Config) *ListTool {
 	return &ListTool{cfg: &cfg.MCP.A2A}
+}
+
+// OnConfigChange re-points the config sub-pointer on hot-reload.
+func (t *ListTool) OnConfigChange(oldCfg, newCfg *config.Config) {
+	t.cfg = &newCfg.MCP.A2A
 }
 
 func (t *ListTool) Definition() mcp.ToolDefinition {

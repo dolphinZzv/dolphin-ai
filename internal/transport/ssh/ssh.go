@@ -38,7 +38,19 @@ type SSHTransport struct {
 }
 
 func New(cfg *config.Config) (transport.Transport, error) {
-	sshCfg := cfg.Transport.SSH
+	serverCfg, err := buildServerConfig(cfg.Transport.SSH)
+	if err != nil {
+		return nil, err
+	}
+	return &SSHTransport{
+		cfg:    &cfg.Transport.SSH,
+		config: serverCfg,
+	}, nil
+}
+
+// buildServerConfig creates a gossh.ServerConfig from SSH config, including
+// password and public key auth callbacks that capture the current config values.
+func buildServerConfig(sshCfg config.SSHConfig) (*gossh.ServerConfig, error) {
 	serverCfg := &gossh.ServerConfig{}
 
 	// Password auth: check against the configured password (if set).
@@ -63,7 +75,7 @@ func New(cfg *config.Config) (transport.Transport, error) {
 		return &gossh.Permissions{}, nil
 	}
 
-	// Public key auth: check ~/.ssh/authorized_keys for the connecting user.
+	// Public key auth.
 	serverCfg.PublicKeyCallback = func(conn gossh.ConnMetadata, key gossh.PublicKey) (*gossh.Permissions, error) {
 		zap.S().Debugw("ssh pubkey auth attempt", "user", conn.User(), "remote", conn.RemoteAddr())
 
@@ -78,9 +90,8 @@ func New(cfg *config.Config) (transport.Transport, error) {
 		return &gossh.Permissions{}, nil
 	}
 
-	// Resolve host key path: always use a dedicated dolphin key, never
-	// the user's personal ~/.ssh/id_ed25519.
-	hostKey := cfg.Transport.SSH.HostKey
+	// Resolve host key path.
+	hostKey := sshCfg.HostKey
 	if hostKey == "" {
 		home, _ := os.UserHomeDir()
 		hostKey = filepath.Join(home, ".dolphin", "ssh_host_key")
@@ -88,8 +99,6 @@ func New(cfg *config.Config) (transport.Transport, error) {
 
 	signer, err := loadHostKey(hostKey)
 	if err != nil {
-		// Key file doesn't exist yet — generate and persist it so the
-		// host key is stable across restarts and known_hosts stays valid.
 		zap.S().Infow("generating persistent SSH host key", "path", hostKey)
 		signer, err = genAndSaveKey(hostKey)
 		if err != nil {
@@ -102,10 +111,66 @@ func New(cfg *config.Config) (transport.Transport, error) {
 	}
 	serverCfg.AddHostKey(signer)
 
-	return &SSHTransport{
-		cfg:    &cfg.Transport.SSH,
-		config: serverCfg,
-	}, nil
+	return serverCfg, nil
+}
+
+// OnConfigChange handles SSH config hot-reload.
+// SSH can hot-reload entirely in-place: auth rules, host key, and listener.
+// Existing connections continue with the rules from when they connected.
+func (t *SSHTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	oldSSH := oldCfg.Transport.SSH
+	newSSH := newCfg.Transport.SSH
+
+	// Check if anything relevant changed
+	if oldSSH.Addr == newSSH.Addr && oldSSH.Password == newSSH.Password &&
+		oldSSH.HostKey == newSSH.HostKey && eqStringSlice(oldSSH.AllowedUsers, newSSH.AllowedUsers) &&
+		oldSSH.AuthorizedKeys == newSSH.AuthorizedKeys && oldSSH.Username == newSSH.Username {
+		return
+	}
+
+	// Rebuild gossh.ServerConfig with fresh closures.
+	newServerCfg, err := buildServerConfig(newSSH)
+	if err != nil {
+		zap.S().Errorw("ssh reload: rebuild server config failed", "error", err)
+		return
+	}
+
+	// Swap listener first if address changed, then server config.
+	if oldSSH.Addr != newSSH.Addr {
+		newListener, err := net.Listen("tcp", newSSH.Addr)
+		if err != nil {
+			zap.S().Errorw("ssh reload: listen on new address failed", "addr", newSSH.Addr, "error", err)
+			return
+		}
+		t.mu.Lock()
+		oldListener := t.listener
+		t.listener = newListener
+		t.config = newServerCfg
+		t.cfg = &newSSH
+		t.mu.Unlock()
+		if oldListener != nil {
+			go oldListener.Close() // drain
+		}
+	} else {
+		t.mu.Lock()
+		t.config = newServerCfg
+		t.cfg = &newSSH
+		t.mu.Unlock()
+	}
+
+	zap.S().Infow("ssh config reloaded", "addr", newSSH.Addr)
+}
+
+func eqStringSlice(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // checkAuthorizedKey checks if the given public key matches a line in the
@@ -593,6 +658,14 @@ func genEphemeralKey() (gossh.Signer, error) {
 }
 
 func genAndSaveKey(path string) (gossh.Signer, error) {
+	// Expand leading tilde to home directory, matching loadHostKey behavior.
+	if len(path) > 0 && path[0] == '~' {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, err
+		}
+		path = filepath.Clean(home + path[1:])
+	}
 	_, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		return nil, err

@@ -35,32 +35,33 @@ type LogConfig struct {
 }
 
 type Config struct {
-	Name        string            `mapstructure:"name"`
-	ID          string            `mapstructure:"id"`
-	Workspace   string            `mapstructure:"workspace"`
-	Language    string            `mapstructure:"language"`
-	LLM         LLMConfig         `mapstructure:"llm"`
-	Session     SessionConfig     `mapstructure:"session"`
-	Transport   TransportConfig   `mapstructure:"transport"`
-	Servers     ServersConfig     `mapstructure:"servers"`
-	MCP         MCPConfig         `mapstructure:"mcp"`
-	Pool        PoolConfig        `mapstructure:"agent_pool"`
-	Skills      SkillsConfig      `mapstructure:"skills"`
-	Workflows   WorkflowsConfig   `mapstructure:"workflows"`
-	Agents      AgentsConfig      `mapstructure:"agents"`
-	Crontab     CrontabConfig     `mapstructure:"crontab"`
-	Pprof       PprofConfig       `mapstructure:"pprof"`
-	Metrics     MetricsConfig     `mapstructure:"metrics"`
-	Health      HealthConfig      `mapstructure:"health"`
-	Telemetry   TelemetryConfig   `mapstructure:"telemetry"`
-	Diary       DiaryConfig       `mapstructure:"diary"`
-	Update      UpdateConfig      `mapstructure:"update"`
-	Log         LogConfig         `mapstructure:"log"`
-	Plugins     PluginsConfig     `mapstructure:"plugins"`
-	Flags       FlagsConfig       `mapstructure:"flags"`
-	Resource    ResourceConfig    `mapstructure:"resource"`
-	Credentials CredentialsConfig `mapstructure:"credentials"`
-	SyncConfig  bool              `mapstructure:"sync_config"`
+	Name          string              `mapstructure:"name"`
+	ID            string              `mapstructure:"id"`
+	Workspace     string              `mapstructure:"workspace"`
+	Language      string              `mapstructure:"language"`
+	LLM           LLMConfig           `mapstructure:"llm"`
+	Session       SessionConfig       `mapstructure:"session"`
+	Transport     TransportConfig     `mapstructure:"transport"`
+	Servers       ServersConfig       `mapstructure:"servers"`
+	MCP           MCPConfig           `mapstructure:"mcp"`
+	Pool          PoolConfig          `mapstructure:"agent_pool"`
+	Skills        SkillsConfig        `mapstructure:"skills"`
+	Workflows     WorkflowsConfig     `mapstructure:"workflows"`
+	Agents        AgentsConfig        `mapstructure:"agents"`
+	Crontab       CrontabConfig       `mapstructure:"crontab"`
+	Pprof         PprofConfig         `mapstructure:"pprof"`
+	Metrics       MetricsConfig       `mapstructure:"metrics"`
+	Health        HealthConfig        `mapstructure:"health"`
+	Telemetry     TelemetryConfig     `mapstructure:"telemetry"`
+	Diary         DiaryConfig         `mapstructure:"diary"`
+	Update        UpdateConfig        `mapstructure:"update"`
+	Log           LogConfig           `mapstructure:"log"`
+	Plugins       PluginsConfig       `mapstructure:"plugins"`
+	Flags         FlagsConfig         `mapstructure:"flags"`
+	Resource      ResourceConfig      `mapstructure:"resource"`
+	Credentials   CredentialsConfig   `mapstructure:"credentials"`
+	DynamicConfig DynamicConfigConfig `mapstructure:"dynamic_config"`
+	SyncConfig    bool                `mapstructure:"sync_config"`
 }
 
 // Clone deep-copies the Config using JSON round-trip.

@@ -10,6 +10,10 @@ import (
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
+// atomicLevel is the global atomic level for runtime log level changes.
+// Initialized by Init; nil before first call.
+var atomicLevel *zap.AtomicLevel
+
 // Config holds logger configuration.
 type Config struct {
 	Level     string // debug, info, warn, error
@@ -20,8 +24,11 @@ type Config struct {
 }
 
 // Init sets up the global zap logger with optional lumberjack rotation.
+// The log level can be changed at runtime via SetLevel.
 func Init(cfg Config) {
 	level := parseLevel(cfg.Level)
+	lvl := zap.NewAtomicLevelAt(level)
+	atomicLevel = &lvl
 
 	encoderCfg := zap.NewProductionEncoderConfig()
 	encoderCfg.TimeKey = "time"
@@ -31,11 +38,20 @@ func Init(cfg Config) {
 	core := zapcore.NewCore(
 		zapcore.NewConsoleEncoder(encoderCfg),
 		getSyncer(cfg),
-		level,
+		atomicLevel,
 	)
 
 	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 	zap.ReplaceGlobals(logger)
+}
+
+// SetLevel changes the global log level at runtime. Accepts "debug", "info",
+// "warn", "warning", "error". Invalid values are silently ignored.
+func SetLevel(level string) {
+	if atomicLevel == nil {
+		return
+	}
+	atomicLevel.SetLevel(parseLevel(level))
 }
 
 func getSyncer(cfg Config) zapcore.WriteSyncer {

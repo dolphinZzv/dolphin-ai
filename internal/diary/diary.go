@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"dolphin/internal/config"
 	"dolphin/internal/session"
 
 	"go.uber.org/zap"
@@ -90,6 +91,21 @@ func New(cfg Config, sessionDir string) *Diary {
 		cfg:        cfg,
 		sessionDir: sessionDir,
 	}
+}
+
+// OnConfigChange handles diary config hot-reload. Updates the internal config.
+func (d *Diary) OnConfigChange(oldCfg, newCfg *config.Config) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.cfg = Config{
+		Dir:            newCfg.Diary.Dir,
+		MaxDaySessions: newCfg.Diary.MaxDaySessions,
+		MaxWeekDays:    newCfg.Diary.MaxWeekDays,
+		MaxMonthWeeks:  newCfg.Diary.MaxMonthWeeks,
+		MaxYearMonths:  newCfg.Diary.MaxYearMonths,
+		MaxTotalMB:     newCfg.Diary.MaxTotalMB,
+	}
+	d.dir = newCfg.Diary.Dir
 }
 
 // Sync scans session summaries and writes diary entries for unprocessed dates.

@@ -110,6 +110,18 @@ func NewStatusCmd() *cobra.Command {
 				fmt.Printf(i18n.TL(i18n.KeyStatusTransEmail)+"\n", cfg.Transport.Email.From)
 			}
 
+			// MCP tools
+			fmt.Println()
+			fmt.Println("MCP Tools:")
+			fmt.Printf("  Shell:     %s\n", statusBool(cfg.MCP.Shell.Enabled))
+			fmt.Printf("  CDP:       %s\n", statusBool(cfg.MCP.CDP.Enabled))
+			fmt.Printf("  Email:     %s\n", statusBool(cfg.MCP.Email.Enabled))
+			fmt.Printf("  Webhook:   %s\n", statusBool(cfg.MCP.Webhook.Enabled))
+			fmt.Printf("  WebHost:   %s\n", statusBool(cfg.MCP.Webhost.Enabled))
+			fmt.Printf("  WebSearch: %s\n", statusBool(cfg.MCP.WebSearch.Enabled))
+			fmt.Printf("  LLM:       %s\n", statusBool(cfg.MCP.LLM.Enabled))
+			fmt.Printf("  A2A:       %s\n", statusBool(cfg.MCP.A2A.Enabled))
+
 			// Shell tool mode
 			fmt.Println()
 			if len(cfg.MCP.Shell.AllowedCommands) > 0 {
@@ -121,4 +133,11 @@ func NewStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func statusBool(v bool) string {
+	if v {
+		return "enabled"
+	}
+	return "disabled"
 }

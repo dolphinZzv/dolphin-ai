@@ -447,6 +447,9 @@ type PoolConfig struct {
 	WorkerStopTimeout   string `mapstructure:"worker_stop_timeout"`    // worker shutdown grace period, e.g. "5s"; empty = default 5s
 	MaxStaleDuration    string `mapstructure:"max_stale_duration"`     // max age for error agents before workspace cleanup, e.g. "1h"; empty = default 1h
 	EnableAgentLog      bool   `mapstructure:"enable_agent_log"`       // write agent execution log to workspace/agent.log
+	AgentLogMaxSize     int    `mapstructure:"agent_log_max_size"`     // MB before rotation (default 100)
+	AgentLogMaxAge      int    `mapstructure:"agent_log_max_age"`      // days to retain (default 30)
+	AgentLogMaxBackups  int    `mapstructure:"agent_log_max_backups"`  // max old files (default 3)
 	MaxAgentMessages    int    `mapstructure:"max_agent_messages"`     // max conversation messages retained per subagent, 0 = unlimited (default 100)
 }
 
@@ -516,6 +519,11 @@ type HealthConfig struct {
 // FlagsConfig controls optional feature flags.
 type FlagsConfig struct {
 	SelfEvolution bool `mapstructure:"self_evolution"` // enable self-evolution: BUILTIN_SKILLS.md + LLM CRUD tools for skills/commands
+}
+
+// DynamicConfigConfig controls the dynamic config reload system.
+type DynamicConfigConfig struct {
+	Enabled bool `mapstructure:"enabled"` // enable file watcher / remote source polling
 }
 
 // ResourceConfig configures the system resource monitor.

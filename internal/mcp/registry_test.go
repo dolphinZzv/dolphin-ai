@@ -285,6 +285,105 @@ func TestAverageDurationMs(t *testing.T) {
 	}
 }
 
+func TestRegistryManagedToolEnabled(t *testing.T) {
+	r := NewRegistry(config.DefaultConfig())
+	r.RegisterManagedTool("alpha",
+		func(cfg *config.Config) Tool { return &testTool{name: "alpha"} },
+		func(cfg *config.Config) bool { return true },
+	)
+
+	tool, ok := r.Get("alpha")
+	if !ok {
+		t.Fatal("expected enabled managed tool to be registered")
+	}
+	if tool.Definition().Name != "alpha" {
+		t.Errorf("got %q, want alpha", tool.Definition().Name)
+	}
+}
+
+func TestRegistryManagedToolDisabled(t *testing.T) {
+	r := NewRegistry(config.DefaultConfig())
+	r.RegisterManagedTool("beta",
+		func(cfg *config.Config) Tool { return &testTool{name: "beta"} },
+		func(cfg *config.Config) bool { return false },
+	)
+
+	_, ok := r.Get("beta")
+	if ok {
+		t.Error("expected disabled managed tool to NOT be registered")
+	}
+}
+
+func TestRegistryManagedToolEnableOnConfigChange(t *testing.T) {
+	r := NewRegistry(config.DefaultConfig())
+	enabled := false
+	r.RegisterManagedTool("gamma",
+		func(cfg *config.Config) Tool { return &testTool{name: "gamma"} },
+		func(cfg *config.Config) bool { return enabled },
+	)
+
+	// Initially disabled
+	if _, ok := r.Get("gamma"); ok {
+		t.Error("expected gamma to be disabled initially")
+	}
+
+	// Simulate config change that enables it
+	oldCfg := config.DefaultConfig()
+	newCfg := config.DefaultConfig()
+	enabled = true
+	r.OnConfigChange(oldCfg, newCfg)
+
+	if _, ok := r.Get("gamma"); !ok {
+		t.Error("expected gamma to be enabled after OnConfigChange")
+	}
+}
+
+func TestRegistryManagedToolDisableOnConfigChange(t *testing.T) {
+	r := NewRegistry(config.DefaultConfig())
+	enabled := true
+	r.RegisterManagedTool("delta",
+		func(cfg *config.Config) Tool { return &testTool{name: "delta"} },
+		func(cfg *config.Config) bool { return enabled },
+	)
+
+	// Initially enabled
+	if _, ok := r.Get("delta"); !ok {
+		t.Fatal("expected delta to be enabled initially")
+	}
+
+	// Simulate config change that disables it
+	oldCfg := config.DefaultConfig()
+	newCfg := config.DefaultConfig()
+	enabled = false
+	r.OnConfigChange(oldCfg, newCfg)
+
+	if _, ok := r.Get("delta"); ok {
+		t.Error("expected delta to be disabled after OnConfigChange")
+	}
+}
+
+func TestRegistryManagedToolConfigChangePropagation(t *testing.T) {
+	r := NewRegistry(config.DefaultConfig())
+
+	r.RegisterManagedTool("epsilon",
+		func(cfg *config.Config) Tool { return &testTool{name: "epsilon"} },
+		func(cfg *config.Config) bool { return true },
+	)
+
+	// OnConfigChange should not affect already-enabled managed tool
+	oldCfg := config.DefaultConfig()
+	newCfg := config.DefaultConfig()
+	r.OnConfigChange(oldCfg, newCfg)
+
+	tool, ok := r.Get("epsilon")
+	if !ok {
+		t.Fatal("expected epsilon to still be registered after OnConfigChange")
+	}
+	if tool.Definition().Name != "epsilon" {
+		t.Errorf("got %q, want epsilon", tool.Definition().Name)
+	}
+}
+
 func TestRegistryExecuteMetricsLabeled(t *testing.T) {
 	r := NewRegistry(config.DefaultConfig())
 	r.Register(&testTool{name: "test_tool"})

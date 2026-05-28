@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"dolphin/internal/config"
 	"dolphin/internal/event"
 
 	"go.uber.org/zap"
@@ -50,6 +51,20 @@ func New(cfg Config, events *event.EventBus) *Monitor {
 		netBracket:   -1,
 		maxBandwidth: cfg.MaxBandwidth,
 	}
+}
+
+// OnConfigChange handles resource config hot-reload. Updates the internal config
+// under mutex so the sampling goroutine picks up new thresholds/paths on next tick.
+func (m *Monitor) OnConfigChange(oldCfg, newCfg *config.Config) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.cfg = ConfigFrom(newCfg.Resource)
+	if m.cfg.MaxBandwidth == 0 {
+		m.maxBandwidth = 125_000_000
+	} else {
+		m.maxBandwidth = m.cfg.MaxBandwidth
+	}
+	zap.S().Infow("resource monitor config updated", "interval", m.cfg.Interval)
 }
 
 // SetSampler replaces the sampler (used in tests).
@@ -108,23 +123,31 @@ func (m *Monitor) Close() {
 }
 
 // sampleAndCheck samples all resources and emits events for threshold crossings.
+// Snapshot the config under the lock to avoid races with OnConfigChange.
 func (m *Monitor) sampleAndCheck(ctx context.Context) {
+	m.mu.Lock()
+	diskPaths := make([]string, len(m.cfg.DiskPaths))
+	copy(diskPaths, m.cfg.DiskPaths)
+	maxBW := m.maxBandwidth
+	thresholds := m.cfg.Thresholds
+	m.mu.Unlock()
+
 	// CPU
 	if pct, err := m.sampler.CPU(); err == nil {
-		m.checkThreshold(ctx, TypeCPU, pct, &m.cpuBracket, nil)
+		m.checkThreshold(ctx, TypeCPU, pct, &m.cpuBracket, thresholds)
 	} else {
 		zap.S().Debugw("resource: cpu sample failed", "error", err)
 	}
 
 	// Memory
 	if pct, err := m.sampler.Memory(); err == nil {
-		m.checkThreshold(ctx, TypeMemory, pct, &m.memBracket, nil)
+		m.checkThreshold(ctx, TypeMemory, pct, &m.memBracket, thresholds)
 	} else {
 		zap.S().Debugw("resource: memory sample failed", "error", err)
 	}
 
 	// Disk (each configured path)
-	for _, path := range m.cfg.DiskPaths {
+	for _, path := range diskPaths {
 		if path == "" {
 			continue
 		}
@@ -134,12 +157,12 @@ func (m *Monitor) sampleAndCheck(ctx context.Context) {
 			continue
 		}
 		idx := m.diskIndex(path)
-		m.checkThreshold(ctx, TypeDisk, pct, idx, map[string]any{"path": path})
+		m.checkThreshold(ctx, TypeDisk, pct, idx, thresholds, map[string]any{"path": path})
 	}
 
 	// Network bandwidth
-	if pct, err := m.networkPercent(); err == nil {
-		m.checkThreshold(ctx, TypeNetwork, pct, &m.netBracket, nil)
+	if pct, err := m.networkPercent(maxBW); err == nil {
+		m.checkThreshold(ctx, TypeNetwork, pct, &m.netBracket, thresholds)
 	} else {
 		zap.S().Debugw("resource: network sample failed", "error", err)
 	}
@@ -147,7 +170,7 @@ func (m *Monitor) sampleAndCheck(ctx context.Context) {
 
 // networkPercent returns the network bandwidth usage as a percentage (0-100)
 // of the configured max bandwidth. Uses the higher of rx/tx rate.
-func (m *Monitor) networkPercent() (float64, error) {
+func (m *Monitor) networkPercent(maxBW uint64) (float64, error) {
 	rx, tx, err := m.sampler.Network()
 	if err != nil {
 		return 0, err
@@ -156,10 +179,10 @@ func (m *Monitor) networkPercent() (float64, error) {
 	if tx > rate {
 		rate = tx
 	}
-	if m.maxBandwidth == 0 {
+	if maxBW == 0 {
 		return 0, nil
 	}
-	pct := 100.0 * rate / float64(m.maxBandwidth)
+	pct := 100.0 * rate / float64(maxBW)
 	if pct > 100 {
 		pct = 100
 	}
@@ -168,11 +191,10 @@ func (m *Monitor) networkPercent() (float64, error) {
 
 // checkThreshold checks if the current percentage crosses a threshold boundary
 // and emits an event if so. bracketPtr is a pointer to the stored bracket index.
-func (m *Monitor) checkThreshold(ctx context.Context, rtype ResourceType, pct float64, bracketPtr *int, extra map[string]any) {
+func (m *Monitor) checkThreshold(ctx context.Context, rtype ResourceType, pct float64, bracketPtr *int, thresholds []float64, extra ...map[string]any) {
 	if bracketPtr == nil {
 		return
 	}
-	thresholds := m.cfg.Thresholds
 	newBracket := bracketIndex(pct, thresholds)
 	oldBracket := *bracketPtr
 
@@ -197,8 +219,10 @@ func (m *Monitor) checkThreshold(ctx context.Context, rtype ResourceType, pct fl
 	// Update stored bracket
 	*bracketPtr = newBracket
 	detail := make(map[string]any)
-	for k, v := range extra {
-		detail[k] = v
+	for _, e := range extra {
+		for k, v := range e {
+			detail[k] = v
+		}
 	}
 	detail["bracket_old"] = oldBracket
 	detail["bracket_new"] = newBracket

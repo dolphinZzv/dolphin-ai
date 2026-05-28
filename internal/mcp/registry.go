@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -66,6 +67,13 @@ func (s *ToolStats) AverageDurationMs() float64 {
 // DefaultPriority is the priority assigned to tools that don't set one.
 const DefaultPriority = 100
 
+// managedToolDef holds the factory and enabled check for a dynamically-managed built-in tool.
+type managedToolDef struct {
+	name      string
+	factory   func(cfg *config.Config) Tool
+	isEnabled func(cfg *config.Config) bool
+}
+
 // Registry manages all registered MCP tools, including external server tools.
 type Registry struct {
 	mu      sync.RWMutex
@@ -73,8 +81,15 @@ type Registry struct {
 	order   []string // registration order, used as tiebreaker in MostUsedTools
 	servers []*ServerClient
 	cfg     *config.MCPConfig
+	fullCfg *config.Config  // latest full config for managed tool factories
 	filter  map[string]bool // nil = no filter; non-nil = only allow listed tools
 	stats   map[string]*ToolStats
+
+	// managed tools that can be dynamically enabled/disabled
+	managedTools map[string]*managedToolDef
+
+	// lastConfigReload records when the config was last reloaded via OnConfigChange.
+	lastConfigReload time.Time
 
 	// metrics collectors (labeled by tool name)
 	toolCalls    *metrics.LabeledCounter
@@ -88,7 +103,9 @@ func NewRegistry(cfg *config.Config) *Registry {
 		tools:        make(map[string]Tool),
 		servers:      make([]*ServerClient, 0),
 		cfg:          &cfg.MCP,
+		fullCfg:      cfg,
 		stats:        make(map[string]*ToolStats),
+		managedTools: make(map[string]*managedToolDef),
 		toolCalls:    metrics.NewLabeledCounter("mcp_tool_calls_total", "Total MCP tool calls", "tool", nil),
 		toolErrors:   metrics.NewLabeledCounter("mcp_tool_errors_total", "Total MCP tool errors", "tool", nil),
 		toolDuration: metrics.NewLabeledHistogram("mcp_tool_duration_seconds", "MCP tool execution duration", "tool", nil, nil),
@@ -108,9 +125,86 @@ func (r *Registry) Register(t Tool) {
 	r.mu.Unlock()
 }
 
+// RegisterManagedTool registers a built-in tool that can be dynamically enabled/disabled
+// based on config hot-reload. The factory is called with the latest config when the tool
+// is enabled, and the tool is removed from the registry when disabled.
+func (r *Registry) RegisterManagedTool(name string, factory func(cfg *config.Config) Tool, isEnabled func(cfg *config.Config) bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.managedTools[name] = &managedToolDef{
+		name:      name,
+		factory:   factory,
+		isEnabled: isEnabled,
+	}
+
+	if isEnabled(r.fullCfg) {
+		t := factory(r.fullCfg)
+		r.tools[name] = t
+		r.stats[name] = &ToolStats{}
+		zap.S().Debugw("managed tool registered", "tool", name)
+	}
+}
+
+// syncManagedTools enables or disables managed built-in tools based on the latest config.
+// Must be called with r.mu held.
+func (r *Registry) syncManagedTools(cfg *config.Config, mcpCfg *config.MCPConfig) {
+	for name, def := range r.managedTools {
+		if def.isEnabled(cfg) {
+			if _, exists := r.tools[name]; !exists {
+				t := def.factory(cfg)
+				r.tools[name] = t
+				r.stats[name] = &ToolStats{}
+				zap.S().Infow("builtin tool enabled dynamically", "tool", name)
+			}
+		} else {
+			if _, exists := r.tools[name]; exists {
+				delete(r.tools, name)
+				delete(r.stats, name)
+				zap.S().Infow("builtin tool disabled dynamically", "tool", name)
+			}
+		}
+	}
+}
+
 // SetEventBus sets the event bus for emitting MCP server notifications.
 func (r *Registry) SetEventBus(bus *event.EventBus) {
 	r.bus = bus
+}
+
+// configSubscriber is an optional interface for tools that need config change
+// notifications to re-point stale config pointers or recreate resources.
+type configSubscriber interface {
+	OnConfigChange(oldCfg, newCfg *config.Config)
+}
+
+// OnConfigChange handles MCP config hot-reload. Re-points the config pointer,
+// reloads external MCP servers if server definitions changed, and propagates
+// the change to all registered tools that implement configSubscriber.
+func (r *Registry) OnConfigChange(oldCfg, newCfg *config.Config) {
+	serversChanged := !reflect.DeepEqual(oldCfg.MCP.Servers, newCfg.MCP.Servers)
+
+	r.mu.Lock()
+	r.cfg = &newCfg.MCP
+	r.fullCfg = newCfg
+	r.lastConfigReload = time.Now()
+	r.syncManagedTools(newCfg, &newCfg.MCP)
+
+	// Propagate to tools that implement configSubscriber.
+	for _, tool := range r.tools {
+		if cs, ok := tool.(configSubscriber); ok {
+			cs.OnConfigChange(oldCfg, newCfg)
+		}
+	}
+	r.mu.Unlock()
+
+	if serversChanged {
+		r.CloseServers()
+		ctx := context.Background()
+		if err := r.LoadServers(ctx); err != nil {
+			zap.S().Warnw("mcp servers reload failed", "error", err)
+		}
+	}
 }
 
 // LoadServers starts external MCP servers defined in config and registers their tools.
@@ -341,6 +435,13 @@ func (r *Registry) orderIndex(name string) int {
 	return len(r.order)
 }
 
+// LastConfigReload returns the time when the config was last reloaded.
+func (r *Registry) LastConfigReload() time.Time {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.lastConfigReload
+}
+
 // Clone returns an independent copy of the registry with the same tools, order, and servers.
 // Useful for per-connection registries that need to add local tools without
 // affecting the shared registry.
@@ -399,6 +500,14 @@ func (r *Registry) List() []ToolDefinition {
 		defs = append(defs, def)
 	}
 	return defs
+}
+
+// MCPConfig returns a copy of the current MCP config. Safe to call concurrently.
+// The returned value is a snapshot — call again to pick up hot-reload changes.
+func (r *Registry) MCPConfig() config.MCPConfig {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return *r.cfg
 }
 
 const tracerName = "dolphin/mcp"

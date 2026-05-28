@@ -70,6 +70,11 @@ func (s *Tool) Definition() mcp.ToolDefinition {
 	}
 }
 
+// OnConfigChange re-points the config sub-pointer on hot-reload.
+func (s *Tool) OnConfigChange(oldCfg, newCfg *config.Config) {
+	s.cfg = &newCfg.MCP.Shell
+}
+
 func (s *Tool) Execute(ctx context.Context, input json.RawMessage) (*mcp.ToolResult, error) {
 	var params struct {
 		Command    string `json:"command"`
