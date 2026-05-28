@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -23,6 +24,7 @@ import (
 	"dolphin/internal/agent/provider"
 
 	"go.uber.org/zap"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // priorityTask wraps a Task with its priority for the heap.
@@ -287,6 +289,9 @@ type PoolConfig struct {
 	GroupLimits         map[string]int // per-group concurrency caps (empty = use global)
 	MaxStaleDuration    time.Duration  // max age for error agents before workspace cleanup (default 1h)
 	EnableAgentLog      bool           // write agent execution log to workspace/agent.log
+	AgentLogMaxSize     int            // MB before rotation (default 100)
+	AgentLogMaxAge      int            // days to retain (default 30)
+	AgentLogMaxBackups  int            // max old files (default 3)
 	MaxAgentMessages    int            // max conversation messages retained per subagent, 0 = unlimited (default 100)
 }
 
@@ -308,6 +313,9 @@ func NewPoolConfigFromConfig(cfg config.PoolConfig) PoolConfig {
 		WorkerStopTimeout:   parseDurationOpt(cfg.WorkerStopTimeout, 5*time.Second),
 		MaxStaleDuration:    parseDurationOpt(cfg.MaxStaleDuration, 1*time.Hour),
 		EnableAgentLog:      cfg.EnableAgentLog,
+		AgentLogMaxSize:     cfg.AgentLogMaxSize,
+		AgentLogMaxAge:      cfg.AgentLogMaxAge,
+		AgentLogMaxBackups:  cfg.AgentLogMaxBackups,
 		MaxAgentMessages:    cfg.MaxAgentMessages,
 	}
 }
@@ -523,16 +531,31 @@ func (p *AgentPool) processTask(inst *AgentInstance, task Task) {
 	})
 
 	// Open agent execution log if enabled
-	var agentLog *os.File
+	var agentLog io.WriteCloser
 	if p.cfg.EnableAgentLog && inst.Def.Workspace != "" {
-		logPath := filepath.Join(inst.Def.Workspace, "agent.log")
-		f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		if err == nil {
-			agentLog = f
-			defer f.Close()
-			fmt.Fprintf(agentLog, "[%s] [processing] task=%s input=%s\n",
-				time.Now().Format(time.RFC3339), task.ID, truncateString(task.Input, 200))
+		maxSize := p.cfg.AgentLogMaxSize
+		if maxSize <= 0 {
+			maxSize = 100
 		}
+		maxAge := p.cfg.AgentLogMaxAge
+		if maxAge <= 0 {
+			maxAge = 30
+		}
+		maxBackups := p.cfg.AgentLogMaxBackups
+		if maxBackups <= 0 {
+			maxBackups = 3
+		}
+		agentLog = &lumberjack.Logger{
+			Filename:   filepath.Join(inst.Def.Workspace, "agent.log"),
+			MaxSize:    maxSize,
+			MaxAge:     maxAge,
+			MaxBackups: maxBackups,
+			LocalTime:  true,
+			Compress:   true,
+		}
+		defer agentLog.Close()
+		fmt.Fprintf(agentLog, "[%s] [processing] task=%s input=%s\n",
+			time.Now().Format(time.RFC3339), task.ID, truncateString(task.Input, 200))
 	}
 
 	// Build system prompt for this agent

@@ -940,10 +940,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 		}
 	}
 
-	if caps.Streaming {
-		io.WriteLine("")
-	}
-
 	for chunk := range streamCh {
 		select {
 		case <-ctx.Done():
@@ -992,10 +988,6 @@ func (a *Agent) processStream(ctx context.Context, io transport.UserIO, streamCh
 				}
 			}
 		}
-	}
-
-	if caps.Streaming && textBuf.Len() > 0 {
-		io.WriteLine("")
 	}
 
 	// Build tool calls from accumulated buffers

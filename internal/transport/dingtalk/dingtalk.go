@@ -20,10 +20,11 @@ func init() { transport.Register("dingtalk", New) }
 
 // DingTalkTransport provides DingTalk bot I/O via Stream mode using the official SDK.
 type DingTalkTransport struct {
-	cfg       *config.DingTalkConfig
-	msgCh     chan string
-	closeCh   chan struct{}
-	closeOnce sync.Once
+	cfg         *config.DingTalkConfig
+	msgCh       chan string
+	closeCh     chan struct{}
+	closeOnce   sync.Once
+	reconnectCh chan struct{}
 
 	sdkCli    *client.StreamClient
 	webhook   string
@@ -32,14 +33,23 @@ type DingTalkTransport struct {
 
 func New(cfg *config.Config) (transport.Transport, error) {
 	return &DingTalkTransport{
-		cfg:     &cfg.Transport.DingTalk,
-		msgCh:   make(chan string, 1024),
-		closeCh: make(chan struct{}),
+		cfg:         &cfg.Transport.DingTalk,
+		msgCh:       make(chan string, 1024),
+		closeCh:     make(chan struct{}),
+		reconnectCh: make(chan struct{}, 1),
 	}, nil
 }
 
 func (t *DingTalkTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	oldID, oldSecret := t.cfg.ClientID, t.cfg.ClientSecret
 	t.cfg = &newCfg.Transport.DingTalk
+	if t.cfg.ClientID != oldID || t.cfg.ClientSecret != oldSecret {
+		select {
+		case t.reconnectCh <- struct{}{}:
+		default:
+		}
+		zap.S().Infow("dingtalk credentials changed, reconnecting")
+	}
 }
 
 func (t *DingTalkTransport) Name() string { return "dingtalk" }
@@ -61,19 +71,37 @@ func (t *DingTalkTransport) Start(ctx context.Context) error {
 	transport.ActiveConnections.Add(1)
 	defer transport.ActiveConnections.Add(-1)
 
-	cred := client.NewAppCredentialConfig(t.cfg.ClientID, t.cfg.ClientSecret)
-	t.sdkCli = client.NewStreamClient(
-		client.WithAppCredential(cred),
-	)
-	t.sdkCli.RegisterChatBotCallbackRouter(t.onMessage)
+	for {
+		startCtx, startCancel := context.WithCancel(ctx)
 
-	if err := t.sdkCli.Start(ctx); err != nil {
-		return fmt.Errorf("dingtalk stream start: %w", err)
+		cred := client.NewAppCredentialConfig(t.cfg.ClientID, t.cfg.ClientSecret)
+		cli := client.NewStreamClient(
+			client.WithAppCredential(cred),
+		)
+		cli.RegisterChatBotCallbackRouter(t.onMessage)
+		t.sdkCli = cli
+
+		// Cancel startCtx when credentials change, forcing a reconnect.
+		go func() {
+			select {
+			case <-t.reconnectCh:
+				startCancel()
+			case <-startCtx.Done():
+			}
+		}()
+
+		_ = cli.Start(startCtx)
+		startCancel()
+
+		if ctx.Err() != nil {
+			return t.Close()
+		}
+
+		// Connection ended or credentials changed — reconnect.
+		cli.Close()
+		zap.S().Warnw("dingtalk stream disconnected, reconnecting")
+		time.Sleep(time.Second)
 	}
-	zap.S().Infow("dingtalk stream connected")
-
-	<-ctx.Done()
-	return t.Close()
 }
 
 func (t *DingTalkTransport) onMessage(ctx context.Context, data *chatbot.BotCallbackDataModel) ([]byte, error) {

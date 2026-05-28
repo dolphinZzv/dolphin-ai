@@ -117,7 +117,7 @@ func buildServerConfig(sshCfg config.SSHConfig) (*gossh.ServerConfig, error) {
 // OnConfigChange handles SSH config hot-reload.
 // SSH can hot-reload entirely in-place: auth rules, host key, and listener.
 // Existing connections continue with the rules from when they connected.
-func (t *SSHTransport) OnConfigChange(oldCfg, newCfg *config.Config) error {
+func (t *SSHTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
 	oldSSH := oldCfg.Transport.SSH
 	newSSH := newCfg.Transport.SSH
 
@@ -125,20 +125,22 @@ func (t *SSHTransport) OnConfigChange(oldCfg, newCfg *config.Config) error {
 	if oldSSH.Addr == newSSH.Addr && oldSSH.Password == newSSH.Password &&
 		oldSSH.HostKey == newSSH.HostKey && eqStringSlice(oldSSH.AllowedUsers, newSSH.AllowedUsers) &&
 		oldSSH.AuthorizedKeys == newSSH.AuthorizedKeys && oldSSH.Username == newSSH.Username {
-		return transport.ErrUnchanged
+		return
 	}
 
 	// Rebuild gossh.ServerConfig with fresh closures.
 	newServerCfg, err := buildServerConfig(newSSH)
 	if err != nil {
-		return fmt.Errorf("ssh reload: rebuild server config: %w", err)
+		zap.S().Errorw("ssh reload: rebuild server config failed", "error", err)
+		return
 	}
 
 	// Swap listener first if address changed, then server config.
 	if oldSSH.Addr != newSSH.Addr {
 		newListener, err := net.Listen("tcp", newSSH.Addr)
 		if err != nil {
-			return fmt.Errorf("ssh reload listen: %w", err)
+			zap.S().Errorw("ssh reload: listen on new address failed", "addr", newSSH.Addr, "error", err)
+			return
 		}
 		t.mu.Lock()
 		oldListener := t.listener
@@ -157,7 +159,6 @@ func (t *SSHTransport) OnConfigChange(oldCfg, newCfg *config.Config) error {
 	}
 
 	zap.S().Infow("ssh config reloaded", "addr", newSSH.Addr)
-	return nil
 }
 
 func eqStringSlice(a, b []string) bool {

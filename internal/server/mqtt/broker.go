@@ -3,7 +3,6 @@
 package mqtt
 
 import (
-	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -17,10 +16,6 @@ import (
 	"github.com/mochi-mqtt/server/v2/listeners"
 	"go.uber.org/zap"
 )
-
-// ErrRequiresRestart is returned by OnConfigChange when the broker cannot
-// hot-reload in-place and needs an actor restart.
-var ErrRequiresRestart = errors.New("mqtt broker must be restarted")
 
 // Broker runs an in-process MQTT broker so dolphin does not require
 // an external broker when MQTT transport is enabled.
@@ -87,18 +82,28 @@ func (b *Broker) ClientAddr() string {
 	return net.JoinHostPort(host, port)
 }
 
-// OnConfigChange checks if broker-relevant config changed. Returns ErrRequiresRestart
-// if the broker needs to be stopped and recreated with new settings.
-func (b *Broker) OnConfigChange(oldCfg, newCfg *config.Config) error {
+// OnConfigChange handles broker config hot-reload. If the address or accounts
+// changed, the broker restarts itself with the new configuration.
+func (b *Broker) OnConfigChange(oldCfg, newCfg *config.Config) {
 	oldS := oldCfg.Servers.MQTTBroker
 	newS := newCfg.Servers.MQTTBroker
 
 	if oldS.Addr == newS.Addr && reflect.DeepEqual(oldS.Accounts, newS.Accounts) {
-		return nil // unchanged
+		return
 	}
 
 	b.cfg = newS
-	return ErrRequiresRestart
+
+	// Close existing server and restart with new config.
+	if b.server != nil {
+		b.server.Close()
+		b.server = nil
+	}
+	if err := b.Start(); err != nil {
+		zap.S().Errorw("mqtt broker restart failed", "error", err)
+	} else {
+		zap.S().Infow("mqtt broker restarted with new config", "addr", newS.Addr)
+	}
 }
 
 func buildLedger(accounts []config.MQTTAccount) *auth.Ledger {

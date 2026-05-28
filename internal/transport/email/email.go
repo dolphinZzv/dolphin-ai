@@ -99,7 +99,17 @@ func (t *EmailTransport) FetchLatestUnseen() *EmailMessage {
 }
 
 func (t *EmailTransport) OnConfigChange(oldCfg, newCfg *config.Config) {
+	oldInterval := t.cfg.PollInterval
 	t.cfg = &newCfg.Transport.Email
+
+	if t.cfg.PollInterval != oldInterval && t.pollTicker != nil {
+		interval, _ := time.ParseDuration(t.cfg.PollInterval)
+		if interval <= 0 {
+			interval = 10 * time.Second
+		}
+		t.pollTicker.Reset(interval)
+		zap.S().Infow("email poll interval updated", "interval", t.cfg.PollInterval)
+	}
 }
 
 func (t *EmailTransport) Name() string { return "email" }

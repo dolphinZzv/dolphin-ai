@@ -152,43 +152,22 @@ func runAgent(cmd *cobra.Command, args []string) error {
 	// Init MCP tool registry
 	toolRegistry := mcp.NewRegistry(cfg)
 
-	// Register built-in tools
-	if cfg.MCP.Shell.Enabled {
-		toolRegistry.Register(mcpshell.New(cfg))
-		toolRegistry.Register(mcpshell.NewProcessReaderTool())
-		zap.S().Infow("shell tool registered")
-	}
+	// Register built-in tools (dynamically managed for hot-reload)
+	toolRegistry.RegisterManagedTool("shell", func(cfg *config.Config) mcp.Tool { return mcpshell.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.Shell.Enabled })
+	toolRegistry.RegisterManagedTool("read_process_output", func(cfg *config.Config) mcp.Tool { return mcpshell.NewProcessReaderTool() }, func(cfg *config.Config) bool { return cfg.MCP.Shell.Enabled })
 	var cdpTool *cdp.Tool
-	if cfg.MCP.CDP.Enabled {
+	toolRegistry.RegisterManagedTool("cdp", func(cfg *config.Config) mcp.Tool {
 		cdpTool = cdp.New(cfg)
-		toolRegistry.Register(cdpTool)
-		zap.S().Infow("cdp tool registered")
-	}
-	if cfg.MCP.Email.Enabled && cfg.Transport.Email.Username != "" {
-		toolRegistry.Register(email.New(cfg))
-		zap.S().Infow("email tool registered")
-	}
-	if cfg.MCP.Webhook.Enabled {
-		toolRegistry.Register(webhook.New(cfg))
-		zap.S().Infow("webhook tool registered")
-	}
-	if cfg.MCP.Webhost.Enabled {
-		toolRegistry.Register(webhost.New(cfg))
-		zap.S().Infow("webhost tool registered")
-	}
-	if cfg.MCP.WebSearch.Enabled {
-		toolRegistry.Register(websearch.New(cfg))
-		zap.S().Infow("web_search tool registered")
-	}
-	if cfg.MCP.LLM.Enabled {
-		toolRegistry.Register(llm.New(cfg))
-		zap.S().Infow("llm tool registered")
-	}
-	if cfg.MCP.A2A.Enabled {
-		toolRegistry.Register(a2a.New(cfg))
-		toolRegistry.Register(a2a.NewListTool(cfg))
-		zap.S().Infow("a2a tools registered")
-	}
+		return cdpTool
+	}, func(cfg *config.Config) bool { return cfg.MCP.CDP.Enabled })
+	toolRegistry.RegisterManagedTool("email", func(cfg *config.Config) mcp.Tool { return email.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.Email.Enabled && cfg.Transport.Email.Username != "" })
+	toolRegistry.RegisterManagedTool("webhook", func(cfg *config.Config) mcp.Tool { return webhook.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.Webhook.Enabled })
+	toolRegistry.RegisterManagedTool("webhost", func(cfg *config.Config) mcp.Tool { return webhost.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.Webhost.Enabled })
+	toolRegistry.RegisterManagedTool("web_search", func(cfg *config.Config) mcp.Tool { return websearch.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.WebSearch.Enabled })
+	toolRegistry.RegisterManagedTool("llm", func(cfg *config.Config) mcp.Tool { return llm.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.LLM.Enabled })
+	toolRegistry.RegisterManagedTool("a2a_send", func(cfg *config.Config) mcp.Tool { return a2a.New(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.A2A.Enabled })
+	toolRegistry.RegisterManagedTool("a2a_list", func(cfg *config.Config) mcp.Tool { return a2a.NewListTool(cfg) }, func(cfg *config.Config) bool { return cfg.MCP.A2A.Enabled })
+	zap.S().Infow("built-in tools registered dynamically")
 
 	// Load external MCP servers — individual failures are non-fatal.
 	if len(cfg.MCP.Servers) > 0 {
@@ -301,6 +280,7 @@ func runAgent(cmd *cobra.Command, args []string) error {
 		agt.SetHooks(hooks)
 		agt.SetEventBus(bus)
 		agt.SetHeartbeatInterval(cfg.Plugins.HeartbeatTurns)
+		mgr.Subscribe(agt)
 		poolCfg := agent.NewPoolConfigFromConfig(cfg.Pool)
 		pool := agent.NewAgentPool(context.Background(), poolCfg)
 		if hasAgents {
@@ -705,6 +685,9 @@ func runActorGroup(cfg *config.Config, mgr *config.Manager, toolRegistry *mcp.Re
 			st.SetSessionHandler(func(ctx context.Context, io transport.UserIO) {
 				newCoordinator().Run(ctx, io)
 			})
+			if sub, ok := t.(config.Subscriber); ok {
+				mgr.Subscribe(sub)
+			}
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		g.Add(actor.Actor{

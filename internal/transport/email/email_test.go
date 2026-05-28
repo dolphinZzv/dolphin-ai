@@ -101,6 +101,29 @@ func startTestSMTPServer(t *testing.T) (addr string, gotMsg chan string) {
 	return ln.Addr().String(), gotMsg
 }
 
+func TestEmailOnConfigChangeUpdatesCfg(t *testing.T) {
+	tp := &EmailTransport{
+		cfg:     &config.EmailConfig{IMAPHost: "old.host", PollInterval: "30s"},
+		msgCh:   make(chan string, 1024),
+		closeCh: make(chan struct{}),
+	}
+
+	oldCfg := &config.Config{}
+	oldCfg.Transport.Email = config.EmailConfig{IMAPHost: "old.host", PollInterval: "30s"}
+
+	newCfg := &config.Config{}
+	newCfg.Transport.Email = config.EmailConfig{IMAPHost: "new.host", PollInterval: "10s"}
+
+	tp.OnConfigChange(oldCfg, newCfg)
+
+	if tp.cfg.IMAPHost != "new.host" {
+		t.Errorf("cfg.IMAPHost = %q, want new.host", tp.cfg.IMAPHost)
+	}
+	if tp.cfg.PollInterval != "10s" {
+		t.Errorf("cfg.PollInterval = %q, want 10s", tp.cfg.PollInterval)
+	}
+}
+
 func TestEmailTransportName(t *testing.T) {
 	tp := &EmailTransport{}
 	if n := tp.Name(); n != "email" {

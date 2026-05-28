@@ -152,13 +152,23 @@ func (t *StdioTransport) WriteLine(s string) error {
 			return nil
 		}
 	}
+	if s == "" && t.md != nil {
+		return nil
+	}
 	_, err := fmt.Println(s)
 	return err
 }
 
 func (t *StdioTransport) Flush() error {
-	_, err := fmt.Println("----------------------------------------")
-	return err
+	if t.md != nil && t.mdBuf.Len() > 0 {
+		rendered, err := t.md.Render(t.mdBuf.String())
+		t.mdBuf.Reset()
+		if err == nil {
+			_, err = fmt.Print(rendered)
+			return err
+		}
+	}
+	return nil
 }
 
 func (t *StdioTransport) Close() error {
