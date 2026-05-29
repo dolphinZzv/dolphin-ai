@@ -1,0 +1,164 @@
+package agentio
+
+import (
+	"context"
+	"sync"
+
+	"dolphin/internal/session"
+	"dolphin/internal/signal"
+	"dolphin/internal/transport"
+	"go.uber.org/zap"
+)
+
+type Turn struct {
+	TransportID string
+	SessionID   string
+	Input       string
+	Context     string // transport-specific context string
+}
+
+type TurnResult struct {
+	TransportID string
+	SessionID   string
+	Text        string
+	Done        bool
+	Error       error
+}
+
+type AgentIO struct {
+	queue      chan *Turn
+	routes     map[string]transport.IO
+	sessionMgr *session.Manager
+	signalBus  *signal.Bus
+	logger     *zap.Logger
+	agentName  string
+	replied    map[string]bool
+
+	bufMu   sync.Mutex
+	buffers map[string]string // partial text for chunk-mode transports
+}
+
+func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *zap.Logger, agentName string) *AgentIO {
+	a := &AgentIO{
+		queue:      make(chan *Turn, bufferSize),
+		routes:     make(map[string]transport.IO),
+		sessionMgr: mgr,
+		signalBus:  sb,
+		logger:     logger,
+		agentName:  agentName,
+		replied:    make(map[string]bool),
+		buffers:    make(map[string]string),
+	}
+
+	// Listen for session flips to broadcast to all transports
+	mgr.OnFliped(func(ctx context.Context, sessionID string) {
+		msg := "\n--- Session switched to: " + sessionID + " ---\n"
+		for id, tio := range a.routes {
+			if err := tio.Write(ctx, msg); err != nil {
+				a.logger.Warn("session flip broadcast failed",
+					zap.String("transport_id", id),
+					zap.Error(err),
+				)
+			}
+		}
+		a.logger.Info("session flipped broadcast",
+			zap.String("new_session_id", sessionID),
+			zap.Int("transports_notified", len(a.routes)),
+		)
+	})
+
+	return a
+}
+
+func (a *AgentIO) RegisterTransport(id string, tio transport.IO) {
+	a.routes[id] = tio
+}
+
+func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
+	if info := transport.GetInfo(ctx); info != nil && turn.TransportID == "" {
+		turn.TransportID = info.ID
+	}
+
+	if turn.SessionID == "" {
+		sess := a.sessionMgr.Active()
+		if sess == nil {
+			sess = a.sessionMgr.Create(ctx)
+		}
+		turn.SessionID = sess.ID
+	}
+
+	a.queue <- turn
+}
+
+func (a *AgentIO) Queue() chan *Turn {
+	return a.queue
+}
+
+func (a *AgentIO) OnResult(result *TurnResult) {
+	tio, ok := a.routes[result.TransportID]
+	if !ok {
+		a.logger.Warn("OnResult: unknown transport",
+			zap.String("transport_id", result.TransportID),
+		)
+		return
+	}
+
+	cap := tio.Capability()
+
+	if result.Text != "" {
+		if cap.Streamable {
+			// Streamable: write chunks as they arrive.
+			text := result.Text
+			if !a.replied[result.TransportID] {
+				text = "\n" + a.agentName + "> " + text
+				a.replied[result.TransportID] = true
+			}
+			if err := tio.Write(context.Background(), text); err != nil {
+				a.logger.Error("OnResult write failed",
+					zap.Error(err),
+					zap.String("transport_id", result.TransportID),
+				)
+			}
+		} else {
+			// Chunk mode: buffer all text, write on Done.
+			a.bufMu.Lock()
+			a.buffers[result.TransportID] += result.Text
+			a.bufMu.Unlock()
+		}
+	}
+
+	if result.Done {
+		if !cap.Streamable {
+			// Chunk mode: flush buffered content as one complete message (no prompt prefix).
+			a.bufMu.Lock()
+			buf := a.buffers[result.TransportID]
+			delete(a.buffers, result.TransportID)
+			a.bufMu.Unlock()
+
+			if buf != "" {
+				if err := tio.Write(context.Background(), buf); err != nil {
+					a.logger.Error("OnResult write failed",
+						zap.Error(err),
+						zap.String("transport_id", result.TransportID),
+					)
+				}
+			}
+			if result.Error != nil && buf == "" {
+				if err := tio.Write(context.Background(), result.Error.Error()); err != nil {
+					a.logger.Error("OnResult write failed",
+						zap.Error(err),
+						zap.String("transport_id", result.TransportID),
+					)
+				}
+			}
+		}
+
+		a.replied[result.TransportID] = false
+		if err := tio.Flush(); err != nil {
+			a.logger.Error("OnResult flush failed",
+				zap.Error(err),
+				zap.String("transport_id", result.TransportID),
+			)
+		}
+	}
+}

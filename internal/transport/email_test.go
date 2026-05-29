@@ -1,0 +1,289 @@
+package transport
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+)
+
+func TestNewEmail(t *testing.T) {
+	Convey("NewEmail", t, func() {
+		Convey("creates email transport with IMAP config", func() {
+			e := NewEmail(EmailConfig{
+				IMAPServer:   "imap.example.com",
+				IMAPPort:     "993",
+				SMTPServer:   "smtp.example.com",
+				SMTPPort:     "465",
+				EmailAddress: "test@example.com",
+				Password:     "secret",
+			}, nil, "Dolphin")
+			So(e, ShouldNotBeNil)
+			So(e.ID(), ShouldEqual, "email")
+			So(e.sendOnly, ShouldBeFalse)
+		})
+
+		Convey("creates send-only email transport with Key", func() {
+			e := NewEmail(EmailConfig{
+				SMTPServer:   "smtp.example.com",
+				SMTPPort:     "465",
+				EmailAddress: "test@example.com",
+				Key:          "send-key",
+			}, nil, "Dolphin")
+			So(e, ShouldNotBeNil)
+			So(e.sendOnly, ShouldBeTrue)
+		})
+
+		Convey("creates send-only email when IMAP not configured", func() {
+			e := NewEmail(EmailConfig{
+				SMTPServer:   "smtp.example.com",
+				SMTPPort:     "465",
+				EmailAddress: "test@example.com",
+				Password:     "secret",
+			}, nil, "Dolphin")
+			So(e.sendOnly, ShouldBeTrue)
+		})
+	})
+}
+
+func TestEmailID(t *testing.T) {
+	Convey("Email.ID", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		So(e.ID(), ShouldEqual, "email")
+	})
+}
+
+func TestEmailCapability(t *testing.T) {
+	Convey("Email.Capability", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		c := e.Capability()
+		So(c.Interactive, ShouldBeFalse)
+		So(c.Streamable, ShouldBeFalse)
+		So(c.NestRead, ShouldBeFalse)
+	})
+}
+
+func TestEmailReadSendOnly(t *testing.T) {
+	Convey("Email.Read in send-only mode", t, func() {
+		e := NewEmail(EmailConfig{
+			SMTPServer:   "smtp.example.com",
+			SMTPPort:     "465",
+			EmailAddress: "test@example.com",
+			Key:          "send-key",
+		}, nil, "")
+		ctx := context.Background()
+
+		_, err := e.Read(ctx)
+		So(err, ShouldEqual, ErrSendOnly)
+	})
+}
+
+func TestEmailBuildMessage(t *testing.T) {
+	Convey("Email.buildMessage", t, func() {
+		Convey("includes agent name in From header", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+			}, nil, "MyBot")
+
+			msg := e.buildMessage("user@example.com", "Test Subject", "Hello")
+			So(msg, ShouldContainSubstring, "From: MyBot <bot@example.com>")
+			So(msg, ShouldContainSubstring, "To: user@example.com")
+			So(msg, ShouldContainSubstring, "Subject: Test Subject")
+			So(msg, ShouldContainSubstring, "Hello")
+		})
+
+		Convey("uses plain email when no agent name", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+			}, nil, "")
+
+			msg := e.buildMessage("user@example.com", "Test", "Body")
+			So(msg, ShouldContainSubstring, "From: bot@example.com")
+		})
+
+		Convey("includes MIME headers", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+			}, nil, "")
+
+			msg := e.buildMessage("to@example.com", "Subj", "Body")
+			So(msg, ShouldContainSubstring, "MIME-Version: 1.0")
+			So(msg, ShouldContainSubstring, "Content-Type: text/plain; charset=\"UTF-8\"")
+		})
+	})
+}
+
+func TestEmailWriteBuffer(t *testing.T) {
+	Convey("Email.Write buffer behavior", t, func() {
+		e := NewEmail(EmailConfig{
+			EmailAddress: "bot@example.com",
+		}, nil, "Bot")
+
+		Convey("requires lastFrom to be set", func() {
+			// Without lastFrom, Write fails
+			err := e.Write(context.Background(), "reply text")
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "no sender to reply to")
+		})
+	})
+}
+
+func TestEmailFlushNoOp(t *testing.T) {
+	Convey("Email.Flush with no pending message", t, func() {
+		logger, _ := zap.NewProduction()
+		e := NewEmail(EmailConfig{
+			EmailAddress: "bot@example.com",
+		}, logger, "Bot")
+
+		err := e.Flush()
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestEmailClose(t *testing.T) {
+	Convey("Email.Close", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		err := e.Close()
+		So(err, ShouldBeNil)
+
+		// Double close should be safe
+		err = e.Close()
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestEmailValOr(t *testing.T) {
+	Convey("valOr helper", t, func() {
+		cfg := map[string]any{
+			"key1": "value1",
+			"key2": "",
+		}
+
+		Convey("returns value when present", func() {
+			So(valOr(cfg, "key1", "default"), ShouldEqual, "value1")
+		})
+
+		Convey("returns default when value is empty string", func() {
+			So(valOr(cfg, "key2", "default"), ShouldEqual, "default")
+		})
+
+		Convey("returns default when key missing", func() {
+			So(valOr(cfg, "missing", "default"), ShouldEqual, "default")
+		})
+	})
+}
+
+func TestEmailLoggerDefault(t *testing.T) {
+	Convey("Email logger default", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		So(e.logger, ShouldNotBeNil)
+	})
+}
+
+func TestEmailWrite_AddsRePrefix(t *testing.T) {
+	Convey("Email.Write adds Re: prefix to subject", t, func() {
+		e := NewEmail(EmailConfig{EmailAddress: "bot@example.com"}, nil, "Bot")
+		// Set lastFrom and lastSubject to simulate receiving a message.
+		e.mu.Lock()
+		e.lastFrom = "user@example.com"
+		e.lastSubject = "Hello there"
+		e.mu.Unlock()
+
+		err := e.Write(context.Background(), "reply text")
+		So(err, ShouldBeNil)
+
+		// Verify the pending message has the Re: prefix.
+		e.mu.Lock()
+		So(e.pendingMsg, ShouldContainSubstring, "Subject: Re: Hello there")
+		So(e.pendingTo, ShouldEqual, "user@example.com")
+		e.mu.Unlock()
+	})
+}
+
+func TestEmailWrite_NoDoubleRe(t *testing.T) {
+	Convey("Email.Write does not double Re:", t, func() {
+		e := NewEmail(EmailConfig{EmailAddress: "bot@example.com"}, nil, "Bot")
+		e.mu.Lock()
+		e.lastFrom = "user@example.com"
+		e.lastSubject = "Re: Hello"
+		e.mu.Unlock()
+
+		err := e.Write(context.Background(), "reply")
+		So(err, ShouldBeNil)
+
+		e.mu.Lock()
+		So(e.pendingMsg, ShouldContainSubstring, "Subject: Re: Hello")
+		So(strings.Count(e.pendingMsg, "Re:"), ShouldEqual, 1)
+		e.mu.Unlock()
+	})
+}
+
+func TestEmailWrite_EmptySubject(t *testing.T) {
+	Convey("Email.Write with empty subject", t, func() {
+		e := NewEmail(EmailConfig{EmailAddress: "bot@example.com"}, nil, "Bot")
+		e.mu.Lock()
+		e.lastFrom = "user@example.com"
+		e.lastSubject = ""
+		e.mu.Unlock()
+
+		err := e.Write(context.Background(), "reply")
+		So(err, ShouldBeNil)
+
+		e.mu.Lock()
+		So(e.pendingMsg, ShouldNotContainSubstring, "Subject: Re:")
+		So(e.pendingMsg, ShouldContainSubstring, "Subject: \r\n")
+		e.mu.Unlock()
+	})
+}
+
+func TestEmailWrite_FlushRoundTrip(t *testing.T) {
+	Convey("Email.Write + Flush round-trip without sending", t, func() {
+		e := NewEmail(EmailConfig{EmailAddress: "bot@example.com"}, nil, "Bot")
+		e.mu.Lock()
+		e.lastFrom = "user@example.com"
+		e.lastSubject = "Hello"
+		e.mu.Unlock()
+
+		err := e.Write(context.Background(), "reply body")
+		So(err, ShouldBeNil)
+
+		e.mu.Lock()
+		So(e.pendingMsg, ShouldNotBeBlank)
+		e.mu.Unlock()
+
+		// Now clear lastFrom to verify later that pending is preserved.
+		e.mu.Lock()
+		e.lastFrom = ""
+		e.mu.Unlock()
+
+		// Flush should attempt SMTP and fail because we have no real server.
+		err = e.Flush()
+		So(err, ShouldNotBeNil)
+
+		// After Flush, pending should be cleared.
+		e.mu.Lock()
+		So(e.pendingMsg, ShouldBeBlank)
+		So(e.pendingTo, ShouldBeBlank)
+		e.mu.Unlock()
+	})
+}
+
+// Ensure Email implements IO.
+var _ IO = (*Email)(nil)
+
+// TestEmailBuilder tests the registered email builder.
+func TestEmailBuilder(t *testing.T) {
+	Convey("Email builder from registry", t, func() {
+		// The email transport is registered in init()
+		tio, err := Build(context.Background(), "email", map[string]any{
+			"key":        "send-key",
+			"logger":     func() *zap.Logger { l, _ := zap.NewProduction(); return l }(),
+			"agent_name": "Test",
+		})
+		So(err, ShouldBeNil)
+		So(tio, ShouldNotBeNil)
+		So(tio.ID(), ShouldEqual, "email")
+	})
+}

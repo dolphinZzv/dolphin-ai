@@ -1,0 +1,27 @@
+# Binary
+dolphin
+
+# Local config override
+config.local.yaml
+.env
+
+# Runtime data
+.dolphin/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp
+/tmp/
+
+config.yaml
+data
+coverage.out
+*config.yaml
