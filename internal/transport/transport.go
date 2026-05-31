@@ -1,85 +1,92 @@
-// Package transport provides user I/O transport implementations.
 package transport
 
 import (
 	"context"
+	"fmt"
+	"sync"
 
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
+	"dolphin/internal/common"
+	"dolphin/internal/session"
 )
 
-// Transport represents a user connection transport.
-// Each Transport instance corresponds to one user session.
-type Transport interface {
-	// Name returns a human-readable name ("stdio", "ssh", "mqtt").
-	Name() string
-
-	// Start initiates the transport and blocks until the session ends.
-	Start(ctx context.Context) error
-
-	// Close terminates the transport.
-	Close() error
-}
-
-// UserIO provides readline-based interactive I/O for the agent loop.
-type UserIO interface {
-	ReadLine() (string, error)
-	WriteLine(string) error
-	WriteString(string) error
+// IO is the transport interface — all transports must implement it.
+type IO interface {
+	ID() string
+	Context() string
+	Read(ctx context.Context) (string, error)
+	Write(ctx context.Context, text string) error
 	Flush() error
-	Capabilities() Capabilities
-	Context() string // transport-specific context injected into system prompt
-	Name() string    // transport name ("stdio", "email", "ssh")
+	Close() error
+	Capability() Capability
+	Tools() []common.ToolDesc
+	NewSession(ctx context.Context) *session.Session
+	Session() *session.Session
 }
 
-// Capabilities describes a transport's write semantics and interaction features.
-// Streaming transports send each write immediately (e.g. WebSocket, stdio).
-// Block transports batch writes and flush periodically (e.g. MQTT, Email).
-type Capabilities struct {
-	Streaming       bool
-	ConfirmExit     bool // if true, require confirmation before exiting the agent
-	ShowToolDetails bool // if true, show tool call arguments/outputs to the user
+// Capability describes transport features.
+type Capability struct {
+	Interactive bool
+	Streamable  bool
+	NestRead    bool
 }
 
-// SessionTransport is a Transport that accepts incoming sessions and dispatches
-// them to a handler. Only SSH implements this.
-type SessionTransport interface {
-	Transport
-	SetSessionHandler(func(context.Context, UserIO))
+// Info carries transport metadata through context.
+type Info struct {
+	ID       string
+	Type     string
+	ClientIP string
 }
 
-// BannerProvider is an optional interface that transports can implement to
-// provide a startup banner describing how to connect or use the transport.
-type BannerProvider interface {
-	Banner() string
+type contextKey struct{}
+
+func WithInfo(ctx context.Context, info *Info) context.Context {
+	return context.WithValue(ctx, contextKey{}, info)
 }
 
-// Truncate truncates a string to max characters, appending "..." if needed.
-func Truncate(s string, max int) string {
-	if len(s) <= max {
-		return s
+func GetInfo(ctx context.Context) *Info {
+	if ctx == nil {
+		return nil
 	}
-	return s[:max] + "..."
+	v, _ := ctx.Value(contextKey{}).(*Info)
+	return v
 }
 
-// NewMarkdownRenderer creates a glamour terminal renderer for the given style name.
-// Supported styles: "auto" (auto-detect dark/light), "dark", "light", "ascii",
-// "pink", "dracula", "tokyo-night". Falls back to auto on unknown style names.
-// Returns nil on error.
-func NewMarkdownRenderer(style string) *glamour.TermRenderer {
-	switch style {
-	case "", "auto":
-		md, err := glamour.NewTermRenderer(glamour.WithAutoStyle(), glamour.WithWordWrap(0))
-		if err == nil {
-			return md
-		}
-	default:
-		if sc, ok := styles.DefaultStyles[style]; ok {
-			md, err := glamour.NewTermRenderer(glamour.WithStyles(*sc), glamour.WithWordWrap(0))
-			if err == nil {
-				return md
-			}
-		}
+// Builder creates a transport from config.
+type Builder func(ctx context.Context, cfg map[string]any) (IO, error)
+
+// Registry holds named transport builders.
+type Registry struct {
+	mu       sync.RWMutex
+	builders map[string]Builder
+}
+
+func NewRegistry() *Registry {
+	return &Registry{builders: make(map[string]Builder)}
+}
+
+func (r *Registry) Register(name string, builder Builder) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.builders[name] = builder
+}
+
+func (r *Registry) Build(ctx context.Context, typ string, cfg map[string]any) (IO, error) {
+	r.mu.RLock()
+	builder, ok := r.builders[typ]
+	r.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("unknown transport type: %s", typ)
 	}
-	return nil
+	return builder(ctx, cfg)
+}
+
+// Global default registry.
+var global = NewRegistry()
+
+func Register(name string, builder Builder) {
+	global.Register(name, builder)
+}
+
+func Build(ctx context.Context, typ string, cfg map[string]any) (IO, error) {
+	return global.Build(ctx, typ, cfg)
 }

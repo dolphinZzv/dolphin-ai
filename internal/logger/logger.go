@@ -2,99 +2,50 @@ package logger
 
 import (
 	"os"
-	"path/filepath"
-	"strings"
 
+	"dolphin/internal/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
 )
 
-// atomicLevel is the global atomic level for runtime log level changes.
-// Initialized by Init; nil before first call.
-var atomicLevel *zap.AtomicLevel
+func New(cfg *config.Config) *zap.Logger {
+	level := parseLevel(cfg.GetString("log.level"))
+	filePath := cfg.GetString("log.file")
 
-// Config holds logger configuration.
-type Config struct {
-	Level     string // debug, info, warn, error
-	File      string // log file path (empty = stderr only)
-	MaxSize   int    // megabytes before rotation (default 100)
-	MaxAge    int    // days to retain old files (default 30)
-	MaxBackup int    // max old files to retain (default 3)
-}
-
-// Init sets up the global zap logger with optional lumberjack rotation.
-// The log level can be changed at runtime via SetLevel.
-func Init(cfg Config) {
-	level := parseLevel(cfg.Level)
-	lvl := zap.NewAtomicLevelAt(level)
-	atomicLevel = &lvl
+	var ws zapcore.WriteSyncer
+	if filePath != "" {
+		ws = zapcore.AddSync(&lumberjack.Logger{
+			Filename:   filePath,
+			MaxSize:    cfg.GetInt("log.max_size"),
+			MaxBackups: cfg.GetInt("log.max_backups"),
+			MaxAge:     cfg.GetInt("log.max_age"),
+			Compress:   cfg.GetBool("log.compress"),
+		})
+	}
+	if ws == nil {
+		ws = zapcore.AddSync(os.Stdout)
+	}
 
 	encoderCfg := zap.NewProductionEncoderConfig()
 	encoderCfg.TimeKey = "time"
 	encoderCfg.EncodeTime = zapcore.ISO8601TimeEncoder
-	encoderCfg.EncodeLevel = zapcore.CapitalLevelEncoder
 
 	core := zapcore.NewCore(
-		zapcore.NewConsoleEncoder(encoderCfg),
-		getSyncer(cfg),
-		atomicLevel,
+		zapcore.NewJSONEncoder(encoderCfg),
+		ws,
+		level,
 	)
 
-	logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
-	zap.ReplaceGlobals(logger)
+	return zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 }
 
-// SetLevel changes the global log level at runtime. Accepts "debug", "info",
-// "warn", "warning", "error". Invalid values are silently ignored.
-func SetLevel(level string) {
-	if atomicLevel == nil {
-		return
-	}
-	atomicLevel.SetLevel(parseLevel(level))
-}
-
-func getSyncer(cfg Config) zapcore.WriteSyncer {
-	if cfg.File == "" {
-		return zapcore.AddSync(os.Stderr)
-	}
-
-	dir := filepath.Dir(cfg.File)
-	if dir != "." {
-		if err := os.MkdirAll(dir, 0700); err != nil {
-			zap.S().Warnw("mkdir log dir failed", "error", err, "dir", dir)
-		}
-	}
-
-	maxSize := cfg.MaxSize
-	if maxSize <= 0 {
-		maxSize = 100
-	}
-	maxAge := cfg.MaxAge
-	if maxAge <= 0 {
-		maxAge = 30
-	}
-	maxBackup := cfg.MaxBackup
-	if maxBackup <= 0 {
-		maxBackup = 3
-	}
-
-	lumber := &lumberjack.Logger{
-		Filename:   cfg.File,
-		MaxSize:    maxSize,
-		MaxAge:     maxAge,
-		MaxBackups: maxBackup,
-		LocalTime:  true,
-		Compress:   true,
-	}
-
-	return zapcore.AddSync(lumber)
-}
-
-func parseLevel(s string) zapcore.Level {
-	switch strings.ToLower(s) {
+func parseLevel(level string) zapcore.LevelEnabler {
+	switch level {
 	case "debug":
 		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
 	case "warn", "warning":
 		return zapcore.WarnLevel
 	case "error":
@@ -102,4 +53,11 @@ func parseLevel(s string) zapcore.Level {
 	default:
 		return zapcore.InfoLevel
 	}
+}
+
+func Named(root *zap.Logger, name string) *zap.Logger {
+	if name == "" {
+		return root
+	}
+	return root.Named(name)
 }

@@ -1,608 +1,138 @@
 package skill
 
 import (
-	"os"
-	"path/filepath"
-	"strings"
+	"context"
 	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
-func TestParseSkillFile_Basic(t *testing.T) {
-	data := []byte(`---
-name: test-skill
-description: A test skill
----
-
-# Content here`)
-	skill := parseSkillFile(data, "test-skill.md")
-	if skill == nil {
-		t.Fatal("expected non-nil skill")
-	}
-	if skill.Name != "test-skill" {
-		t.Errorf("name = %q, want test-skill", skill.Name)
-	}
-	if skill.Description != "A test skill" {
-		t.Errorf("description = %q", skill.Description)
-	}
-	if skill.Content != "# Content here" {
-		t.Errorf("content = %q", skill.Content)
-	}
+func TestNewFileStore(t *testing.T) {
+	Convey("NewFileStore", t, func() {
+		store := NewFileStore(t.TempDir())
+		So(store, ShouldNotBeNil)
+	})
 }
 
-func TestParseSkillFile_NoFrontmatter(t *testing.T) {
-	data := []byte("# Just content\n\nNo frontmatter here.")
-	skill := parseSkillFile(data, "simple.md")
-	if skill == nil {
-		t.Fatal("expected non-nil skill")
-	}
-	if skill.Name != "simple" {
-		t.Errorf("name = %q, want simple", skill.Name)
-	}
-	if skill.Description != "" {
-		t.Errorf("expected empty description, got %q", skill.Description)
-	}
-	if skill.Content != "# Just content\n\nNo frontmatter here." {
-		t.Errorf("content mismatch")
-	}
+func TestFileStoreSaveAndGet(t *testing.T) {
+	Convey("FileStore Save and Get", t, func() {
+		store := NewFileStore(t.TempDir())
+		ctx := context.Background()
+
+		Convey("saves and retrieves a skill", func() {
+			sk := Skill{
+				Name:        "test-skill",
+				Description: "A test skill",
+				Prompt:      "You are a test skill",
+				Enabled:     true,
+			}
+			err := store.Save(ctx, sk)
+			So(err, ShouldBeNil)
+
+			got, err := store.Get(ctx, "test-skill")
+			So(err, ShouldBeNil)
+			So(got, ShouldNotBeNil)
+			So(got.Name, ShouldEqual, "test-skill")
+			So(got.Description, ShouldEqual, "A test skill")
+			So(got.Enabled, ShouldBeTrue)
+		})
+
+		Convey("returns error for nonexistent skill", func() {
+			_, err := store.Get(ctx, "nonexistent")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("refuses to save empty name", func() {
+			err := store.Save(ctx, Skill{Name: ""})
+			So(err, ShouldNotBeNil)
+		})
+	})
 }
 
-func TestParseSkillFile_Empty(t *testing.T) {
-	skill := parseSkillFile([]byte(""), "empty.md")
-	if skill != nil {
-		t.Error("expected nil for empty content")
-	}
+func TestFileStoreList(t *testing.T) {
+	Convey("FileStore List", t, func() {
+		store := NewFileStore(t.TempDir())
+		ctx := context.Background()
+
+		Convey("returns empty list when no skills", func() {
+			skills, err := store.List(ctx)
+			So(err, ShouldBeNil)
+			So(skills, ShouldBeEmpty)
+		})
+
+		Convey("lists all saved skills", func() {
+			store.Save(ctx, Skill{Name: "alpha", Prompt: "a"})
+			store.Save(ctx, Skill{Name: "beta", Prompt: "b"})
+
+			skills, err := store.List(ctx)
+			So(err, ShouldBeNil)
+			So(len(skills), ShouldEqual, 2)
+		})
+	})
 }
 
-func TestManager_LoadAndGet(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nname: skill-a\ndescription: First skill\n---\n# A"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\nname: skill-b\ndescription: Second skill\n---\n# B"), 0644)
+func TestFileStoreDelete(t *testing.T) {
+	Convey("FileStore Delete", t, func() {
+		store := NewFileStore(t.TempDir())
+		ctx := context.Background()
 
-	m := NewManager(dir)
-	if err := m.Load(); err != nil {
-		t.Fatalf("Load error: %v", err)
-	}
+		Convey("deletes an existing skill", func() {
+			store.Save(ctx, Skill{Name: "to-delete", Prompt: "x"})
+			err := store.Delete(ctx, "to-delete")
+			So(err, ShouldBeNil)
 
-	s, ok := m.Get("skill-a")
-	if !ok {
-		t.Fatal("expected to find skill-a")
-	}
-	if s.Description != "First skill" {
-		t.Errorf("description = %q", s.Description)
-	}
+			_, err = store.Get(ctx, "to-delete")
+			So(err, ShouldNotBeNil)
+		})
+	})
 }
 
-func TestManager_List(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\nname: skill-b\ndescription: B\n---\n# B"), 0644)
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nname: skill-a\ndescription: A\n---\n# A"), 0644)
+func TestFileStoreSearch(t *testing.T) {
+	Convey("FileStore Search", t, func() {
+		store := NewFileStore(t.TempDir())
+		ctx := context.Background()
 
-	m := NewManager(dir)
-	m.Load()
-	list := m.List()
-	if len(list) != 2 {
-		t.Fatalf("got %d skills, want 2", len(list))
-	}
-	// Should be sorted by name
-	if list[0].Name != "skill-a" || list[1].Name != "skill-b" {
-		t.Errorf("expected sorted order, got %s, %s", list[0].Name, list[1].Name)
-	}
+		Convey("finds skills matching query in name", func() {
+			store.Save(ctx, Skill{Name: "code-review", Description: "Review code", Prompt: "x"})
+			store.Save(ctx, Skill{Name: "commit-message", Description: "Write commits", Prompt: "x"})
+
+			results, err := store.Search(ctx, "code")
+			So(err, ShouldBeNil)
+			So(len(results), ShouldEqual, 1)
+			So(results[0].Name, ShouldEqual, "code-review")
+		})
+
+		Convey("finds skills matching query in description", func() {
+			store.Save(ctx, Skill{Name: "helper", Description: "helper tool", Prompt: "x"})
+
+			results, err := store.Search(ctx, "helper")
+			So(err, ShouldBeNil)
+			So(len(results), ShouldEqual, 1)
+		})
+
+		Convey("returns empty when no match", func() {
+			store.Save(ctx, Skill{Name: "test", Prompt: "x"})
+			results, _ := store.Search(ctx, "zzz")
+			So(results, ShouldBeEmpty)
+		})
+	})
 }
 
-func TestManager_TopSkills(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("---\nname: skill-a\ndescription: A\n---\n# A"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("---\nname: skill-b\ndescription: B\n---\n# B"), 0644)
-
-	m := NewManager(dir)
-	m.Load()
-
-	// Record usage on skill-b twice, skill-a once
-	m.RecordUsage("skill-b")
-	m.RecordUsage("skill-b")
-	m.RecordUsage("skill-a")
-
-	top := m.TopSkills(2)
-	if len(top) != 2 {
-		t.Fatalf("got %d, want 2", len(top))
-	}
-	// skill-b should be first (most used)
-	if top[0].Name != "skill-b" || top[1].Name != "skill-a" {
-		t.Errorf("expected b first, got %s, %s", top[0].Name, top[1].Name)
-	}
-	if top[0].CallCount != 2 {
-		t.Errorf("skill-b call count = %d, want 2", top[0].CallCount)
-	}
-}
-
-func TestManager_TopSkillsLimit(t *testing.T) {
-	dir := t.TempDir()
-	for i := 0; i < 10; i++ {
-		name := string(rune('a' + i))
-		os.WriteFile(filepath.Join(dir, name+".md"), []byte("---\nname: skill-"+name+"\ndescription: "+name+"\n---\n#"), 0644)
-	}
-
-	m := NewManager(dir)
-	m.Load()
-	top := m.TopSkills(3)
-	if len(top) != 3 {
-		t.Errorf("got %d, want 3", len(top))
-	}
-}
-
-func TestManager_Search(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "review.md"), []byte("---\nname: code-review\ndescription: Review code for quality\n---\n#"), 0644)
-	os.WriteFile(filepath.Join(dir, "data.md"), []byte("---\nname: data-analysis\ndescription: Analyze datasets\n---\n#"), 0644)
-	os.WriteFile(filepath.Join(dir, "security.md"), []byte("---\nname: security-audit\ndescription: Security audit of code\n---\n#"), 0644)
-
-	m := NewManager(dir)
-	m.Load()
-
-	results := m.Search("security")
-	if len(results) != 1 { // only "security-audit" has "security" in name
-		t.Errorf("expected 1 result, got %d", len(results))
-	}
-	if results[0].Name != "security-audit" {
-		t.Errorf("expected security-audit, got %s", results[0].Name)
-	}
-
-	results = m.Search("data")
-	if len(results) != 1 {
-		t.Errorf("expected 1 result for 'data', got %d", len(results))
-	}
-}
-
-func TestManager_RecordUsage(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "test.md"), []byte("---\nname: test-skill\ndescription: Test\n---\n# T"), 0644)
-
-	m := NewManager(dir)
-	m.Load()
-
-	m.RecordUsage("test-skill")
-	m.RecordUsage("test-skill")
-
-	s, _ := m.Get("test-skill")
-	if s.CallCount != 2 {
-		t.Errorf("call count = %d, want 2", s.CallCount)
-	}
-	if s.LastCalled.IsZero() {
-		t.Error("expected LastCalled to be set")
-	}
-}
-
-func TestManager_LoadNonExistentDir(t *testing.T) {
-	m := NewManager("/nonexistent/path")
-	err := m.Load()
-	if err != nil {
-		t.Fatalf("Load() should not error for nonexistent dir: %v", err)
-	}
-	if len(m.List()) != 0 {
-		t.Errorf("expected 0 skills, got %d", len(m.List()))
-	}
-}
-
-func TestManager_DefaultDir(t *testing.T) {
-	m := NewManager("")
-	if m.Dir() != ".dolphin/skills" {
-		t.Errorf("default dir = %q", m.Dir())
-	}
-}
-
-func TestManager_MultiDir(t *testing.T) {
-	baseDir := t.TempDir()
-	overrideDir := t.TempDir()
-
-	// Base dir: skill-a
-	os.WriteFile(filepath.Join(baseDir, "a.md"), []byte("---\nname: skill-a\ndescription: Base A\n---\n# Base A"), 0644)
-	// Override dir: skill-a (overrides), skill-b (new)
-	os.WriteFile(filepath.Join(overrideDir, "a.md"), []byte("---\nname: skill-a\ndescription: Override A\n---\n# Override A"), 0644)
-	os.WriteFile(filepath.Join(overrideDir, "b.md"), []byte("---\nname: skill-b\ndescription: B\n---\n# B"), 0644)
-
-	m := NewManager(baseDir, overrideDir)
-	if err := m.Load(); err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	// skill-a: should come from overrideDir (later dir wins)
-	sa, ok := m.Get("skill-a")
-	if !ok {
-		t.Fatal("expected skill-a")
-	}
-	if sa.Description != "Override A" {
-		t.Errorf("skill-a description = %q, want 'Override A'", sa.Description)
-	}
-	if sa.Source != overrideDir {
-		t.Errorf("skill-a source = %q, want %q", sa.Source, overrideDir)
-	}
-
-	// skill-b: from overrideDir
-	sb, ok := m.Get("skill-b")
-	if !ok {
-		t.Fatal("expected skill-b")
-	}
-	if sb.Source != overrideDir {
-		t.Errorf("skill-b source = %q, want %q", sb.Source, overrideDir)
-	}
-}
-
-func TestManager_Dirs(t *testing.T) {
-	m := NewManager("a", "b", "c")
-	dirs := m.Dirs()
-	if len(dirs) != 3 || dirs[0] != "a" || dirs[1] != "b" || dirs[2] != "c" {
-		t.Errorf("Dirs() = %v, want [a b c]", dirs)
-	}
-}
-
-func TestManager_SkipsNonMarkdownFiles(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "skill.md"), []byte("---\nname: valid\ndescription: A skill\n---\n# Content"), 0644)
-	os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("not a skill"), 0644)
-	os.WriteFile(filepath.Join(dir, "subdir"), []byte("not a dir"), 0644)
-
-	m := NewManager(dir)
-	m.Load()
-	if len(m.List()) != 1 {
-		t.Errorf("expected 1 skill, got %d", len(m.List()))
-	}
-}
-
-func TestParseSkillFile_QuotedValues(t *testing.T) {
-	data := []byte(`---
-name: "test-skill"
-description: "A skill with quoted values"
----
-# Content`)
-	skill := parseSkillFile(data, "test.md")
-	if skill == nil {
-		t.Fatal("expected non-nil skill")
-	}
-	if skill.Name != "test-skill" {
-		t.Errorf("name = %q", skill.Name)
-	}
-	if skill.Description != "A skill with quoted values" {
-		t.Errorf("description = %q", skill.Description)
-	}
-}
-
-func TestManager_NewTemplate(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	if err := m.NewTemplate("my-skill", "My custom skill"); err != nil {
-		t.Fatalf("NewTemplate: %v", err)
-	}
-
-	// Verify file was created on disk
-	content, err := os.ReadFile(filepath.Join(dir, "my-skill", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	s := string(content)
-	if !strings.Contains(s, "name: my-skill") {
-		t.Error("missing name in frontmatter")
-	}
-	if !strings.Contains(s, "My custom skill") {
-		t.Error("missing description in frontmatter")
-	}
-	if !strings.Contains(s, "# My custom skill") {
-		t.Error("missing heading")
-	}
-	if !strings.Contains(s, "## Overview") || !strings.Contains(s, "## Guidelines") || !strings.Contains(s, "## Examples") {
-		t.Error("missing template sections")
-	}
-}
-
-func TestManager_NewTemplateEmptyDescription(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	if err := m.NewTemplate("my-skill", ""); err != nil {
-		t.Fatalf("NewTemplate: %v", err)
-	}
-
-	content, err := os.ReadFile(filepath.Join(dir, "my-skill", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("ReadFile: %v", err)
-	}
-	s := string(content)
-	if !strings.Contains(s, "description: my-skill") {
-		t.Error("empty description should default to name, got:", s)
-	}
-	if !strings.Contains(s, "# my-skill") {
-		t.Error("heading should be name when description empty")
-	}
-}
-
-func TestManager_NewTemplateLoadsAfterCreation(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	// Before creation, skill shouldn't exist
-	m.Load()
-	if _, ok := m.Get("my-skill"); ok {
-		t.Fatal("skill should not exist before NewTemplate")
-	}
-
-	// Create template
-	if err := m.NewTemplate("my-skill", "Test skill"); err != nil {
-		t.Fatalf("NewTemplate: %v", err)
-	}
-
-	// After creation, it should be loaded
-	m.Load()
-	s, ok := m.Get("my-skill")
-	if !ok {
-		t.Fatal("expected skill to be available after NewTemplate + Load")
-	}
-	if s.Description != "Test skill" {
-		t.Errorf("description = %q, want 'Test skill'", s.Description)
-	}
-	if s.Source != dir {
-		t.Errorf("source = %q, want %q", s.Source, dir)
-	}
-	if !strings.Contains(s.Content, "## Guidelines") {
-		t.Error("content should contain template sections")
-	}
-}
-
-func TestManager_Register(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	if err := m.Register("test-skill", "A test", "Custom content"); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-
-	m.Load()
-	s, ok := m.Get("test-skill")
-	if !ok {
-		t.Fatal("expected skill after Register")
-	}
-	if s.Content != "Custom content" {
-		t.Errorf("content = %q, want 'Custom content'", s.Content)
-	}
-}
-
-func TestManager_Disable(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	if err := m.Register("test-skill", "A test", "Content"); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-
-	// Reload so it's in the directory structure
-	if err := m.Load(); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	// Verify in memory and on disk
-	if _, ok := m.Get("test-skill"); !ok {
-		t.Fatal("expected skill in memory before disable")
-	}
-	origDir := filepath.Join(dir, "test-skill")
-	disabledDir := filepath.Join(dir, "test-skill.disabled")
-	if _, err := os.Stat(filepath.Join(origDir, "SKILL.md")); os.IsNotExist(err) {
-		t.Fatal("SKILL.md should exist before disable")
-	}
-
-	// Disable
-	if err := m.Disable("test-skill"); err != nil {
-		t.Fatalf("Disable: %v", err)
-	}
-
-	// Should be removed from memory
-	if _, ok := m.Get("test-skill"); ok {
-		t.Error("skill should not be in memory after disable")
-	}
-
-	// Original dir should be renamed to .disabled/
-	if _, err := os.Stat(origDir); !os.IsNotExist(err) {
-		t.Error("original directory should be renamed after disable")
-	}
-	if _, err := os.Stat(disabledDir); os.IsNotExist(err) {
-		t.Error(".disabled directory should exist after disable")
-	}
-
-	// File content should be preserved
-	if _, err := os.Stat(filepath.Join(disabledDir, "SKILL.md")); os.IsNotExist(err) {
-		t.Error("SKILL.md should be preserved in .disabled/ after disable")
-	}
-}
-
-func TestManager_Disable_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	err := m.Disable("nonexistent")
-	if err == nil {
-		t.Fatal("expected error for non-existent skill")
-	}
-}
-
-func TestManager_Enable(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	// Register and disable first
-	if err := m.Register("test-skill", "A test", "Content"); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-	if err := m.Load(); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-	if err := m.Disable("test-skill"); err != nil {
-		t.Fatalf("Disable: %v", err)
-	}
-
-	// Enable
-	if err := m.Enable("test-skill"); err != nil {
-		t.Fatalf("Enable: %v", err)
-	}
-
-	// Should be back in memory after Enable calls Load()
-	s, ok := m.Get("test-skill")
-	if !ok {
-		t.Fatal("expected skill in memory after enable")
-	}
-	if s.Description != "A test" {
-		t.Errorf("description = %q, want 'A test'", s.Description)
-	}
-
-	// .disabled dir should be gone, original dir should be back
-	disabledDir := filepath.Join(dir, "test-skill.disabled")
-	origDir := filepath.Join(dir, "test-skill")
-	if _, err := os.Stat(disabledDir); !os.IsNotExist(err) {
-		t.Error(".disabled directory should be removed after enable")
-	}
-	if _, err := os.Stat(filepath.Join(origDir, "SKILL.md")); os.IsNotExist(err) {
-		t.Error("SKILL.md should be back in original dir after enable")
-	}
-}
-
-func TestManager_Enable_NotFound(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	err := m.Enable("nonexistent")
-	if err == nil {
-		t.Fatal("expected error for non-existent disabled skill")
-	}
-}
-
-func TestManager_DisableThenEnable_FullLifecycle(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	// Register a skill
-	if err := m.Register("lifecycle", "Lifecycle test", "Content"); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-	if err := m.Load(); err != nil {
-		t.Fatalf("Load: %v", err)
-	}
-
-	// Record usage
-	m.RecordUsage("lifecycle")
-	s, _ := m.Get("lifecycle")
-	if s.CallCount != 1 {
-		t.Errorf("call count = %d, want 1", s.CallCount)
-	}
-
-	// Disable — should lose usage stats
-	if err := m.Disable("lifecycle"); err != nil {
-		t.Fatalf("Disable: %v", err)
-	}
-
-	// Enable — should restore but with fresh stats (new Load, new memory)
-	if err := m.Enable("lifecycle"); err != nil {
-		t.Fatalf("Enable: %v", err)
-	}
-
-	s, ok := m.Get("lifecycle")
-	if !ok {
-		t.Fatal("expected skill after enable")
-	}
-	if s.CallCount != 0 {
-		t.Errorf("call count after re-enable = %d, want 0 (fresh load)", s.CallCount)
-	}
-	if s.Content != "Content" {
-		t.Errorf("content = %q, want 'Content'", s.Content)
-	}
-}
-
-func TestManager_Unregister(t *testing.T) {
-	dir := t.TempDir()
-	m := NewManager(dir)
-
-	if err := m.Register("test-skill", "A test", "Content"); err != nil {
-		t.Fatalf("Register: %v", err)
-	}
-
-	// File should exist
-	if _, err := os.Stat(filepath.Join(dir, "test-skill", "SKILL.md")); os.IsNotExist(err) {
-		t.Fatal("file should exist after Register")
-	}
-
-	if err := m.Unregister("test-skill"); err != nil {
-		t.Fatalf("Unregister: %v", err)
-	}
-
-	// Directory should be removed
-	if _, err := os.Stat(filepath.Join(dir, "test-skill")); !os.IsNotExist(err) {
-		t.Error("dir should be removed after Unregister")
-	}
-}
-
-func TestManager_ListForAgent_AllWhenAllowedEmpty(t *testing.T) {
-	m := NewManager(t.TempDir())
-	m.Register("a", "skill a", "content a")
-	m.Register("b", "skill b", "content b")
-	m.Register("c", "skill c", "content c")
-
-	// Empty allowed list = return all
-	skills := m.ListForAgent(nil)
-	if len(skills) != 3 {
-		t.Errorf("ListForAgent(nil) = %d, want 3", len(skills))
-	}
-	skills = m.ListForAgent([]string{})
-	if len(skills) != 3 {
-		t.Errorf("ListForAgent([]) = %d, want 3", len(skills))
-	}
-}
-
-func TestManager_ListForAgent_Filters(t *testing.T) {
-	m := NewManager(t.TempDir())
-	m.Register("a", "skill a", "content a")
-	m.Register("b", "skill b", "content b")
-	m.Register("c", "skill c", "content c")
-
-	skills := m.ListForAgent([]string{"a", "c"})
-	if len(skills) != 2 {
-		t.Fatalf("ListForAgent([a,c]) = %d, want 2", len(skills))
-	}
-	if skills[0].Name != "a" || skills[1].Name != "c" {
-		t.Errorf("got %v, want [a c]", []string{skills[0].Name, skills[1].Name})
-	}
-}
-
-func TestManager_GetForAgent_Allowed(t *testing.T) {
-	m := NewManager(t.TempDir())
-	m.Register("a", "skill a", "content a")
-
-	// Allowed and present
-	s, ok := m.GetForAgent("a", []string{"a", "b"})
-	if !ok {
-		t.Fatal("expected to find skill 'a' when allowed")
-	}
-	if s.Name != "a" {
-		t.Errorf("name = %q, want 'a'", s.Name)
-	}
-}
-
-func TestManager_GetForAgent_NotAllowed(t *testing.T) {
-	m := NewManager(t.TempDir())
-	m.Register("b", "skill b", "content b")
-
-	// Not in allowed list
-	_, ok := m.GetForAgent("b", []string{"a", "c"})
-	if ok {
-		t.Error("expected not to find skill 'b' when not in allowed list")
-	}
-}
-
-func TestManager_GetForAgent_EmptyAllowed(t *testing.T) {
-	m := NewManager(t.TempDir())
-	m.Register("x", "skill x", "content x")
-
-	_, ok := m.GetForAgent("x", nil)
-	if !ok {
-		t.Error("expected to find skill 'x' when allowed is nil")
-	}
-	_, ok = m.GetForAgent("x", []string{})
-	if !ok {
-		t.Error("expected to find skill 'x' when allowed is empty")
-	}
+func TestSkillStruct(t *testing.T) {
+	Convey("Skill struct", t, func() {
+		sk := Skill{
+			Name:        "my-skill",
+			Description: "does stuff",
+			Prompt:      "prompt text",
+			Tools:       []string{"tool1"},
+			Enabled:     true,
+			Commands:    []string{"cmd1"},
+		}
+		So(sk.Name, ShouldEqual, "my-skill")
+		So(sk.Description, ShouldEqual, "does stuff")
+		So(sk.Prompt, ShouldEqual, "prompt text")
+		So(sk.Tools, ShouldResemble, []string{"tool1"})
+		So(sk.Enabled, ShouldBeTrue)
+		So(sk.Commands, ShouldResemble, []string{"cmd1"})
+	})
 }

@@ -1,207 +1,116 @@
 package event
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
-	"strings"
-	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
-func TestEmitAndReceive(t *testing.T) {
-	bus := NewEventBus(16)
-	var received []Event
-	var mu sync.Mutex
-
-	bus.On(TypeToolCalled, func(ctx context.Context, evt Event) {
-		mu.Lock()
-		received = append(received, evt)
-		mu.Unlock()
+func TestNewBus(t *testing.T) {
+	Convey("NewBus", t, func() {
+		bus := NewBus()
+		So(bus, ShouldNotBeNil)
 	})
-
-	bus.Emit(context.Background(), Event{Type: TypeToolCalled, SessionID: "s1", Turn: 1})
-	bus.Emit(context.Background(), Event{Type: TypeToolCompleted, SessionID: "s1", Turn: 1})
-
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(received) != 1 {
-		t.Fatalf("expected 1 event, got %d", len(received))
-	}
-	if received[0].Type != TypeToolCalled {
-		t.Errorf("expected tool:called, got %s", received[0].Type)
-	}
 }
 
-func TestWildcardSubscription(t *testing.T) {
-	bus := NewEventBus(16)
-	var mu sync.Mutex
-	count := 0
+func TestBusPublishSubscribe(t *testing.T) {
+	Convey("Bus publish and subscribe", t, func() {
+		bus := NewBus()
+		ctx := context.Background()
 
-	bus.On("*", func(ctx context.Context, evt Event) {
-		mu.Lock()
-		count++
-		mu.Unlock()
+		Convey("subscriber receives published event", func() {
+			var received atomic.Int32
+			bus.Subscribe(func(ctx context.Context, e Event) {
+				received.Add(1)
+			})
+
+			bus.Publish(ctx, Event{
+				Type:      EventPipelineStart,
+				Timestamp: time.Now(),
+				Payload:   map[string]any{"key": "value"},
+			})
+
+			So(received.Load(), ShouldEqual, 1)
+		})
+
+		Convey("multiple subscribers all receive events", func() {
+			var count atomic.Int32
+			bus.Subscribe(func(ctx context.Context, e Event) {
+				count.Add(1)
+			})
+			bus.Subscribe(func(ctx context.Context, e Event) {
+				count.Add(1)
+			})
+
+			bus.Publish(ctx, Event{Type: EventTurnStart})
+			So(count.Load(), ShouldEqual, 2)
+		})
+
+		Convey("subscriber sees correct event type", func() {
+			var eType Type
+			bus.Subscribe(func(ctx context.Context, e Event) {
+				eType = e.Type
+			})
+
+			bus.Publish(ctx, Event{Type: EventLLMStart})
+			So(eType, ShouldEqual, EventLLMStart)
+		})
+
+		Convey("subscriber sees session ID", func() {
+			var sid string
+			bus.Subscribe(func(ctx context.Context, e Event) {
+				sid = e.SessionID
+			})
+
+			bus.Publish(ctx, Event{Type: EventTurnComplete, SessionID: "sess-1"})
+			So(sid, ShouldEqual, "sess-1")
+		})
 	})
-
-	bus.Emit(context.Background(), Event{Type: TypeSessionCreated, SessionID: "s1"})
-	bus.Emit(context.Background(), Event{Type: TypeToolCalled, SessionID: "s1"})
-	bus.Emit(context.Background(), Event{Type: TypeError, SessionID: "s1"})
-
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if count != 3 {
-		t.Errorf("wildcard should receive 3 events, got %d", count)
-	}
 }
 
-func TestLogWriter(t *testing.T) {
-	var buf bytes.Buffer
-	bus := NewEventBus(16)
-	bus.SetLogWriter(&buf)
+func TestBusConcurrentPublish(t *testing.T) {
+	Convey("Bus handles concurrent publishes safely", t, func() {
+		bus := NewBus()
+		ctx := context.Background()
 
-	bus.Emit(context.Background(), Event{Type: TypeUserMessage, SessionID: "s1", Turn: 1})
+		var count atomic.Int32
+		bus.Subscribe(func(ctx context.Context, e Event) {
+			count.Add(1)
+		})
 
-	time.Sleep(100 * time.Millisecond)
-
-	line := buf.String()
-	if !strings.HasPrefix(line, `{"type":"user:message"`) {
-		t.Errorf("unexpected log line: %s", line)
-	}
-	if !strings.Contains(line, `"session_id":"s1"`) {
-		t.Errorf("missing session_id: %s", line)
-	}
-}
-
-func TestWebhookDelivery(t *testing.T) {
-	var received []Event
-	var mu sync.Mutex
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var evt Event
-		json.NewDecoder(r.Body).Decode(&evt)
-		mu.Lock()
-		received = append(received, evt)
-		mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer ts.Close()
-
-	bus := NewEventBus(16)
-	bus.SetWebhook(ts.URL, []Type{"*"})
-
-	bus.Emit(context.Background(), Event{Type: TypeToolCompleted, SessionID: "s1", Turn: 2})
-
-	time.Sleep(500 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if len(received) != 1 {
-		t.Fatalf("expected 1 webhook event, got %d", len(received))
-	}
-	if received[0].Type != TypeToolCompleted {
-		t.Errorf("expected tool:completed, got %s", received[0].Type)
-	}
-}
-
-func TestWebhookFilteredEvents(t *testing.T) {
-	var mu sync.Mutex
-	count := 0
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		mu.Lock()
-		count++
-		mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer ts.Close()
-
-	bus := NewEventBus(16)
-	bus.SetWebhook(ts.URL, []Type{TypeError})
-
-	bus.Emit(context.Background(), Event{Type: TypeToolCalled, SessionID: "s1"})
-	bus.Emit(context.Background(), Event{Type: TypeError, SessionID: "s1"})
-
-	time.Sleep(500 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if count != 1 {
-		t.Errorf("expected 1 webhook call (only error), got %d", count)
-	}
-}
-
-func TestHandlerPanicRecovery(t *testing.T) {
-	bus := NewEventBus(16)
-	var mu sync.Mutex
-	ranAfter := false
-
-	bus.On(TypeError, func(ctx context.Context, evt Event) {
-		panic("oops")
+		for range 10 {
+			go bus.Publish(ctx, Event{Type: EventPipelineStart})
+		}
+		time.Sleep(50 * time.Millisecond)
+		So(count.Load(), ShouldEqual, 10)
 	})
-	bus.On(TypeError, func(ctx context.Context, evt Event) {
-		mu.Lock()
-		ranAfter = true
-		mu.Unlock()
-	})
-
-	bus.Emit(context.Background(), Event{Type: TypeError, SessionID: "s1"})
-
-	time.Sleep(100 * time.Millisecond)
-
-	mu.Lock()
-	defer mu.Unlock()
-	if !ranAfter {
-		t.Error("second handler should run after first panics")
-	}
 }
 
-func TestTimestampAutoSet(t *testing.T) {
-	bus := NewEventBus(16)
-	var received Event
-	done := make(chan struct{})
-
-	bus.On(TypeHeartbeat, func(ctx context.Context, evt Event) {
-		received = evt
-		close(done)
+func TestEventTypes(t *testing.T) {
+	Convey("Event type constants", t, func() {
+		Convey("pipeline events", func() {
+			So(EventPipelineStart, ShouldEqual, Type("pipeline.start"))
+			So(EventPipelineShutdown, ShouldEqual, Type("pipeline.shutdown"))
+		})
+		Convey("turn events", func() {
+			So(EventTurnStart, ShouldEqual, Type("turn.start"))
+			So(EventTurnComplete, ShouldEqual, Type("turn.complete"))
+			So(EventTurnError, ShouldEqual, Type("turn.error"))
+			So(EventTurnInterrupt, ShouldEqual, Type("turn.interrupt"))
+		})
+		Convey("LLM events", func() {
+			So(EventLLMStart, ShouldEqual, Type("llm.start"))
+			So(EventLLMComplete, ShouldEqual, Type("llm.complete"))
+			So(EventLLMError, ShouldEqual, Type("llm.error"))
+			So(EventLLMRetry, ShouldEqual, Type("llm.retry"))
+		})
+		Convey("tool events", func() {
+			So(EventToolStart, ShouldEqual, Type("tool.start"))
+			So(EventToolComplete, ShouldEqual, Type("tool.complete"))
+			So(EventToolError, ShouldEqual, Type("tool.error"))
+		})
 	})
-
-	bus.Emit(context.Background(), Event{Type: TypeHeartbeat, SessionID: "s1"})
-
-	select {
-	case <-done:
-	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for event")
-	}
-
-	if received.Timestamp.IsZero() {
-		t.Error("timestamp should be auto-set")
-	}
-}
-
-func TestEmitNonBlocking(t *testing.T) {
-	bus := NewEventBus(2) // small buffer
-
-	// Register a slow handler
-	blocker := make(chan struct{})
-	bus.On(TypeError, func(ctx context.Context, evt Event) {
-		<-blocker
-	})
-
-	// Emit should return immediately even with slow handler
-	start := time.Now()
-	for i := 0; i < 10; i++ {
-		bus.Emit(context.Background(), Event{Type: TypeError, SessionID: "s1"})
-	}
-	elapsed := time.Since(start)
-	if elapsed > 100*time.Millisecond {
-		t.Errorf("Emit should be non-blocking, took %v", elapsed)
-	}
-
-	close(blocker)
 }

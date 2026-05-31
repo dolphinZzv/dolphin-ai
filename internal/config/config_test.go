@@ -4,937 +4,203 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
-	"github.com/spf13/viper"
-	"gopkg.in/yaml.v3"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
-func writeConfig(t *testing.T, dir, content string) {
-	t.Helper()
-	os.MkdirAll(dir, 0755)
-	os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(content), 0644)
-}
-
-func TestDefaults(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.LLM.Type != "openai" {
-		t.Errorf("default llm.type = %q, want openai", cfg.LLM.Type)
-	}
-	if cfg.LLM.MaxTokens != 4096 {
-		t.Errorf("default llm.max_tokens = %d, want 4096", cfg.LLM.MaxTokens)
-	}
-	if cfg.Session.MaxLoop != 50 {
-		t.Errorf("default session.max_loop = %d, want 50", cfg.Session.MaxLoop)
-	}
-	if !cfg.Transport.Stdio.Enabled {
-		t.Error("default transport.stdio.enabled = false, want true")
-	}
-	if !cfg.MCP.Shell.Enabled {
-		t.Error("default mcp.shell.enabled = false, want true")
-	}
-	if cfg.Health.Enabled {
-		t.Error("default health.enabled = true, want false")
-	}
-	if cfg.Health.Addr != "127.0.0.1:9091" {
-		t.Errorf("default health.addr = %q, want 127.0.0.1:9091", cfg.Health.Addr)
-	}
-}
-
-func TestLoadConfigFile(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-llm:
-  type: "anthropic"
-  base_url: "https://api.example.com"
-  model: "test-model"
-  max_tokens: 2048
-session:
-  max_loop: 10
-transport:
-  stdio:
-    enabled: false
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.LLM.Type != "anthropic" {
-		t.Errorf("llm.type = %q, want anthropic", cfg.LLM.Type)
-	}
-	if cfg.LLM.BaseURL != "https://api.example.com" {
-		t.Errorf("llm.base_url = %q", cfg.LLM.BaseURL)
-	}
-	if cfg.LLM.Model != "test-model" {
-		t.Errorf("llm.model = %q", cfg.LLM.Model)
-	}
-	if cfg.LLM.MaxTokens != 2048 {
-		t.Errorf("llm.max_tokens = %d, want 2048", cfg.LLM.MaxTokens)
-	}
-	if cfg.Session.MaxLoop != 10 {
-		t.Errorf("session.max_loop = %d, want 10", cfg.Session.MaxLoop)
-	}
-	if cfg.Transport.Stdio.Enabled {
-		t.Error("transport.stdio.enabled = true, want false")
-	}
-}
-
-func TestEnvOverrides(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-llm:
-  type: "anthropic"
-  base_url: "https://config.url"
-  model: "config-model"
-  max_tokens: 1000
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	// Set env vars
-	os.Setenv("DZ_LLM_TYPE", "openai")
-	os.Setenv("DZ_LLM_BASE_URL", "https://env.url")
-	os.Setenv("DZ_LLM_MODEL", "env-model")
-	os.Setenv("DZ_LLM_API_KEY", "env-key-123")
-	os.Setenv("DZ_LLM_MAX_TOKENS", "500")
-	t.Cleanup(func() {
-		os.Unsetenv("DZ_LLM_TYPE")
-		os.Unsetenv("DZ_LLM_BASE_URL")
-		os.Unsetenv("DZ_LLM_MODEL")
-		os.Unsetenv("DZ_LLM_API_KEY")
-		os.Unsetenv("DZ_LLM_MAX_TOKENS")
-	})
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.LLM.Type != "openai" {
-		t.Errorf("llm.type = %q, want openai", cfg.LLM.Type)
-	}
-	if cfg.LLM.BaseURL != "https://env.url" {
-		t.Errorf("llm.base_url = %q, want https://env.url", cfg.LLM.BaseURL)
-	}
-	if cfg.LLM.Model != "env-model" {
-		t.Errorf("llm.model = %q, want env-model", cfg.LLM.Model)
-	}
-	if cfg.LLM.APIKey != "env-key-123" {
-		t.Errorf("llm.api_key = %q, want env-key-123", cfg.LLM.APIKey)
-	}
-	if cfg.LLM.MaxTokens != 500 {
-		t.Errorf("llm.max_tokens = %d, want 500", cfg.LLM.MaxTokens)
-	}
-}
-
-func TestEnvOverrideEmptyDoesNotOverride(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-llm:
-  type: "anthropic"
-  base_url: "https://config.url"
-  model: "config-model"
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	// Set only the API key env, leave others unset
-	os.Setenv("DZ_LLM_API_KEY", "test-key")
-	t.Cleanup(func() { os.Unsetenv("DZ_LLM_API_KEY") })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.LLM.Type != "anthropic" {
-		t.Errorf("llm.type = %q, want anthropic (should not be overridden)", cfg.LLM.Type)
-	}
-	if cfg.LLM.BaseURL != "https://config.url" {
-		t.Errorf("llm.base_url = %q, want https://config.url", cfg.LLM.BaseURL)
-	}
-	if cfg.LLM.APIKey != "test-key" {
-		t.Errorf("llm.api_key = %q, want test-key", cfg.LLM.APIKey)
-	}
-}
-
-func TestSessionDirDefault(t *testing.T) {
-	if SessionsDir() == "" {
-		t.Error("SessionsDir() should return a non-empty default")
-	}
-}
-
-func TestSSHDefaults(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Transport.SSH.Username != "dolphin" {
-		t.Errorf("ssh.username = %q, want dolphin", cfg.Transport.SSH.Username)
-	}
-	if cfg.Transport.SSH.Addr != ":2222" {
-		t.Errorf("ssh.addr = %q, want :2222", cfg.Transport.SSH.Addr)
-	}
-}
-
-func TestSSHPasswordNotAutoGeneratedWhenDisabled(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-transport:
-  ssh:
-    enabled: false
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	// Password should still be empty because SSH is disabled
-	if cfg.Transport.SSH.Password != "" {
-		t.Log("password was auto-generated despite SSH being disabled")
-	}
-}
-
-func TestSSHPasswordAutoGeneratedWhenEnabled(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-transport:
-  ssh:
-    enabled: true
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Transport.SSH.Password == "" {
-		t.Fatal("expected auto-generated password for enabled SSH")
-	}
-	if len(cfg.Transport.SSH.Password) < 8 {
-		t.Errorf("password too short: %q (len=%d)", cfg.Transport.SSH.Password, len(cfg.Transport.SSH.Password))
-	}
-}
-
-func TestSSHPasswordPersistsAcrossLoads(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-transport:
-  ssh:
-    enabled: true
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	cfg1, err := Load("")
-	if err != nil {
-		t.Fatalf("first Load() error: %v", err)
-	}
-	if cfg1.Transport.SSH.Password == "" {
-		t.Fatal("first load: expected auto-generated password")
-	}
-
-	// Load again — should reuse persisted password
-	cfg2, err := Load("")
-	if err != nil {
-		t.Fatalf("second Load() error: %v", err)
-	}
-	if cfg2.Transport.SSH.Password != cfg1.Transport.SSH.Password {
-		t.Errorf("password changed between loads: %q -> %q", cfg1.Transport.SSH.Password, cfg2.Transport.SSH.Password)
-	}
-}
-
-func TestSSHPasswordFromConfig(t *testing.T) {
-	dir := t.TempDir()
-	writeConfig(t, dir, `
-transport:
-  ssh:
-    enabled: true
-    password: "mypassword"
-`)
-	orig := ProjectConfigDir
-	ProjectConfigDir = dir
-	t.Cleanup(func() { ProjectConfigDir = orig })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.Transport.SSH.Password != "mypassword" {
-		t.Errorf("password = %q, want mypassword", cfg.Transport.SSH.Password)
-	}
-}
-
-func TestMaxContextTokensDefault(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.LLM.MaxContextTokens != 1048576 {
-		t.Errorf("max_context_tokens = %d, want 1048576", cfg.LLM.MaxContextTokens)
-	}
-}
-
-func TestMultiLevelMerge(t *testing.T) {
-	// Create three config levels
-	sysDir := t.TempDir()
-	userHome := t.TempDir()
-	projectDir := t.TempDir()
-
-	// System config (lowest priority)
-	writeConfig(t, sysDir, `
-llm:
-  type: "anthropic"
-  model: "claude-3"
-session:
-  max_loop: 10
-`)
-
-	// User config (medium priority) — override model, add mcp server
-	writeConfig(t, filepath.Join(userHome, ".dolphin"), `
-llm:
-  model: "gpt-4o"
-mcp:
-  servers:
-    server-a:
-      type: "stdio"
-      command: "node"
-      args: ["a.js"]
-`)
-
-	// Project config (highest priority among defaults) — override max_loop, add another server
-	writeConfig(t, projectDir, `
-session:
-  max_loop: 99
-mcp:
-  servers:
-    server-b:
-      type: "stdio"
-      command: "python"
-      args: ["b.py"]
-`)
-
-	origSystem := SystemConfigDir
-	origProject := ProjectConfigDir
-	SystemConfigDir = sysDir
-	ProjectConfigDir = projectDir
-	t.Cleanup(func() {
-		SystemConfigDir = origSystem
-		ProjectConfigDir = origProject
-	})
-
-	origHome := os.Getenv("HOME")
-	origUserProfile := os.Getenv("USERPROFILE")
-	os.Setenv("HOME", userHome)
-	os.Setenv("USERPROFILE", userHome)
-	t.Cleanup(func() { os.Setenv("HOME", origHome); os.Setenv("USERPROFILE", origUserProfile) })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	// From system config (not overridden)
-	if cfg.LLM.Type != "anthropic" {
-		t.Errorf("llm.type = %q, want anthropic", cfg.LLM.Type)
-	}
-
-	// From user config (overrides system)
-	if cfg.LLM.Model != "gpt-4o" {
-		t.Errorf("llm.model = %q, want gpt-4o", cfg.LLM.Model)
-	}
-
-	// From project config (overrides system)
-	if cfg.Session.MaxLoop != 99 {
-		t.Errorf("session.max_loop = %d, want 99", cfg.Session.MaxLoop)
-	}
-
-	// Deep-merge: both servers should exist
-	if _, ok := cfg.MCP.Servers["server-a"]; !ok {
-		t.Errorf("expected server-a in merged config, got servers: %v", cfg.MCP.Servers)
-	}
-	if _, ok := cfg.MCP.Servers["server-b"]; !ok {
-		t.Errorf("expected server-b in merged config, got servers: %v", cfg.MCP.Servers)
-	}
-
-	// server-a args from user config should be preserved
-	sa := cfg.MCP.Servers["server-a"]
-	if sa.Command != "node" {
-		t.Errorf("server-a command = %q, want node", sa.Command)
-	}
-}
-
-func TestMultiLevelMergeWithCFlag(t *testing.T) {
-	projectDir := t.TempDir()
-	overrideDir := t.TempDir()
-
-	// Project config
-	writeConfig(t, projectDir, `
-llm:
-  model: "gpt-4o"
-session:
-  max_loop: 50
-`)
-
-	// -c override file (highest priority)
-	writeConfig(t, overrideDir, `
-session:
-  max_loop: 999
-`)
-
-	origProject := ProjectConfigDir
-	ProjectConfigDir = projectDir
-	t.Cleanup(func() { ProjectConfigDir = origProject })
-
-	cfgFile := filepath.Join(overrideDir, "config.yaml")
-	cfg, err := Load(cfgFile)
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	// From project config (not overridden by -c)
-	if cfg.LLM.Model != "gpt-4o" {
-		t.Errorf("llm.model = %q, want gpt-4o", cfg.LLM.Model)
-	}
-
-	// From -c flag (overrides project)
-	if cfg.Session.MaxLoop != 999 {
-		t.Errorf("session.max_loop = %d, want 999", cfg.Session.MaxLoop)
-	}
-}
-
-func TestConfigClone(t *testing.T) {
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	clone := cfg.Clone()
-	if clone == cfg {
-		t.Error("Clone() should return a different pointer")
-	}
-	if clone.LLM.Type != cfg.LLM.Type {
-		t.Errorf("clone llm.type = %q, want %q", clone.LLM.Type, cfg.LLM.Type)
-	}
-	if clone.Session.MaxLoop != cfg.Session.MaxLoop {
-		t.Errorf("clone session.max_loop = %d, want %d", clone.Session.MaxLoop, cfg.Session.MaxLoop)
-	}
-
-	clone.LLM.Type = "modified"
-	if cfg.LLM.Type == "modified" {
-		t.Error("Clone() should be independent (mutation not reflected in original)")
-	}
-}
-
-func TestConfigCloneNil(t *testing.T) {
-	var cfg *Config
-	clone := cfg.Clone()
-	if clone != nil {
-		t.Errorf("Clone() on nil should return nil, got %v", clone)
-	}
-}
-
 func TestDefaultConfig(t *testing.T) {
-	cfg := DefaultConfig()
-	if cfg.LLM.MaxTokens != 4096 {
-		t.Errorf("default llm.max_tokens = %d, want 4096", cfg.LLM.MaxTokens)
-	}
-	if cfg.Session.MaxLoop != 50 {
-		t.Errorf("default session.max_loop = %d, want 50", cfg.Session.MaxLoop)
-	}
-	if cfg.Pool.MaxConcurrency != 5 {
-		t.Errorf("default pool.max_concurrency = %d, want 5", cfg.Pool.MaxConcurrency)
-	}
-}
-
-func TestValidateProviders(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.Providers = []ProviderConfig{
-		{Type: "openai", APIKey: "key", Model: "gpt-4o"},
-	}
-	err := cfg.Validate()
-	if err != nil {
-		t.Fatalf("valid providers should pass: %v", err)
-	}
-}
-
-func TestValidateInvalidProviderType(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.Providers = []ProviderConfig{
-		{Type: "invalid", APIKey: "key", Model: "gpt-4o"},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for invalid provider type")
-	}
-}
-
-func TestValidateMissingProviderAPIKey(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.Providers = []ProviderConfig{
-		{Type: "openai", APIKey: "", Model: "gpt-4o"},
-	}
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for missing provider api_key")
-	}
-}
-
-func TestValidateInvalidLLMType(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.Providers = nil
-	cfg.LLM.Type = "invalid"
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for invalid llm.type")
-	}
-}
-
-func TestValidateMaxTokens(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.MaxTokens = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for max_tokens <= 0")
-	}
-}
-
-func TestValidateMaxContextTokens(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.MaxContextTokens = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for max_context_tokens <= 0")
-	}
-}
-
-func TestValidateTemperature(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.Temperature = -0.1
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for temperature < 0")
-	}
-
-	cfg.LLM.Temperature = 2.1
-	err = cfg.Validate()
-	if err == nil {
-		t.Error("expected error for temperature > 2")
-	}
-}
-
-func TestValidateSessionMaxLoop(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Session.MaxLoop = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for session.max_loop <= 0")
-	}
-}
-
-func TestValidatePoolMaxConcurrency(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Pool.MaxConcurrency = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for pool.max_concurrency <= 0")
-	}
-}
-
-func TestValidatePoolDefaultTimeout(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Pool.DefaultTimeout = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for pool.default_timeout <= 0")
-	}
-}
-
-func TestValidateMCPShellTimeout(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.MCP.Shell.TimeoutSeconds = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for mcp.shell.timeout_seconds <= 0")
-	}
-}
-
-func TestValidateMaxSubTurns(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.LLM.MaxSubTurns = 0
-	err := cfg.Validate()
-	if err == nil {
-		t.Error("expected error for max_sub_turns <= 0")
-	}
-}
-
-func TestValidatePoolMaxPendingResultLenDefault(t *testing.T) {
-	cfg := DefaultConfig()
-	cfg.Pool.MaxPendingResultLen = 0
-	err := cfg.Validate()
-	if err != nil {
-		t.Fatalf("Validate() error: %v", err)
-	}
-	if cfg.Pool.MaxPendingResultLen != 500 {
-		t.Errorf("max_pending_result_len should default to 500, got %d", cfg.Pool.MaxPendingResultLen)
-	}
-}
-
-func TestMCPServersDeepMerge(t *testing.T) {
-	userHome := t.TempDir()
-	projectDir := t.TempDir()
-
-	// User config: server-a with args
-	writeConfig(t, filepath.Join(userHome, ".dolphin"), `
-mcp:
-  servers:
-    server-a:
-      type: "stdio"
-      command: "node"
-      args: ["index.js"]
-      url: ""
-`)
-
-	// Project config: server-a overrides args, adds server-b
-	writeConfig(t, projectDir, `
-mcp:
-  servers:
-    server-a:
-      args: ["override.js"]
-    server-b:
-      type: "stdio"
-      command: "python"
-      args: ["server.py"]
-`)
-
-	origProject := ProjectConfigDir
-	ProjectConfigDir = projectDir
-	t.Cleanup(func() { ProjectConfigDir = origProject })
-
-	origHome := os.Getenv("HOME")
-	origUserProfile := os.Getenv("USERPROFILE")
-	os.Setenv("HOME", userHome)
-	os.Setenv("USERPROFILE", userHome)
-	t.Cleanup(func() { os.Setenv("HOME", origHome); os.Setenv("USERPROFILE", origUserProfile) })
-
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-
-	// Both servers should exist
-	sa, ok := cfg.MCP.Servers["server-a"]
-	if !ok {
-		t.Fatal("expected server-a in merged config")
-	}
-	// server-a command from user (not overridden)
-	if sa.Command != "node" {
-		t.Errorf("server-a command = %q, want node", sa.Command)
-	}
-	// server-a args overridden by project
-	if len(sa.Args) != 1 || sa.Args[0] != "override.js" {
-		t.Errorf("server-a args = %v, want [override.js]", sa.Args)
-	}
-
-	sb, ok := cfg.MCP.Servers["server-b"]
-	if !ok {
-		t.Fatal("expected server-b in merged config")
-	}
-	if sb.Command != "python" {
-		t.Errorf("server-b command = %q, want python", sb.Command)
-	}
-}
-
-func TestDeepMergeDefaults(t *testing.T) {
-	t.Run("fills missing top-level keys", func(t *testing.T) {
-		current := map[string]any{
-			"name": "dolphin",
-		}
-		defaults := map[string]any{
-			"name": "default",
-			"port": 8080,
-		}
-		result := deepMergeDefaults(current, defaults)
-		if result["name"] != "dolphin" {
-			t.Errorf("name = %v, want dolphin (existing value preserved)", result["name"])
-		}
-		if result["port"] != 8080 {
-			t.Errorf("port = %v, want 8080 (missing key filled)", result["port"])
-		}
-	})
-
-	t.Run("fills missing nested keys", func(t *testing.T) {
-		current := map[string]any{
-			"llm": map[string]any{
-				"model": "gpt-4",
-			},
-		}
-		defaults := map[string]any{
-			"llm": map[string]any{
-				"model":      "gpt-4o",
-				"max_tokens": 4096,
-			},
-		}
-		result := deepMergeDefaults(current, defaults)
-		llm, ok := result["llm"].(map[string]any)
-		if !ok {
-			t.Fatal("llm is not a map")
-		}
-		if llm["model"] != "gpt-4" {
-			t.Errorf("llm.model = %v, want gpt-4 (existing value preserved)", llm["model"])
-		}
-		if llm["max_tokens"] != 4096 {
-			t.Errorf("llm.max_tokens = %v, want 4096 (missing key filled)", llm["max_tokens"])
-		}
-	})
-
-	t.Run("preserves full nested sections missing in defaults", func(t *testing.T) {
-		current := map[string]any{
-			"custom_section": map[string]any{
-				"key": "value",
-			},
-		}
-		defaults := map[string]any{
-			"name": "dolphin",
-		}
-		result := deepMergeDefaults(current, defaults)
-		if _, ok := result["custom_section"]; !ok {
-			t.Error("custom_section should be preserved")
-		}
-		if result["name"] != "dolphin" {
-			t.Errorf("name = %v, want dolphin", result["name"])
-		}
-	})
-
-	t.Run("handles nil current", func(t *testing.T) {
-		defaults := map[string]any{
-			"key": "value",
-		}
-		result := deepMergeDefaults(nil, defaults)
-		if result["key"] != "value" {
-			t.Errorf("key = %v, want value", result["key"])
-		}
-	})
-
-	t.Run("handles nil defaults", func(t *testing.T) {
-		current := map[string]any{
-			"key": "value",
-		}
-		result := deepMergeDefaults(current, nil)
-		// nil map passed as defaults — range over nil map is a no-op, current unchanged
-		if result["key"] != "value" {
-			t.Errorf("key = %v, want value", result["key"])
-		}
+	Convey("defaultConfig", t, func() {
+		cfg := defaultConfig()
+		So(cfg, ShouldNotBeNil)
+		So(cfg.GetString("log.level"), ShouldEqual, "info")
+		So(cfg.GetString("agent.name"), ShouldEqual, "Dolphin")
+		So(cfg.GetInt("log.max_size"), ShouldEqual, 100)
 	})
 }
 
-func TestFillConfigDefaults(t *testing.T) {
-	// Save and restore ProjectConfigDir to avoid modifying the real config file
-	origDir := ProjectConfigDir
-	t.Cleanup(func() { ProjectConfigDir = origDir })
+func TestLoadConfigFromMap(t *testing.T) {
+	Convey("LoadConfigFromMap", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"llm.provider": "anthropic",
+			"llm.model":    "claude-3",
+			"log.level":    "debug",
+		})
+		So(cfg, ShouldNotBeNil)
+		So(cfg.GetString("llm.provider"), ShouldEqual, "anthropic")
+		So(cfg.GetString("llm.model"), ShouldEqual, "claude-3")
+		So(cfg.GetString("log.level"), ShouldEqual, "debug")
+	})
+}
 
-	tmpDir := t.TempDir()
-	ProjectConfigDir = tmpDir
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
-
-	// Write a minimal config file missing many fields
-	minimal := `
+func TestLoadConfig(t *testing.T) {
+	Convey("LoadConfig from YAML file", t, func() {
+		dir := t.TempDir()
+		yamlContent := []byte(`
 llm:
-  type: openai
-  api_key: test-key
+  provider: openai
   model: gpt-4
-  max_tokens: 2048
-  max_context_tokens: 128000
-  temperature: 0.7
-  max_sub_turns: 10
-session:
-  max_loop: 50
-mcp:
-  shell:
-    enabled: true
-    timeout_seconds: 30
-    priority: 10
-agent_pool:
-  max_concurrency: 5
-  default_timeout: 300
-  max_pending_results: 10
-`[1:] // strip leading newline
-	if err := os.WriteFile(cfgPath, []byte(minimal), 0600); err != nil {
-		t.Fatal(err)
-	}
+log:
+  level: debug
+`)
+		path := filepath.Join(dir, "config.yaml")
+		os.WriteFile(path, yamlContent, 0644)
 
-	origData, _ := os.ReadFile(cfgPath)
+		cfg, err := LoadConfig(path)
+		So(err, ShouldBeNil)
+		So(cfg, ShouldNotBeNil)
+		So(cfg.GetString("llm.provider"), ShouldEqual, "openai")
+		So(cfg.GetString("llm.model"), ShouldEqual, "gpt-4")
+		So(cfg.GetString("log.level"), ShouldEqual, "debug")
+	})
 
-	// Run fillConfigDefaults (called with the saved ProjectConfigDir)
-	if err := fillConfigDefaults(); err != nil {
-		t.Fatalf("fillConfigDefaults() error: %v", err)
-	}
-
-	// Read back the modified file
-	mergedData, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(mergedData) == string(origData) {
-		t.Fatal("expected config file to be updated with defaults")
-	}
-
-	// Verify existing values are preserved
-	var merged map[string]any
-	if err := yaml.Unmarshal(mergedData, &merged); err != nil {
-		t.Fatal(err)
-	}
-
-	llm, _ := merged["llm"].(map[string]any)
-	if llm["model"] != "gpt-4" {
-		t.Errorf("llm.model = %v, want gpt-4 (existing)", llm["model"])
-	}
-	if llm["max_tokens"] != 2048 {
-		t.Errorf("llm.max_tokens = %v, want 2048 (existing)", llm["max_tokens"])
-	}
-
-	// Verify missing top-level fields were filled
-	if _, ok := merged["crontab"]; !ok {
-		t.Error("expected crontab section to be filled from defaults")
-	}
-	if _, ok := merged["diary"]; !ok {
-		t.Error("expected diary section to be filled from defaults")
-	}
-	if _, ok := merged["skills"]; !ok {
-		t.Error("expected skills section to be filled from defaults")
-	}
-	if _, ok := merged["pprof"]; !ok {
-		t.Error("expected pprof section to be filled from defaults")
-	}
-	if _, ok := merged["metrics"]; !ok {
-		t.Error("expected metrics section to be filled from defaults")
-	}
-	if _, ok := merged["update"]; !ok {
-		t.Error("expected update section to be filled from defaults")
-	}
-	if _, ok := merged["resource"]; !ok {
-		t.Error("expected resource section to be filled from defaults")
-	}
-
-	// Verify SyncConfig default is added
-	v := viper.New()
-	setDefaults(v)
-	defaultSyncConfig := v.GetBool("sync_config")
-	t.Logf("default sync_config = %v", defaultSyncConfig)
+	Convey("LoadConfig returns error for missing file", t, func() {
+		_, err := LoadConfig("/nonexistent/path.yaml")
+		So(err, ShouldNotBeNil)
+	})
 }
 
-func TestFillConfigDefaultsNoopWhenComplete(t *testing.T) {
-	origDir := ProjectConfigDir
-	t.Cleanup(func() { ProjectConfigDir = origDir })
+func TestConfigGet(t *testing.T) {
+	Convey("Config typed getters", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"name":         "test",
+			"count":        42,
+			"ratio":        3.14,
+			"enabled":      true,
+			"timeout":      "30s",
+			"empty":        "",
+			"zero":         0,
+			"string_int":   "100",
+			"string_float": "2.5",
+		})
 
-	tmpDir := t.TempDir()
-	ProjectConfigDir = tmpDir
+		Convey("Get returns raw value", func() {
+			So(cfg.Get("name"), ShouldEqual, "test")
+			So(cfg.Get("count"), ShouldEqual, 42)
+			So(cfg.Get("nonexistent"), ShouldBeNil)
+		})
 
-	// Write the full default config
-	v := viper.New()
-	setDefaults(v)
-	full := v.AllSettings()
-	data, err := yaml.Marshal(full)
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
-	if err := os.WriteFile(cfgPath, data, 0600); err != nil {
-		t.Fatal(err)
-	}
+		Convey("GetString", func() {
+			So(cfg.GetString("name"), ShouldEqual, "test")
+			So(cfg.GetString("empty"), ShouldEqual, "")
+			So(cfg.GetString("nonexistent"), ShouldEqual, "")
+		})
 
-	// Run fillConfigDefaults — should be a no-op since config is complete
-	if err := fillConfigDefaults(); err != nil {
-		t.Fatalf("fillConfigDefaults() error: %v", err)
-	}
+		Convey("GetInt", func() {
+			So(cfg.GetInt("count"), ShouldEqual, 42)
+			So(cfg.GetInt("zero"), ShouldEqual, 0)
+			So(cfg.GetInt("string_int"), ShouldEqual, 100)
+			So(cfg.GetInt("nonexistent"), ShouldEqual, 0)
+		})
 
-	// Verify file is still valid YAML and contains all expected keys
-	modified, err := os.ReadFile(cfgPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var parsed map[string]any
-	if err := yaml.Unmarshal(modified, &parsed); err != nil {
-		t.Fatalf("invalid YAML after fillConfigDefaults: %v", err)
-	}
-	if parsed["name"] != "dolphin" {
-		t.Errorf("name = %v, want dolphin", parsed["name"])
-	}
+		Convey("GetFloat", func() {
+			So(cfg.GetFloat("ratio"), ShouldEqual, 3.14)
+			So(cfg.GetFloat("string_float"), ShouldEqual, 2.5)
+			So(cfg.GetFloat("nonexistent"), ShouldEqual, 0)
+		})
+
+		Convey("GetBool", func() {
+			So(cfg.GetBool("enabled"), ShouldBeTrue)
+			So(cfg.GetBool("nonexistent"), ShouldBeFalse)
+		})
+
+		Convey("GetDuration", func() {
+			So(cfg.GetDuration("timeout"), ShouldEqual, 30*time.Second)
+			So(cfg.GetDuration("nonexistent"), ShouldEqual, 0)
+		})
+	})
 }
 
-func TestFillConfigDefaultsFileNotExists(t *testing.T) {
-	origDir := ProjectConfigDir
-	t.Cleanup(func() { ProjectConfigDir = origDir })
-
-	tmpDir := t.TempDir()
-	ProjectConfigDir = tmpDir
-
-	// No config file exists — should not error
-	if err := fillConfigDefaults(); err != nil {
-		t.Fatalf("fillConfigDefaults() with no file should not error: %v", err)
-	}
+func TestConfigKeys(t *testing.T) {
+	Convey("Keys returns all keys", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"a.b": 1,
+			"c.d": 2,
+			"e.f": 3,
+		})
+		keys := cfg.Keys()
+		So(len(keys), ShouldEqual, 3)
+	})
 }
 
-func TestSyncConfigFlag(t *testing.T) {
-	// Load config with sync_config=false
-	origDir := ProjectConfigDir
-	t.Cleanup(func() { ProjectConfigDir = origDir })
+func TestConfigSet(t *testing.T) {
+	Convey("Set overrides a value", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{"key": "old"})
+		So(cfg.GetString("key"), ShouldEqual, "old")
+		cfg.Set("key", "new")
+		So(cfg.GetString("key"), ShouldEqual, "new")
+	})
+}
 
-	tmpDir := t.TempDir()
-	ProjectConfigDir = tmpDir
-	cfgPath := filepath.Join(tmpDir, "config.yaml")
+func TestConfigValidate(t *testing.T) {
+	Convey("Validate", t, func() {
+		Convey("passes when required fields are present", func() {
+			cfg := LoadConfigFromMap(map[string]any{
+				"llm.provider":       "openai",
+				"llm.model":          "gpt-4",
+				"llm.openai.api_key": "sk-test",
+			})
+			err := cfg.Validate()
+			So(err, ShouldBeNil)
+		})
 
-	config := `sync_config: false
-llm:
-  type: openai
-  api_key: test-key
-  model: gpt-4
-  max_tokens: 2048
-  max_context_tokens: 128000
-  temperature: 0.7
-  max_sub_turns: 10
-session:
-  max_loop: 50
-mcp:
-  shell:
-    enabled: true
-    timeout_seconds: 30
-    priority: 10
-agent_pool:
-  max_concurrency: 5
-  default_timeout: 300
-  max_pending_results: 10
-`
-	if err := os.WriteFile(cfgPath, []byte(config), 0600); err != nil {
-		t.Fatal(err)
-	}
+		Convey("fails when llm.provider is missing", func() {
+			cfg := LoadConfigFromMap(map[string]any{})
+			err := cfg.Validate()
+			So(err, ShouldNotBeNil)
+		})
 
-	cfg, err := Load("")
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	if cfg.SyncConfig {
-		t.Error("SyncConfig should be false")
-	}
+		Convey("fails when api_key is missing", func() {
+			cfg := LoadConfigFromMap(map[string]any{
+				"llm.provider": "openai",
+				"llm.model":    "gpt-4",
+			})
+			err := cfg.Validate()
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
 
-	// Config file should NOT have been modified — missing sections like crontab
-	// should remain absent since sync_config=false
-	data, _ := os.ReadFile(cfgPath)
-	var parsed map[string]any
-	yaml.Unmarshal(data, &parsed)
-	if _, ok := parsed["crontab"]; ok {
-		t.Error("crontab should not have been added when sync_config=false")
-	}
+func TestFlatten(t *testing.T) {
+	Convey("flatten converts nested map to dot notation", t, func() {
+		input := map[string]any{
+			"llm": map[string]any{
+				"provider": "anthropic",
+				"model":    "claude-3",
+			},
+			"log": map[string]any{
+				"level": "info",
+			},
+		}
+		result := flatten(input, "")
+		So(result["llm.provider"], ShouldEqual, "anthropic")
+		So(result["llm.model"], ShouldEqual, "claude-3")
+		So(result["log.level"], ShouldEqual, "info")
+	})
+}
+
+func TestApplyEnvOverrides(t *testing.T) {
+	Convey("applyEnvOverrides applies DOLPHIN_ env vars", t, func() {
+		os.Setenv("DOLPHIN_LLM_MODEL", "gpt-4-turbo")
+		defer os.Unsetenv("DOLPHIN_LLM_MODEL")
+
+		cfg := LoadConfigFromMap(map[string]any{
+			"llm.model": "gpt-4",
+		})
+		cfg.applyEnvOverrides()
+		So(cfg.GetString("llm.model"), ShouldEqual, "gpt-4-turbo")
+	})
+}
+
+func TestConfigNilSafety(t *testing.T) {
+	Convey("Config methods handle nil values map", t, func() {
+		cfg := &Config{}
+		So(cfg.GetString("x"), ShouldEqual, "")
+		So(cfg.GetInt("x"), ShouldEqual, 0)
+		So(cfg.GetFloat("x"), ShouldEqual, 0)
+		So(cfg.GetBool("x"), ShouldBeFalse)
+		So(cfg.GetDuration("x"), ShouldEqual, 0)
+		So(cfg.Keys(), ShouldBeEmpty)
+		So(cfg.Get("x"), ShouldBeNil)
+	})
 }

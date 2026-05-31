@@ -1,42 +1,12 @@
 # Binary
-/dolphin
-/dolphin.exe
-/dolphin-ai
-/dolphin-ai.exe
-/dolphin-agent
-/dolphin-agent.exe
+dolphin
 
-# Session logs
-/sessions/
+# Local config override
+config.local.yaml
+.env
 
-# Config with API keys
-.dolphin/config.yaml
-.dolphin/testdata/
-.dolphin/sessions/
-.dolphin/skills/
-
-# Hugo build artifacts
-*.hugo_build.lock
-public/
-docs/public/
-
-# Agent workspace state
-internal/agent/.dolphin/
-
-# MCP server config (user-specific)
-.mcp.json
-
-# Claude Code
-.claude/
-
-# Coverage output
-coverage.out
-
-# SPM build output
-.build/
-
-# macOS app bundle
-*.app
+# Runtime data
+.dolphin/
 
 # IDE
 .idea/
@@ -44,45 +14,14 @@ coverage.out
 *.swp
 *.swo
 
-# macOS app (old, now in panda submodule)
-app/dolphin/
+# OS
 .DS_Store
+Thumbs.db
 
-# Panda standalone repository (independent)
-app/
+# Temp
+/tmp/
 
-.sisyphus
-
-# Workflow
-WORKFLOW.md
-
-# OpenCode config
-opencode.json
-
-# Assets (credentials, secrets)
-ASSETS.md
-
-# Roadmap
-ROADMAP.md
-
-# Proposal working documents
-/proposal/
-/todo/
-TODO.md
-
-logs
-/diary
-
-/.dolphin/diary
-# Per-user agent/workspace state
-/.dolphinzZ/
-
-
-.dolphin
-
-# Local fallback manifests (repo-specific)
-testdata/demo_agents.json
-textual/
-
-# E2E tests (interactive, excluded from CI)
-tests/e2e/
+config.yaml
+data
+coverage.out
+*config.yaml

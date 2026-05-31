@@ -2,118 +2,181 @@ package dingtalk
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
-	"dolphin/internal/config"
+	dtclient "github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 )
 
-func loadDingTalkConfig(t *testing.T) *config.DingTalkConfig {
-	t.Helper()
-	cfg, err := config.Load("")
-	if err != nil {
-		t.Skipf("skip dingtalk integration test: config load failed: %v", err)
-	}
-	if !cfg.Transport.DingTalk.Enabled {
-		t.Skip("skip dingtalk integration test: transport.dingtalk.enabled=false")
-	}
-	if cfg.Transport.DingTalk.ClientID == "" {
-		t.Skip("skip dingtalk integration test: client_id not set")
-	}
-	return &cfg.Transport.DingTalk
-}
+func TestDingTalkCapability(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
 
-func TestDingTalkOnConfigChangeCredentialChange(t *testing.T) {
-	dt := &DingTalkTransport{
-		cfg:         &config.DingTalkConfig{ClientID: "old_id", ClientSecret: "old_secret"},
-		msgCh:       make(chan string, 1024),
-		closeCh:     make(chan struct{}),
-		reconnectCh: make(chan struct{}, 1),
+	cap := dt.Capability()
+	if cap.Interactive {
+		t.Error("expected Interactive=false for chunk mode")
 	}
-
-	oldCfg := &config.Config{}
-	oldCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "old_id", ClientSecret: "old_secret"}
-
-	newCfg := &config.Config{}
-	newCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "new_id", ClientSecret: "new_secret"}
-
-	dt.OnConfigChange(oldCfg, newCfg)
-
-	// Verify the config pointer was updated
-	if dt.cfg.ClientID != "new_id" {
-		t.Errorf("cfg.ClientID = %q, want new_id", dt.cfg.ClientID)
+	if cap.Streamable {
+		t.Error("expected Streamable=false for chunk mode")
 	}
-	if dt.cfg.ClientSecret != "new_secret" {
-		t.Errorf("cfg.ClientSecret = %q, want new_secret", dt.cfg.ClientSecret)
-	}
-
-	// Verify reconnect signal was sent
-	select {
-	case <-dt.reconnectCh:
-		// expected
-	default:
-		t.Error("expected reconnectCh signal after credential change")
+	if cap.NestRead {
+		t.Error("expected NestRead=false for chunk mode")
 	}
 }
 
-func TestDingTalkOnConfigChangeNoChange(t *testing.T) {
-	dt := &DingTalkTransport{
-		cfg:         &config.DingTalkConfig{ClientID: "same_id", ClientSecret: "same_secret"},
-		msgCh:       make(chan string, 1024),
-		closeCh:     make(chan struct{}),
-		reconnectCh: make(chan struct{}, 1),
+func TestDingTalkWrite(t *testing.T) {
+	var received string
+	webhookSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			MsgType  string `json:"msgtype"`
+			Markdown struct {
+				Title string `json:"title"`
+				Text  string `json:"text"`
+			} `json:"markdown"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		received = body.Markdown.Text
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"errcode":0,"errmsg":"ok"}`))
+	}))
+	defer webhookSvr.Close()
+
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	dt.cfg.WebhookURL = webhookSvr.URL
+	defer dt.Close()
+
+	ctx := context.Background()
+	if err := dt.Write(ctx, "hello dingtalk"); err != nil {
+		t.Fatalf("Write failed: %v", err)
 	}
 
-	oldCfg := &config.Config{}
-	oldCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "same_id", ClientSecret: "same_secret"}
-
-	newCfg := &config.Config{}
-	newCfg.Transport.DingTalk = config.DingTalkConfig{ClientID: "same_id", ClientSecret: "same_secret"}
-
-	dt.OnConfigChange(oldCfg, newCfg)
-
-	// Verify no reconnect signal was sent
-	select {
-	case <-dt.reconnectCh:
-		t.Error("expected NO reconnectCh signal when credentials unchanged")
-	default:
-		// expected
+	if received != "hello dingtalk" {
+		t.Errorf("expected 'hello dingtalk', got %q", received)
 	}
 }
 
-func TestDingTalkStreamConnect(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping dingtalk integration test in short mode")
-	}
-	cfg := loadDingTalkConfig(t)
-	dt := &DingTalkTransport{
-		cfg:         cfg,
-		msgCh:       make(chan string, 1024),
-		closeCh:     make(chan struct{}),
-		reconnectCh: make(chan struct{}, 1),
-	}
+func TestDingTalkRead(t *testing.T) {
+	// No credentials means stream won't start; we inject directly into msgChan.
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	expected := "hi from dingtalk"
+	dt.msgChan <- expected
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	go func() {
-		if err := dt.Start(ctx); err != nil {
-			t.Logf("Start ended: %v", err)
-		}
-	}()
-
-	time.Sleep(3 * time.Second)
-
-	t.Log("send a message to the bot in DingTalk within 120s...")
-	msg, err := dt.ReadLine()
+	msg, err := dt.Read(ctx)
 	if err != nil {
-		t.Fatalf("ReadLine: %v", err)
+		t.Fatalf("Read failed: %v", err)
 	}
-	t.Logf("received: %s", msg)
+	if msg != expected {
+		t.Errorf("expected %q, got %q", expected, msg)
+	}
+}
 
-	reply := "Received: " + msg
-	if err := dt.WriteLine(reply); err != nil {
-		t.Fatalf("WriteLine: %v", err)
+func TestDingTalkReadWithContextCancel(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	_, err := dt.Read(ctx)
+	if err == nil {
+		t.Error("expected timeout error from Read")
 	}
-	t.Logf("replied: %s", reply)
+}
+
+func TestDingTalkWriteWebhookError(t *testing.T) {
+	webhookSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer webhookSvr.Close()
+
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	dt.cfg.WebhookURL = webhookSvr.URL
+	defer dt.Close()
+
+	ctx := context.Background()
+	err := dt.Write(ctx, "test")
+	if err == nil {
+		t.Fatal("expected error on webhook 500")
+	}
+	if !strings.Contains(err.Error(), "500") {
+		t.Errorf("expected 500 in error, got: %v", err)
+	}
+}
+
+func TestDingTalkCloseTwice(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	dt.Close()
+	// Second close should not panic.
+	dt.Close()
+}
+
+func TestDingTalkStreamNotStartWithoutCreds(t *testing.T) {
+	// Without credentials, the stream should not start.
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
+
+	if dt.streamCli != nil {
+		t.Error("expected streamCli to be nil when no credentials")
+	}
+}
+
+func TestDingTalkID(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
+	if dt.ID() != "dingtalk" {
+		t.Errorf("expected 'dingtalk', got '%s'", dt.ID())
+	}
+}
+
+func TestDingTalkFlush(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
+	if err := dt.Flush(); err != nil {
+		t.Errorf("Flush should be a no-op, got: %v", err)
+	}
+}
+
+func TestDingTalkWriteErrCode(t *testing.T) {
+	webhookSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"errcode":400,"errmsg":"invalid webhook"}`))
+	}))
+	defer webhookSvr.Close()
+
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	dt.cfg.WebhookURL = webhookSvr.URL
+	defer dt.Close()
+
+	err := dt.Write(context.Background(), "test")
+	if err == nil {
+		t.Fatal("expected error on errcode!=0")
+	}
+	if !strings.Contains(err.Error(), "invalid webhook") {
+		t.Errorf("expected 'invalid webhook' in error, got: %v", err)
+	}
+}
+
+func TestDingTalkCloseWithStreamCli(t *testing.T) {
+	// Close with streamCli set to a closed client should be safe.
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
+
+	// Use a closed stream client to verify Close handles it gracefully.
+	cli := dtclient.NewStreamClient()
+	cli.Close()
+	dt.streamCli = cli
+
+	dt.Close()
 }
