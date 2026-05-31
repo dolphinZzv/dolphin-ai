@@ -27,6 +27,7 @@ type State struct {
 	SessionID        string
 	Input            string
 	TransportContext string
+	TransportID      string
 	History          []types.Message
 	Messages         []types.Message
 	SystemPrompt     string

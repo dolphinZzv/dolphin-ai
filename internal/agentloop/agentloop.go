@@ -8,6 +8,7 @@ import (
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/event"
+	"dolphin/internal/transport"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -66,6 +67,7 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 		SessionID:        turn.SessionID,
 		Input:            turn.Input,
 		TransportContext: turn.Context,
+		TransportID:      turn.TransportID,
 	}
 
 	state.OnChunk = func(text string) {
@@ -77,6 +79,10 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 				Text:        text,
 			})
 		}
+	}
+
+	if turn.TransportID != "" {
+		ctx = transport.WithInfo(ctx, &transport.Info{ID: turn.TransportID})
 	}
 
 	if err := a.compositor.Execute(ctx, state); err != nil {

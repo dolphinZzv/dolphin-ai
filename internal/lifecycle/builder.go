@@ -133,14 +133,15 @@ func (b *Builder) Assemble() *Builder {
 		return b
 	}
 
-	// Register transport-specific MCP tools based on active transports.
+	// Register transport-specific tools as sources so they're only active
+	// when a message from that transport is being processed.
 	for _, t := range b.ctx.Transports {
+		if b.ctx.ToolReg == nil {
+			continue
+		}
 		switch t.ID() {
 		case "dingtalk":
-			if b.ctx.ToolReg == nil {
-				continue
-			}
-			dtmcp.RegisterTools(b.ctx.ToolReg,
+			b.ctx.ToolReg.AddSource(dtmcp.NewFileUploadSource(
 				b.cfg.GetString("dingtalk.client_id"),
 				b.cfg.GetString("dingtalk.client_secret"),
 				func() string {
@@ -149,10 +150,10 @@ func (b *Builder) Assemble() *Builder {
 					}
 					return ""
 				},
-			)
+			))
 		case "wework":
-			if tr, ok := t.(interface{ RegisterTools(*tool.Registry) }); ok && b.ctx.ToolReg != nil {
-				tr.RegisterTools(b.ctx.ToolReg)
+			if src, ok := t.(tool.Executor); ok {
+				b.ctx.ToolReg.AddSource(src)
 			}
 		}
 	}

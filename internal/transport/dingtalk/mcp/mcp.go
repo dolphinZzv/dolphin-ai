@@ -14,77 +14,98 @@ import (
 	"time"
 
 	"dolphin/internal/tool"
+	"dolphin/internal/transport"
 	"dolphin/internal/types"
 )
 
 // httpClient with a sensible timeout for DingTalk API calls.
 var httpClient = &http.Client{Timeout: 30 * time.Second}
 
-// RegisterTools registers DingTalk-specific MCP tools.
-// clientID and clientSecret must be non-empty for registration.
-// conversationIDFn returns the latest group conversation ID for chat/send API.
-func RegisterTools(reg *tool.Registry, clientID, clientSecret string, conversationIDFn func() string) {
-	if clientID == "" || clientSecret == "" {
-		return
+// NewFileUploadSource returns a tool source that provides FILE_UPLOAD only
+// when the active transport is DingTalk (checked via context).
+func NewFileUploadSource(clientID, clientSecret string, conversationIDFn func() string) tool.Executor {
+	return &fileUploadSource{
+		clientID:         clientID,
+		clientSecret:     clientSecret,
+		conversationIDFn: conversationIDFn,
 	}
-
-	reg.RegisterBuiltin("FILE_UPLOAD",
-		"Upload a file (image, voice, video, archive, document, etc.) to DingTalk and share it in the group chat. "+
-			"For images, include the returned markdown snippet in your reply to show it inline. "+
-			"For other file types the tool sends the file directly as a native file message to the group.",
-		json.RawMessage(`{
-			"type": "object",
-			"properties": {
-				"file_path": {"type": "string", "description": "Absolute path to the file to upload"}
-			},
-			"required": ["file_path"]
-		}`),
-		func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-			var req struct {
-				FilePath string `json:"file_path"`
-			}
-			if err := json.Unmarshal(args, &req); err != nil {
-				return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
-			}
-
-			token, err := getAccessToken(ctx, clientID, clientSecret)
-			if err != nil {
-				return &types.ToolResult{Content: "failed to get DingTalk access token: " + err.Error(), IsError: true}, nil
-			}
-
-			mediaID, err := uploadMedia(ctx, token, req.FilePath)
-			if err != nil {
-				return &types.ToolResult{Content: "failed to upload file to DingTalk: " + err.Error(), IsError: true}, nil
-			}
-
-			fileName := filepath.Base(req.FilePath)
-			ext := strings.ToLower(filepath.Ext(fileName))
-			mediaType := mediaTypeForExt(ext)
-
-			if mediaType == "image" {
-				snippet := fmt.Sprintf("\n![%s](%s)\n", fileName, mediaID)
-				return &types.ToolResult{
-					Content: fmt.Sprintf("Image uploaded successfully.\n- media_id: %s\n\nInclude this markdown in your reply to show it in the group chat:\n%s", mediaID, snippet),
-				}, nil
-			}
-
-			// Send as native file message via chat/send API.
-			cid := conversationIDFn()
-			if cid == "" {
-				return &types.ToolResult{Content: "file uploaded but no conversation ID available to send it to the group", IsError: true}, nil
-			}
-			if err := sendFileMessage(ctx, token, cid, mediaID, fileName); err != nil {
-				return &types.ToolResult{Content: "file uploaded but failed to send to group: " + err.Error(), IsError: true}, nil
-			}
-
-			return &types.ToolResult{
-				Content: fmt.Sprintf("File sent to the group.\n- name: %s\n- media_id: %s\n- type: %s\n\nThe file has been sent as a native file message. Mention it briefly in your markdown reply so the group knows about it.", fileName, mediaID, mediaType),
-			}, nil
-		},
-	)
 }
 
-// sendFileMessage sends a native file message to a group conversation via chat/send API.
+type fileUploadSource struct {
+	clientID         string
+	clientSecret     string
+	conversationIDFn func() string
+}
+
+func (s *fileUploadSource) List(ctx context.Context) ([]types.ToolDef, error) {
+	info := transport.GetInfo(ctx)
+	if info == nil || info.ID != "dingtalk" || s.clientID == "" || s.clientSecret == "" {
+		return nil, nil
+	}
+	return []types.ToolDef{
+		{
+			Name: "FILE_UPLOAD",
+			Description: "Upload a file (image, voice, video, archive, document, etc.) to DingTalk and share it in the group chat. " +
+				"For images, include the returned markdown snippet in your reply to show it inline. " +
+				"For other file types the tool sends the file directly as a native file message to the group.",
+			Schema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"file_path": {"type": "string", "description": "Absolute path to the file to upload"}
+				},
+				"required": ["file_path"]
+			}`),
+		},
+	}, nil
+}
+
+func (s *fileUploadSource) Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
+	info := transport.GetInfo(ctx)
+	if info == nil || info.ID != "dingtalk" {
+		return nil, fmt.Errorf("FILE_UPLOAD is not available on this transport")
+	}
+
+	var args struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
+	}
+
+	token, err := getAccessToken(ctx, s.clientID, s.clientSecret)
+	if err != nil {
+		return &types.ToolResult{Content: "failed to get DingTalk access token: " + err.Error(), IsError: true}, nil
+	}
+
+	mediaID, err := uploadMedia(ctx, token, args.FilePath)
+	if err != nil {
+		return &types.ToolResult{Content: "failed to upload file to DingTalk: " + err.Error(), IsError: true}, nil
+	}
+
+	fileName := filepath.Base(args.FilePath)
+	ext := strings.ToLower(filepath.Ext(fileName))
+	mediaType := mediaTypeForExt(ext)
+
+	if mediaType == "image" {
+		snippet := fmt.Sprintf("\n![%s](%s)\n", fileName, mediaID)
+		return &types.ToolResult{
+			Content: fmt.Sprintf("Image uploaded successfully.\n- media_id: %s\n\nInclude this markdown in your reply to show it in the group chat:\n%s", mediaID, snippet),
+		}, nil
+	}
+
+	cid := s.conversationIDFn()
+	if cid == "" {
+		return &types.ToolResult{Content: "file uploaded but no conversation ID available to send it to the group", IsError: true}, nil
+	}
+	if err := sendFileMessage(ctx, token, cid, mediaID, fileName); err != nil {
+		return &types.ToolResult{Content: "file uploaded but failed to send to group: " + err.Error(), IsError: true}, nil
+	}
+
+	return &types.ToolResult{
+		Content: fmt.Sprintf("File sent to the group.\n- name: %s\n- media_id: %s\n- type: %s\n\nThe file has been sent as a native file message. Mention it briefly in your markdown reply so the group knows about it.", fileName, mediaID, mediaType),
+	}, nil
+}
+
 func sendFileMessage(ctx context.Context, token, chatID, mediaID, _ string) error {
 	body := map[string]any{
 		"chatid":  chatID,
@@ -129,7 +150,6 @@ func sendFileMessage(ctx context.Context, token, chatID, mediaID, _ string) erro
 	return nil
 }
 
-// getAccessToken obtains a DingTalk access token using client credentials.
 func getAccessToken(ctx context.Context, clientID, clientSecret string) (string, error) {
 	url := fmt.Sprintf("https://oapi.dingtalk.com/gettoken?appkey=%s&appsecret=%s", clientID, clientSecret)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -209,8 +229,6 @@ func uploadMedia(ctx context.Context, token, filePath string) (string, error) {
 	return mr.MediaID, nil
 }
 
-// mediaTypeForExt maps file extensions to DingTalk media upload types.
-// Supported types: image, voice, video, file.
 func mediaTypeForExt(ext string) string {
 	switch ext {
 	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp":
