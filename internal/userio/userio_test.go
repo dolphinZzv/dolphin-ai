@@ -38,7 +38,7 @@ func (t *interactiveTransport) Tools() []common.ToolDesc { return nil }
 func (t *interactiveTransport) Flush() error             { return nil }
 func (t *interactiveTransport) Close() error             { return nil }
 func (t *interactiveTransport) Capability() transport.Capability {
-	return transport.Capability{Interactive: true, Streamable: true, NestRead: true}
+	return transport.Capability{Interactive: true, Streamable: true, NestRead: true, RenderTextMarkdown: "none"}
 }
 
 func (t *interactiveTransport) Read(ctx context.Context) (string, error) {

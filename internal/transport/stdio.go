@@ -150,9 +150,10 @@ func (s *Stdio) Close() error {
 
 func (s *Stdio) Capability() Capability {
 	return Capability{
-		Interactive: true,
-		Streamable:  true,
-		NestRead:    true,
+		Interactive:        true,
+		Streamable:         true,
+		NestRead:           true,
+		RenderTextMarkdown: "none",
 	}
 }
 
@@ -196,7 +197,7 @@ func (n *NullTransport) Write(ctx context.Context, text string) error { return n
 func (n *NullTransport) Flush() error                                 { return nil }
 func (n *NullTransport) Close() error                                 { n.cancel(); return nil }
 func (n *NullTransport) Capability() Capability {
-	return Capability{Interactive: false, Streamable: false, NestRead: false}
+	return Capability{Interactive: false, Streamable: false, NestRead: false, RenderTextMarkdown: "none"}
 }
 
 var _ IO = (*NullTransport)(nil)

@@ -25,9 +25,10 @@ type IO interface {
 
 // Capability describes transport features.
 type Capability struct {
-	Interactive bool
-	Streamable  bool
-	NestRead    bool
+	Interactive        bool
+	Streamable         bool
+	NestRead           bool
+	RenderTextMarkdown string // "none" or "markdown"
 }
 
 // Info carries transport metadata through context.

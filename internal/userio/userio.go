@@ -32,7 +32,7 @@ func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, mgr *session.Manage
 func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) bool {
 	if strings.HasPrefix(input, "/") {
 		line := strings.TrimPrefix(input, "/")
-		out := u.cmdReg.Execute(line)
+		out := u.cmdReg.Execute(line, tio.Capability().RenderTextMarkdown)
 		if out != "" {
 			_ = tio.Write(ctx, out)
 		}

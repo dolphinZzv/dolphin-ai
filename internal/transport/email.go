@@ -246,9 +246,10 @@ func (e *Email) Close() error {
 
 func (e *Email) Capability() Capability {
 	return Capability{
-		Interactive: false,
-		Streamable:  false,
-		NestRead:    false,
+		Interactive:        false,
+		Streamable:         false,
+		NestRead:           false,
+		RenderTextMarkdown: "markdown",
 	}
 }
 

@@ -26,17 +26,17 @@ func TestRegistryExecute(t *testing.T) {
 
 		Convey("/version prints version", func() {
 			// Should not panic or error
-			So(func() { r.Execute("version") }, ShouldNotPanic)
+			So(func() { r.Execute("version", "none") }, ShouldNotPanic)
 		})
 
 		Convey("/session new creates session", func() {
 			So(mgr.Active(), ShouldBeNil)
-			r.Execute("session new")
+			r.Execute("session new", "none")
 			So(mgr.Active(), ShouldNotBeNil)
 		})
 
 		Convey("unknown command does not panic", func() {
-			So(func() { r.Execute("nonexistent") }, ShouldNotPanic)
+			So(func() { r.Execute("nonexistent", "none") }, ShouldNotPanic)
 		})
 	})
 }

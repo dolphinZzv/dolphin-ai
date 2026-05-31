@@ -44,9 +44,16 @@ func (r *Registry) SetAgentIO(aio *agentio.AgentIO) {
 
 // Execute parses and runs a slash command line (without the leading "/").
 // Returns the command output as a string.
-func (r *Registry) Execute(line string) string {
+func (r *Registry) Execute(line string, renderMode string) string {
 	orig := r.root.OutOrStdout()
 	defer r.root.SetOut(orig)
+	defer r.root.SetUsageTemplate(r.root.UsageTemplate())
+
+	if renderMode == "markdown" {
+		r.root.SetUsageTemplate(markdownUsageTemplate)
+	} else {
+		r.root.SetUsageTemplate(defaultUsageTemplate)
+	}
 
 	var buf bytes.Buffer
 	r.root.SetOut(&buf)
@@ -54,3 +61,14 @@ func (r *Registry) Execute(line string) string {
 	_ = r.root.Execute()
 	return strings.TrimRight(buf.String(), "\n")
 }
+
+const defaultUsageTemplate = `Usage: /{{.Use}}{{if .HasAvailableSubCommands}} [command]{{end}}
+
+Available Commands:{{range .Commands}}{{if .IsAvailableCommand}}
+  {{rpad .Name .NamePadding }} {{.Short}}{{end}}{{end}}
+
+{{if .HasAvailableLocalFlags}}Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}
+`
+
+const markdownUsageTemplate = "## Usage\n\n`/{{.Use}}{{if .HasAvailableSubCommands}} [command]{{end}}`\n\n{{if .HasAvailableSubCommands}}**Available Commands:**{{range .Commands}}{{if .IsAvailableCommand}}\n- **`{{.Name}}`**: {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}\n\n**Flags:**\n```\n{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}\n```{{end}}\n"

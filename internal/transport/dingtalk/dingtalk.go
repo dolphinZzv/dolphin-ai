@@ -225,9 +225,10 @@ func (d *DingTalk) Close() error {
 
 func (d *DingTalk) Capability() transport.Capability {
 	return transport.Capability{
-		Interactive: false,
-		Streamable:  false,
-		NestRead:    false,
+		Interactive:        false,
+		Streamable:         false,
+		NestRead:           false,
+		RenderTextMarkdown: "markdown",
 	}
 }
 

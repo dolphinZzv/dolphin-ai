@@ -932,9 +932,10 @@ func (w *WeWork) Close() error {
 
 func (w *WeWork) Capability() transport.Capability {
 	return transport.Capability{
-		Interactive: false,
-		Streamable:  false,
-		NestRead:    false,
+		Interactive:        false,
+		Streamable:         false,
+		NestRead:           false,
+		RenderTextMarkdown: "markdown",
 	}
 }
 
