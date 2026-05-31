@@ -3,6 +3,7 @@ package brain
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -141,6 +142,30 @@ func (b *Brain) Read(ctx context.Context, path string) (string, error) {
 		return "", fmt.Errorf("brain: read %s: %w", path, err)
 	}
 	return string(data), nil
+}
+
+// ResolveMarkDownFile reads a file with model-specific override.
+// If modelName is provided, it first tries basePath with @modelName inserted
+// before the .md extension. Falls back to basePath if the model-specific file
+// does not exist.
+func (b *Brain) ResolveMarkDownFile(ctx context.Context, basePath, modelName string) (string, error) {
+	if modelName != "" {
+		modelPath := insertModelSuffix(basePath, modelName)
+		content, err := b.Read(ctx, modelPath)
+		if err == nil {
+			return content, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+	}
+	return b.Read(ctx, basePath)
+}
+
+func insertModelSuffix(basePath, modelName string) string {
+	ext := filepath.Ext(basePath)
+	base := strings.TrimSuffix(basePath, ext)
+	return base + "@" + modelName + ext
 }
 
 // Write writes content to a file in the brain directory and creates a git commit.

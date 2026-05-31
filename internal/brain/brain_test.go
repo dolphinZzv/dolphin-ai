@@ -269,6 +269,127 @@ func TestReadIndex(t *testing.T) {
 	}
 }
 
+func TestResolveMarkDownFile_modelOverride(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	b := New(dir)
+	if err := b.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	// Write base file.
+	if err := b.Write(ctx, "DESIGN.md", "", "# Default Design"); err != nil {
+		t.Fatalf("write base: %v", err)
+	}
+	// Write model-specific override.
+	if err := b.Write(ctx, "DESIGN@claude-sonnet-4-6.md", "", "# Claude Design"); err != nil {
+		t.Fatalf("write override: %v", err)
+	}
+
+	got, err := b.ResolveMarkDownFile(ctx, "DESIGN.md", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("ResolveMarkDownFile failed: %v", err)
+	}
+	if !strings.Contains(got, "Claude Design") {
+		t.Errorf("expected model override content, got: %s", got)
+	}
+}
+
+func TestResolveMarkDownFile_fallbackToBase(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	b := New(dir)
+	if err := b.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	if err := b.Write(ctx, "DESIGN.md", "", "# Default Design"); err != nil {
+		t.Fatalf("write base: %v", err)
+	}
+
+	// Model override doesn't exist — should fall back.
+	got, err := b.ResolveMarkDownFile(ctx, "DESIGN.md", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("ResolveMarkDownFile failed: %v", err)
+	}
+	if !strings.Contains(got, "Default Design") {
+		t.Errorf("expected fallback content, got: %s", got)
+	}
+}
+
+func TestResolveMarkDownFile_noModelName(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	b := New(dir)
+	if err := b.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	if err := b.Write(ctx, "DESIGN.md", "", "# Default Design"); err != nil {
+		t.Fatalf("write base: %v", err)
+	}
+
+	got, err := b.ResolveMarkDownFile(ctx, "DESIGN.md", "")
+	if err != nil {
+		t.Fatalf("ResolveMarkDownFile failed: %v", err)
+	}
+	if !strings.Contains(got, "Default Design") {
+		t.Errorf("expected base content for empty model, got: %s", got)
+	}
+}
+
+func TestResolveMarkDownFile_bothMissing(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	b := New(dir)
+	if err := b.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	_, err := b.ResolveMarkDownFile(ctx, "NONEXISTENT.md", "some-model")
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
+
+func TestResolveMarkDownFile_modelSpecificOnly(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	b := New(dir)
+	if err := b.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	// Only model-specific file exists, no base.
+	if err := b.Write(ctx, "CONFIG@deepseek-v4.md", "", "# Deepseek Config"); err != nil {
+		t.Fatalf("write model file: %v", err)
+	}
+
+	got, err := b.ResolveMarkDownFile(ctx, "CONFIG.md", "deepseek-v4")
+	if err != nil {
+		t.Fatalf("ResolveMarkDownFile failed: %v", err)
+	}
+	if !strings.Contains(got, "Deepseek Config") {
+		t.Errorf("expected model content, got: %s", got)
+	}
+}
+
+func TestInsertModelSuffix(t *testing.T) {
+	tests := []struct {
+		base, model, expected string
+	}{
+		{"DESIGN.md", "claude-sonnet-4-6", "DESIGN@claude-sonnet-4-6.md"},
+		{"workflow.md", "gpt-4o", "workflow@gpt-4o.md"},
+		{"rules/code-style.md", "deepseek-v4", "rules/code-style@deepseek-v4.md"},
+	}
+	for _, tt := range tests {
+		got := insertModelSuffix(tt.base, tt.model)
+		if got != tt.expected {
+			t.Errorf("insertModelSuffix(%q, %q) = %q, want %q", tt.base, tt.model, got, tt.expected)
+		}
+	}
+}
+
 func TestReadIndexNoGit(t *testing.T) {
 	// ReadIndex should work even without git (e.g. during pipeline init sequence).
 	dir := t.TempDir()
