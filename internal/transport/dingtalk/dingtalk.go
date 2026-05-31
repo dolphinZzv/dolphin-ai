@@ -281,28 +281,8 @@ func (d *DingTalk) handleBotMessage(ctx context.Context, data *chatbot.BotCallba
 		d.lastSenderNick = data.SenderNick
 		d.lastConvID = data.ConversationId
 		d.mu.Unlock()
-		// Strip @-mention so the raw command text is exposed.
 		msg := strings.TrimSpace(data.Text.Content)
 		msg = stripAtMention(msg, d.agentName)
-
-		// Slash commands bypass sender info prepending so UserIO.Handle()
-		// can detect the "/" prefix. Regular messages get sender context.
-		if strings.HasPrefix(msg, "/") {
-			select {
-			case d.msgChan <- msg:
-			default:
-				d.logger.Warn("dingtalk msgChan full, dropping message")
-			}
-			return []byte("ok"), nil
-		}
-
-		if data.SenderNick != "" && data.SenderId != "" {
-			msg = fmt.Sprintf("用户昵称: %s\n用户ID: %s\n%s", data.SenderNick, data.SenderId, msg)
-		} else if data.SenderNick != "" {
-			msg = fmt.Sprintf("用户昵称: %s\n%s", data.SenderNick, msg)
-		} else if data.SenderId != "" {
-			msg = fmt.Sprintf("用户ID: %s\n%s", data.SenderId, msg)
-		}
 		select {
 		case d.msgChan <- msg:
 		default:

@@ -331,21 +331,6 @@ func (w *WeWork) handleMessageCallback(data []byte) {
 	msg := strings.TrimSpace(cb.Body.Text.Content)
 	msg = stripAtMention(msg, w.agentName)
 
-	// Slash commands bypass sender info prepending so UserIO.Handle()
-	// can detect the "/" prefix. Regular messages get sender context.
-	if strings.HasPrefix(msg, "/") {
-		select {
-		case w.msgChan <- msg:
-		default:
-			w.logger.Warn("wework msgChan full, dropping message")
-		}
-		return
-	}
-
-	if cb.Body.From.UserID != "" {
-		msg = fmt.Sprintf("用户ID: %s\n%s", cb.Body.From.UserID, msg)
-	}
-
 	select {
 	case w.msgChan <- msg:
 	default:
