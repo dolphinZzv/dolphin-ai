@@ -67,6 +67,17 @@ func init() {
 			// context
 			"context_desc": "Show full system context (brain index, skills, etc.)",
 
+			// commands
+			"commands_manage":    "List and manage commands",
+			"commands_list":      "List all commands",
+			"commands_show":      "Show a command's details and content",
+			"commands_none":      "No commands available",
+			"commands_available": "Available commands:",
+			"commands_enabled":   "enabled",
+			"commands_disabled":  "disabled",
+			"commands_total":     "  (total: %d commands)\n",
+			"commands_not_found": "command %q not found\n",
+
 			// error
 			"error_format": "error: %v\n",
 
@@ -141,6 +152,17 @@ func init() {
 
 			// context
 			"context_desc": "显示完整系统上下文（大脑索引、技能等）",
+
+			// commands
+			"commands_manage":    "列出和管理命令",
+			"commands_list":      "列出所有命令",
+			"commands_show":      "查看命令详情",
+			"commands_none":      "没有可用命令",
+			"commands_available": "可用命令:",
+			"commands_enabled":   "已启用",
+			"commands_disabled":  "已禁用",
+			"commands_total":     "  (共 %d 个命令)\n",
+			"commands_not_found": "命令 %q 未找到\n",
 
 			// error
 			"error_format": "错误: %v\n",

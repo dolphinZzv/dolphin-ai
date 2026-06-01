@@ -201,6 +201,21 @@ func (b *Brain) Write(ctx context.Context, path, summary, content string) error 
 	return b.commitPath(path, msg)
 }
 
+// Delete removes a file from the brain directory and creates a git commit.
+func (b *Brain) Delete(ctx context.Context, path string) error {
+	full, err := b.safePath(path)
+	if err != nil {
+		return err
+	}
+	if _, err := os.Stat(full); os.IsNotExist(err) {
+		return fmt.Errorf("brain: delete %s: %w", path, os.ErrNotExist)
+	}
+	if err := os.Remove(full); err != nil {
+		return fmt.Errorf("brain: delete %s: %w", path, err)
+	}
+	return b.commitPath(path, "delete "+path)
+}
+
 // List recursively lists .md files in the brain directory relative to root.
 func (b *Brain) List(ctx context.Context) ([]string, error) {
 	var files []string
