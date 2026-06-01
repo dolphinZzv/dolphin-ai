@@ -1,0 +1,36 @@
+baseURL: https://dolphinZzv.github.io/dolphin-ai/
+languageCode: zh-cn
+title: Dolphin — AI Agent
+
+theme: dolphin
+
+params:
+  description: 多平台 AI 代理，支持 DingTalk、WeWork、Email、Stdio
+
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+
+menu:
+  main:
+    - identifier: home
+      name: 首页
+      url: /
+      weight: 1
+    - identifier: docs
+      name: 文档
+      url: /docs/
+      weight: 2
+    - identifier: config
+      name: 配置
+      url: /docs/config/
+      weight: 3
+    - identifier: transport
+      name: 传输层
+      url: /docs/transport/
+      weight: 4
+    - identifier: commands
+      name: 命令
+      url: /docs/commands/
+      weight: 5

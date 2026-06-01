@@ -28,3 +28,6 @@ config.yaml
 data
 coverage.out
 *config.yaml
+
+# Hugo docs
+docs/public/
