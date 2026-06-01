@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"dolphin/internal/common"
@@ -80,7 +81,7 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 					return
 				}
 				if line != "" {
-					lineCh <- line
+					lineCh <- s.maybeExit(line)
 					return
 				}
 				// empty line, keep waiting
@@ -110,7 +111,7 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 			}
 			line = line[:len(line)-1] // trim trailing newline
 			if line != "" {
-				lineCh <- line
+				lineCh <- s.maybeExit(line)
 				return
 			}
 			// empty line, keep waiting
@@ -125,6 +126,15 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+func (s *Stdio) maybeExit(line string) string {
+	switch strings.TrimSpace(strings.ToLower(line)) {
+	case "exit", "quit", "/exit", "/quit":
+		fmt.Fprintln(os.Stdout, "bye")
+		os.Exit(0)
+	}
+	return line
 }
 
 func (s *Stdio) Write(ctx context.Context, text string) error {
