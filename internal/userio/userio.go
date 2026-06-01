@@ -3,26 +3,36 @@ package userio
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 
 	"dolphin/internal/agentio"
+	"dolphin/internal/brain"
 	"dolphin/internal/command"
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 )
 
+// interactiveRunner allows transports to run interactive commands that need terminal control.
+type interactiveRunner interface {
+	RunInteractive(ctx context.Context, name string, args ...string) error
+}
+
 type UserIO struct {
 	agentIO    *agentio.AgentIO
 	cmdReg     *command.Registry
+	brain      *brain.Brain
 	sessionMgr *session.Manager
 }
 
-func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, mgr *session.Manager) *UserIO {
+func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, b *brain.Brain, mgr *session.Manager) *UserIO {
 	return &UserIO{
 		agentIO:    a,
 		cmdReg:     cmdReg,
+		brain:      b,
 		sessionMgr: mgr,
 	}
 }
@@ -33,6 +43,77 @@ func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, mgr *session.Manage
 func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) bool {
 	if strings.HasPrefix(input, "/") {
 		line := strings.TrimPrefix(input, "/")
+		words := strings.Fields(line)
+
+		// If not a built-in command, try brain script, then system command.
+		if len(words) > 0 && !u.cmdReg.HasCommand(words[0]) {
+			// Try brain script.
+			if u.brain != nil {
+				s, err := brain.ReadScript(ctx, u.brain, words[0])
+				if err == nil {
+					if !s.Enabled {
+						_ = tio.Write(ctx, fmt.Sprintf("script %q is disabled\n", words[0]))
+						return false
+					}
+					if s.Content == "" {
+						_ = tio.Write(ctx, fmt.Sprintf("script %q has no content\n", words[0]))
+						return false
+					}
+					sess := tio.NewSession(ctx)
+					if sess == nil {
+						sess = u.sessionMgr.NewSession(ctx)
+					}
+					ctx = transport.WithInfo(ctx, &transport.Info{ID: tio.ID()})
+					u.agentIO.SendTurn(ctx, &agentio.Turn{
+						TransportID: tio.ID(),
+						SessionID:   sess.ID,
+						Input:       s.Content,
+						Context:     tio.Context(),
+					})
+					return true
+				}
+			}
+
+			// Try system command.
+			if _, lookErr := exec.LookPath(words[0]); lookErr == nil {
+				if isInteractiveCmd(words[0], words[1:]) {
+					// Interactive — hand terminal over to child process.
+					if runner, ok := tio.(interactiveRunner); ok {
+						_ = runner.RunInteractive(ctx, words[0], words[1:]...)
+						return false
+					}
+					// Transport cannot run interactive, fall through to LLM.
+				} else {
+					// Non-interactive — capture output.
+					cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+					defer cancel()
+					cmd := exec.CommandContext(cmdCtx, words[0], words[1:]...)
+					output, _ := cmd.CombinedOutput()
+					outStr := string(output)
+					const maxOutput = 64 * 1024
+					if len(outStr) > maxOutput {
+						outStr = outStr[:maxOutput] + "\n... (output truncated)"
+					}
+					_ = tio.Write(ctx, outStr)
+					return false
+				}
+			}
+
+			// Not found anywhere — send to LLM for analysis.
+			sess := tio.NewSession(ctx)
+			if sess == nil {
+				sess = u.sessionMgr.NewSession(ctx)
+			}
+			ctx = transport.WithInfo(ctx, &transport.Info{ID: tio.ID()})
+			u.agentIO.SendTurn(ctx, &agentio.Turn{
+				TransportID: tio.ID(),
+				SessionID:   sess.ID,
+				Input:       fmt.Sprintf(i18n.T("userio.script_not_found"), words[0]),
+				Context:     tio.Context(),
+			})
+			return true
+		}
+
 		out := u.cmdReg.Execute(ctx, line, tio.Capability().RenderTextMarkdown)
 		if out != "" {
 			_ = tio.Write(ctx, out+"\n")
@@ -137,4 +218,20 @@ func (u *UserIO) Select(ctx context.Context, tio transport.IO, opts []string) (i
 	}
 
 	return strconv.Atoi(strings.TrimSpace(answer))
+}
+
+// isInteractiveCmd returns true for commands that run interactively and never exit on their own.
+func isInteractiveCmd(name string, args []string) bool {
+	switch name {
+	case "top", "htop", "btop", "iotop", "iftop",
+		"less", "more", "most",
+		"vim", "vi", "nvim", "nano", "emacs", "micro",
+		"ssh", "telnet", "nc", "ncat",
+		"fzf",
+		"hexdump", "xxd", "watch":
+		return true
+	case "python", "python3", "node", "irb", "bash", "sh", "zsh":
+		return len(args) == 0
+	}
+	return false
 }

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"dolphin/internal/common"
+	"dolphin/internal/i18n"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -137,7 +138,7 @@ func NewEmail(cfg EmailConfig, logger *zap.Logger, agentName string) *Email {
 
 func (e *Email) ID() string { return e.id }
 
-func (e *Email) Context() string          { return "当前消息来自邮件" }
+func (e *Email) Context() string          { return i18n.T("transport.context_email") }
 func (e *Email) Tools() []common.ToolDesc { return nil }
 
 // Read polls IMAP inbox for unseen messages and blocks until one arrives.
@@ -204,7 +205,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 
 		// Return clean format: subject + body.
 		if subject != "" {
-			content = "标题: " + subject + "\n" + content
+			content = i18n.T("transport.email_subject") + subject + "\n" + content
 		}
 		return strings.TrimSpace(content), nil
 	}
@@ -269,16 +270,16 @@ func (e *Email) Capability() Capability {
 }
 
 func (e *Email) RequestPermission(_ context.Context, _ string) (PermissionResult, error) {
-	return PermissionDenied, fmt.Errorf("email transport does not support interactive permission requests, add rules to permissions.json")
+	return PermissionDenied, fmt.Errorf("%s", i18n.T("transport.email_no_interactive"))
 }
 
 // rejectMessage sends a rejection email to the sender via SMTP.
 func (e *Email) rejectMessage(ctx context.Context, to, subject, messageId string) {
 
 	rejectSubj := "Re: " + subject
-	body := "抱歉，您没有权限向此邮箱发送消息，您的邮件已被忽略。"
+	body := i18n.T("transport.email_denied")
 	if len(e.allowSenders) == 0 {
-		body = "机器人暂未配置白名单，请联系管理员配置后使用"
+		body = i18n.T("transport.email_no_whitelist")
 	}
 	msg := e.buildMessage(to, rejectSubj, body, messageId, "")
 	_ = e.sendSMTP(ctx, to, msg)

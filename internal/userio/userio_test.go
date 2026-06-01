@@ -98,7 +98,7 @@ func TestUserIO(t *testing.T) {
 		mgr := session.NewManager(t.TempDir())
 		cmdReg := command.NewRegistry(mgr, sb)
 		aio := agentio.NewAgentIO(10, mgr, sb, logger, "Dolphin")
-		uio := NewUserIO(aio, cmdReg, mgr)
+		uio := NewUserIO(aio, cmdReg, nil, mgr)
 
 		Convey("NewUserIO creates instance", func() {
 			So(uio, ShouldNotBeNil)

@@ -528,7 +528,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 
 	switch result {
 	case permission.Deny:
-		return fmt.Errorf("tool %q is denied by permission rules", call.Name)
+		return fmt.Errorf(i18n.T("agentloop.tool_denied"), call.Name)
 	case permission.Allow:
 		return nil
 	case permission.NoMatch:
@@ -537,17 +537,17 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 		}
 		// Default mode: try to ask the user.
 		if s.GetTransport == nil {
-			return fmt.Errorf("tool %q requires permission — add an allow rule to permissions.json", call.Name)
+			return fmt.Errorf(i18n.T("agentloop.tool_requires_permission"), call.Name)
 		}
 		tio := s.GetTransport(state.TransportID)
 		if tio == nil {
-			return fmt.Errorf("tool %q requires permission — add an allow rule to permissions.json", call.Name)
+			return fmt.Errorf(i18n.T("agentloop.tool_requires_permission"), call.Name)
 		}
 
 		prompt := fmt.Sprintf(i18n.T("agentloop.tool_permission_request"), call.Name, call.Arguments)
 		permResult, err := tio.RequestPermission(ctx, prompt)
 		if err != nil {
-			return fmt.Errorf("tool %q permission request failed: %w", call.Name, err)
+			return fmt.Errorf(i18n.T("agentloop.tool_permission_failed"), call.Name, err)
 		}
 
 		switch permResult {
@@ -559,7 +559,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 			}
 			return nil
 		default:
-			return fmt.Errorf("tool %q was denied by the user", call.Name)
+			return fmt.Errorf(i18n.T("agentloop.tool_denied_by_user"), call.Name)
 		}
 	}
 	return nil

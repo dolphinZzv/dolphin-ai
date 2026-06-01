@@ -35,7 +35,9 @@ func (b *BrainBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	fmt.Fprintf(os.Stdout, "brain: %s (git repo)\n", brainDir)
 	tool.RegisterBrainTools(c.ToolReg, br)
 	tool.RegisterCommandTools(c.ToolReg, br)
+	tool.RegisterScriptTools(c.ToolReg, br)
 	command.RegisterCommands(c.CmdReg, br)
+	command.RegisterScripts(c.CmdReg, br)
 	c.Brain = br
 
 	if c.SkillStore != nil {

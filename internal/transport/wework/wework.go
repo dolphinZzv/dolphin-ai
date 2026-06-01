@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dolphin/internal/common"
+	"dolphin/internal/i18n"
 	transport "dolphin/internal/transport"
 	"dolphin/internal/types"
 
@@ -132,7 +133,7 @@ func NewWeWork(cfg WeWorkConfig, logger *zap.Logger, agentName string) *WeWork {
 func (w *WeWork) ID() string { return w.id }
 
 func (w *WeWork) Context() string {
-	return "当前消息来自企业微信。请使用 FILE_UPLOAD 工具上传和发送文件/图片。企业微信 markdown 不支持内嵌图片，上传图片后工具会自动以原生图片消息发送到会话。"
+	return i18n.T("wework.context")
 }
 func (w *WeWork) Tools() []common.ToolDesc { return nil }
 
@@ -370,7 +371,7 @@ func (w *WeWork) rejectMessage(reqID, userID string) {
 	if reqID == "" {
 		return
 	}
-	msg := fmt.Sprintf("机器人暂未配置白名单，请联系管理员配置添加 %s 后使用", userID)
+	msg := fmt.Sprintf(i18n.T("wework.denied"), userID)
 	payload := map[string]any{
 		"cmd": "aibot_respond_msg",
 		"headers": map[string]string{
@@ -951,7 +952,7 @@ func (w *WeWork) Capability() transport.Capability {
 }
 
 func (w *WeWork) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
-	return transport.PermissionDenied, fmt.Errorf("wework transport does not support interactive permission requests, add rules to permissions.json")
+	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("wework.no_interactive"))
 }
 
 // UserID returns the WeWork user ID of the most recent message sender.

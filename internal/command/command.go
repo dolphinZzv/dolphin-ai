@@ -58,6 +58,12 @@ func (r *Registry) SetAgentIO(aio *agentio.AgentIO) {
 	r.agentIO = aio
 }
 
+// HasCommand reports whether a command with the given name is registered in the root.
+func (r *Registry) HasCommand(name string) bool {
+	_, _, err := r.root.Find(strings.Fields(name))
+	return err == nil
+}
+
 // resolveI18nAnnotations refreshes all dynamic i18n Short fields on registered commands.
 func (r *Registry) resolveI18nAnnotations() {
 	var walk func(cmd *cobra.Command)

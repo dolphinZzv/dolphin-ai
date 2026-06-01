@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 
 	"dolphin/internal/common"
+	"dolphin/internal/i18n"
 
 	"github.com/chzyer/readline"
 )
@@ -155,11 +157,11 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 func (s *Stdio) maybeExit(line string) string {
 	switch strings.TrimSpace(strings.ToLower(line)) {
 	case "exit", "quit", "/exit", "/quit":
-		fmt.Fprint(os.Stdout, "确认退出？(y/N) ")
+		fmt.Fprint(os.Stdout, i18n.T("transport.stdio_exit_confirm"))
 		reply, _ := bufio.NewReader(os.Stdin).ReadString('\n')
 		reply = strings.TrimSpace(strings.ToLower(reply))
 		if reply == "y" || reply == "yes" {
-			fmt.Fprintln(os.Stdout, "bye")
+			fmt.Fprintln(os.Stdout, i18n.T("transport.stdio_bye"))
 			os.Exit(0)
 		}
 		return ""
@@ -188,6 +190,35 @@ func (s *Stdio) Close() error {
 	return nil
 }
 
+// RunInteractive suspends readline and runs a command connected to the real terminal.
+func (s *Stdio) RunInteractive(ctx context.Context, name string, args ...string) error {
+	if s.rl != nil {
+		s.rl.Close()
+		s.rl = nil
+	}
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Run()
+	// Re-create readline instance.
+	host := s.user
+	if host == "" {
+		host = "unknown"
+	}
+	rl, rlErr := readline.NewEx(&readline.Config{
+		Prompt:          host + "> ",
+		HistoryFile:     "/tmp/dolphin_history",
+		InterruptPrompt: "^C",
+	})
+	if rlErr == nil {
+		s.rl = rl
+	} else {
+		fmt.Fprintf(os.Stderr, "failed to re-init readline: %v\n", rlErr)
+	}
+	return err
+}
+
 func (s *Stdio) Capability() Capability {
 	return Capability{
 		Interactive:        true,
@@ -198,7 +229,7 @@ func (s *Stdio) Capability() Capability {
 }
 
 func (s *Stdio) RequestPermission(_ context.Context, prompt string) (PermissionResult, error) {
-	fmt.Fprint(os.Stdout, prompt+"\n1) 同意一次  2) 以后都同意  3) 拒绝\n选择 (1/2/3): ")
+	fmt.Fprint(os.Stdout, prompt+i18n.T("transport.stdio_permission_menu"))
 
 	var reply string
 	if s.rl != nil {

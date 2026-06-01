@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dolphin/internal/common"
+	"dolphin/internal/i18n"
 	transport "dolphin/internal/transport"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
@@ -142,7 +143,7 @@ func NewDingTalk(cfg DingTalkConfig, logger *zap.Logger, agentName string) *Ding
 
 func (d *DingTalk) ID() string { return d.id }
 
-func (d *DingTalk) Context() string          { return "当前消息来自钉钉群" }
+func (d *DingTalk) Context() string          { return i18n.T("dingtalk.context") }
 func (d *DingTalk) Tools() []common.ToolDesc { return nil }
 
 // Read blocks until a message is received from DingTalk Stream Mode.
@@ -244,7 +245,7 @@ func (d *DingTalk) Capability() transport.Capability {
 }
 
 func (d *DingTalk) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
-	return transport.PermissionDenied, fmt.Errorf("dingtalk transport does not support interactive permission requests, add rules to permissions.json")
+	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("dingtalk.no_interactive"))
 }
 
 // ---------------------------------------------------------------------------
@@ -313,9 +314,9 @@ func (d *DingTalk) rejectMessage(ctx context.Context, nick string) {
 	if d.cfg.WebhookURL == "" {
 		return
 	}
-	msg := "@" + nick + " 抱歉，您没有权限使用此机器人"
+	msg := fmt.Sprintf(i18n.T("dingtalk.denied"), nick)
 	if len(d.allowUsers) == 0 {
-		msg = "机器人暂未配置白名单，请联系管理员配置后使用"
+		msg = i18n.T("dingtalk.no_whitelist")
 	}
 	payload := map[string]any{
 		"msgtype": "text",

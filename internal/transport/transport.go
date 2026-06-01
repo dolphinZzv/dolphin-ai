@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"dolphin/internal/common"
+	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 )
 
@@ -86,7 +87,7 @@ func (r *Registry) Build(ctx context.Context, typ string, cfg map[string]any) (I
 	builder, ok := r.builders[typ]
 	r.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("unknown transport type: %s", typ)
+		return nil, fmt.Errorf(i18n.T("transport.unknown_type"), typ)
 	}
 	return builder(ctx, cfg)
 }

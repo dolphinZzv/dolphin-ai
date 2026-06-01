@@ -78,6 +78,16 @@ func init() {
 			"commands_total":     "  (total: %d commands)\n",
 			"commands_not_found": "command %q not found\n",
 
+			// scripts
+			"scripts_manage":    "List and manage scripts",
+			"scripts_list":      "List all scripts",
+			"scripts_none":      "No scripts available",
+			"scripts_available": "Available scripts:",
+			"scripts_disabled":  "disabled",
+			"scripts_enabled":   "enabled",
+			"scripts_total":     "  (total: %d scripts)\n",
+			"scripts_not_found": "script %q not found\n",
+
 			// error
 			"error_format": "error: %v\n",
 
@@ -163,6 +173,16 @@ func init() {
 			"commands_disabled":  "已禁用",
 			"commands_total":     "  (共 %d 个命令)\n",
 			"commands_not_found": "命令 %q 未找到\n",
+
+			// scripts
+			"scripts_manage":    "管理和查看脚本",
+			"scripts_list":      "列出所有脚本",
+			"scripts_none":      "没有可用脚本",
+			"scripts_available": "可用脚本:",
+			"scripts_disabled":  "已禁用",
+			"scripts_enabled":   "已启用",
+			"scripts_total":     "  (共 %d 个脚本)\n",
+			"scripts_not_found": "脚本 %q 未找到\n",
 
 			// error
 			"error_format": "错误: %v\n",
