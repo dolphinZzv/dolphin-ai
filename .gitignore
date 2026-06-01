@@ -32,3 +32,6 @@ coverage.out
 # Hugo docs
 docs/public/
 docs/.hugo_build.lock
+
+DESIGN.md
+SOUL.md

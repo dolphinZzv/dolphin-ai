@@ -196,4 +196,8 @@ func (p *Pipeline) Shutdown() {
 	if p.otelShutdown != nil {
 		p.otelShutdown()
 	}
+
+	if p.logger != nil {
+		_ = p.logger.Sync()
+	}
 }

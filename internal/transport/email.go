@@ -45,8 +45,21 @@ func init() {
 }
 
 func valOr(cfg map[string]any, key, def string) string {
-	if v, ok := cfg[key].(string); ok && v != "" {
-		return v
+	if v, ok := cfg[key]; ok {
+		switch val := v.(type) {
+		case string:
+			return val
+		case []any:
+			var parts []string
+			for _, item := range val {
+				if s, ok := item.(string); ok {
+					parts = append(parts, strings.TrimSpace(s))
+				}
+			}
+			if len(parts) > 0 {
+				return strings.Join(parts, ",")
+			}
+		}
 	}
 	return def
 }

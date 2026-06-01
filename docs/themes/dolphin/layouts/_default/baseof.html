@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="{{ .Site.LanguageCode }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} — {{ .Site.Title }}{{ end }}</title>
+  <meta name="description" content="{{ with .Description }}{{ . }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&family=JetBrains+Mono&family=Playfair+Display&display=swap" rel="stylesheet">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            canvas: 'var(--color-canvas)',
+            'surface-card': 'var(--color-surface-card)',
+            'surface-soft': 'var(--color-surface-soft)',
+            'surface-dark': 'var(--color-surface-dark)',
+            'surface-dark-soft': 'var(--color-surface-dark-soft)',
+            'surface-dark-elevated': 'var(--color-surface-dark-elevated)',
+            primary: 'var(--color-primary)',
+            'primary-active': 'var(--color-primary-active)',
+            'primary-disabled': 'var(--color-primary-disabled)',
+            'accent-teal': '#5db8a6',
+            'accent-amber': '#e8a55a',
+            ink: 'var(--color-ink)',
+            'body-strong': 'var(--color-body-strong)',
+            body: 'var(--color-body)',
+            muted: 'var(--color-muted)',
+            'muted-soft': 'var(--color-muted-soft)',
+            'on-primary': '#ffffff',
+            'on-dark': '#faf9f5',
+            'on-dark-soft': '#a09d96',
+            hairline: 'var(--color-hairline)',
+            'hairline-soft': 'var(--color-hairline-soft)',
+            success: '#5db872',
+            warning: '#d4a017',
+            error: '#c64545',
+          },
+          fontFamily: {
+            display: ['"Playfair Display"', 'Georgia', 'serif'],
+            body: ['Inter', '"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          },
+          borderRadius: {
+            DEFAULT: '4px',
+          },
+        }
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --color-canvas: #ffffff;
+      --color-surface-card: #f5f5f5;
+      --color-surface-soft: #f5f5f5;
+      --color-surface-dark: #181715;
+      --color-surface-dark-soft: #1f1e1b;
+      --color-surface-dark-elevated: #252320;
+      --color-primary: #1a8a7d;
+      --color-primary-active: #147066;
+      --color-primary-disabled: #c5e8e5;
+      --color-ink: #141413;
+      --color-body-strong: #252523;
+      --color-body: #3d3d3a;
+      --color-muted: #6c6a64;
+      --color-muted-soft: #8e8b82;
+      --color-hairline: #e8e8e8;
+      --color-hairline-soft: #f0f0f0;
+      --color-code-bg: #f5f5f5;
+      --color-code-text: #141413;
+
+      --syn-text: #f8f8f2;
+      --syn-comment: #88846f;
+      --syn-keyword: #f92672;
+      --syn-string: #e6db74;
+      --syn-number: #ae81ff;
+      --syn-function: #a6e22e;
+      --syn-type: #66d9ef;
+      --syn-constant: #66d9ef;
+      --syn-operator: #f92672;
+      --syn-tag: #f92672;
+      --syn-attribute: #a6e22e;
+      --syn-variable: #f8f8f2;
+      --syn-error: #f92672;
+      --syn-punctuation: #f8f8f2;
+      --syn-line: #3d3d3a;
+    }
+
+    html:not(.dark) {
+      --syn-text: #141413;
+      --syn-comment: #8e8b82;
+      --syn-keyword: #d63384;
+      --syn-string: #1a8a7d;
+      --syn-number: #7048e8;
+      --syn-function: #2b8a3e;
+      --syn-type: #0b7285;
+      --syn-constant: #0b7285;
+      --syn-operator: #d63384;
+      --syn-tag: #d63384;
+      --syn-attribute: #2b8a3e;
+      --syn-variable: #141413;
+      --syn-error: #c64545;
+      --syn-punctuation: #141413;
+      --syn-line: #e8e8e8;
+    }
+
+    html.dark {
+      --color-canvas: #181715;
+      --color-surface-card: #252320;
+      --color-surface-soft: #1f1e1b;
+      --color-surface-dark: #0d0c0b;
+      --color-surface-dark-soft: #181715;
+      --color-surface-dark-elevated: #2a2825;
+      --color-primary: #2aa89a;
+      --color-primary-active: #34c4b3;
+      --color-primary-disabled: #1a3a37;
+      --color-ink: #faf9f5;
+      --color-body-strong: #f5f0e8;
+      --color-body: #a09d96;
+      --color-muted: #6c6a64;
+      --color-muted-soft: #5a5852;
+      --color-hairline: #343230;
+      --color-hairline-soft: #2e2c28;
+      --color-code-bg: #0d0c0b;
+      --color-code-text: #faf9f5;
+    }
+
+    body { font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; background: var(--color-canvas); color: var(--color-body); }
+    .content { font-size: 0.9375rem; }
+    .content h2 { @apply text-xl font-semibold mt-12 mb-4 pb-2 border-b border-hairline; color: var(--color-ink); }
+    .content h3 { @apply text-lg font-semibold mt-10 mb-3; color: var(--color-ink); }
+    .content p { @apply mb-4 leading-relaxed; color: var(--color-body); }
+    .content a { color: var(--color-primary); @apply hover:underline; }
+    .content ul, .content ol { @apply mb-4 pl-6; color: var(--color-body); }
+    .content li { @apply mb-1.5; }
+    .content strong { color: var(--color-ink); }
+    .content :not(pre) > code { @apply text-sm; background: var(--color-surface-soft); color: var(--color-ink); padding: 2px 6px; border-radius: 4px; }
+    .content pre { border-radius: 4px; margin-bottom: 1rem; overflow-x: auto; font-size: 0.875rem; background: var(--color-code-bg); }
+    .content pre code { display: block; padding: 0.625rem; background: transparent; color: var(--color-code-text); font-family: "JetBrains Mono", monospace; font-size: 0.8125rem; line-height: 1.6; }
+    .content table { width: 100%; margin-top: 0.75rem; margin-bottom: 2rem; border-collapse: collapse; }
+    @media (max-width: 768px) { .content table { display: block; width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; } }
+    .content th { background: var(--color-surface-soft); font-weight: 600; color: var(--color-ink); padding: 10px 16px; text-align: left; font-size: 0.875rem; border-bottom: 1px solid var(--color-hairline); }
+    .content td { color: var(--color-body); padding: 10px 16px; text-align: left; font-size: 0.875rem; border-bottom: 1px solid var(--color-hairline-soft); }
+    .content tbody tr:nth-child(even) td { background: var(--color-surface-soft); }
+    .content tbody tr:hover td { background: var(--color-surface-card); }
+    .content td:first-child { font-family: "JetBrains Mono", monospace; font-size: 0.8125rem; color: var(--color-ink); white-space: nowrap; }
+    .content blockquote { @apply border-l-4 pl-4 py-2 mb-4; border-color: var(--color-primary); background: var(--color-surface-soft); color: var(--color-body); }
+    .content hr { @apply my-8; border-color: var(--color-hairline); }
+    .content img { max-width: 100%; border-radius: 4px; }
+    .code-block-wrap { position: relative; border-radius: 4px; margin-top: 0.75rem; margin-bottom: 0.75rem; background: var(--color-code-bg); overflow: hidden; }
+    .code-block-wrap .highlight { margin: 0 !important; }
+    .code-block-wrap .highlight pre { margin: 0; padding: 0; border-radius: 0; background: transparent !important; }
+    .code-block-copy { position: absolute; top: 4px; right: 4px; z-index: 10; font-size: 0.6875rem; padding: 4px 10px; border-radius: 4px; background: transparent; color: var(--color-muted); border: none; cursor: pointer; transition: all 0.15s; font-family: inherit; opacity: 0; }
+    .code-block-wrap:hover .code-block-copy { opacity: 1; }
+    html:not(.dark) .code-block-copy:hover { color: var(--color-canvas); background: var(--color-body); }
+    html.dark .code-block-copy:hover { color: var(--color-ink); background: var(--color-surface-card); }
+    .code-block-copy.copied { color: var(--color-accent-teal); }
+    .content pre { position: relative; }
+
+    .chroma { background: transparent; color: var(--syn-text); }
+    .chroma .c { color: var(--syn-comment); font-style: italic; }
+    .chroma .k { color: var(--syn-keyword); }
+    .chroma .kc { color: var(--syn-constant); }
+    .chroma .kd { color: var(--syn-keyword); }
+    .chroma .kn { color: var(--syn-keyword); }
+    .chroma .kp { color: var(--syn-keyword); }
+    .chroma .kr { color: var(--syn-keyword); }
+    .chroma .kt { color: var(--syn-type); }
+    .chroma .s { color: var(--syn-string); }
+    .chroma .sa { color: var(--syn-string); }
+    .chroma .sb { color: var(--syn-string); }
+    .chroma .sc { color: var(--syn-string); }
+    .chroma .dl { color: var(--syn-string); }
+    .chroma .sd { color: var(--syn-comment); font-style: italic; }
+    .chroma .s2 { color: var(--syn-string); }
+    .chroma .se { color: var(--syn-string); }
+    .chroma .sh { color: var(--syn-string); }
+    .chroma .si { color: var(--syn-string); }
+    .chroma .sx { color: var(--syn-string); }
+    .chroma .sr { color: var(--syn-string); }
+    .chroma .s1 { color: var(--syn-string); }
+    .chroma .ss { color: var(--syn-string); }
+    .chroma .m { color: var(--syn-number); }
+    .chroma .mf { color: var(--syn-number); }
+    .chroma .mh { color: var(--syn-number); }
+    .chroma .mi { color: var(--syn-number); }
+    .chroma .mo { color: var(--syn-number); }
+    .chroma .na { color: var(--syn-attribute); }
+    .chroma .nb { color: var(--syn-constant); }
+    .chroma .nc { color: var(--syn-type); }
+    .chroma .no { color: var(--syn-constant); }
+    .chroma .nd { color: var(--syn-function); }
+    .chroma .ni { color: var(--syn-function); }
+    .chroma .ne { color: var(--syn-error); }
+    .chroma .nf { color: var(--syn-function); }
+    .chroma .nl { color: var(--syn-function); }
+    .chroma .nn { color: var(--syn-type); }
+    .chroma .nt { color: var(--syn-tag); }
+    .chroma .nv { color: var(--syn-variable); }
+    .chroma .o { color: var(--syn-operator); }
+    .chroma .ow { color: var(--syn-operator); }
+    .chroma .p { color: var(--syn-punctuation); }
+    .chroma .err { color: var(--syn-error); }
+    .chroma .gd { color: var(--syn-error); }
+    .chroma .gi { color: var(--syn-function); }
+    .chroma .gs { font-weight: bold; }
+    .chroma .ge { font-style: italic; }
+    .chroma .w { color: var(--syn-comment); }
+    .chroma .x { color: var(--syn-text); }
+    .chroma .gp { color: var(--syn-comment); }
+    .chroma .go { color: var(--syn-comment); }
+    .chroma .gu { color: var(--syn-comment); }
+    .chroma .gt { color: var(--syn-error); }
+  </style>
+</head>
+<body class="antialiased">
+  <header{{ if not (or .IsHome (eq .Section "docs")) }} class="border-b" style="border-color: var(--color-hairline)"{{ end }} style="background: var(--color-canvas);">
+    <nav class="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
+      <a href="/" class="text-lg font-display font-normal" style="color: var(--color-ink); letter-spacing:-0.3px">🐬 {{ .Site.Title }}</a>
+      <ul class="flex items-center gap-6">
+        {{ range .Site.Menus.main }}
+        <li class="flex items-center"><a href="{{ .URL }}" class="text-sm leading-none transition-colors" style="color: var(--color-muted);" onmouseover="this.style.color='var(--color-ink)'" onmouseout="this.style.color='var(--color-muted)'">{{ .Name }}</a></li>
+        {{ end }}
+        <li class="flex items-center">
+          <button id="theme-toggle" class="flex items-center transition-colors" style="color: var(--color-muted-soft);" onmouseover="this.style.color='var(--color-ink)'" onmouseout="this.style.color='var(--color-muted-soft)'" aria-label="切换主题">
+            <svg id="theme-icon-auto" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9"/>
+              <path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/>
+            </svg>
+            <svg id="theme-icon-light" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+              <circle cx="12" cy="12" r="5"/>
+              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+            </svg>
+            <svg id="theme-icon-dark" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="hidden">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+          </button>
+        </li>
+        <li class="flex items-center">
+          <a href="https://github.com/dolphinZzv/dolphin-ai" target="_blank" rel="noopener" aria-label="GitHub" class="flex items-center transition-colors" style="color: var(--color-muted-soft);" onmouseover="this.style.color='var(--color-ink)'" onmouseout="this.style.color='var(--color-muted-soft)'">
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+          </a>
+        </li>
+      </ul>
+    </nav>
+  </header>
+  <main class="max-w-4xl mx-auto px-4 py-12">
+    {{ block "main" . }}{{ end }}
+  </main>
+  <footer{{ if or .IsHome (eq .Section "docs") }} class="text-center py-10 text-sm"{{ else }} class="text-center py-10 text-sm border-t"{{ end }} style="color: var(--color-muted-soft); border-color: var(--color-hairline);">
+    <p>&copy; {{ now.Format "2006" }} Dolphin</p>
+  </footer>
+  <script>
+    (function() {
+      var html = document.documentElement;
+      var stored = localStorage.getItem('theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+
+      function applyTheme(mode) {
+        if (mode === 'dark') {
+          html.classList.add('dark');
+        } else if (mode === 'light') {
+          html.classList.remove('dark');
+        } else {
+          if (prefersDark.matches) {
+            html.classList.add('dark');
+          } else {
+            html.classList.remove('dark');
+          }
+        }
+      }
+
+      applyTheme(stored || 'auto');
+
+      document.addEventListener('DOMContentLoaded', function() {
+        var toggle = document.getElementById('theme-toggle');
+        var autoIcon = document.getElementById('theme-icon-auto');
+        var lightIcon = document.getElementById('theme-icon-light');
+        var darkIcon = document.getElementById('theme-icon-dark');
+
+        function updateIcons(mode) {
+          autoIcon.classList.add('hidden');
+          lightIcon.classList.add('hidden');
+          darkIcon.classList.add('hidden');
+          if (mode === 'light') lightIcon.classList.remove('hidden');
+          else if (mode === 'dark') darkIcon.classList.remove('hidden');
+          else autoIcon.classList.remove('hidden');
+        }
+        updateIcons(stored || 'auto');
+
+        toggle.addEventListener('click', function() {
+          var cur = localStorage.getItem('theme') || 'auto';
+          var next = cur === 'auto' ? 'light' : cur === 'light' ? 'dark' : 'auto';
+          localStorage.setItem('theme', next);
+          applyTheme(next);
+          updateIcons(next);
+        });
+
+        prefersDark.addEventListener('change', function() {
+          if (!localStorage.getItem('theme') || localStorage.getItem('theme') === 'auto') {
+            applyTheme('auto');
+          }
+        });
+
+        document.querySelectorAll('.code-block-copy').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var text = this.getAttribute('data-copy');
+            navigator.clipboard.writeText(text).then(function() {
+              btn.textContent = '已复制';
+              btn.classList.add('copied');
+              setTimeout(function() {
+                btn.textContent = '复制';
+                btn.classList.remove('copied');
+              }, 2000);
+            });
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

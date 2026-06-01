@@ -1,0 +1,7 @@
+{{- $lang := .Type -}}
+{{- $code := .Inner -}}
+{{- $highlighted := highlight $code $lang "noClasses=false" -}}
+<div class="code-block-wrap">
+  {{- $highlighted -}}
+  <button class="code-block-copy" data-copy="{{ $code | htmlEscape }}">复制</button>
+</div>

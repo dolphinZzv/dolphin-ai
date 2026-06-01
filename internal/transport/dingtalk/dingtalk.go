@@ -59,6 +59,17 @@ func valOr(cfg map[string]any, key, def string) string {
 		if s, ok := v.(string); ok {
 			return s
 		}
+		if arr, ok := v.([]any); ok {
+			var parts []string
+			for _, item := range arr {
+				if s, ok := item.(string); ok {
+					parts = append(parts, strings.TrimSpace(s))
+				}
+			}
+			if len(parts) > 0 {
+				return strings.Join(parts, ",")
+			}
+		}
 	}
 	return def
 }

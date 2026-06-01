@@ -1,0 +1,41 @@
+{{ define "main" }}
+<section class="text-center" style="padding: 5rem 0 6rem">
+  <h1 class="font-display text-6xl font-normal text-ink mb-4" style="letter-spacing:-1.5px">小海豚</h1>
+  <p class="text-lg text-muted mb-12 max-w-md mx-auto" style="color: var(--color-muted-soft); letter-spacing:0.15em">{{ .Site.Params.description }}</p>
+  <div class="flex flex-col items-center gap-6">
+    <div class="flex items-center gap-2 px-5 py-2.5 rounded-full" style="background: var(--color-surface-soft);">
+      <span class="text-xs text-muted-soft font-mono select-none">$</span>
+      <code class="text-sm text-muted font-mono">go install github.com/dolphinZzv/dolphin-ai/cmd/dolphin@latest</code>
+    </div>
+    <div class="flex gap-4">
+      <a href="{{ "docs/" | relURL }}" class="inline-block px-6 py-2.5 text-sm font-medium rounded-full transition-colors" style="background: var(--color-ink); color: var(--color-canvas);">开始使用</a>
+      <a href="https://github.com/dolphinZzv/dolphin-ai" class="inline-block px-6 py-2.5 text-sm font-medium rounded-full transition-colors" style="background: var(--color-surface-soft); color: var(--color-body);">GitHub</a>
+    </div>
+  </div>
+</section>
+<section class="pb-24" style="max-width: 42rem; margin: 0 auto;">
+  <div class="flex flex-col divide-y" style="border-top: 1px solid var(--color-hairline-soft);">
+    <div class="flex items-start gap-5 py-5">
+      <span class="text-sm font-mono text-muted-soft shrink-0" style="width: 6ch;">01</span>
+      <div>
+        <h2 class="text-base font-medium text-ink mb-1">多平台</h2>
+        <p class="text-sm text-muted">支持 DingTalk、WeWork、Email、Stdio 等多种方式链接</p>
+      </div>
+    </div>
+    <div class="flex items-start gap-5 py-5">
+      <span class="text-sm font-mono text-muted-soft shrink-0" style="width: 6ch;">02</span>
+      <div>
+        <h2 class="text-base font-medium text-ink mb-1">多模型</h2>
+        <p class="text-sm text-muted">非供应商绑定，支持 OpenAI、Anthropic、DeepSeek 等主流模型</p>
+      </div>
+    </div>
+    <div class="flex items-start gap-5 py-5">
+      <span class="text-sm font-mono text-muted-soft shrink-0" style="width: 6ch;">03</span>
+      <div>
+        <h2 class="text-base font-medium text-ink mb-1">可扩展</h2>
+        <p class="text-sm text-muted">支持 Skills、MCP，灵活扩展能力</p>
+      </div>
+    </div>
+  </div>
+</section>
+{{ end }}

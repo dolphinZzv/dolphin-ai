@@ -1,0 +1,25 @@
+{{ define "main" }}
+<div class="flex gap-12">
+  <aside class="w-52 shrink-0 hidden md:block">
+    {{ partial "sidebar.html" . }}
+  </aside>
+  <section class="flex-1 min-w-0">
+    <h1 class="font-display text-3xl font-normal text-ink mb-6" style="letter-spacing:-0.5px">{{ .Title }}</h1>
+    {{ if .Content }}
+    <div class="content mb-10">
+      {{ .Content }}
+    </div>
+    {{ end }}
+    <ul>
+      {{ range .Pages.ByWeight }}
+      <li>
+        <a href="{{ .RelPermalink }}" class="flex items-center gap-3 py-3 text-body hover:text-primary transition-colors group">
+          <span class="text-sm font-mono text-muted-soft group-hover:text-primary transition-colors">→</span>
+          <span>{{ .Title }}</span>
+        </a>
+      </li>
+      {{ end }}
+    </ul>
+  </section>
+</div>
+{{ end }}

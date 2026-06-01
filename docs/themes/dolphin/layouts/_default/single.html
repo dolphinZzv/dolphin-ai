@@ -1,0 +1,15 @@
+{{ define "main" }}
+<div class="flex gap-12">
+  {{ if .CurrentSection }}
+  <aside class="w-52 shrink-0 hidden md:block">
+    {{ partial "sidebar.html" . }}
+  </aside>
+  {{ end }}
+  <article class="flex-1 min-w-0">
+    <h1 class="font-display text-3xl font-normal text-ink mb-8" style="letter-spacing:-0.5px">{{ .Title }}</h1>
+    <div class="content">
+      {{ .Content }}
+    </div>
+  </article>
+</div>
+{{ end }}
