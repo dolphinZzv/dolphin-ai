@@ -4,6 +4,14 @@
 
 ## 快速开始
 
+一键安装：
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/dolphinZzv/dolphin-ai/main/install.sh | bash
+```
+
+或通过 Go 安装：
+
 ```shell
 go install github.com/dolphinZzv/dolphin-ai/cmd/dolphin@latest
 ```
