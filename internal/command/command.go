@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"strings"
 
 	"dolphin/internal/agentio"
@@ -44,7 +45,7 @@ func (r *Registry) SetAgentIO(aio *agentio.AgentIO) {
 
 // Execute parses and runs a slash command line (without the leading "/").
 // Returns the command output as a string.
-func (r *Registry) Execute(line string, renderMode string) string {
+func (r *Registry) Execute(ctx context.Context, line string, renderMode string) string {
 	orig := r.root.OutOrStdout()
 	defer r.root.SetOut(orig)
 	defer r.root.SetUsageTemplate(r.root.UsageTemplate())
@@ -58,7 +59,8 @@ func (r *Registry) Execute(line string, renderMode string) string {
 	var buf bytes.Buffer
 	r.root.SetOut(&buf)
 	r.root.SetArgs(strings.Fields(line))
-	_ = r.root.Execute()
+	r.root.SetContext(ctx)
+	_, _ = r.root.ExecuteC()
 	return strings.TrimRight(buf.String(), "\n")
 }
 

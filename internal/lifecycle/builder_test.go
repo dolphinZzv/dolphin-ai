@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"context"
 	"testing"
 
 	"dolphin/internal/config"
@@ -97,7 +98,7 @@ func TestBuilderCommands(t *testing.T) {
 				StepTools()
 
 			// Execute the mcp command directly.
-			out := b.cmdReg.Execute("mcp", "none")
+			out := b.cmdReg.Execute(context.Background(), "mcp", "none")
 			So(out, ShouldContainSubstring, "Loaded tools")
 		})
 
@@ -110,7 +111,7 @@ func TestBuilderCommands(t *testing.T) {
 				StepLLM().
 				StepTools()
 
-			out := b.cmdReg.Execute("skills list", "none")
+			out := b.cmdReg.Execute(context.Background(), "skills list", "none")
 			So(out, ShouldContainSubstring, "No skills available")
 		})
 
@@ -124,7 +125,7 @@ func TestBuilderCommands(t *testing.T) {
 				StepTools().
 				StepBrain()
 
-			out := b.cmdReg.Execute("context", "none")
+			out := b.cmdReg.Execute(context.Background(), "context", "none")
 			So(out, ShouldNotBeEmpty)
 		})
 	})

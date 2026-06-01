@@ -17,7 +17,7 @@ func RegisterMCP(r *Registry, toolLister interface {
 		Use:   "mcp",
 		Short: "List loaded MCP tools",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defs, err := toolLister.List(context.Background())
+			defs, err := toolLister.List(cmd.Context())
 			if err != nil {
 				return err
 			}
