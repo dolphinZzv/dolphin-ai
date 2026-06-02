@@ -34,8 +34,12 @@ docs:
 	cd docs && hugo server -D
 
 .PHONY: push
-push: test lint build
+push: setup
 	git push
+
+.PHONY: setup
+setup:
+	git config core.hooksPath .githooks
 
 .PHONY: clean
 clean:

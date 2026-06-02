@@ -1,0 +1,11 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "=== Running tests ==="
+go test ./... -count=1
+
+echo "=== Running linter ==="
+golangci-lint run ./...
+
+echo "=== Building ==="
+go build ./...
