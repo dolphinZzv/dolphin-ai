@@ -34,7 +34,7 @@ docs:
 	cd docs && hugo server -D
 
 .PHONY: push
-push: test build
+push: test lint build
 	git push
 
 .PHONY: clean
