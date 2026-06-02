@@ -8,4 +8,7 @@ echo "=== Running tests ==="
 pkgs=$(go list ./... | grep -v "internal/limit")
 go test $pkgs -count=1
 
+echo "=== Running linter (new issues only) ==="
+golangci-lint run ./... --new
+
 echo "=== All checks passed ==="
