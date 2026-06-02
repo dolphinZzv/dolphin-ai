@@ -1,6 +1,7 @@
 # Dolphin-AI
 
 [![CI](https://github.com/dolphinZzv/dolphin-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinZzv/dolphin-ai/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/dolphinZzv/dolphin-ai/branch/main/graph/badge.svg)](https://codecov.io/gh/dolphinZzv/dolphin-ai)
 
 你卓尔不凡
 
