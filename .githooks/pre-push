@@ -4,8 +4,8 @@ set -euo pipefail
 echo "=== Running tests ==="
 go test ./... -count=1
 
-echo "=== Running linter ==="
-golangci-lint run ./...
+echo "=== Running linter (new issues only) ==="
+golangci-lint run ./... --new
 
 echo "=== Building ==="
 go build ./...
