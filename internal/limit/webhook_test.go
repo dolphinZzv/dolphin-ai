@@ -188,6 +188,22 @@ func TestFormatMarkdownSkipsEmptyFields(t *testing.T) {
 	}
 }
 
+func TestFormatMarkdownWithIntValues(t *testing.T) {
+	// B1 regression: payload values are Go int literals, not int64.
+	// formatMarkdownText must handle both via toInt64.
+	w := NewWebhookNotifier(WebhookHTTP, "http://x", newTestLogger(t))
+	text := w.formatMarkdownText(event.Event{
+		Type:      event.EventLimitSoftWarn,
+		SessionID: "s",
+		Payload:   map[string]any{"metric": "requests", "current": 10, "soft": 8, "hard": 10, "model": "m"},
+	})
+	for _, want := range []string{"**软限**: 8", "**硬限**: 10", "**当前值**: 10"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("body missing %q, got: %s", want, text)
+		}
+	}
+}
+
 func TestFriendlyName(t *testing.T) {
 	cases := map[event.Type]string{
 		event.EventLimitSoftWarn:  "软限告警",

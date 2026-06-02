@@ -281,17 +281,17 @@ func TestCheckLLMHardLimitErrorMessage(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected block")
 	}
-	if !strings.Contains(err.Error(), "requests limit") {
+	if !strings.Contains(err.Error(), "requests") {
 		t.Fatalf("error should mention metric name, got: %v", err)
 	}
 }
 
-func TestCheckLLMFailsOpenOnStoreError(t *testing.T) {
+func TestCheckLLMFailsClosedOnStoreError(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{"llm.limit.max_requests": "1"})
 	store := &errStore{err: errBoom}
 	l := NewLimiter(store, cfg, event.NewBus(), newTestLogger(t))
-	if err := l.Handle(context.Background(), checkEvent("m")); err != nil {
-		t.Fatalf("expected pass when store errors, got: %v", err)
+	if err := l.Handle(context.Background(), checkEvent("m")); err == nil {
+		t.Fatal("expected block when store errors and hard limit configured")
 	}
 }
 
@@ -325,7 +325,7 @@ func TestCheckLLMEventPayload(t *testing.T) {
 	}
 }
 
-func TestCheckLLMShortCircuitsOnFirstHard(t *testing.T) {
+func TestCheckLLMReportsAllHardBreaches(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
 		"llm.limit.max_requests":     "1",
 		"llm.limit.max_total_tokens": "1",
@@ -341,9 +341,15 @@ func TestCheckLLMShortCircuitsOnFirstHard(t *testing.T) {
 			atomic.AddInt32(&blocks, 1)
 		}
 	})
-	_ = l.Handle(context.Background(), checkEvent("m"))
-	if atomic.LoadInt32(&blocks) != 1 {
-		t.Fatalf("expected 1 hard block (short-circuit on first), got %d", blocks)
+	err := l.Handle(context.Background(), checkEvent("m"))
+	if err == nil {
+		t.Fatal("expected block")
+	}
+	if atomic.LoadInt32(&blocks) != 2 {
+		t.Fatalf("expected 2 hard block events (one per metric), got %d", blocks)
+	}
+	if !strings.Contains(err.Error(), "requests") || !strings.Contains(err.Error(), "total tokens") {
+		t.Fatalf("error should mention all breached metrics, got: %v", err)
 	}
 }
 

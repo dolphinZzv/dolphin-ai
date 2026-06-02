@@ -151,23 +151,23 @@ func (l *Limiter) checkLLM(ctx context.Context, e event.Event) error {
 	// Gather all limits.
 	limits := l.gatherLimits(modelStr)
 
-	var anySoft bool
+	var (
+		anySoft   bool
+		hardErrs  []string
+	)
 	for _, lm := range limits {
 		current, err := l.store.Get(lm.key)
 		if err != nil {
-			// Fail-open: a transient store error logs a warning but does not
-			// block the LLM call. This avoids an outage when the store is
-			// temporarily unavailable. To make this fail-closed, configure
-			// a Store that returns errors only for truly unrecoverable states.
 			l.logger.Warn("limit: store get failed", zap.String("key", lm.key), zap.Error(err))
+			// Fail-closed: when a hard limit is configured but the store is
+			// unavailable, treat the limit as exceeded to avoid silent overuse.
+			if lm.hard > 0 {
+				hardErrs = append(hardErrs, lm.display)
+			}
 			continue
 		}
 
 		if lm.hard > 0 && current >= lm.hard {
-			// Hard limit exceeded — block.
-			// NOTE: short-circuits on the first breached hard limit.
-			// If multiple metrics breach simultaneously, only the first
-			// fires an alert and the call is rejected with its error.
 			alertKey := lm.key + "/hard"
 			if !l.alerted[alertKey] {
 				l.alerted[alertKey] = true
@@ -189,7 +189,8 @@ func (l *Limiter) checkLLM(ctx context.Context, e event.Event) error {
 					zap.String("model", model),
 				)
 			}
-			return fmt.Errorf("%s limit reached (%d/%d)", lm.display, current, lm.hard)
+			hardErrs = append(hardErrs, fmt.Sprintf("%s (%d/%d)", lm.display, current, lm.hard))
+			continue
 		}
 
 		if soft := lm.soft; soft > 0 && current >= soft {
@@ -220,6 +221,9 @@ func (l *Limiter) checkLLM(ctx context.Context, e event.Event) error {
 		}
 	}
 
+	if len(hardErrs) > 0 {
+		return fmt.Errorf("limit reached: %s", strings.Join(hardErrs, "; "))
+	}
 	if anySoft {
 		l.logger.Info("limit: soft limits exceeded, call allowed")
 	}

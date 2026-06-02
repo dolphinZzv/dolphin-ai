@@ -119,6 +119,27 @@ func (s *FileStore) load() error {
 	return nil
 }
 
+func (s *FileStore) save() error {
+	cd := counterData{
+		Counters:  make(map[string]int64),
+		LastReset: s.lastReset.Format(time.RFC3339),
+	}
+	existing, err := os.ReadFile(s.filePath())
+	if err == nil {
+		var old counterData
+		if err := json.Unmarshal(existing, &old); err != nil {
+			// Corrupt file — back up and start fresh.
+			backup := s.filePath() + ".corrupt." + time.Now().Format("20060102T150405")
+			os.Rename(s.filePath(), backup)
+		} else {
+			for k, v := range old.Counters {
+				cd.Counters[k] = v
+			}
+		}
+	}
+	return s.writeFile(cd)
+}
+
 func (s *FileStore) writeFile(cd counterData) error {
 	data, err := json.MarshalIndent(cd, "", "  ")
 	if err != nil {
