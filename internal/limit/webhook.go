@@ -134,9 +134,9 @@ func (w *WebhookNotifier) formatWeWork(e event.Event) map[string]any {
 func (w *WebhookNotifier) formatMarkdownText(e event.Event) string {
 	payload := e.Payload
 	metric, _ := payload["metric"].(string)
-	current, _ := payload["current"].(int64)
-	soft, _ := payload["soft"].(int64)
-	hard, _ := payload["hard"].(int64)
+	current := toInt64(payload["current"])
+	soft := toInt64(payload["soft"])
+	hard := toInt64(payload["hard"])
 	model, _ := payload["model"].(string)
 	eventType := friendlyName(e.Type)
 
@@ -153,6 +153,19 @@ func (w *WebhookNotifier) formatMarkdownText(e event.Event) string {
 	s += fmt.Sprintf("\n**会话**: %s\n**时间**: %s", e.SessionID, e.Timestamp.Format(time.RFC3339))
 
 	return s
+}
+
+// toInt64 coerces any numeric type (int, int64, float64) to int64.
+func toInt64(v any) int64 {
+	switch x := v.(type) {
+	case int64:
+		return x
+	case int:
+		return int64(x)
+	case float64:
+		return int64(x)
+	}
+	return 0
 }
 
 func friendlyName(t event.Type) string {

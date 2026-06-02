@@ -18,15 +18,16 @@ type ResetScheduler struct {
 // NewResetScheduler creates a ResetScheduler.
 // expr is a standard 5-field cron expression (e.g. "0 0 * * *" for daily at midnight).
 // On startup, it checks if a reset was missed and runs one immediately if needed.
-func NewResetScheduler(expr string, store Store, lastReset time.Time, logger *zap.Logger) (*ResetScheduler, error) {
+func NewResetScheduler(expr string, store Store, lastReset time.Time, logger *zap.Logger, onReset func()) (*ResetScheduler, error) {
 	if _, err := cron.ParseStandard(expr); err != nil {
 		return nil, err
 	}
 
 	rs := &ResetScheduler{
-		cron:   cron.New(),
-		store:  store,
-		logger: logger,
+		cron:    cron.New(),
+		store:   store,
+		logger:  logger,
+		OnReset: onReset,
 	}
 
 	// Check if we missed a reset.

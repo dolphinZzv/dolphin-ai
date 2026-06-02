@@ -53,16 +53,26 @@ func NewLimiter(store Store, cfg *config.Config, eventBus *event.Bus, logger *za
 
 // scanModelLimits reads all provider sections for models[].limit and builds a per-model map.
 func (l *Limiter) scanModelLimits() {
-	// Known provider sections that may have models.
 	providerSections := discoverProviderSections(l.cfg)
 	for _, section := range providerSections {
-		for i := 0; ; i++ {
-			prefix := "llm." + section + ".models." + strconv.Itoa(i)
-			name := l.cfg.GetString(prefix + ".name")
-			if name == "" {
-				break
+		prefix := "llm." + section + ".models."
+		seen := make(map[int]bool)
+		for _, key := range l.cfg.Keys() {
+			if !strings.HasPrefix(key, prefix) || !strings.HasSuffix(key, ".name") {
+				continue
 			}
-			limitPrefix := prefix + ".limit"
+			remain := strings.TrimPrefix(key, prefix)
+			remain = strings.TrimSuffix(remain, ".name")
+			idx, err := strconv.Atoi(remain)
+			if err != nil || seen[idx] {
+				continue
+			}
+			seen[idx] = true
+			name := l.cfg.GetString(key)
+			if name == "" {
+				continue
+			}
+			limitPrefix := prefix + remain + ".limit"
 			hardRequests := ReadHardLimit(l.cfg, limitPrefix+".max_requests")
 			hardTokens := ReadHardLimit(l.cfg, limitPrefix+".max_total_tokens")
 			softRequests := ReadSoftLimit(l.cfg, limitPrefix+".max_requests")
@@ -89,11 +99,6 @@ func (l *Limiter) scanModelLimits() {
 
 // discoverProviderSections finds all provider section names (e.g. "deepseek_anthropic").
 func discoverProviderSections(cfg *config.Config) []string {
-	knownFields := map[string]bool{
-		"provider": true, "model": true, "temperature": true,
-		"max_tokens": true, "max_retries": true, "timeout": true,
-		"limit": true,
-	}
 	var sections []string
 	seen := make(map[string]bool)
 	for _, key := range cfg.Keys() {
@@ -103,9 +108,6 @@ func discoverProviderSections(cfg *config.Config) []string {
 		}
 		name, ok := strings.CutPrefix(before, "llm.")
 		if !ok || name == "" || strings.Contains(name, ".") {
-			continue
-		}
-		if knownFields[name] {
 			continue
 		}
 		if !seen[name] {
@@ -153,12 +155,19 @@ func (l *Limiter) checkLLM(ctx context.Context, e event.Event) error {
 	for _, lm := range limits {
 		current, err := l.store.Get(lm.key)
 		if err != nil {
+			// Fail-open: a transient store error logs a warning but does not
+			// block the LLM call. This avoids an outage when the store is
+			// temporarily unavailable. To make this fail-closed, configure
+			// a Store that returns errors only for truly unrecoverable states.
 			l.logger.Warn("limit: store get failed", zap.String("key", lm.key), zap.Error(err))
 			continue
 		}
 
 		if lm.hard > 0 && current >= lm.hard {
 			// Hard limit exceeded — block.
+			// NOTE: short-circuits on the first breached hard limit.
+			// If multiple metrics breach simultaneously, only the first
+			// fires an alert and the call is rejected with its error.
 			alertKey := lm.key + "/hard"
 			if !l.alerted[alertKey] {
 				l.alerted[alertKey] = true
@@ -180,7 +189,7 @@ func (l *Limiter) checkLLM(ctx context.Context, e event.Event) error {
 					zap.String("model", model),
 				)
 			}
-			return fmt.Errorf("daily %s limit reached (%d/%d)", lm.display, current, lm.hard)
+			return fmt.Errorf("%s limit reached (%d/%d)", lm.display, current, lm.hard)
 		}
 
 		if soft := lm.soft; soft > 0 && current >= soft {
@@ -289,7 +298,7 @@ func (l *Limiter) globalLimit(configKey, storeKey, display string) []limitDef {
 // ---------------------------------------------------------------------------
 
 // RecordLLM records usage after a successful LLM call.
-func (l *Limiter) RecordLLM(ctx context.Context, model string, inputTokens, outputTokens int) {
+func (l *Limiter) RecordLLM(model string, inputTokens, outputTokens int) {
 	total := int64(inputTokens + outputTokens)
 	l.store.Increment("llm.requests", 1)
 	if total > 0 {

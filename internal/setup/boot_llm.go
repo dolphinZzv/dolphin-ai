@@ -59,12 +59,6 @@ func discoverProviderNames(cfg interface {
 	GetString(string) string
 	Keys() []string
 }) []string {
-	knownFields := map[string]bool{
-		"provider": true, "model": true, "temperature": true,
-		"max_tokens": true, "max_retries": true, "timeout": true,
-		"limit": true,
-	}
-
 	seen := make(map[string]bool)
 	var providers []string
 
@@ -76,9 +70,6 @@ func discoverProviderNames(cfg interface {
 		}
 		name, ok := strings.CutPrefix(before, "llm.")
 		if !ok || name == "" || strings.Contains(name, ".") {
-			continue
-		}
-		if knownFields[name] {
 			continue
 		}
 		if !seen[name] {

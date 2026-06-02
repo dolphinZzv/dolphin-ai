@@ -150,7 +150,7 @@ func TestRecordLLM(t *testing.T) {
 
 	l := NewLimiter(store, cfg, bus, logger)
 
-	l.RecordLLM(context.Background(), "deepseek-v4-flash", 100, 50)
+	l.RecordLLM("deepseek-v4-flash", 100, 50)
 
 	req, _ := store.Get("llm.requests")
 	if req != 1 {

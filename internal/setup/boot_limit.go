@@ -61,7 +61,7 @@ func (b *LimitBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		model, _ := e.Payload["model"].(string)
 		inputTokens, _ := e.Payload["input_tokens"].(int)
 		outputTokens, _ := e.Payload["output_tokens"].(int)
-		limiter.RecordLLM(ctx, model, inputTokens, outputTokens)
+		limiter.RecordLLM(model, inputTokens, outputTokens)
 	})
 
 	// Start reset scheduler if cron expression configured.
@@ -70,11 +70,10 @@ func (b *LimitBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		if fs != nil {
 			lastReset = fs.LastReset()
 		}
-		rs, err := limit.NewResetScheduler(expr, store, lastReset, c.Logger)
+		rs, err := limit.NewResetScheduler(expr, store, lastReset, c.Logger, limiter.ClearAlerted)
 		if err != nil {
 			c.Logger.Warn("limit: invalid reset_cron, skipping", zap.String("expr", expr), zap.Error(err))
 		} else {
-			rs.OnReset = limiter.ClearAlerted
 			c.LimitResetScheduler = rs
 			c.Logger.Info("limit: reset scheduler started", zap.String("cron", expr))
 		}
