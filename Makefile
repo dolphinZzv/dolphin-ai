@@ -33,6 +33,10 @@ playground: build
 docs:
 	cd docs && hugo server -D
 
+.PHONY: push
+push: test build
+	git push
+
 .PHONY: clean
 clean:
 	rm -rf bin/
