@@ -29,6 +29,10 @@ playground: build
 	cp bin/$(BINARY) ../playground/
 	cp $(CONFIG) ../playground/
 
+.PHONY: docs
+docs:
+	cd docs && hugo server -D
+
 .PHONY: clean
 clean:
 	rm -rf bin/

@@ -32,3 +32,14 @@ func (r *Registry) Dispatch(ctx context.Context, e event.Event) {
 		}
 	}
 }
+
+// DispatchCheck dispatches to all handlers and returns the first error.
+// Used for pre-checks where handlers can block an operation.
+func (r *Registry) DispatchCheck(ctx context.Context, e event.Event) error {
+	for _, h := range r.handlers {
+		if err := h.Handle(ctx, e); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -1,8 +1,10 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -23,8 +25,15 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("config: read %s: %w", path, err)
 	}
 	var raw map[string]any
-	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("config: parse %s: %w", path, err)
+	switch ext := filepath.Ext(path); ext {
+	case ".json":
+		if err := json.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("config: parse %s: %w", path, err)
+		}
+	default:
+		if err := yaml.Unmarshal(data, &raw); err != nil {
+			return nil, fmt.Errorf("config: parse %s: %w", path, err)
+		}
 	}
 	for k, v := range flatten(raw, "") {
 		cfg.values[k] = v

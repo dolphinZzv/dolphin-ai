@@ -37,6 +37,14 @@ func (b *Builder) StepLogger() *Builder {
 	return b
 }
 
+func (b *Builder) StepLimit() *Builder {
+	if b.ctx.Limit != nil {
+		return b
+	}
+	(&setup.LimitBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	return b
+}
+
 func (b *Builder) StepBuses() *Builder {
 	if b.ctx.EventBus != nil {
 		return b
@@ -140,19 +148,20 @@ func (b *Builder) Assemble() *Builder {
 		}
 	}
 	b.pipeline = &Pipeline{
-		transports:         b.ctx.Transports,
-		userIO:             b.ctx.UserIO,
-		agentIO:            b.ctx.AgentIO,
-		agentLoop:          b.ctx.AgentLoop,
-		sessionMgr:         b.ctx.SessionMgr,
-		brain:              b.ctx.Brain,
-		scheduler:          b.ctx.Scheduler,
-		signalBus:          b.ctx.SignalBus,
-		eventBus:           b.ctx.EventBus,
-		logger:             b.ctx.Logger,
-		otelShutdown:       b.ctx.OtelShutdown,
-		watchers:           b.ctx.Watchers,
-		subscriptionEngine: b.ctx.SubscriptionEngine,
+		transports:          b.ctx.Transports,
+		userIO:              b.ctx.UserIO,
+		agentIO:             b.ctx.AgentIO,
+		agentLoop:           b.ctx.AgentLoop,
+		sessionMgr:          b.ctx.SessionMgr,
+		brain:               b.ctx.Brain,
+		scheduler:           b.ctx.Scheduler,
+		signalBus:           b.ctx.SignalBus,
+		eventBus:            b.ctx.EventBus,
+		logger:              b.ctx.Logger,
+		otelShutdown:        b.ctx.OtelShutdown,
+		watchers:            b.ctx.Watchers,
+		subscriptionEngine:  b.ctx.SubscriptionEngine,
+		limitResetScheduler: b.ctx.LimitResetScheduler,
 	}
 	return b
 }

@@ -1,0 +1,206 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Dolphin Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "lang": {
+      "description": "Language for UI and messages",
+      "type": "string",
+      "default": "en"
+    },
+    "llm": {
+      "description": "LLM provider and model configuration. Known fields listed below; any other key is treated as a provider section (e.g. deepseek_anthropic, deepseek_openai).",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string", "description": "Default LLM provider name" },
+        "model": { "type": "string", "description": "Default model name" },
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },
+        "max_tokens": { "type": "integer", "minimum": 1, "default": 4096 },
+        "max_retries": { "type": "integer", "minimum": 0, "default": 3 },
+        "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Request timeout, e.g. 30s, 5m" },
+        "limit": {
+          "type": "object",
+          "description": "Global usage limits",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "max_requests": { "$ref": "#/definitions/limitValue", "description": "Max LLM requests per cycle" },
+            "max_total_tokens": { "$ref": "#/definitions/limitValue", "description": "Max total tokens per cycle" },
+            "max_input_tokens": { "$ref": "#/definitions/limitValue", "description": "Max input tokens per cycle" },
+            "max_output_tokens": { "$ref": "#/definitions/limitValue", "description": "Max output tokens per cycle" },
+            "reset_cron": { "type": "string", "description": "Cron expression for counter reset, e.g. 0 0 * * *" }
+          }
+        }
+      },
+      "additionalProperties": { "$ref": "#/definitions/providerSection" }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "info" },
+        "file": { "type": "string", "description": "Log file path" },
+        "max_size": { "type": "integer", "description": "Max log file size in MB", "default": 100 },
+        "max_backups": { "type": "integer", "default": 30 },
+        "max_age": { "type": "integer", "description": "Max days to retain logs", "default": 30 },
+        "compress": { "type": "boolean", "default": true }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "30s" }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": ".dolphin/sessions" },
+        "window": { "type": "integer", "minimum": 1, "default": 40 }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "default": "Dolphin" },
+        "max_rounds": { "type": "integer", "minimum": 1, "default": 100 },
+        "buffer_size": { "type": "integer", "default": 1024 },
+        "turn_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "120s" },
+        "workspace": { "type": "string", "default": "." },
+        "workmode": { "type": "string", "enum": ["default", "yolo"], "default": "default" },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "type": "string", "enum": ["http", "dingtalk", "wework"], "default": "http" },
+            "url": { "type": "string", "format": "uri", "description": "Webhook URL for limit alerts" }
+          }
+        }
+      }
+    },
+    "brain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": ".dolphin/brain" }
+      }
+    },
+    "otel": {
+      "type": "object",
+      "description": "OpenTelemetry configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "endpoint": { "type": "string", "format": "uri" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "dingtalk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "agent_id": { "type": "string" },
+        "app_id": { "type": "string" },
+        "client_id": { "type": "string" },
+        "client_secret": { "type": "string" },
+        "webhook_url": { "type": "string", "format": "uri" },
+        "allow_users": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "wework": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "bot_id": { "type": "string" },
+        "bot_secret": { "type": "string" },
+        "allow_users": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "email": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "address": { "type": "string", "description": "Email address for sending" },
+        "password": { "type": "string" },
+        "imap_server": { "type": "string" },
+        "imap_port": { "type": "string" },
+        "smtp_server": { "type": "string" },
+        "smtp_port": { "type": "string" },
+        "allow_senders": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "MCP server configurations",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string" },
+          "enabled": { "type": "boolean", "default": true }
+        },
+        "required": ["name", "type"]
+      }
+    }
+  },
+  "definitions": {
+    "limitValue": {
+      "description": "Limit can be a scalar (hard only) or {hard, soft} object",
+      "oneOf": [
+        { "type": "integer", "minimum": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hard": { "type": "integer", "minimum": 0 },
+            "soft": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "providerSection": {
+      "description": "Dynamic LLM provider section (e.g. deepseek_anthropic, deepseek_openai)",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "description": "Vendor name, e.g. deepseek, openai, anthropic" },
+        "api_type": { "type": "string", "description": "API protocol type, e.g. openai, anthropic" },
+        "api_key": { "type": "string", "description": "API key for the provider" },
+        "base_url": { "type": "string", "format": "uri", "description": "API base URL" },
+        "models": {
+          "type": "array",
+          "description": "List of models available from this provider",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "description": "Model name" },
+              "max_tokens": { "type": "integer", "minimum": 1 },
+              "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+              "limit": {
+                "type": "object",
+                "description": "Per-model usage limits",
+                "additionalProperties": false,
+                "properties": {
+                  "max_requests": { "$ref": "#/definitions/limitValue" },
+                  "max_total_tokens": { "$ref": "#/definitions/limitValue" },
+                  "max_input_tokens": { "$ref": "#/definitions/limitValue" },
+                  "max_output_tokens": { "$ref": "#/definitions/limitValue" }
+                }
+              }
+            },
+            "required": ["name"]
+          }
+        }
+      }
+    }
+  }
+}

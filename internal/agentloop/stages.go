@@ -9,6 +9,7 @@ import (
 
 	appctx "dolphin/internal/context"
 	"dolphin/internal/event"
+	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
@@ -221,6 +222,7 @@ type LLMStage struct {
 	ToolRegistry *tool.Registry
 	EventBus     *event.Bus
 	Logger       *zap.Logger
+	HookReg      *hook.Registry
 }
 
 func (s *LLMStage) Name() string { return "llm" }
@@ -238,6 +240,17 @@ func (s *LLMStage) activeModel() string {
 }
 
 func (s *LLMStage) Process(ctx context.Context, state *State) error {
+	// Pre-check limits via hook before retry loop.
+	if s.HookReg != nil {
+		if err := s.HookReg.DispatchCheck(ctx, event.Event{
+			Type:      event.EventCheckLLM,
+			Timestamp: time.Now(),
+			SessionID: state.SessionID,
+			Payload:   map[string]any{"model": s.activeModel()},
+		}); err != nil {
+			return fmt.Errorf("llm limit exceeded: %w", err)
+		}
+	}
 	var lastErr error
 	for i := 0; i <= s.MaxRetries; i++ {
 		err := s.tryComplete(ctx, state)
@@ -381,6 +394,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 		Timestamp: time.Now(),
 		SessionID: state.SessionID,
 		Payload: map[string]any{
+			"model":                       s.activeModel(),
 			"input_tokens":                inputTokens,
 			"output_tokens":               outputTokens,
 			"total_tokens":                inputTokens + outputTokens,
@@ -399,6 +413,7 @@ type ToolStage struct {
 	SignalBus       *signal.Bus
 	Timeout         time.Duration
 	Logger          *zap.Logger
+	HookReg         *hook.Registry
 	EventBus        *event.Bus
 	PermissionStore *permission.Store
 	GetTransport    func(id string) transport.IO

@@ -62,6 +62,7 @@ func discoverProviderNames(cfg interface {
 	knownFields := map[string]bool{
 		"provider": true, "model": true, "temperature": true,
 		"max_tokens": true, "max_retries": true, "timeout": true,
+		"limit": true,
 	}
 
 	seen := make(map[string]bool)

@@ -68,6 +68,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 				ToolRegistry: c.ToolReg,
 				EventBus:     c.EventBus,
 				Logger:       c.Logger,
+				HookReg:      c.HookReg,
 			},
 			&agentloop.ToolStage{
 				ToolRegistry:    c.ToolReg,

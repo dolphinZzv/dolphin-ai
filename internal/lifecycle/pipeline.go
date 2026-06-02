@@ -10,6 +10,7 @@ import (
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
+	"dolphin/internal/limit"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
@@ -20,26 +21,28 @@ import (
 )
 
 type Pipeline struct {
-	transports         []transport.IO
-	userIO             *userio.UserIO
-	agentIO            *agentio.AgentIO
-	agentLoop          *agentloop.AgentLoop
-	sessionMgr         *session.Manager
-	brain              *brain.Brain
-	scheduler          *scheduler.Scheduler
-	signalBus          *signal.Bus
-	eventBus           *event.Bus
-	logger             *zap.Logger
-	cancel             context.CancelFunc
-	otelShutdown       func()
-	watchers           []*brain.Watcher
-	subscriptionEngine *brain.SubscriptionEngine
+	transports          []transport.IO
+	userIO              *userio.UserIO
+	agentIO             *agentio.AgentIO
+	agentLoop           *agentloop.AgentLoop
+	sessionMgr          *session.Manager
+	brain               *brain.Brain
+	scheduler           *scheduler.Scheduler
+	signalBus           *signal.Bus
+	eventBus            *event.Bus
+	logger              *zap.Logger
+	cancel              context.CancelFunc
+	otelShutdown        func()
+	watchers            []*brain.Watcher
+	subscriptionEngine  *brain.SubscriptionEngine
+	limitResetScheduler *limit.ResetScheduler
 }
 
 func New(cfg *config.Config) *Pipeline {
 	return NewBuilder(cfg).
 		StepLogger().
 		StepBuses().
+		StepLimit().
 		StepSession().
 		StepMemory().
 		StepLLM().
@@ -178,6 +181,10 @@ func (p *Pipeline) Shutdown() {
 
 	if p.scheduler != nil {
 		p.scheduler.Stop()
+	}
+
+	if p.limitResetScheduler != nil {
+		p.limitResetScheduler.Stop()
 	}
 
 	if p.otelShutdown != nil {

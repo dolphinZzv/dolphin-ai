@@ -36,6 +36,11 @@ const (
 	EventFileCreate           Type = "file.create"
 	EventFileUpdate           Type = "file.update"
 	EventFileDelete           Type = "file.delete"
+
+	// Limit events
+	EventCheckLLM       Type = "limit.check.llm"
+	EventLimitSoftWarn  Type = "limit.soft_warn"
+	EventLimitHardBlock Type = "limit.hard_block"
 )
 
 // Event is the universal event structure.
