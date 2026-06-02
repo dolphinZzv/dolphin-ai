@@ -761,7 +761,7 @@ func (w *WeWork) sendFileMessage(ctx context.Context, mediaID string) error {
 // MCP tool registration.
 // ---------------------------------------------------------------------------
 
-// List returns FILE_UPLOAD tool definition when the active transport is WeWork.
+// List returns available tool definitions when the active transport is WeWork.
 func (w *WeWork) List(ctx context.Context) ([]types.ToolDef, error) {
 	info := transport.GetInfo(ctx)
 	if info == nil || info.ID != "wework" || w.cfg.BotID == "" || w.cfg.Secret == "" {
@@ -781,16 +781,64 @@ func (w *WeWork) List(ctx context.Context) ([]types.ToolDef, error) {
 				"required": ["file_path"]
 			}`),
 		},
+		{
+			Name: "MESSAGE",
+			Description: "Send a text or markdown message to the WeWork chat proactively. " +
+				"Use this to notify users, ask questions, or send results without waiting for a reply.",
+			Schema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"content": {"type": "string", "description": "Message content to send"},
+					"msgtype": {"type": "string", "description": "Message type: text or markdown (default: markdown)"}
+				},
+				"required": ["content"]
+			}`),
+		},
 	}, nil
 }
 
-// Execute handles FILE_UPLOAD calls for WeWork.
+// Execute handles MESSAGE and FILE_UPLOAD calls for WeWork.
 func (w *WeWork) Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
 	info := transport.GetInfo(ctx)
 	if info == nil || info.ID != "wework" {
-		return nil, fmt.Errorf("FILE_UPLOAD is not available on this transport")
+		return nil, fmt.Errorf("%s is not available on this transport", call.Name)
 	}
 
+	switch call.Name {
+	case "MESSAGE":
+		return w.executeMessage(ctx, call)
+	case "FILE_UPLOAD":
+		return w.executeFileUpload(ctx, call)
+	default:
+		return nil, fmt.Errorf("unknown tool: %s", call.Name)
+	}
+}
+
+func (w *WeWork) executeMessage(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
+	var args struct {
+		Content string `json:"content"`
+		MsgType string `json:"msgtype"`
+	}
+	if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
+	}
+	if args.Content == "" {
+		return &types.ToolResult{Content: "content is required", IsError: true}, nil
+	}
+
+	msgType := args.MsgType
+	if msgType == "" {
+		msgType = "markdown"
+	}
+
+	if err := w.sendProactiveMessage(ctx, args.Content, msgType); err != nil {
+		return &types.ToolResult{Content: "failed to send message: " + err.Error(), IsError: true}, nil
+	}
+
+	return &types.ToolResult{Content: "Message sent successfully."}, nil
+}
+
+func (w *WeWork) executeFileUpload(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
 	var req struct {
 		FilePath string `json:"file_path"`
 	}
@@ -819,6 +867,62 @@ func (w *WeWork) Execute(ctx context.Context, call types.ToolCall) (*types.ToolR
 	return &types.ToolResult{
 		Content: fmt.Sprintf("File sent to the conversation.\n- name: %s\n- media_id: %s\n- type: %s", fileName, mediaID, mediaType),
 	}, nil
+}
+
+// sendProactiveMessage sends a text or markdown message proactively via aibot_send_msg.
+func (w *WeWork) sendProactiveMessage(ctx context.Context, content, msgType string) error {
+	w.stateMu.Lock()
+	chatID := w.lastChatID
+	chatType := w.lastChatType
+	w.stateMu.Unlock()
+	if chatID == "" {
+		return fmt.Errorf("wework: no chat session available for sending message")
+	}
+
+	reqID := fmt.Sprintf("send_msg_%d", time.Now().UnixNano())
+
+	var payload map[string]any
+	if msgType == "text" {
+		payload = map[string]any{
+			"cmd":     "aibot_send_msg",
+			"headers": map[string]string{"req_id": reqID},
+			"body": map[string]any{
+				"chatid":    chatID,
+				"chat_type": chatType,
+				"msgtype":   "text",
+				"text":      map[string]string{"content": content},
+			},
+		}
+	} else {
+		content = stripImageMarkdown(content)
+		payload = map[string]any{
+			"cmd":     "aibot_send_msg",
+			"headers": map[string]string{"req_id": reqID},
+			"body": map[string]any{
+				"chatid":    chatID,
+				"chat_type": chatType,
+				"msgtype":   "markdown",
+				"markdown":  map[string]string{"content": content},
+			},
+		}
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal: %w", err)
+	}
+
+	w.writeMu.Lock()
+	w.connMu.Lock()
+	conn := w.conn
+	w.connMu.Unlock()
+	if conn == nil {
+		w.writeMu.Unlock()
+		return fmt.Errorf("wework: not connected")
+	}
+	err = conn.WriteMessage(websocket.TextMessage, data)
+	w.writeMu.Unlock()
+	return err
 }
 
 // Read blocks until a message is received from WeWork Smart Bot.

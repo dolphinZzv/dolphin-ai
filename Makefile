@@ -3,7 +3,14 @@ CONFIG ?= config.yaml
 
 .PHONY: build
 build:
-	go build -o $(BINARY) ./cmd/dolphin
+	mkdir -p bin && go build -o bin/$(BINARY) ./cmd/dolphin
+
+.PHONY: build-mail
+build-mail:
+	mkdir -p bin && go build -o bin/mail ./cli/mail
+
+.PHONY: build-all
+build-all: build build-mail
 
 .PHONY: test
 test:
@@ -18,16 +25,15 @@ lint:
 	golangci-lint run ./...
 
 .PHONY: playground
-playground:
-	mkdir -p ../playground
-	go build -o ../playground/$(BINARY) ./cmd/dolphin
+playground: build
+	cp bin/$(BINARY) ../playground/
 	cp $(CONFIG) ../playground/
 
 .PHONY: clean
 clean:
-	rm -f $(BINARY)
+	rm -rf bin/
 	rm -rf .dolphin/
 
 .PHONY: run
 run: build
-	./$(BINARY) -c $(CONFIG)
+	./bin/$(BINARY) -c $(CONFIG)

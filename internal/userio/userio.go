@@ -114,7 +114,8 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 			return true
 		}
 
-		out := u.cmdReg.Execute(ctx, line, tio.Capability().RenderTextMarkdown)
+		cmdCtx := transport.WithInfo(ctx, &transport.Info{ID: tio.ID()})
+		out := u.cmdReg.Execute(cmdCtx, line, tio.Capability().RenderTextMarkdown)
 		if out != "" {
 			_ = tio.Write(ctx, out+"\n")
 		}

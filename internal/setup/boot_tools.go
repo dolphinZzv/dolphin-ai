@@ -28,8 +28,16 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 
 	catalogEntries, _ := loadCatalogFromConfig(c.Config)
 	catalog := tool.NewCatalog(catalogEntries)
+	metaDescs := map[string]string{
+		"mcp_search": "搜索 MCP 服务器，返回匹配结果列表",
+		"mcp_load":   "通过 URL 加载 MCP 服务器并建立连接",
+	}
 	for name, mt := range tool.MetaHandler(catalog, c.ToolReg) {
-		c.ToolReg.RegisterBuiltin(name, "MCP server discovery", mt.Schema, mt.Handler)
+		desc := metaDescs[name]
+		if desc == "" {
+			desc = name
+		}
+		c.ToolReg.RegisterBuiltin(name, desc, mt.Schema, mt.Handler)
 	}
 
 	c.SkillStore = skill.NewFileStore(c.Config.GetString("brain.dir") + "/skills")

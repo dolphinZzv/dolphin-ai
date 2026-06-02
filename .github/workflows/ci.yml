@@ -20,5 +20,13 @@ jobs:
       - name: Build
         run: go build ./...
 
+      - name: Build CLI tools
+        run: |
+          mkdir -p bin
+          for dir in cli/*/; do
+            name=$(basename "$dir")
+            go build -o "bin/$name" "./cli/$name"
+          done
+
       - name: Test
         run: go test ./... -v -count=1

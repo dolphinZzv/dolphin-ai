@@ -1,5 +1,5 @@
 # Subscriptions
 
-该目录存储事件订阅规则。每个订阅是一个带 YAML frontmatter 的 markdown 文件。
+This directory stores event subscription rules. Each subscription is a markdown file with YAML frontmatter.
 
-使用 `subscription_create` 工具创建新订阅。
+Use the `subscription_create` tool to create new subscriptions.
