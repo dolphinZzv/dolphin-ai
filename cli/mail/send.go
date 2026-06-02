@@ -59,10 +59,10 @@ func sendMail(cfg *Config, to, subject, body string) error {
 
 	client, err := smtp.NewClient(conn, cfg.SMTPServer)
 	if err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("smtp client: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	auth := smtp.PlainAuth("", from, cfg.Password, cfg.SMTPServer)
 	if err := client.Auth(auth); err != nil {
@@ -80,7 +80,7 @@ func sendMail(cfg *Config, to, subject, body string) error {
 		return fmt.Errorf("smtp data: %w", err)
 	}
 	if _, err := io.WriteString(w, msg); err != nil {
-		w.Close()
+		_ = w.Close()
 		return fmt.Errorf("smtp write: %w", err)
 	}
 	if err := w.Close(); err != nil {
@@ -114,7 +114,7 @@ func buildMessage(from, to, subject, body string) string {
 	// Multipart/alternative
 	boundary := "=_mail_cli_boundary"
 	buf.WriteString("MIME-Version: 1.0\r\n")
-	buf.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%q\r\n", boundary))
+	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%q\r\n", boundary)
 	buf.WriteString("\r\n")
 	buf.WriteString("--" + boundary + "\r\n")
 	buf.WriteString("Content-Type: text/plain; charset=\"UTF-8\"\r\n")

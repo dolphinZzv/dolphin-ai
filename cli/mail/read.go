@@ -40,12 +40,12 @@ func readMails(cfg *Config, limit int) error {
 	if err != nil {
 		return fmt.Errorf("imap dial: %w", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if err := client.Login(cfg.Email, cfg.Password).Wait(); err != nil {
 		return fmt.Errorf("imap login: %w", err)
 	}
-	defer client.Logout().Wait()
+	defer func() { _ = client.Logout().Wait() }()
 
 	_, err = client.Select("INBOX", nil).Wait()
 	if err != nil {
@@ -81,8 +81,9 @@ func readMails(cfg *Config, limit int) error {
 
 	// Print table.
 	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-	fmt.Fprintf(tw, "ID\tDate\tFrom\tSubject\tSeen\n")
-	fmt.Fprintf(tw, "--\t----\t----\t-------\t----\n")
+	defer func() { _ = tw.Flush() }()
+	_, _ = fmt.Fprintf(tw, "ID\tDate\tFrom\tSubject\tSeen\n")
+	_, _ = fmt.Fprintf(tw, "--\t----\t----\t-------\t----\n")
 
 	// Reverse so newest is on top.
 	for i := len(fetchRes) - 1; i >= 0; i-- {
@@ -99,9 +100,8 @@ func readMails(cfg *Config, limit int) error {
 				break
 			}
 		}
-		fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", msg.SeqNum, date, from, msg.Envelope.Subject, seen)
+		_, _ = fmt.Fprintf(tw, "%d\t%s\t%s\t%s\t%s\n", msg.SeqNum, date, from, msg.Envelope.Subject, seen)
 	}
-	tw.Flush()
 
 	// Show first unseen message body.
 	for i := len(fetchRes) - 1; i >= 0; i-- {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/base64"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -48,16 +47,10 @@ func TestConfigLoadMissing(t *testing.T) {
 }
 
 func TestConfigLoadEnv(t *testing.T) {
-	os.Setenv("MAIL_IMAP_SERVER", "imap.env.test")
-	os.Setenv("MAIL_SMTP_SERVER", "smtp.env.test")
-	os.Setenv("MAIL_EMAIL", "env@test.com")
-	os.Setenv("MAIL_PASSWORD", "envpass")
-	defer func() {
-		os.Unsetenv("MAIL_IMAP_SERVER")
-		os.Unsetenv("MAIL_SMTP_SERVER")
-		os.Unsetenv("MAIL_EMAIL")
-		os.Unsetenv("MAIL_PASSWORD")
-	}()
+	t.Setenv("MAIL_IMAP_SERVER", "imap.env.test")
+	t.Setenv("MAIL_SMTP_SERVER", "smtp.env.test")
+	t.Setenv("MAIL_EMAIL", "env@test.com")
+	t.Setenv("MAIL_PASSWORD", "envpass")
 
 	cfg := &Config{IMAPPort: "993", SMTPPort: "465"}
 	if err := cfg.Load(); err != nil {
