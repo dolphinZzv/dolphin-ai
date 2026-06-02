@@ -28,11 +28,11 @@ jobs:
             go build -o "bin/$name" "./cli/$name"
           done
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
       - name: Lint
-        uses: golangci/golangci-lint-action@v6
-        with:
-          version: latest
-          only-new-issues: true
+        run: golangci-lint run ./... --new
 
       - name: Test with coverage
         run: |
