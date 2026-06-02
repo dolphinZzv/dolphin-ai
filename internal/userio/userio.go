@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
 
@@ -168,57 +167,6 @@ func (u *UserIO) WriteLine(ctx context.Context, tio transport.IO, text string) e
 		return err
 	}
 	return tio.Flush()
-}
-
-// ReadPassword reads input without echoing (requires interactive transport).
-func (u *UserIO) ReadPassword(ctx context.Context, tio transport.IO, prompt string) (string, error) {
-	cap := tio.Capability()
-	if !cap.Interactive {
-		return "", fmt.Errorf(i18n.T("userio.no_password_support"), tio.ID())
-	}
-	if err := tio.Write(ctx, prompt); err != nil {
-		return "", err
-	}
-	return tio.Read(ctx)
-}
-
-func (u *UserIO) Confirm(ctx context.Context, tio transport.IO, msg string) (bool, error) {
-	cap := tio.Capability()
-	if !cap.Interactive {
-		return false, fmt.Errorf(i18n.T("userio.no_confirm_support"), tio.ID())
-	}
-
-	if err := tio.Write(ctx, msg+" (y/n): "); err != nil {
-		return false, err
-	}
-
-	answer, err := tio.Read(ctx)
-	if err != nil {
-		return false, err
-	}
-
-	answer = strings.TrimSpace(strings.ToLower(answer))
-	return answer == "y" || answer == "yes", nil
-}
-
-func (u *UserIO) Select(ctx context.Context, tio transport.IO, opts []string) (int, error) {
-	cap := tio.Capability()
-	if !cap.Interactive {
-		return 0, fmt.Errorf(i18n.T("userio.no_select_support"), tio.ID())
-	}
-
-	for i, opt := range opts {
-		if err := tio.Write(ctx, fmt.Sprintf("%d. %s", i+1, opt)); err != nil {
-			return 0, err
-		}
-	}
-
-	answer, err := tio.Read(ctx)
-	if err != nil {
-		return 0, err
-	}
-
-	return strconv.Atoi(strings.TrimSpace(answer))
 }
 
 // isInteractiveCmd returns true for commands that run interactively and never exit on their own.

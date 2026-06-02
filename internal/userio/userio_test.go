@@ -2,95 +2,16 @@ package userio
 
 import (
 	"context"
-	"sync"
 	"testing"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/command"
-	"dolphin/internal/common"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/transport"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
 )
-
-type interactiveTransport struct {
-	*transport.SessionHolder
-	id      string
-	readCh  chan string
-	writeCh chan string
-	mu      sync.Mutex
-}
-
-func newInteractiveTransport(id string) *interactiveTransport {
-	return &interactiveTransport{
-		SessionHolder: transport.NewSessionHolder(nil),
-		id:            id,
-		readCh:        make(chan string, 10),
-		writeCh:       make(chan string, 10),
-	}
-}
-
-func (t *interactiveTransport) ID() string                  { return t.id }
-func (t *interactiveTransport) Context() string             { return "" }
-func (t *interactiveTransport) Start(context.Context) error { return nil }
-func (t *interactiveTransport) Tools() []common.ToolDesc    { return nil }
-func (t *interactiveTransport) Flush() error                { return nil }
-func (t *interactiveTransport) Close() error                { return nil }
-func (t *interactiveTransport) Capability() transport.Capability {
-	return transport.Capability{Interactive: true, Streamable: true, NestRead: true, RenderTextMarkdown: "none"}
-}
-
-func (t *interactiveTransport) RequestPermission(_ context.Context, prompt string) (transport.PermissionResult, error) {
-	t.mu.Lock()
-	t.writeCh <- prompt
-	t.mu.Unlock()
-	select {
-	case msg := <-t.readCh:
-		switch msg {
-		case "y", "yes", "1":
-			return transport.PermissionOnce, nil
-		case "always", "2":
-			return transport.PermissionAlways, nil
-		default:
-			return transport.PermissionDenied, nil
-		}
-	default:
-		return transport.PermissionDenied, nil
-	}
-}
-
-func (t *interactiveTransport) Read(ctx context.Context) (string, error) {
-	select {
-	case msg := <-t.readCh:
-		return msg, nil
-	case <-ctx.Done():
-		return "", ctx.Err()
-	}
-}
-
-func (t *interactiveTransport) Write(ctx context.Context, text string) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	t.writeCh <- text
-	return nil
-}
-
-func (t *interactiveTransport) queueRead(msg string) {
-	t.readCh <- msg
-}
-
-func (t *interactiveTransport) lastWrite(ctx context.Context) string {
-	select {
-	case msg := <-t.writeCh:
-		return msg
-	case <-ctx.Done():
-		return ""
-	}
-}
-
-var _ transport.IO = (*interactiveTransport)(nil)
 
 func TestUserIO(t *testing.T) {
 	Convey("UserIO", t, func() {
@@ -137,68 +58,6 @@ func TestUserIO(t *testing.T) {
 			uio.Handle(ctx, tio, "create detached session")
 
 			So(mgr.Active(), ShouldBeNil)
-		})
-
-		Convey("Confirm returns error for non-interactive transport", func() {
-			tio := transport.NewNullTransport("test")
-			ctx := context.Background()
-
-			_, err := uio.Confirm(ctx, tio, "confirm?")
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "does not support interactive")
-		})
-
-		Convey("Select returns error for non-interactive transport", func() {
-			tio := transport.NewNullTransport("test")
-			ctx := context.Background()
-
-			_, err := uio.Select(ctx, tio, []string{"a", "b"})
-			So(err, ShouldNotBeNil)
-			So(err.Error(), ShouldContainSubstring, "does not support interactive")
-		})
-
-		Convey("Confirm interactive returns true for y/yes", func() {
-			tio := newInteractiveTransport("interactive")
-			ctx := context.Background()
-
-			Convey("returns true for 'y'", func() {
-				tio.queueRead("y")
-				result, err := uio.Confirm(ctx, tio, "proceed?")
-				So(err, ShouldBeNil)
-				So(result, ShouldBeTrue)
-
-				prompt := tio.lastWrite(ctx)
-				So(prompt, ShouldContainSubstring, "proceed?")
-				So(prompt, ShouldContainSubstring, "(y/n)")
-			})
-
-			Convey("returns true for 'yes'", func() {
-				tio.queueRead("yes")
-				result, err := uio.Confirm(ctx, tio, "proceed?")
-				So(err, ShouldBeNil)
-				So(result, ShouldBeTrue)
-			})
-
-			Convey("returns false for 'n'", func() {
-				tio.queueRead("n")
-				result, err := uio.Confirm(ctx, tio, "proceed?")
-				So(err, ShouldBeNil)
-				So(result, ShouldBeFalse)
-			})
-		})
-
-		Convey("Select interactive returns correct index", func() {
-			tio := newInteractiveTransport("interactive")
-			ctx := context.Background()
-
-			tio.queueRead("2")
-			idx, err := uio.Select(ctx, tio, []string{"first", "second", "third"})
-			So(err, ShouldBeNil)
-			So(idx, ShouldEqual, 2)
-
-			So(tio.lastWrite(ctx), ShouldEqual, "1. first")
-			So(tio.lastWrite(ctx), ShouldEqual, "2. second")
-			So(tio.lastWrite(ctx), ShouldEqual, "3. third")
 		})
 	})
 }
