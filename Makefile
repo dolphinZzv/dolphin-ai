@@ -3,7 +3,7 @@ CONFIG ?= config.yaml
 
 .PHONY: build
 build:
-	mkdir -p bin && go build -o bin/$(BINARY) ./cmd/dolphin
+	mkdir -p bin && go build -race -o bin/$(BINARY) ./cmd/dolphin
 
 .PHONY: build-mail
 build-mail:
