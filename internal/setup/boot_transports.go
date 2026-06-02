@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strconv"
 
@@ -42,11 +43,12 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 		c.Transports = append(c.Transports, tio)
 
 		// Register transport-specific MCP tools.
-		for _, td := range tio.Tools() {
+		for i, td := range tio.Tools() {
+			srcName := fmt.Sprintf("%s_mcp_%d", tio.ID(), i)
 			switch {
 			case td.URL != "":
 				client := mcp.NewClient(td.URL)
-				c.ToolReg.AddSource(client)
+				c.ToolReg.AddNamedSource(srcName, client)
 				c.Logger.Info("registered transport MCP source",
 					zap.String("transport", tio.ID()),
 					zap.String("url", td.URL),
@@ -61,7 +63,7 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 					)
 					continue
 				}
-				c.ToolReg.AddSource(client)
+				c.ToolReg.AddNamedSource(srcName, client)
 				c.Logger.Info("registered transport MCP source",
 					zap.String("transport", tio.ID()),
 					zap.String("command", td.Command),

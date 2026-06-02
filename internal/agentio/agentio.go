@@ -37,6 +37,9 @@ type AgentIO struct {
 
 	bufMu   sync.Mutex
 	buffers map[string]string // partial text for chunk-mode transports
+
+	lastTransportMu sync.RWMutex
+	lastTransportID string // most recent transport that sent a turn
 }
 
 func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *zap.Logger, agentName string) *AgentIO {
@@ -80,8 +83,22 @@ func (a *AgentIO) GetTransport(id string) transport.IO {
 }
 
 func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
-	if info := transport.GetInfo(ctx); info != nil && turn.TransportID == "" {
-		turn.TransportID = info.ID
+	if turn.TransportID == "" {
+		if info := transport.GetInfo(ctx); info != nil {
+			turn.TransportID = info.ID
+		} else {
+			// Fall back to the most recently active transport.
+			a.lastTransportMu.RLock()
+			turn.TransportID = a.lastTransportID
+			a.lastTransportMu.RUnlock()
+		}
+	}
+
+	// Track this transport as the most recently active.
+	if turn.TransportID != "" {
+		a.lastTransportMu.Lock()
+		a.lastTransportID = turn.TransportID
+		a.lastTransportMu.Unlock()
 	}
 
 	if turn.SessionID == "" {

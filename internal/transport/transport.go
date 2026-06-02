@@ -14,6 +14,7 @@ import (
 type IO interface {
 	ID() string
 	Context() string
+	Start(ctx context.Context) error
 	Read(ctx context.Context) (string, error)
 	Write(ctx context.Context, text string) error
 	Flush() error

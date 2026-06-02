@@ -6,6 +6,7 @@ import (
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
 	"dolphin/internal/permission"
+	"dolphin/internal/tool"
 
 	"go.uber.org/zap"
 )
@@ -42,6 +43,11 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		)
 		permStore = permission.NewStore(permFile)
 	}
+
+	if workmode != "yolo" {
+		tool.RegisterPermissionTool(c.ToolReg, permStore, c.AgentIO.GetTransport)
+	}
+	tool.RegisterEmitEventTool(c.ToolReg, c.EventBus)
 
 	compositor := agentloop.NewCompositor(
 		[]agentloop.Stage{

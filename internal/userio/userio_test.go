@@ -32,11 +32,12 @@ func newInteractiveTransport(id string) *interactiveTransport {
 	}
 }
 
-func (t *interactiveTransport) ID() string               { return t.id }
-func (t *interactiveTransport) Context() string          { return "" }
-func (t *interactiveTransport) Tools() []common.ToolDesc { return nil }
-func (t *interactiveTransport) Flush() error             { return nil }
-func (t *interactiveTransport) Close() error             { return nil }
+func (t *interactiveTransport) ID() string                  { return t.id }
+func (t *interactiveTransport) Context() string             { return "" }
+func (t *interactiveTransport) Start(context.Context) error { return nil }
+func (t *interactiveTransport) Tools() []common.ToolDesc    { return nil }
+func (t *interactiveTransport) Flush() error                { return nil }
+func (t *interactiveTransport) Close() error                { return nil }
 func (t *interactiveTransport) Capability() transport.Capability {
 	return transport.Capability{Interactive: true, Streamable: true, NestRead: true, RenderTextMarkdown: "none"}
 }

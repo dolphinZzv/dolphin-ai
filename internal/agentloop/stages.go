@@ -120,9 +120,8 @@ type ContextBuilderStage struct {
 	Workspace        string
 	Workmode         string
 	EventBus         *event.Bus
-
-	reg          *appctx.Registry
-	transportCtx string // set per-call in Process
+	reg              *appctx.Registry
+	transportCtx     string // set per-call in Process
 }
 
 // RegisterSection adds a prompt section to the registry.
@@ -519,6 +518,13 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 // permission rules and work mode. Returns nil to allow, or an error describing
 // why the call was denied.
 func (s *ToolStage) checkPermission(ctx context.Context, state *State, call types.ToolCall) error {
+	// request_permission and emit_event are always allowed — they are
+	// meta-tools for requesting user permission and emitting events,
+	// and must not require permission themselves.
+	if call.Name == "request_permission" || call.Name == "emit_event" {
+		return nil
+	}
+
 	if s.PermissionStore == nil {
 		return nil
 	}

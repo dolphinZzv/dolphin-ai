@@ -118,7 +118,7 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 		if out != "" {
 			_ = tio.Write(ctx, out+"\n")
 		}
-		if line == "session new" {
+		if line == "session new" || line == "new" || line == "clear" {
 			if ss, ok := tio.(interface{ SetSession(*session.Session) }); ok {
 				ss.SetSession(u.sessionMgr.Active())
 			}

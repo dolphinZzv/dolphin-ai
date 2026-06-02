@@ -7,6 +7,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
 )
 
 func TestNewBus(t *testing.T) {
@@ -112,5 +113,22 @@ func TestEventTypes(t *testing.T) {
 			So(EventToolComplete, ShouldEqual, Type("tool.complete"))
 			So(EventToolError, ShouldEqual, Type("tool.error"))
 		})
+	})
+}
+
+func TestBusSetLogger(t *testing.T) {
+	Convey("SetLogger attaches a logger", t, func() {
+		bus := NewBus()
+		bus.SetLogger(zap.NewNop())
+		bus.Publish(context.Background(), Event{Type: EventPipelineStart})
+	})
+}
+
+func TestBusSetLoggerSubscribe(t *testing.T) {
+	Convey("Subscribe logs when logger is set", t, func() {
+		bus := NewBus()
+		bus.SetLogger(zap.NewNop())
+		bus.Subscribe(func(ctx context.Context, e Event) {})
+		bus.Publish(context.Background(), Event{Type: EventPipelineStart})
 	})
 }

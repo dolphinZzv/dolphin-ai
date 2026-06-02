@@ -298,6 +298,7 @@ type mockTransport struct {
 
 func (m *mockTransport) ID() string                           { return "mock" }
 func (m *mockTransport) Context() string                      { return "" }
+func (m *mockTransport) Start(context.Context) error          { return nil }
 func (m *mockTransport) Tools() []common.ToolDesc             { return nil }
 func (m *mockTransport) Read(context.Context) (string, error) { return "", nil }
 func (m *mockTransport) Write(context.Context, string) error  { return nil }

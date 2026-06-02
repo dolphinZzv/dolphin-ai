@@ -132,6 +132,7 @@ func NewWeWork(cfg WeWorkConfig, logger *zap.Logger, agentName string) *WeWork {
 
 func (w *WeWork) ID() string { return w.id }
 
+func (w *WeWork) Start(ctx context.Context) error { return nil }
 func (w *WeWork) Context() string {
 	return i18n.T("wework.context")
 }

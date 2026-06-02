@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"dolphin/internal/brain"
 	"dolphin/internal/command"
@@ -38,10 +39,36 @@ func (b *BrainBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	tool.RegisterScriptTools(c.ToolReg, br)
 	command.RegisterCommands(c.CmdReg, br)
 	command.RegisterScripts(c.CmdReg, br)
+	command.RegisterSubscriptionCmd(c.CmdReg, br)
 	c.Brain = br
 
 	if c.SkillStore != nil {
 		skill.SeedDefaults(ctx, c.SkillStore)
 	}
+
+	// Set up subscription engine and file watchers.
+	// Always watch the brain directory.
+	watchers := []*brain.Watcher{
+		brain.NewWatcher(brainDir, c.EventBus, 5*time.Second),
+	}
+	// Also watch the workspace root by default for SOUL.md etc.
+	workspace := c.Config.GetString("agent.workspace")
+	if workspace != "" && workspace != brainDir {
+		watchers = append(watchers, brain.NewWatcher(workspace, c.EventBus, 5*time.Second))
+	}
+	// Watch additional paths from config.
+	for i := 0; ; i++ {
+		key := fmt.Sprintf("watch.paths.%d", i)
+		p := c.Config.GetString(key)
+		if p == "" {
+			break
+		}
+		watchers = append(watchers, brain.NewWatcher(p, c.EventBus, 5*time.Second))
+	}
+	engine := brain.NewSubscriptionEngine(br, c.EventBus, c.Logger)
+	c.Watchers = watchers
+	c.SubscriptionEngine = engine
+	tool.RegisterSubscriptionTools(c.ToolReg, br)
+	brain.SeedSubscriptions(ctx, br)
 	return nil
 }

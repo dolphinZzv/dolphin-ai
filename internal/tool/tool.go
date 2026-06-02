@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -29,11 +30,19 @@ type builtinTool struct {
 	handler BuiltinHandler
 }
 
+// SourceInfo describes a named tool source (e.g. an MCP client) with an
+// enabled/disabled state.
+type SourceInfo struct {
+	Name     string
+	Enabled  bool
+	Executor Executor
+}
+
 // Registry aggregates multiple tool sources including builtins and MCP clients.
 type Registry struct {
 	mu       sync.RWMutex
 	builtins map[string]builtinTool
-	sources  []Executor
+	sources  []SourceInfo
 }
 
 func NewRegistry() *Registry {
@@ -57,12 +66,93 @@ func (r *Registry) RegisterBuiltin(name, description string, schema json.RawMess
 	}
 }
 
-// AddSource adds a tool source (e.g. MCP client, skill tools).
+// AddSource adds a tool source (e.g. MCP client, skill tools) with an
+// auto-generated name. Use AddNamedSource to provide a meaningful name.
 func (r *Registry) AddSource(src Executor) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	r.sources = append(r.sources, src)
+	r.sources = append(r.sources, SourceInfo{
+		Name:     fmt.Sprintf("source_%d", len(r.sources)),
+		Enabled:  true,
+		Executor: src,
+	})
+}
+
+// AddNamedSource adds a tool source with the given name.
+func (r *Registry) AddNamedSource(name string, src Executor) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	r.sources = append(r.sources, SourceInfo{
+		Name:     name,
+		Enabled:  true,
+		Executor: src,
+	})
+}
+
+// SetSourceEnabled enables or disables a named source. Returns an error if the
+// source is not found.
+func (r *Registry) SetSourceEnabled(name string, enabled bool) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for i := range r.sources {
+		if r.sources[i].Name == name {
+			r.sources[i].Enabled = enabled
+			return nil
+		}
+	}
+	return fmt.Errorf("source %q not found", name)
+}
+
+// DisableSource disables a named source. It is a convenience wrapper around
+// SetSourceEnabled.
+func (r *Registry) DisableSource(name string) error {
+	return r.SetSourceEnabled(name, false)
+}
+
+// EnableSource enables a named source.
+func (r *Registry) EnableSource(name string) error {
+	return r.SetSourceEnabled(name, true)
+}
+
+// ListSources returns a copy of all registered sources with their current
+// enabled state.
+func (r *Registry) ListSources() []SourceInfo {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	result := make([]SourceInfo, len(r.sources))
+	for i, s := range r.sources {
+		result[i] = SourceInfo{
+			Name:    s.Name,
+			Enabled: s.Enabled,
+		}
+	}
+	return result
+}
+
+// ListActiveSources returns sources that currently provide at least one tool
+// in the given context. Sources whose executors return empty or error are
+// excluded.
+func (r *Registry) ListActiveSources(ctx context.Context) []SourceInfo {
+	r.mu.RLock()
+	sources := r.sources
+	r.mu.RUnlock()
+
+	var result []SourceInfo
+	for _, s := range sources {
+		defs, err := s.Executor.List(ctx)
+		if err != nil || len(defs) == 0 {
+			continue
+		}
+		result = append(result, SourceInfo{
+			Name:    s.Name,
+			Enabled: s.Enabled,
+		})
+	}
+	return result
 }
 
 // List returns all tool definitions from all sources.
@@ -71,16 +161,28 @@ func (r *Registry) List(ctx context.Context) ([]types.ToolDef, error) {
 	sources := r.sources
 	r.mu.RUnlock()
 
-	// Collect builtin defs under a dedicated read lock.
+	// Collect builtin defs sorted by name for deterministic ordering.
+	r.mu.RLock()
+	keys := make([]string, 0, len(r.builtins))
+	for k := range r.builtins {
+		keys = append(keys, k)
+	}
+	r.mu.RUnlock()
+
+	sort.Strings(keys)
+
 	r.mu.RLock()
 	all := make([]types.ToolDef, 0, len(r.builtins))
-	for _, b := range r.builtins {
-		all = append(all, b.def)
+	for _, k := range keys {
+		all = append(all, r.builtins[k].def)
 	}
 	r.mu.RUnlock()
 
 	for _, s := range sources {
-		defs, err := s.List(ctx)
+		if !s.Enabled {
+			continue
+		}
+		defs, err := s.Executor.List(ctx)
 		if err != nil {
 			continue
 		}
@@ -107,13 +209,16 @@ func (r *Registry) Execute(ctx context.Context, call types.ToolCall) (*types.Too
 
 	// Check external sources
 	for _, s := range sources {
-		defs, err := s.List(ctx)
+		if !s.Enabled {
+			continue
+		}
+		defs, err := s.Executor.List(ctx)
 		if err != nil {
 			continue
 		}
 		for _, d := range defs {
 			if d.Name == call.Name {
-				return s.Execute(ctx, call)
+				return s.Executor.Execute(ctx, call)
 			}
 		}
 	}
@@ -199,7 +304,7 @@ func MetaHandler(catalog *Catalog, registry *Registry) map[string]MetaEntry {
 				if err != nil {
 					return &types.ToolResult{Content: "failed to connect: " + err.Error(), IsError: true}, nil
 				}
-				registry.AddSource(client)
+				registry.AddNamedSource(req.URL, client)
 				return &types.ToolResult{
 					Content: fmt.Sprintf("loaded %d tools from %s", len(defs), req.URL),
 				}, nil

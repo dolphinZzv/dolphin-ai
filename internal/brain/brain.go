@@ -120,13 +120,23 @@ func (b *Brain) Init(ctx context.Context) error {
 	return nil
 }
 
-// safePath validates that the resolved path stays within the brain directory.
+// safePath validates that the resolved path stays within the brain directory
+// and does not access the .git directory.
 func (b *Brain) safePath(path string) (string, error) {
 	full := filepath.Join(b.dir, path)
 	cleanFull := filepath.Clean(full)
 	cleanDir := filepath.Clean(b.dir)
 	if !strings.HasPrefix(cleanFull, cleanDir+string(filepath.Separator)) && cleanFull != cleanDir {
 		return "", fmt.Errorf("brain: path traversal denied: %s", path)
+	}
+	rel, err := filepath.Rel(b.dir, cleanFull)
+	if err != nil {
+		return "", fmt.Errorf("brain: path error: %w", err)
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		if part == ".git" {
+			return "", fmt.Errorf("brain: .git access denied: %s", path)
+		}
 	}
 	return cleanFull, nil
 }

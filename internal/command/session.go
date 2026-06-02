@@ -50,4 +50,18 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	}, "command.session_switch"))
 
 	r.Register(sessionCmd)
+
+	// Aliases: /new and /clear both create a new session.
+	alias := func(name string) {
+		r.Register(WithI18nShort(&cobra.Command{
+			Use: name,
+			RunE: func(cmd *cobra.Command, args []string) error {
+				sess := sessMgr.Create(cmd.Context())
+				cmd.Printf("created session %s\n", sess.ID)
+				return nil
+			},
+		}, "command.session_create"))
+	}
+	alias("new")
+	alias("clear")
 }

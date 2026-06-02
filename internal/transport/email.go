@@ -138,8 +138,9 @@ func NewEmail(cfg EmailConfig, logger *zap.Logger, agentName string) *Email {
 
 func (e *Email) ID() string { return e.id }
 
-func (e *Email) Context() string          { return i18n.T("transport.context_email") }
-func (e *Email) Tools() []common.ToolDesc { return nil }
+func (e *Email) Context() string                 { return i18n.T("transport.context_email") }
+func (e *Email) Tools() []common.ToolDesc        { return nil }
+func (e *Email) Start(ctx context.Context) error { return nil }
 
 // Read polls IMAP inbox for unseen messages and blocks until one arrives.
 // In send-only mode, Read returns ErrSendOnly.

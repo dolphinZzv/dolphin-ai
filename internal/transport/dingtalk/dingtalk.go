@@ -145,6 +145,12 @@ func (d *DingTalk) ID() string { return d.id }
 
 func (d *DingTalk) Context() string          { return i18n.T("dingtalk.context") }
 func (d *DingTalk) Tools() []common.ToolDesc { return nil }
+func (d *DingTalk) Start(ctx context.Context) error {
+	if d.cfg.WebhookURL != "" {
+		go d.sendStartupNotification(ctx)
+	}
+	return nil
+}
 
 // Read blocks until a message is received from DingTalk Stream Mode.
 func (d *DingTalk) Read(ctx context.Context) (string, error) {
@@ -246,6 +252,39 @@ func (d *DingTalk) Capability() transport.Capability {
 
 func (d *DingTalk) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
 	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("dingtalk.no_interactive"))
+}
+
+// sendStartupNotification sends a one-shot startup message to the DingTalk webhook.
+func (d *DingTalk) sendStartupNotification(ctx context.Context) {
+	payload := map[string]any{
+		"msgtype": "text",
+		"text": map[string]string{
+			"content": i18n.T("dingtalk.startup_notification"),
+		},
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		d.logger.Warn("startup notification marshal error", zap.Error(err))
+		return
+	}
+
+	reqCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, d.cfg.WebhookURL, bytes.NewReader(data))
+	if err != nil {
+		d.logger.Warn("startup notification request error", zap.Error(err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := d.httpClient.Do(req)
+	if err != nil {
+		d.logger.Warn("startup notification send error", zap.Error(err))
+		return
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
 }
 
 // ---------------------------------------------------------------------------

@@ -112,7 +112,7 @@ func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) 
 				)
 				continue
 			}
-			reg.AddSource(client)
+			reg.AddNamedSource(name, client)
 			logger.Info("loaded MCP server",
 				zap.String("name", name),
 				zap.String("url", url),
@@ -151,7 +151,7 @@ func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) 
 				client.Close()
 				continue
 			}
-			reg.AddSource(client)
+			reg.AddNamedSource(name, client)
 			logger.Info("loaded stdio MCP server",
 				zap.String("name", name),
 				zap.String("command", cmd),

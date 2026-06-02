@@ -17,6 +17,9 @@ func (b *BusesBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		return nil
 	}
 	c.EventBus = event.NewBus()
+	if c.Logger != nil {
+		c.EventBus.SetLogger(c.Logger)
+	}
 	c.HookReg = hook.NewRegistry()
 	c.SignalBus = signal.NewBus()
 	return nil

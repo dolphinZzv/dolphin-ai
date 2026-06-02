@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // Type is an event type string.
@@ -30,6 +32,10 @@ const (
 	EventContextComplete      Type = "context.complete"
 	EventContextBuildStart    Type = "context.build.start"
 	EventContextBuildComplete Type = "context.build.complete"
+	EventLLMEmit              Type = "llm.emit"
+	EventFileCreate           Type = "file.create"
+	EventFileUpdate           Type = "file.update"
+	EventFileDelete           Type = "file.delete"
 )
 
 // Event is the universal event structure.
@@ -47,17 +53,30 @@ type Handler func(ctx context.Context, e Event)
 type Bus struct {
 	mu       sync.Mutex
 	handlers []Handler
+	logger   *zap.Logger
 }
 
 func NewBus() *Bus {
 	return &Bus{}
 }
 
+// SetLogger attaches a logger to the bus for diagnostics.
+func (b *Bus) SetLogger(logger *zap.Logger) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.logger = logger
+}
+
 func (b *Bus) Publish(ctx context.Context, e Event) {
 	b.mu.Lock()
 	handlers := make([]Handler, len(b.handlers))
 	copy(handlers, b.handlers)
+	logger := b.logger
 	b.mu.Unlock()
+
+	if logger != nil {
+		logger.Debug("event published", zap.String("type", string(e.Type)))
+	}
 
 	for _, h := range handlers {
 		h(ctx, e)
@@ -66,6 +85,9 @@ func (b *Bus) Publish(ctx context.Context, e Event) {
 
 func (b *Bus) Subscribe(h Handler) {
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	b.handlers = append(b.handlers, h)
-	b.mu.Unlock()
+	if b.logger != nil {
+		b.logger.Info("event subscriber added", zap.Int("total", len(b.handlers)))
+	}
 }

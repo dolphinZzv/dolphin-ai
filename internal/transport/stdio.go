@@ -68,8 +68,9 @@ func NewStdio(user string) *Stdio {
 
 func (s *Stdio) ID() string { return s.id }
 
-func (s *Stdio) Context() string          { return "" }
-func (s *Stdio) Tools() []common.ToolDesc { return nil }
+func (s *Stdio) Context() string                 { return "" }
+func (s *Stdio) Tools() []common.ToolDesc        { return nil }
+func (s *Stdio) Start(ctx context.Context) error { return nil }
 
 func (s *Stdio) Read(ctx context.Context) (string, error) {
 	if s.rl != nil {
@@ -295,8 +296,9 @@ func NewNullTransport(id string) *NullTransport {
 
 func (n *NullTransport) ID() string { return n.id }
 
-func (n *NullTransport) Context() string          { return "" }
-func (n *NullTransport) Tools() []common.ToolDesc { return nil }
+func (n *NullTransport) Context() string                 { return "" }
+func (n *NullTransport) Tools() []common.ToolDesc        { return nil }
+func (n *NullTransport) Start(ctx context.Context) error { return nil }
 
 func (n *NullTransport) Read(ctx context.Context) (string, error) {
 	if len(n.readBuf) == 0 {

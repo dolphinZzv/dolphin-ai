@@ -1,11 +1,8 @@
 package lifecycle
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"errors"
-	"net/http"
 	"time"
 
 	"dolphin/internal/agentio"
@@ -13,7 +10,6 @@ import (
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
-	"dolphin/internal/i18n"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
@@ -36,7 +32,8 @@ type Pipeline struct {
 	logger             *zap.Logger
 	cancel             context.CancelFunc
 	otelShutdown       func()
-	dingtalkWebhookURL string
+	watchers           []*brain.Watcher
+	subscriptionEngine *brain.SubscriptionEngine
 }
 
 func New(cfg *config.Config) *Pipeline {
@@ -66,6 +63,14 @@ func (p *Pipeline) Start(ctx context.Context) {
 
 	if p.scheduler != nil {
 		p.scheduler.Start(ctx)
+	}
+
+	// Start subscription engine and file watchers.
+	if p.subscriptionEngine != nil {
+		p.subscriptionEngine.Start()
+	}
+	for _, w := range p.watchers {
+		w.Start(ctx)
 	}
 
 	// Idle monitor: 20s after last user input, auto-commit brain changes.
@@ -99,6 +104,15 @@ func (p *Pipeline) Start(ctx context.Context) {
 	p.agentLoop.SetOnResult(func(tr agentio.TurnResult) {
 		p.agentIO.OnResult(&tr)
 	})
+
+	for _, tio := range p.transports {
+		if err := tio.Start(ctx); err != nil {
+			p.logger.Warn("transport start failed",
+				zap.String("transport_id", tio.ID()),
+				zap.Error(err),
+			)
+		}
+	}
 
 	for _, tio := range p.transports {
 		t := tio
@@ -135,47 +149,19 @@ func (p *Pipeline) Start(ctx context.Context) {
 		}()
 	}
 
-	// Send startup notification via DingTalk webhook if configured.
-	if p.dingtalkWebhookURL != "" {
-		go sendStartupNotification(p.logger, p.dingtalkWebhookURL)
-	}
-}
-
-func sendStartupNotification(logger *zap.Logger, webhookURL string) {
-	payload := map[string]any{
-		"msgtype": "text",
-		"text": map[string]string{
-			"content": i18n.T("lifecycle.startup_notification"),
-		},
-	}
-	data, err := json.Marshal(payload)
-	if err != nil {
-		logger.Warn("startup notification marshal error", zap.Error(err))
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(data))
-	if err != nil {
-		logger.Warn("startup notification request error", zap.Error(err))
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	if err != nil {
-		logger.Warn("startup notification send error", zap.Error(err))
-		return
-	}
-	defer resp.Body.Close()
 }
 
 func (p *Pipeline) Shutdown() {
 	p.logger.Info("pipeline shutting down")
 	p.eventBus.Publish(context.Background(), event.Event{Type: event.EventPipelineShutdown})
+
+	// Stop subscription engine and file watchers.
+	if p.subscriptionEngine != nil {
+		p.subscriptionEngine.Stop()
+	}
+	for _, w := range p.watchers {
+		w.Stop()
+	}
 
 	for _, tio := range p.transports {
 		if err := tio.Close(); err != nil {

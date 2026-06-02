@@ -245,6 +245,46 @@ func TestPathTraversal(t *testing.T) {
 	}
 }
 
+func TestGitAccessDenied(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	b := New(dir)
+	if err := b.Init(ctx); err != nil {
+		t.Fatalf("Init failed: %v", err)
+	}
+
+	tests := []string{
+		".git/config",
+		".git/HEAD",
+		".git/objects/pack/xxx",
+		"subdir/../../.git/config",
+	}
+
+	for _, path := range tests {
+		_, err := b.Read(ctx, path)
+		if err == nil {
+			t.Errorf("expected error reading .git path %q", path)
+			continue
+		}
+		if !strings.Contains(err.Error(), ".git access denied") &&
+			!strings.Contains(err.Error(), "path traversal denied") {
+			t.Errorf("expected .git or path traversal error for %q, got: %v", path, err)
+		}
+	}
+
+	for _, path := range tests {
+		err := b.Write(ctx, path, "", "content")
+		if err == nil {
+			t.Errorf("expected error writing .git path %q", path)
+			continue
+		}
+		if !strings.Contains(err.Error(), ".git access denied") &&
+			!strings.Contains(err.Error(), "path traversal denied") {
+			t.Errorf("expected .git or path traversal error for %q, got: %v", path, err)
+		}
+	}
+}
+
 func TestReadIndex(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

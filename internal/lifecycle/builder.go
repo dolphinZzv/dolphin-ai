@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 
+	"dolphin/internal/agentio"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/setup"
@@ -141,7 +142,7 @@ func (b *Builder) Assemble() *Builder {
 		}
 		switch t.ID() {
 		case "dingtalk":
-			b.ctx.ToolReg.AddSource(dtmcp.NewFileUploadSource(
+			b.ctx.ToolReg.AddNamedSource("dingtalk_file", dtmcp.NewFileUploadSource(
 				b.cfg.GetString("dingtalk.client_id"),
 				b.cfg.GetString("dingtalk.client_secret"),
 				func() string {
@@ -153,11 +154,18 @@ func (b *Builder) Assemble() *Builder {
 			))
 		case "wework":
 			if src, ok := t.(tool.Executor); ok {
-				b.ctx.ToolReg.AddSource(src)
+				b.ctx.ToolReg.AddNamedSource("wework", src)
 			}
 		}
 	}
 
+	// Wire subscription engine to send triggered content to the agent loop.
+	if b.ctx.SubscriptionEngine != nil && b.ctx.AgentIO != nil {
+		agentIO := b.ctx.AgentIO
+		b.ctx.SubscriptionEngine.SendTurn = func(ctx context.Context, input string) {
+			agentIO.SendTurn(ctx, &agentio.Turn{Input: input})
+		}
+	}
 	b.pipeline = &Pipeline{
 		transports:         b.ctx.Transports,
 		userIO:             b.ctx.UserIO,
@@ -170,7 +178,8 @@ func (b *Builder) Assemble() *Builder {
 		eventBus:           b.ctx.EventBus,
 		logger:             b.ctx.Logger,
 		otelShutdown:       b.ctx.OtelShutdown,
-		dingtalkWebhookURL: b.cfg.GetString("dingtalk.webhook_url"),
+		watchers:           b.ctx.Watchers,
+		subscriptionEngine: b.ctx.SubscriptionEngine,
 	}
 	return b
 }

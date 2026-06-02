@@ -51,10 +51,18 @@ func init() {
 			"version_output": "dolphin %s",
 
 			// mcp tools
-			"mcp_list_desc": "List loaded MCP tools",
-			"mcp_none":      "No MCP tools loaded",
-			"mcp_loaded":    "Loaded tools:",
-
+			"mcp_list_desc":        "List loaded MCP tools",
+			"mcp_none":             "No MCP tools loaded",
+			"mcp_loaded":           "Loaded tools:",
+			"mcp_other":            "Other",
+			"mcp_sources":          "Sources:",
+			"mcp_enabled":          "enabled",
+			"mcp_disabled":         "disabled",
+			"mcp_disable_cmd":      "Disable an MCP source by name",
+			"mcp_enable_cmd":       "Enable an MCP source by name",
+			"mcp_disabled_source":  "source %q disabled\n",
+			"mcp_enabled_source":   "source %q enabled\n",
+			"mcp_source_not_found": "source %q not found\n",
 			// scheduler
 			"scheduler_list_desc": "List scheduled tasks",
 			"scheduler_none":      "No scheduled tasks",
@@ -87,6 +95,18 @@ func init() {
 			"scripts_enabled":   "enabled",
 			"scripts_total":     "  (total: %d scripts)\n",
 			"scripts_not_found": "script %q not found\n",
+
+			// subscription
+			"subscription_manage":    "List and manage event subscriptions",
+			"subscription_list":      "Event subscriptions:",
+			"subscription_show":      "Show a subscription's details",
+			"subscription_none":      "No subscriptions",
+			"subscription_enabled":   "enabled",
+			"subscription_disabled":  "disabled",
+			"subscription_total":     "  (total: %d subscriptions)\n",
+			"subscription_not_found": "subscription %q not found\n",
+			"subscription_event":     "Event: %s\n",
+			"subscription_filter":    "Filter: %s\n",
 
 			// error
 			"error_format": "error: %v\n",
@@ -147,10 +167,18 @@ func init() {
 			"version_output": "dolphin %s",
 
 			// mcp tools
-			"mcp_list_desc": "列出已加载的 MCP 工具",
-			"mcp_none":      "没有已加载的 MCP 工具",
-			"mcp_loaded":    "已加载的工具:",
-
+			"mcp_list_desc":        "列出已加载的 MCP 工具",
+			"mcp_none":             "没有已加载的 MCP 工具",
+			"mcp_loaded":           "已加载的工具:",
+			"mcp_other":            "其他",
+			"mcp_sources":          "来源:",
+			"mcp_enabled":          "已启用",
+			"mcp_disabled":         "已禁用",
+			"mcp_disable_cmd":      "禁用一个 MCP 来源",
+			"mcp_enable_cmd":       "启用一个 MCP 来源",
+			"mcp_disabled_source":  "来源 %q 已禁用\n",
+			"mcp_enabled_source":   "来源 %q 已启用\n",
+			"mcp_source_not_found": "来源 %q 未找到\n",
 			// scheduler
 			"scheduler_list_desc": "列出定时任务",
 			"scheduler_none":      "没有定时任务",
@@ -183,6 +211,18 @@ func init() {
 			"scripts_enabled":   "已启用",
 			"scripts_total":     "  (共 %d 个脚本)\n",
 			"scripts_not_found": "脚本 %q 未找到\n",
+
+			// subscription
+			"subscription_manage":    "列出和管理事件订阅",
+			"subscription_list":      "事件订阅:",
+			"subscription_show":      "查看订阅详情",
+			"subscription_none":      "没有订阅",
+			"subscription_enabled":   "已启用",
+			"subscription_disabled":  "已禁用",
+			"subscription_total":     "  (共 %d 个订阅)\n",
+			"subscription_not_found": "订阅 %q 未找到\n",
+			"subscription_event":     "事件: %s\n",
+			"subscription_filter":    "过滤: %s\n",
 
 			// error
 			"error_format": "错误: %v\n",
