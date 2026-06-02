@@ -1,5 +1,7 @@
 # Dolphin-AI
 
+[![CI](https://github.com/dolphinZzv/dolphin-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/dolphinZzv/dolphin-ai/actions/workflows/ci.yml)
+
 你卓尔不凡
 
 ## 快速开始
