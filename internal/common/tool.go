@@ -7,4 +7,5 @@ type ToolDesc struct {
 	URL         string
 	Command     string
 	Args        []string
+	Executor    any // tool.Executor — typed as any to avoid import cycle (common → tool → permission → transport → common)
 }

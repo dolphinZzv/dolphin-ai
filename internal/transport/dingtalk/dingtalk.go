@@ -15,6 +15,7 @@ import (
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
 	transport "dolphin/internal/transport"
+	dtmcp "dolphin/internal/transport/dingtalk/mcp"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	dtclient "github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
@@ -143,8 +144,19 @@ func NewDingTalk(cfg DingTalkConfig, logger *zap.Logger, agentName string) *Ding
 
 func (d *DingTalk) ID() string { return d.id }
 
-func (d *DingTalk) Context() string          { return i18n.T("dingtalk.context") }
-func (d *DingTalk) Tools() []common.ToolDesc { return nil }
+func (d *DingTalk) Context() string { return i18n.T("dingtalk.context") }
+func (d *DingTalk) Tools() []common.ToolDesc {
+	if d.cfg.ClientID == "" || d.cfg.ClientSecret == "" {
+		return nil
+	}
+	return []common.ToolDesc{
+		{
+			Name:        "dingtalk_file",
+			Description: "DingTalk file upload and message tools",
+			Executor:    dtmcp.NewFileUploadSource(d.cfg.ClientID, d.cfg.ClientSecret, d.ConversationID, d.logger),
+		},
+	}
+}
 func (d *DingTalk) Start(ctx context.Context) error {
 	if d.cfg.WebhookURL != "" {
 		go d.sendStartupNotification(ctx)

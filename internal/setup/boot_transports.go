@@ -9,6 +9,7 @@ import (
 	"dolphin/internal/config"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
+	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 
 	"go.uber.org/zap"
@@ -42,10 +43,17 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 		c.AgentIO.RegisterTransport(tio.ID(), tio)
 		c.Transports = append(c.Transports, tio)
 
-		// Register transport-specific MCP tools.
+		// Register transport-specific MCP tools from Tools().
 		for i, td := range tio.Tools() {
 			srcName := fmt.Sprintf("%s_mcp_%d", tio.ID(), i)
 			switch {
+			case td.Executor != nil:
+				if exec, ok := td.Executor.(tool.Executor); ok {
+					c.ToolReg.AddNamedSource(srcName, exec)
+					c.Logger.Info("registered transport built-in MCP source",
+						zap.String("transport", tio.ID()),
+					)
+				}
 			case td.URL != "":
 				client := mcp.NewClient(td.URL)
 				c.ToolReg.AddNamedSource(srcName, client)

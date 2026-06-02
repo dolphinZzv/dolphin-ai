@@ -16,7 +16,7 @@ import (
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
 	transport "dolphin/internal/transport"
-	"dolphin/internal/types"
+	wemcp "dolphin/internal/transport/wework/mcp"
 
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
@@ -136,7 +136,18 @@ func (w *WeWork) Start(ctx context.Context) error { return nil }
 func (w *WeWork) Context() string {
 	return i18n.T("wework.context")
 }
-func (w *WeWork) Tools() []common.ToolDesc { return nil }
+func (w *WeWork) Tools() []common.ToolDesc {
+	if w.cfg.BotID == "" || w.cfg.Secret == "" {
+		return nil
+	}
+	return []common.ToolDesc{
+		{
+			Name:        "wework_mcp",
+			Description: "WeWork built-in MCP tools",
+			Executor:    wemcp.NewSource(w, w.cfg.BotID, w.cfg.Secret, w.logger),
+		},
+	}
+}
 
 // run is the main reconnection loop.
 func (w *WeWork) run() {
@@ -757,120 +768,8 @@ func (w *WeWork) sendFileMessage(ctx context.Context, mediaID string) error {
 	return err
 }
 
-// ---------------------------------------------------------------------------
-// MCP tool registration.
-// ---------------------------------------------------------------------------
-
-// List returns available tool definitions when the active transport is WeWork.
-func (w *WeWork) List(ctx context.Context) ([]types.ToolDef, error) {
-	info := transport.GetInfo(ctx)
-	if info == nil || info.ID != "wework" || w.cfg.BotID == "" || w.cfg.Secret == "" {
-		return nil, nil
-	}
-	return []types.ToolDef{
-		{
-			Name: "FILE_UPLOAD",
-			Description: "Upload a file (image, document, archive, etc.) to WeWork Smart Bot and send it to the current conversation. " +
-				"The file is uploaded via WebSocket and sent directly as a native image/file message. " +
-				"For images, mention it in your reply that the image has been sent.",
-			Schema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"file_path": {"type": "string", "description": "Absolute path to the file to upload"}
-				},
-				"required": ["file_path"]
-			}`),
-		},
-		{
-			Name: "MESSAGE",
-			Description: "Send a text or markdown message to the WeWork chat proactively. " +
-				"Use this to notify users, ask questions, or send results without waiting for a reply.",
-			Schema: json.RawMessage(`{
-				"type": "object",
-				"properties": {
-					"content": {"type": "string", "description": "Message content to send"},
-					"msgtype": {"type": "string", "description": "Message type: text or markdown (default: markdown)"}
-				},
-				"required": ["content"]
-			}`),
-		},
-	}, nil
-}
-
-// Execute handles MESSAGE and FILE_UPLOAD calls for WeWork.
-func (w *WeWork) Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
-	info := transport.GetInfo(ctx)
-	if info == nil || info.ID != "wework" {
-		return nil, fmt.Errorf("%s is not available on this transport", call.Name)
-	}
-
-	switch call.Name {
-	case "MESSAGE":
-		return w.executeMessage(ctx, call)
-	case "FILE_UPLOAD":
-		return w.executeFileUpload(ctx, call)
-	default:
-		return nil, fmt.Errorf("unknown tool: %s", call.Name)
-	}
-}
-
-func (w *WeWork) executeMessage(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
-	var args struct {
-		Content string `json:"content"`
-		MsgType string `json:"msgtype"`
-	}
-	if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
-		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
-	}
-	if args.Content == "" {
-		return &types.ToolResult{Content: "content is required", IsError: true}, nil
-	}
-
-	msgType := args.MsgType
-	if msgType == "" {
-		msgType = "markdown"
-	}
-
-	if err := w.sendProactiveMessage(ctx, args.Content, msgType); err != nil {
-		return &types.ToolResult{Content: "failed to send message: " + err.Error(), IsError: true}, nil
-	}
-
-	return &types.ToolResult{Content: "Message sent successfully."}, nil
-}
-
-func (w *WeWork) executeFileUpload(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
-	var req struct {
-		FilePath string `json:"file_path"`
-	}
-	if err := json.Unmarshal([]byte(call.Arguments), &req); err != nil {
-		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
-	}
-
-	w.logger.Info("FILE_UPLOAD tool called", zap.String("file_path", req.FilePath))
-	mediaID, fileName, mediaType, err := w.UploadMedia(ctx, req.FilePath)
-	if err != nil {
-		return &types.ToolResult{Content: "failed to upload file: " + err.Error(), IsError: true}, nil
-	}
-
-	if err := w.SendMediaMessage(ctx, mediaID, mediaType); err != nil {
-		return &types.ToolResult{
-			Content: fmt.Sprintf("File uploaded (media_id: %s) but failed to send: %s", mediaID, err.Error()),
-			IsError: true,
-		}, nil
-	}
-
-	w.logger.Info("FILE_UPLOAD success",
-		zap.String("file", fileName),
-		zap.String("media_id", mediaID),
-		zap.String("type", mediaType),
-	)
-	return &types.ToolResult{
-		Content: fmt.Sprintf("File sent to the conversation.\n- name: %s\n- media_id: %s\n- type: %s", fileName, mediaID, mediaType),
-	}, nil
-}
-
-// sendProactiveMessage sends a text or markdown message proactively via aibot_send_msg.
-func (w *WeWork) sendProactiveMessage(ctx context.Context, content, msgType string) error {
+// ProactiveMessage sends a text or markdown message proactively via aibot_send_msg.
+func (w *WeWork) ProactiveMessage(ctx context.Context, content, msgType string) error {
 	w.stateMu.Lock()
 	chatID := w.lastChatID
 	chatType := w.lastChatType

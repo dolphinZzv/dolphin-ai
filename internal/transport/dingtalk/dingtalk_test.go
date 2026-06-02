@@ -180,3 +180,38 @@ func TestDingTalkCloseWithStreamCli(t *testing.T) {
 
 	dt.Close()
 }
+
+func TestDingTalkTools(t *testing.T) {
+	t.Run("returns executor when ClientID and ClientSecret are set", func(t *testing.T) {
+		dt := NewDingTalk(DingTalkConfig{ClientID: "id", ClientSecret: "secret"}, nil, "")
+		defer dt.Close()
+		tools := dt.Tools()
+		if len(tools) != 1 {
+			t.Fatalf("expected 1 tool desc, got %d", len(tools))
+		}
+		if tools[0].Name != "dingtalk_file" {
+			t.Errorf("expected name 'dingtalk_file', got %q", tools[0].Name)
+		}
+		if tools[0].Executor == nil {
+			t.Error("expected non-nil executor")
+		}
+	})
+
+	t.Run("returns nil when ClientID is empty", func(t *testing.T) {
+		dt := NewDingTalk(DingTalkConfig{ClientID: "", ClientSecret: "secret"}, nil, "")
+		defer dt.Close()
+		tools := dt.Tools()
+		if tools != nil {
+			t.Errorf("expected nil, got %d tools", len(tools))
+		}
+	})
+
+	t.Run("returns nil when ClientSecret is empty", func(t *testing.T) {
+		dt := NewDingTalk(DingTalkConfig{ClientID: "id", ClientSecret: ""}, nil, "")
+		defer dt.Close()
+		tools := dt.Tools()
+		if tools != nil {
+			t.Errorf("expected nil, got %d tools", len(tools))
+		}
+	})
+}

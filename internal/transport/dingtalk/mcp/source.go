@@ -8,15 +8,21 @@ import (
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
+
+	"go.uber.org/zap"
 )
 
 // NewFileUploadSource returns a tool source that provides FILE_UPLOAD and MESSAGE
 // when the active transport is DingTalk (checked via context).
-func NewFileUploadSource(clientID, clientSecret string, conversationIDFn func() string) tool.Executor {
+func NewFileUploadSource(clientID, clientSecret string, conversationIDFn func() string, logger *zap.Logger) tool.Executor {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &dingtalkSource{
 		clientID:         clientID,
 		clientSecret:     clientSecret,
 		conversationIDFn: conversationIDFn,
+		logger:           logger,
 	}
 }
 
@@ -24,6 +30,7 @@ type dingtalkSource struct {
 	clientID         string
 	clientSecret     string
 	conversationIDFn func() string
+	logger           *zap.Logger
 }
 
 func (s *dingtalkSource) List(ctx context.Context) ([]types.ToolDef, error) {

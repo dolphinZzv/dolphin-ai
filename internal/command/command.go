@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"strings"
+	"sync"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/i18n"
@@ -33,6 +34,7 @@ type Registry struct {
 	signalBus *signal.Bus
 	agentIO   *agentio.AgentIO
 	root      *cobra.Command
+	execMu    sync.Mutex // guards SetContext+ExecuteC across transport goroutines
 }
 
 func NewRegistry(sessMgr *session.Manager, sb *signal.Bus) *Registry {
@@ -95,10 +97,25 @@ func (r *Registry) Execute(ctx context.Context, line string, renderMode string) 
 
 	var buf bytes.Buffer
 	r.root.SetOut(&buf)
-	r.root.SetArgs(strings.Fields(line))
+	fields := strings.Fields(line)
+	r.root.SetArgs(fields)
+	r.execMu.Lock()
 	r.root.SetContext(ctx)
+	// Cobra only propagates root.ctx to subcommands when cmd.ctx is nil
+	// (first call). Walk the tree to set ctx on every node so subsequent
+	// calls also get the correct transport info.
+	walkSetContext(r.root, ctx)
 	_, _ = r.root.ExecuteC()
+	r.execMu.Unlock()
 	return strings.TrimRight(buf.String(), "\n")
+}
+
+// walkSetContext recursively sets ctx on cmd and all its subcommands.
+func walkSetContext(cmd *cobra.Command, ctx context.Context) {
+	cmd.SetContext(ctx)
+	for _, sub := range cmd.Commands() {
+		walkSetContext(sub, ctx)
+	}
 }
 
 const defaultUsageTemplate = `Usage: /{{.Use}}{{if .HasAvailableSubCommands}} [command]{{end}}

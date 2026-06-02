@@ -7,9 +7,7 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/setup"
-	"dolphin/internal/tool"
 	_ "dolphin/internal/transport/dingtalk"
-	dtmcp "dolphin/internal/transport/dingtalk/mcp"
 	_ "dolphin/internal/transport/wework"
 )
 
@@ -132,31 +130,6 @@ func (b *Builder) StepTransports() *Builder {
 func (b *Builder) Assemble() *Builder {
 	if b.pipeline != nil {
 		return b
-	}
-
-	// Register transport-specific tools as sources so they're only active
-	// when a message from that transport is being processed.
-	for _, t := range b.ctx.Transports {
-		if b.ctx.ToolReg == nil {
-			continue
-		}
-		switch t.ID() {
-		case "dingtalk":
-			b.ctx.ToolReg.AddNamedSource("dingtalk_file", dtmcp.NewFileUploadSource(
-				b.cfg.GetString("dingtalk.client_id"),
-				b.cfg.GetString("dingtalk.client_secret"),
-				func() string {
-					if c, ok := t.(interface{ ConversationID() string }); ok {
-						return c.ConversationID()
-					}
-					return ""
-				},
-			))
-		case "wework":
-			if src, ok := t.(tool.Executor); ok {
-				b.ctx.ToolReg.AddNamedSource("wework", src)
-			}
-		}
 	}
 
 	// Wire subscription engine to send triggered content to the agent loop.

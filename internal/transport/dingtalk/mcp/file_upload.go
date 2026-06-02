@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"dolphin/internal/types"
+
+	"go.uber.org/zap"
 )
 
 func (s *dingtalkSource) executeFileUpload(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
@@ -18,6 +20,7 @@ func (s *dingtalkSource) executeFileUpload(ctx context.Context, call types.ToolC
 		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
 	}
 
+	s.logger.Info("FILE_UPLOAD tool called", zap.String("file_path", args.FilePath))
 	token, err := getAccessToken(ctx, s.clientID, s.clientSecret)
 	if err != nil {
 		return &types.ToolResult{Content: "failed to get DingTalk access token: " + err.Error(), IsError: true}, nil
