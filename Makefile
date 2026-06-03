@@ -12,6 +12,22 @@ build-mail:
 .PHONY: build-all
 build-all: build build-mail
 
+.PHONY: browser
+browser:
+	@bash mcp/browser/build.sh
+
+.PHONY: browser-run
+browser-run: browser
+	open bin/BrowserMCP.app
+
+.PHONY: browser-test
+browser-test:
+	cd mcp/browser && swift test --filter "BrowserMCPTests" 2>&1
+
+.PHONY: browser-test-all
+browser-test-all:
+	cd mcp/browser && swift test --filter "MCPProtocolTests|BrowserMCPIntegrationTests" 2>&1
+
 .PHONY: test
 test:
 	go test ./... -race -count=1

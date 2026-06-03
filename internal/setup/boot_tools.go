@@ -105,27 +105,16 @@ func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) 
 		}
 
 		switch mtype {
-		case "url":
+		case "url", "http":
 			url := cfg.GetString(prefix + ".url")
 			if url == "" {
 				logger.Warn("mcp server missing url", zap.String("name", name))
 				continue
 			}
-			client := mcp.NewClient(url)
-			defs, err := client.List(context.Background())
-			if err != nil {
-				logger.Warn("mcp server connect failed",
-					zap.String("name", name),
-					zap.String("url", url),
-					zap.Error(err),
-				)
-				continue
-			}
-			reg.AddNamedSource(name, client)
-			logger.Info("loaded MCP server",
+			reg.AddNamedSource(name, mcp.NewLazyClient(url))
+			logger.Info("registered MCP server (lazy)",
 				zap.String("name", name),
 				zap.String("url", url),
-				zap.Int("tools", len(defs)),
 			)
 
 		case "stdio":

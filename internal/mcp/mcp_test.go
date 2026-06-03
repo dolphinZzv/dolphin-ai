@@ -11,6 +11,13 @@ import (
 	"dolphin/internal/types"
 )
 
+// gockClient creates a Client and registers it with gock for HTTP mocking.
+func gockClient(baseURL string) *Client {
+	client := NewClient(baseURL)
+	gock.InterceptClient(client.http)
+	return client
+}
+
 func TestClient_List(t *testing.T) {
 	defer gock.Off()
 
@@ -46,7 +53,7 @@ func TestClient_List(t *testing.T) {
 			},
 		})
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	defs, err := client.List(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -78,7 +85,7 @@ func TestClient_ListRPCError(t *testing.T) {
 			},
 		})
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	_, err := client.List(context.Background())
 	if err == nil {
 		t.Fatal("expected RPC error")
@@ -92,7 +99,7 @@ func TestClient_ListHTTPError(t *testing.T) {
 		Post("/").
 		Reply(500)
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	_, err := client.List(context.Background())
 	if err == nil {
 		t.Fatal("expected HTTP error")
@@ -124,7 +131,7 @@ func TestClient_Execute(t *testing.T) {
 			},
 		})
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	result, err := client.Execute(context.Background(), types.ToolCall{
 		ID:        "call-1",
 		Name:      "greet",
@@ -162,7 +169,7 @@ func TestClient_ExecuteWithoutArgs(t *testing.T) {
 			"result":  "pong",
 		})
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	result, err := client.Execute(context.Background(), types.ToolCall{
 		ID:   "call-2",
 		Name: "ping",
@@ -190,7 +197,7 @@ func TestClient_ExecuteRPCError(t *testing.T) {
 			},
 		})
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	result, err := client.Execute(context.Background(), types.ToolCall{
 		ID:   "call-3",
 		Name: "nonexistent",
@@ -210,7 +217,7 @@ func TestClient_ExecuteHTTPError(t *testing.T) {
 		Post("/").
 		Reply(http.StatusBadRequest)
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	_, err := client.Execute(context.Background(), types.ToolCall{
 		ID:   "call-4",
 		Name: "test",
@@ -227,7 +234,7 @@ func TestClient_ExecuteNetworkError(t *testing.T) {
 		Post("/").
 		ReplyError(NewFakeNetError("connection refused"))
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	_, err := client.Execute(context.Background(), types.ToolCall{
 		ID:   "call-5",
 		Name: "test",
@@ -241,7 +248,7 @@ func TestClient_JSONMarshalError(t *testing.T) {
 	// Verify that the call function correctly handles a marshal error.
 	// Since json.Marshal can't fail on the struct types we use, this is a
 	// structural coverage test.
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 
 	// Use an invalid base URL to trigger a request creation error.
 	client.baseURL = "://invalid-url"
@@ -262,7 +269,7 @@ func TestClient_ListUnmarshalError(t *testing.T) {
 		Reply(200).
 		BodyString("not json at all")
 
-	client := NewClient("http://mcp.example.com")
+	client := gockClient("http://mcp.example.com")
 	_, err := client.List(context.Background())
 	if err == nil {
 		t.Fatal("expected unmarshal error")

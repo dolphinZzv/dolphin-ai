@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"dolphin/internal/i18n"
 	"dolphin/internal/tool"
@@ -49,7 +50,10 @@ func RegisterMCP(r *Registry, mgr mcpManager) {
 	mcpCmd := WithI18nShort(&cobra.Command{
 		Use: "mcp",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defs, err := mgr.List(cmd.Context())
+			ctx, cancel := context.WithTimeout(cmd.Context(), 3*time.Second)
+			defer cancel()
+
+			defs, err := mgr.List(ctx)
 			if err != nil {
 				return err
 			}
@@ -101,7 +105,7 @@ func RegisterMCP(r *Registry, mgr mcpManager) {
 			}
 
 			// Show source status.
-			sources := mgr.ListActiveSources(cmd.Context())
+			sources := mgr.ListActiveSources(ctx)
 			if len(sources) > 0 {
 				cmd.Printf("\n%s\n", i18n.T("command.mcp_sources"))
 				for _, s := range sources {

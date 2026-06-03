@@ -144,8 +144,11 @@
         "additionalProperties": false,
         "properties": {
           "name": { "type": "string" },
-          "type": { "type": "string" },
-          "enabled": { "type": "boolean", "default": true }
+          "type": { "type": "string", "description": "builtin, stdio, or http" },
+          "enabled": { "type": "boolean", "default": true },
+          "url": { "type": "string", "format": "uri", "description": "URL for http transport (SSE endpoint)" },
+          "command": { "type": "string", "description": "Command for stdio transport" },
+          "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments for stdio transport" }
         },
         "required": ["name", "type"]
       }

@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"dolphin/internal/types"
 )
@@ -28,7 +29,9 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
-		http:    &http.Client{},
+		http: &http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 }
 
@@ -118,6 +121,7 @@ func (c *Client) call(ctx context.Context, method string, params any) (*jsonRPCR
 	if c.sessionID != "" {
 		httpReq.Header.Set("Mcp-Session-Id", c.sessionID)
 	}
+	httpReq.Close = true // disable keepalive for one-shot server compatibility
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -151,6 +155,36 @@ func (c *Client) call(ctx context.Context, method string, params any) (*jsonRPCR
 		return nil, fmt.Errorf("mcp: unmarshal: %w", err)
 	}
 	return &rpcResp, nil
+}
+
+// LazyClient defers connection to the first List/Execute call, allowing MCP
+// server sources to be registered at boot time even if the server isn't
+// running yet. Each call creates the real Client on demand.
+type LazyClient struct {
+	url    string
+	client *Client
+	mu     sync.Mutex
+}
+
+func NewLazyClient(url string) *LazyClient {
+	return &LazyClient{url: url}
+}
+
+func (l *LazyClient) List(ctx context.Context) ([]types.ToolDef, error) {
+	return l.getClient().List(ctx)
+}
+
+func (l *LazyClient) Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
+	return l.getClient().Execute(ctx, call)
+}
+
+func (l *LazyClient) getClient() *Client {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.client == nil {
+		l.client = NewClient(l.url)
+	}
+	return l.client
 }
 
 // readSSE parses a text/event-stream response and extracts the final

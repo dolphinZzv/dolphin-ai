@@ -37,6 +37,17 @@ builds:
     ldflags:
       - -s -w
 
+  - id: cdp-server
+    builder: prebuilt
+    binary: bin/cdp-server
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    prebuilt:
+      path: bin/cdp-server-{{ .Os }}-{{ .Arch }}
+
 archives:
   - id: default
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
@@ -44,6 +55,7 @@ archives:
     builds:
       - dolphin
       - mail
+      - cdp-server
     files:
       - none*
 
