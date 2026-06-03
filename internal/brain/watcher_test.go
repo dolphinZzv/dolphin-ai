@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -43,9 +44,14 @@ func TestWatcherDetectsNewFile(t *testing.T) {
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
 
-	var got event.Event
+	var (
+		mu     sync.Mutex
+		events []event.Event
+	)
 	bus.Subscribe(func(ctx context.Context, e event.Event) {
-		got = e
+		mu.Lock()
+		events = append(events, e)
+		mu.Unlock()
 	})
 
 	w.Start(context.Background())
@@ -56,15 +62,23 @@ func TestWatcherDetectsNewFile(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "new.md"), []byte("hello"), 0644)
 	time.Sleep(50 * time.Millisecond)
 
-	if got.Type != event.EventFileCreate {
-		t.Errorf("expected EventFileCreate, got %s", got.Type)
+	mu.Lock()
+	createCount := 0
+	for _, e := range events {
+		if e.Type != event.EventFileCreate {
+			continue
+		}
+		createCount++
+		if p, ok := e.Payload["path"].(string); ok && p == "new.md" {
+			if ext, ok := e.Payload["ext"].(string); !ok || ext != ".md" {
+				t.Errorf("expected ext '.md', got %v", e.Payload["ext"])
+			}
+			mu.Unlock()
+			return
+		}
 	}
-	if p, ok := got.Payload["path"].(string); !ok || p != "new.md" {
-		t.Errorf("expected path 'new.md', got %v", got.Payload["path"])
-	}
-	if ext, ok := got.Payload["ext"].(string); !ok || ext != ".md" {
-		t.Errorf("expected ext '.md', got %v", got.Payload["ext"])
-	}
+	mu.Unlock()
+	t.Errorf("expected EventFileCreate for 'new.md', got %d other events (createCount=%d)", len(events), createCount)
 }
 
 func TestWatcherDetectsUpdate(t *testing.T) {
@@ -75,9 +89,14 @@ func TestWatcherDetectsUpdate(t *testing.T) {
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
 
-	var got event.Event
+	var (
+		mu     sync.Mutex
+		events []event.Event
+	)
 	bus.Subscribe(func(ctx context.Context, e event.Event) {
-		got = e
+		mu.Lock()
+		events = append(events, e)
+		mu.Unlock()
 	})
 
 	w.Start(context.Background())
@@ -88,9 +107,14 @@ func TestWatcherDetectsUpdate(t *testing.T) {
 	os.WriteFile(filePath, []byte("v2"), 0644)
 	time.Sleep(50 * time.Millisecond)
 
-	if got.Type != event.EventFileUpdate {
-		t.Errorf("expected EventFileUpdate, got %s", got.Type)
+	mu.Lock()
+	defer mu.Unlock()
+	for _, e := range events {
+		if e.Type == event.EventFileUpdate {
+			return
+		}
 	}
+	t.Errorf("expected EventFileUpdate, got events: %v", events)
 }
 
 func TestWatcherDetectsDelete(t *testing.T) {
@@ -101,9 +125,14 @@ func TestWatcherDetectsDelete(t *testing.T) {
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
 
-	var got event.Event
+	var (
+		mu     sync.Mutex
+		events []event.Event
+	)
 	bus.Subscribe(func(ctx context.Context, e event.Event) {
-		got = e
+		mu.Lock()
+		events = append(events, e)
+		mu.Unlock()
 	})
 
 	w.Start(context.Background())
@@ -113,9 +142,14 @@ func TestWatcherDetectsDelete(t *testing.T) {
 	os.Remove(filePath)
 	time.Sleep(50 * time.Millisecond)
 
-	if got.Type != event.EventFileDelete {
-		t.Errorf("expected EventFileDelete, got %s", got.Type)
+	mu.Lock()
+	defer mu.Unlock()
+	for _, e := range events {
+		if e.Type == event.EventFileDelete {
+			return
+		}
 	}
+	t.Errorf("expected EventFileDelete, got events: %v", events)
 }
 
 func TestWatcherSkipsGit(t *testing.T) {
