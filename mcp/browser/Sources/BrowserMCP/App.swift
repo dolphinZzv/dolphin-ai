@@ -69,9 +69,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         item.menu = menu
         statusItem = item
-
-        // Debug: write to file to confirm setupMenuBar ran
-        try? "setupMenuBar ran at \(Date())\n".write(toFile: "/tmp/browser-mcp-debug.log", atomically: true, encoding: .utf8)
     }
 
     @objc private func showWindowAction() {
