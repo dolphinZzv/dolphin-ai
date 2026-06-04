@@ -11,17 +11,23 @@ enum TestToolHandler {
         [
             ToolDef(
                 name: "browser_navigate",
-                description: "Navigate to a URL",
+                description: "Navigate to a URL in the specified tab (or active tab if not specified)",
                 inputSchema: InputSchema(
-                    properties: ["url": PropertySchema(type: "string", description: "Target URL", default: nil)],
+                    properties: [
+                        "url": PropertySchema(type: "string", description: "Target URL", default: nil),
+                        "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+                    ],
                     required: ["url"]
                 )
             ),
             ToolDef(
                 name: "browser_evaluate",
-                description: "Execute JavaScript on the current page and return the result",
+                description: "Execute JavaScript on the specified page (or active tab) and return the result",
                 inputSchema: InputSchema(
-                    properties: ["expression": PropertySchema(type: "string", description: "JavaScript expression to evaluate", default: nil)],
+                    properties: [
+                        "expression": PropertySchema(type: "string", description: "JavaScript expression to evaluate", default: nil),
+                        "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+                    ],
                     required: ["expression"]
                 )
             ),
@@ -32,6 +38,7 @@ enum TestToolHandler {
                     properties: [
                         "url": PropertySchema(type: "string", description: "Optional URL to navigate to first", default: nil),
                         "output_dir": PropertySchema(type: "string", description: "Screenshot output directory, default: screenshots", default: nil),
+                        "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
                     ],
                     required: nil
                 )
@@ -45,6 +52,38 @@ enum TestToolHandler {
                         "height": PropertySchema(type: "number", description: "Window height in pixels, min 300", default: nil),
                     ],
                     required: ["width", "height"]
+                )
+            ),
+            ToolDef(
+                name: "browser_create_tab",
+                description: "Create a new browser tab and return its tab_id",
+                inputSchema: InputSchema(
+                    properties: [:],
+                    required: nil
+                )
+            ),
+            ToolDef(
+                name: "browser_close_tab",
+                description: "Close a browser tab by tab_id. At least one tab must remain open.",
+                inputSchema: InputSchema(
+                    properties: ["tab_id": PropertySchema(type: "string", description: "Tab ID to close", default: nil)],
+                    required: ["tab_id"]
+                )
+            ),
+            ToolDef(
+                name: "browser_list_tabs",
+                description: "List all open browser tabs with their IDs, URLs, and titles",
+                inputSchema: InputSchema(
+                    properties: [:],
+                    required: nil
+                )
+            ),
+            ToolDef(
+                name: "browser_activate_tab",
+                description: "Switch the active tab by tab_id. This brings the tab into view.",
+                inputSchema: InputSchema(
+                    properties: ["tab_id": PropertySchema(type: "string", description: "Tab ID to activate", default: nil)],
+                    required: ["tab_id"]
                 )
             ),
         ]

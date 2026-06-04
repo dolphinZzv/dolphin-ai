@@ -97,6 +97,12 @@ struct PropertySchema: Encodable {
 
 typealias ToolArgs = [String: JSONValue]
 
+/// Encode a JSON object as a string for tool results.
+private func toolResult(_ dict: [String: Any]) -> String {
+    let data = try! JSONSerialization.data(withJSONObject: dict)
+    return String(data: data, encoding: .utf8)!
+}
+
 struct Tool: @unchecked Sendable {
     let name: String
     let description: String
@@ -110,8 +116,11 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
     [
         Tool(
             name: "browser_navigate",
-            description: "Navigate to a URL",
-            properties: ["url": PropertySchema(type: "string", description: "Target URL", default: nil)],
+            description: "Navigate to a URL in the specified tab (or active tab if not specified)",
+            properties: [
+                "url": PropertySchema(type: "string", description: "Target URL", default: nil),
+                "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+            ],
             required: ["url"],
             validate: { args in
                 if args["url"]?.stringValue?.isEmpty ?? true { return "url is required" }
@@ -119,14 +128,18 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             },
             run: { args, vm, _ in
                 let url = args["url"]!.stringValue!
-                try await vm.navigate(to: url)
-                return "{\"status\":\"ok\",\"url\":\"\(url)\"}"
+                let tabId = args["tab_id"]?.stringValue
+                try await vm.navigate(to: url, in: tabId)
+                return toolResult(["status": "ok", "url": url])
             }
         ),
         Tool(
             name: "browser_evaluate",
-            description: "Execute JavaScript on the current page and return the result",
-            properties: ["expression": PropertySchema(type: "string", description: "JavaScript expression to evaluate", default: nil)],
+            description: "Execute JavaScript on the specified page (or active tab) and return the result",
+            properties: [
+                "expression": PropertySchema(type: "string", description: "JavaScript expression to evaluate", default: nil),
+                "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+            ],
             required: ["expression"],
             validate: { args in
                 if args["expression"]?.stringValue?.isEmpty ?? true { return "expression is required" }
@@ -134,11 +147,9 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             },
             run: { args, vm, _ in
                 let expr = args["expression"]!.stringValue!
-                let result = try await vm.evaluate(script: expr)
-                let escaped = result
-                    .replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "\"", with: "\\\"")
-                return "{\"result\":\"\(escaped)\"}"
+                let tabId = args["tab_id"]?.stringValue
+                let result = try await vm.evaluate(script: expr, in: tabId)
+                return toolResult(["result": result])
             }
         ),
         Tool(
@@ -147,15 +158,16 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             properties: [
                 "url": PropertySchema(type: "string", description: "Optional URL to navigate to first", default: nil),
                 "output_dir": PropertySchema(type: "string", description: "Screenshot output directory, default: screenshots", default: nil),
+                "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
             ],
             required: nil,
             validate: { _ in nil },
             run: { args, vm, _ in
                 let url = args["url"]?.stringValue
+                let tabId = args["tab_id"]?.stringValue
                 let outputDir = args["output_dir"]?.stringValue ?? "screenshots"
-                await vm.setScreenshotDir(outputDir)
-                let path = try await vm.screenshot(url: url)
-                return "{\"path\":\"\(path)\"}"
+                let path = try await vm.screenshot(url: url, outputDir: outputDir, in: tabId)
+                return toolResult(["path": path])
             }
         ),
         Tool(
@@ -181,7 +193,67 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
                     vm.windowHeight = CGFloat(h)
                     vm.applyWindowSize()
                 }
-                return "{\"status\":\"ok\",\"width\":\(w),\"height\":\(h)}"
+                return toolResult(["status": "ok", "width": w, "height": h])
+            }
+        ),
+        Tool(
+            name: "browser_create_tab",
+            description: "Create a new browser tab and return its tab_id",
+            properties: [:],
+            required: nil,
+            validate: { _ in nil },
+            run: { args, vm, _ in
+                let tabId = await vm.createTab()
+                return toolResult(["status": "ok", "tab_id": tabId])
+            }
+        ),
+        Tool(
+            name: "browser_close_tab",
+            description: "Close a browser tab by tab_id. At least one tab must remain open.",
+            properties: ["tab_id": PropertySchema(type: "string", description: "Tab ID to close", default: nil)],
+            required: ["tab_id"],
+            validate: { args in
+                if args["tab_id"]?.stringValue?.isEmpty ?? true { return "tab_id is required" }
+                return nil
+            },
+            run: { args, vm, _ in
+                let tabId = args["tab_id"]!.stringValue!
+                await vm.closeTab(id: tabId)
+                return toolResult(["status": "ok", "tab_id": tabId])
+            }
+        ),
+        Tool(
+            name: "browser_list_tabs",
+            description: "List all open browser tabs with their IDs, URLs, and titles",
+            properties: [:],
+            required: nil,
+            validate: { _ in nil },
+            run: { args, vm, _ in
+                let rows: [(id: String, url: String, title: String, isActive: Bool)] = await MainActor.run {
+                    vm.tabOrder.compactMap { id in
+                        guard let tab = vm.tabs[id] else { return nil }
+                        return (id, tab.url, tab.title, id == vm.activeTabId)
+                    }
+                }
+                let tabList: [[String: Any]] = rows.map { r in
+                    ["tab_id": r.id, "url": r.url, "title": r.title, "is_active": r.isActive]
+                }
+                return toolResult(["tabs": tabList])
+            }
+        ),
+        Tool(
+            name: "browser_activate_tab",
+            description: "Switch the active tab by tab_id. This brings the tab into view.",
+            properties: ["tab_id": PropertySchema(type: "string", description: "Tab ID to activate", default: nil)],
+            required: ["tab_id"],
+            validate: { args in
+                if args["tab_id"]?.stringValue?.isEmpty ?? true { return "tab_id is required" }
+                return nil
+            },
+            run: { args, vm, _ in
+                let tabId = args["tab_id"]!.stringValue!
+                await vm.activateTab(id: tabId)
+                return toolResult(["status": "ok", "tab_id": tabId])
             }
         ),
         Tool(
@@ -196,15 +268,15 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             run: { args, vm, tm in
                 let taskId = args["taskId"]!.stringValue!
                 guard let task = tm.get(id: taskId) else {
-                    return "{\"error\":\"task not found\",\"taskId\":\"\(taskId)\"}"
+                    return toolResult(["error": "task not found", "taskId": taskId])
                 }
                 switch task.state {
                 case .pending, .running:
-                    return "{\"status\":\"processing\",\"taskId\":\"\(taskId)\"}"
+                    return toolResult(["status": "processing", "taskId": taskId])
                 case .completed(let jsonStr):
                     return jsonStr
                 case .failed(let code, let msg):
-                    return "{\"error\":{\"code\":\(code),\"message\":\"\(msg)\"},\"taskId\":\"\(taskId)\"}"
+                    return toolResult(["error": ["code": code, "message": msg], "taskId": taskId])
                 }
             }
         ),
@@ -220,8 +292,6 @@ public final class MCPHttpServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "mcp-http")
     private let sse = SSEManager()
 
-    /// Serial queue for background task execution.
-    private let callQueue = DispatchQueue(label: "mcp-call-serial")
     private let taskManager = TaskManager()
     private let tools: [Tool]
 
@@ -413,31 +483,25 @@ public final class MCPHttpServer: @unchecked Sendable {
                 viewModel.windowHeight = CGFloat(h)
                 viewModel.applyWindowSize()
             }
-            sendJSONRPCResult(connection, id: request.id, result: "{\"status\":\"ok\",\"width\":\(w),\"height\":\(h)}")
+            sendJSONRPCResult(connection, id: request.id, result: toolResult(["status": "ok", "width": w, "height": h]))
             return
         }
 
         if isAsync {
             let taskId = UUID().uuidString
             taskManager.add(id: taskId, name: name, args: args, rpcId: request.id)
-            sendJSONRPCResult(connection, id: request.id, result: "{\"taskId\":\"\(taskId)\"}")
+            sendJSONRPCResult(connection, id: request.id, result: toolResult(["taskId": taskId]))
             processNextTask()
         } else {
             beginSSE(connection)
-            callQueue.async { [weak self] in
+            Task { [weak self] in
                 guard let self else { return }
-                let sema = DispatchSemaphore(value: 0)
-                Task { [weak self] in
-                    guard let self else { sema.signal(); return }
-                    do {
-                        let result = try await tool.run(args, viewModel, taskManager)
-                        self.sendSSEResult(connection, id: request.id, result: result)
-                    } catch {
-                        self.sendSSEError(connection, id: request.id, code: -1, message: error.localizedDescription)
-                    }
-                    sema.signal()
+                do {
+                    let result = try await tool.run(args, viewModel, taskManager)
+                    self.sendSSEResult(connection, id: request.id, result: result)
+                } catch {
+                    self.sendSSEError(connection, id: request.id, code: -1, message: error.localizedDescription)
                 }
-                sema.wait()
             }
         }
     }
@@ -457,7 +521,7 @@ public final class MCPHttpServer: @unchecked Sendable {
         }
         switch task.state {
         case .pending, .running:
-            let text = "{\"status\":\"processing\",\"taskId\":\"\(taskId)\"}"
+            let text = toolResult(["status": "processing", "taskId": taskId])
             let contentItem: [String: String] = ["type": "text", "text": text]
             let body: [String: Any] = [
                 "jsonrpc": "2.0",
@@ -480,22 +544,13 @@ public final class MCPHttpServer: @unchecked Sendable {
     // MARK: - Background task execution
 
     private func processNextTask() {
-        callQueue.async { [weak self] in
+        Task { [weak self] in
             guard let self else { return }
-            guard let taskId = taskManager.nextPending() else { return }
-            taskManager.update(id: taskId, state: .running)
-
-            guard let task = taskManager.get(id: taskId) else { return }
-
-            let sema = DispatchSemaphore(value: 0)
-            Task { [weak self] in
-                guard let self else { sema.signal(); return }
+            while let taskId = taskManager.nextPending() {
+                taskManager.update(id: taskId, state: .running)
+                guard let task = taskManager.get(id: taskId) else { continue }
                 await executeTask(task, taskId: taskId)
-                sema.signal()
             }
-            sema.wait()
-
-            processNextTask()
         }
     }
 

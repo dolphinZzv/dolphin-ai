@@ -37,7 +37,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Start HTTP MCP server
         do {
-            httpServer = MCPHttpServer(viewModel: viewModel, port: 9876)
+            let port = ProcessInfo.processInfo.environment["BROWSER_MCP_PORT"].flatMap(UInt16.init) ?? 9876
+            httpServer = MCPHttpServer(viewModel: viewModel, port: port)
             try httpServer?.start()
         } catch {
             print("[MCP] HTTP server failed: \(error)")
@@ -78,11 +79,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showSettingsAction() {
-        if #available(macOS 14, *) {
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        } else {
-            NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-        }
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: NSApp, from: nil)
     }
 
     // MARK: - URL handler (browser-mcp:// urls)

@@ -1,136 +1,266 @@
 import XCTest
 
-// MARK: - Sendable helper for stdout collection
-
-final class StdoutBuffer: @unchecked Sendable {
-    var data = Data()
-    func append(_ more: Data) { data.append(more) }
-
-    /// Remove and return the data up to the newline, advancing past it.
-    func consumeLine(upTo nlIndex: Data.Index) -> Data {
-        let line = data[..<nlIndex]
-        data = data[(nlIndex + 1)...]
-        return Data(line)
-    }
-}
-
-// MARK: - MCP integration test (requires built BrowserMCP app)
-
 /// Integration test that launches the BrowserMCP process and communicates
-/// via JSON-RPC over stdin/stdout.
+/// via JSON-RPC over HTTP.
 ///
 /// To run: `make browser && swift test --filter BrowserMCPIntegrationTests`
 final class BrowserMCPIntegrationTests: XCTestCase {
     var process: Process!
-    var stdinPipe: Pipe!
-    var stdoutPipe: Pipe!
-    var stdoutBuffer: StdoutBuffer!
-    var tempScreenshotDir: String!
+    var baseURL: URL!
+    var testDir: URL!
 
     override func setUpWithError() throws {
-        // Locate the BrowserMCP executable
         guard let bin = locateBinary() else {
             throw XCTSkip("BrowserMCP binary not found. Run 'make browser' first.")
         }
 
-        let testDir = URL(fileURLWithPath: #filePath)
+        testDir = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent() // Tests/BrowserMCPTests/
-        tempScreenshotDir = testDir.appendingPathComponent("screenshots").path
-        try FileManager.default.createDirectory(atPath: tempScreenshotDir, withIntermediateDirectories: true)
 
         process = Process()
-        stdinPipe = Pipe()
-        stdoutPipe = Pipe()
-        stdoutBuffer = StdoutBuffer()
-
         process.executableURL = bin
-        process.standardInput = stdinPipe
-        process.standardOutput = stdoutPipe
-
-        // Collect stdout data
-        let buffer = stdoutBuffer!
-        stdoutPipe.fileHandleForReading.readabilityHandler = { handle in
-            buffer.append(handle.availableData)
-        }
+        var env = ProcessInfo.processInfo.environment
+        env["BROWSER_MCP_PORT"] = "19876"
+        process.environment = env
 
         try process.run()
+
+        baseURL = URL(string: "http://127.0.0.1:19876")!
+
+        // Wait for the server to be ready
+        try waitForServer(timeout: 10)
     }
 
     override func tearDownWithError() throws {
-        stdoutPipe.fileHandleForReading.readabilityHandler = nil
         process?.terminate()
         process = nil
-        stdinPipe = nil
-        stdoutPipe = nil
-        stdoutBuffer = nil
-
-        // Clean up screenshots directory
-        if let dir = tempScreenshotDir {
-            try? FileManager.default.removeItem(atPath: dir)
-            tempScreenshotDir = nil
-        }
+        baseURL = nil
+        testDir = nil
     }
 
-    // MARK: - Tests
+    // MARK: - Tab E2E tests
 
-    func testNavigateToBingAndScreenshot() throws {
-        // Step 1: Navigate to bing.com
-        let navCmd = mcpCall(name: "browser_navigate", args: ["url": "https://www.bing.com"])
-        write(navCmd)
-
-        // Wait for navigation response (up to 35s)
-        guard let navResp = waitForResponse(timeout: 35) else {
-            XCTFail("No response for navigate command")
-            return
-        }
-        XCTAssertNotNil(navResp["result"], "navigate should succeed: \(navResp)")
-
-        // Step 2: Take screenshot
-        let ssCmd = mcpCall(name: "browser_screenshot", args: ["output_dir": tempScreenshotDir!])
-        write(ssCmd)
-
-        guard let ssResp = waitForResponse(timeout: 20) else {
-            XCTFail("No response for screenshot command")
-            return
-        }
-        XCTAssertNotNil(ssResp["result"], "screenshot should succeed: \(ssResp)")
-
-        // Step 3: Verify screenshot file exists
-        if let result = ssResp["result"] as? [String: Any],
-           let content = result["content"] as? [[String: Any]],
-           let text = content.first?["text"] as? String,
-           let data = text.data(using: .utf8),
-           let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-           let path = json["path"] {
-            XCTAssertTrue(FileManager.default.fileExists(atPath: path), "Screenshot file should exist at: \(path)")
-            let attrs = try FileManager.default.attributesOfItem(atPath: path)
-            let size = attrs[.size] as? Int ?? 0
-            XCTAssertGreaterThan(size, 1000, "Screenshot should be larger than 1KB")
-        } else {
-            XCTFail("Could not extract screenshot path from response: \(ssResp)")
-        }
+    func testCreateTab() throws {
+        let resp = try sendToolCall("browser_create_tab", args: [:])
+        let result = try extractResult(resp)
+        XCTAssertNotNil(result["tab_id"] as? String)
+        XCTAssertEqual(result["status"] as? String, "ok")
     }
 
-    func testScreenshotOutputDir() throws {
-        // First navigate to a page
-        let navCmd = mcpCall(name: "browser_navigate", args: ["url": "https://www.bing.com"])
-        write(navCmd)
-        _ = waitForResponse(timeout: 35)
+    func testListTabsInitiallyOne() throws {
+        let resp = try sendToolCall("browser_list_tabs", args: [:])
+        let result = try extractResult(resp)
+        let tabs = result["tabs"] as? [[String: Any]]
+        XCTAssertNotNil(tabs)
+        XCTAssertEqual(tabs?.count, 1, "should start with one default tab")
+    }
 
-        // Then screenshot with custom output dir
-        let ssCmd = mcpCall(name: "browser_screenshot", args: ["output_dir": tempScreenshotDir!])
-        write(ssCmd)
-
-        guard let resp = waitForResponse(timeout: 20) else {
-            XCTFail("No response for screenshot command")
-            return
+    func testCreateAndListMultipleTabs() throws {
+        // Create 3 new tabs
+        for _ in 0..<3 {
+            let createResp = try sendToolCall("browser_create_tab", args: [:])
+            let createResult = try extractResult(createResp)
+            XCTAssertNotNil(createResult["tab_id"] as? String)
         }
-        XCTAssertNotNil(resp["result"], "screenshot should return result: \(resp)")
+
+        // List tabs — should have 4 now (1 default + 3 new)
+        let listResp = try sendToolCall("browser_list_tabs", args: [:])
+        let listResult = try extractResult(listResp)
+        let tabs = listResult["tabs"] as? [[String: Any]]
+        XCTAssertEqual(tabs?.count, 4)
+
+        // One tab should be active
+        let activeTabs = tabs?.filter { $0["is_active"] as? Bool == true }
+        XCTAssertEqual(activeTabs?.count, 1)
+    }
+
+    func testCreateTabReturnsUniqueIDs() throws {
+        var ids = Set<String>()
+
+        for _ in 0..<3 {
+            let resp = try sendToolCall("browser_create_tab", args: [:])
+            let result = try extractResult(resp)
+            let tabId = result["tab_id"] as? String
+            XCTAssertNotNil(tabId)
+            ids.insert(tabId!)
+        }
+
+        XCTAssertEqual(ids.count, 3, "each tab should have a unique id")
+    }
+
+    func testCloseTab() throws {
+        // Create a tab
+        let createResp = try sendToolCall("browser_create_tab", args: [:])
+        let createResult = try extractResult(createResp)
+        let tabId = createResult["tab_id"] as! String
+
+        // Close it
+        let closeResp = try sendToolCall("browser_close_tab", args: ["tab_id": tabId])
+        let closeResult = try extractResult(closeResp)
+        XCTAssertEqual(closeResult["status"] as? String, "ok")
+
+        // List should have 1 tab again
+        let listResp = try sendToolCall("browser_list_tabs", args: [:])
+        let listResult = try extractResult(listResp)
+        let tabs = listResult["tabs"] as? [[String: Any]]
+        XCTAssertEqual(tabs?.count, 1)
+    }
+
+    func testCloseTabRemovesCorrectTab() throws {
+        // Create 2 tabs
+        let r1 = try extractResult(sendToolCall("browser_create_tab", args: [:]))
+        let id1 = r1["tab_id"] as! String
+        let r2 = try extractResult(sendToolCall("browser_create_tab", args: [:]))
+        let id2 = r2["tab_id"] as! String
+
+        // Close the first one
+        _ = try sendToolCall("browser_close_tab", args: ["tab_id": id1])
+
+        // List: only id2 and the default remain
+        let listResp = try sendToolCall("browser_list_tabs", args: [:])
+        let listResult = try extractResult(listResp)
+        let tabs = listResult["tabs"] as? [[String: Any]]
+        let remainingIds = tabs?.compactMap { $0["tab_id"] as? String }
+        XCTAssertFalse(remainingIds?.contains(id1) ?? true, "closed tab should not appear in list")
+        XCTAssertTrue(remainingIds?.contains(id2) ?? false)
+    }
+
+    func testCannotCloseLastTab() throws {
+        // There's only 1 tab initially. Trying to close it should still leave 1.
+        let listBefore = try extractResult(sendToolCall("browser_list_tabs", args: [:]))
+        let tabsBefore = listBefore["tabs"] as? [[String: Any]]
+        let firstTabId = tabsBefore?.first?["tab_id"] as! String
+
+        let closeResp = try sendToolCall("browser_close_tab", args: ["tab_id": firstTabId])
+        let closeResult = try extractResult(closeResp)
+        XCTAssertEqual(closeResult["status"] as? String, "ok")
+
+        // Verify still 1 tab
+        let listAfter = try extractResult(sendToolCall("browser_list_tabs", args: [:]))
+        let tabsAfter = listAfter["tabs"] as? [[String: Any]]
+        XCTAssertEqual(tabsAfter?.count, 1, "closing the last tab should keep at least one")
+    }
+
+    func testActivateTab() throws {
+        // Create a new tab
+        let createResp = try sendToolCall("browser_create_tab", args: [:])
+        let createResult = try extractResult(createResp)
+        let newTabId = createResult["tab_id"] as! String
+
+        // Default tab is active, activate the new one
+        let activateResp = try sendToolCall("browser_activate_tab", args: ["tab_id": newTabId])
+        let activateResult = try extractResult(activateResp)
+        XCTAssertEqual(activateResult["status"] as? String, "ok")
+
+        // List: new tab should be active
+        let listResp = try sendToolCall("browser_list_tabs", args: [:])
+        let listResult = try extractResult(listResp)
+        let tabs = listResult["tabs"] as? [[String: Any]]
+        let activeTabs = tabs?.filter { $0["is_active"] as? Bool == true }
+        XCTAssertEqual(activeTabs?.count, 1)
+        XCTAssertEqual(activeTabs?.first?["tab_id"] as? String, newTabId)
+    }
+
+    func testNavigateToURLAndScreenshot() throws {
+        // Navigate in the default tab
+        let navResp = try sendToolCall("browser_navigate", args: ["url": "https://www.bing.com"], timeout: 35)
+        let navResult = try extractResult(navResp)
+        XCTAssertEqual(navResult["status"] as? String, "ok")
+
+        // Screenshot
+        let ssDir = testDir.appendingPathComponent("screenshots").path
+        let ssResp = try sendToolCall("browser_screenshot", args: ["output_dir": ssDir], timeout: 15)
+        let ssResult = try extractResult(ssResp)
+        let path = ssResult["path"] as? String
+        XCTAssertNotNil(path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: path!), "screenshot file should exist")
+        let attrs = try FileManager.default.attributesOfItem(atPath: path!)
+        let size = attrs[.size] as? Int ?? 0
+        XCTAssertGreaterThan(size, 1000, "screenshot should be larger than 1KB")
+    }
+
+    func testNavigateInSpecificTab() throws {
+        // Create a new tab
+        let createResp = try sendToolCall("browser_create_tab", args: [:])
+        let createResult = try extractResult(createResp)
+        let tabId = createResult["tab_id"] as! String
+
+        // Navigate in the new tab by tab_id
+        let navResp = try sendToolCall("browser_navigate", args: ["url": "https://www.bing.com", "tab_id": tabId], timeout: 35)
+        let navResult = try extractResult(navResp)
+        XCTAssertEqual(navResult["status"] as? String, "ok")
+
+        // Activate and screenshot the new tab to verify
+        _ = try sendToolCall("browser_activate_tab", args: ["tab_id": tabId])
+        let ssDir = testDir.appendingPathComponent("screenshots").path
+        let ssResp = try sendToolCall("browser_screenshot", args: ["output_dir": ssDir, "tab_id": tabId], timeout: 15)
+        let ssResult = try extractResult(ssResp)
+        XCTAssertNotNil(ssResult["path"] as? String)
+    }
+
+    func testNavigateInMultipleTabs() throws {
+        // Create two tabs
+        let r1 = try extractResult(sendToolCall("browser_create_tab", args: [:]))
+        let tabA = r1["tab_id"] as! String
+        let r2 = try extractResult(sendToolCall("browser_create_tab", args: [:]))
+        let tabB = r2["tab_id"] as! String
+
+        // Navigate tab A
+        let navAResp = try sendToolCall("browser_navigate", args: ["url": "https://www.bing.com", "tab_id": tabA], timeout: 35)
+        XCTAssertNotNil(try? extractResult(navAResp))
+
+        // Navigate tab B to a different site
+        let navBResp = try sendToolCall("browser_navigate", args: ["url": "https://www.google.com", "tab_id": tabB], timeout: 35)
+        XCTAssertNotNil(try? extractResult(navBResp))
+
+        // Evaluate JS in tab A to verify it's on bing
+        let evalResp = try sendToolCall("browser_evaluate", args: ["expression": "window.location.hostname", "tab_id": tabA])
+        let evalResult = try extractResult(evalResp)
+        let hostname = evalResult["result"] as? String
+        XCTAssertEqual(hostname, "www.bing.com")
+    }
+
+    // MARK: - Error handling
+
+    func testNavigateWithInvalidURL() throws {
+        let resp = try sendToolCall("browser_navigate", args: ["url": ""])
+        // Should get an error response
+        let body = try JSONSerialization.jsonObject(with: resp) as? [String: Any]
+        XCTAssertNotNil(body?["error"], "empty URL should cause validation error")
+    }
+
+    func testCloseTabWithMissingTabId() throws {
+        let resp = try sendToolCall("browser_close_tab", args: [:])
+        let body = try JSONSerialization.jsonObject(with: resp) as? [String: Any]
+        XCTAssertNotNil(body?["error"], "missing tab_id should cause validation error")
+    }
+
+    func testActivateTabWithInvalidTabId() throws {
+        let resp = try sendToolCall("browser_activate_tab", args: ["tab_id": "nonexistent-tab"])
+        // Activate with wrong ID is a no-op — should succeed but not change active tab
+        let result = try extractResult(resp)
+        XCTAssertEqual(result["status"] as? String, "ok")
+    }
+
+    func testNavigateInNonexistentTab() throws {
+        // Creating the tab should succeed but navigation should fail silently
+        // (falls back to active tab)
+        let resp = try sendToolCall("browser_navigate", args: ["url": "about:blank", "tab_id": "does-not-exist"], timeout: 5)
+        let result = try extractResult(resp)
+        XCTAssertEqual(result["status"] as? String, "ok")
     }
 
     // MARK: - Helpers
 
-    private func mcpCall(name: String, args: [String: String]) -> Data {
+    /// Send a tools/call and return the raw response data.
+    @discardableResult
+    private func sendToolCall(_ name: String, args: [String: String], timeout: TimeInterval = 10) throws -> Data {
+        let messageURL = baseURL.appendingPathComponent("message")
+        var request = URLRequest(url: messageURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = timeout
+
         let body: [String: Any] = [
             "jsonrpc": "2.0",
             "id": Int.random(in: 1...9999),
@@ -138,42 +268,73 @@ final class BrowserMCPIntegrationTests: XCTestCase {
             "params": [
                 "name": name,
                 "arguments": args,
-            ],
+            ] as [String: Any],
         ]
-        return try! JSONSerialization.data(withJSONObject: body) + "\n".data(using: .utf8)!
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let semaphore = DispatchSemaphore(value: 0)
+        let box = Box<Data?>(nil)
+
+        let task = URLSession.shared.dataTask(with: request) { data, _, _ in
+            box.value = data
+            semaphore.signal()
+        }
+        task.resume()
+        semaphore.wait()
+
+        return box.value ?? Data()
     }
 
-    private func write(_ data: Data) {
-        stdinPipe.fileHandleForWriting.write(data)
+    /// Extract the `result` dictionary from a tools/call response.
+    private func extractResult(_ data: Data) throws -> [String: Any] {
+        guard let body = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw TestError("response is not a JSON object")
+        }
+        if let error = body["error"] as? [String: Any] {
+            throw TestError("RPC error: \(error)")
+        }
+        guard let result = body["result"] as? [String: Any],
+              let content = result["content"] as? [[String: Any]],
+              let text = content.first?["text"] as? String,
+              let resultData = text.data(using: .utf8),
+              let resultObj = try? JSONSerialization.jsonObject(with: resultData) as? [String: Any] else {
+            throw TestError("could not extract result from response: \(body)")
+        }
+        return resultObj
     }
 
-    private func waitForResponse(timeout: TimeInterval) -> [String: Any]? {
+    private func waitForServer(timeout: TimeInterval) throws {
         let deadline = Date().addingTimeInterval(timeout)
+        let testURL = baseURL.appendingPathComponent("message")
+
         while Date() < deadline {
-            if let resp = tryParseJSON() {
-                return resp
+            var request = URLRequest(url: testURL)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+            ])
+
+            let semaphore = DispatchSemaphore(value: 0)
+            let okBox = Box(false)
+            let task = URLSession.shared.dataTask(with: request) { _, resp, _ in
+                if let httpResp = resp as? HTTPURLResponse, httpResp.statusCode == 200 {
+                    okBox.value = true
+                }
+                semaphore.signal()
             }
-            Thread.sleep(forTimeInterval: 0.05)
+            task.resume()
+            semaphore.wait()
+
+            if okBox.value { return }
+            Thread.sleep(forTimeInterval: 0.2)
         }
-        return tryParseJSON()
-    }
-
-    private func tryParseJSON() -> [String: Any]? {
-        let current = stdoutBuffer.data
-        guard !current.isEmpty else { return nil }
-        // Find first complete JSON object by scanning for newlines
-        guard let nlIndex = current.firstIndex(of: 0x0A) else { return nil }
-
-        let line = stdoutBuffer.consumeLine(upTo: nlIndex)
-
-        guard let obj = try? JSONSerialization.jsonObject(with: line) as? [String: Any] else {
-            return nil
-        }
-        return obj
+        throw TestError("server did not start within \(timeout)s")
     }
 
     private func locateBinary() -> URL? {
-        // Check several locations
         let candidates: [String] = [
             ".build/release/BrowserMCP",
             ".build/debug/BrowserMCP",
@@ -195,4 +356,16 @@ final class BrowserMCPIntegrationTests: XCTestCase {
         }
         return nil
     }
+}
+
+/// Thread-safe container for capturing values in @Sendable closures.
+final class Box<T: Sendable>: @unchecked Sendable {
+    var value: T
+    init(_ value: T) { self.value = value }
+}
+
+struct TestError: Error, CustomStringConvertible {
+    let message: String
+    init(_ message: String) { self.message = message }
+    var description: String { message }
 }
