@@ -257,6 +257,32 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             }
         ),
         Tool(
+            name: "browser_wait",
+            description: "Wait for a condition on the page (element exists/visible/gone, or DOM stable). Returns true when condition is met, false on timeout.",
+            properties: [
+                "selector": PropertySchema(type: "string", description: "CSS selector to watch", default: nil),
+                "state": PropertySchema(type: "string", description: "Wait condition: exists (default), visible, gone, or stable", default: nil),
+                "timeout": PropertySchema(type: "number", description: "Timeout in seconds (default 10)", default: nil),
+                "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+            ],
+            required: ["selector"],
+            validate: { args in
+                if args["selector"]?.stringValue?.isEmpty ?? true { return "selector is required" }
+                if let s = args["state"]?.stringValue, !["exists", "visible", "gone", "stable"].contains(s) {
+                    return "state must be one of: exists, visible, gone, stable"
+                }
+                return nil
+            },
+            run: { args, vm, _ in
+                let selector = args["selector"]!.stringValue!
+                let state = args["state"]?.stringValue ?? "exists"
+                let timeout = args["timeout"]?.numberValue ?? 10
+                let tabId = args["tab_id"]?.stringValue
+                let ok = try await vm.wait(selector: selector, state: state, timeout: timeout, in: tabId)
+                return toolResult(["status": ok ? "ok" : "timeout", "selector": selector, "state": state])
+            }
+        ),
+        Tool(
             name: "browser_get_task_result",
             description: "Poll a task by taskId and return the result. Use this after calling a browser tool with async=1.",
             properties: ["taskId": PropertySchema(type: "string", description: "Task ID returned from an async browser tool call", default: nil)],

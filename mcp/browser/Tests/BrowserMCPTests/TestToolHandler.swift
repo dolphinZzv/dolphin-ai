@@ -86,6 +86,19 @@ enum TestToolHandler {
                     required: ["tab_id"]
                 )
             ),
+            ToolDef(
+                name: "browser_wait",
+                description: "Wait for a condition on the page (element exists/visible/gone, or DOM stable). Returns true when condition is met, false on timeout.",
+                inputSchema: InputSchema(
+                    properties: [
+                        "selector": PropertySchema(type: "string", description: "CSS selector to watch", default: nil),
+                        "state": PropertySchema(type: "string", description: "Wait condition: exists (default), visible, gone, or stable", default: nil),
+                        "timeout": PropertySchema(type: "number", description: "Timeout in seconds (default 10)", default: nil),
+                        "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+                    ],
+                    required: ["selector"]
+                )
+            ),
         ]
     }
 

@@ -12,6 +12,7 @@ public enum BrowserError: LocalizedError {
     case timeout(seconds: TimeInterval)
     case appNotActive
     case tabNotFound
+    case waitFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -22,6 +23,7 @@ public enum BrowserError: LocalizedError {
         case .timeout(let s): return "operation timed out after \(Int(s))s"
         case .appNotActive: return "app is not active"
         case .tabNotFound: return "tab not found"
+        case .waitFailed(let msg): return "wait failed: \(msg)"
         }
     }
 }
@@ -247,6 +249,74 @@ public final class WebViewModel: NSObject, ObservableObject {
                 } else {
                     continuation.resume(returning: "\(result!)")
                 }
+            }
+        }
+    }
+
+    // MARK: - Wait
+
+    public func wait(selector: String, state: String = "exists", timeout: TimeInterval = 10, in tabId: String? = nil) async throws -> Bool {
+        guard let tab = tabId.flatMap({ tabs[$0] }) ?? activeTab else {
+            throw BrowserError.tabNotFound
+        }
+
+        let timeoutMs = Int(timeout * 1000)
+        // JSON-encode the params to avoid injection issues in the JS template
+        let paramsData = try JSONSerialization.data(withJSONObject: [
+            "selector": selector,
+            "state": state,
+            "timeoutMs": timeoutMs,
+        ])
+        let paramsJson = String(data: paramsData, encoding: .utf8)!
+
+        let js = """
+        (async () => {
+          const params = JSON.parse('\(paramsJson)');
+          const { selector, state, timeoutMs } = params;
+          const start = Date.now();
+          const poll = () => {
+            const el = document.querySelector(selector);
+            switch (state) {
+              case 'exists': return el !== null;
+              case 'visible': return el !== null && el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
+              case 'gone': return el === null;
+              default: return false;
+            }
+          };
+          if (state === 'stable') {
+            return await new Promise(resolve => {
+              let timer;
+              const obs = new MutationObserver(() => {
+                clearTimeout(timer);
+                timer = setTimeout(() => { obs.disconnect(); resolve(true); }, 500);
+              });
+              const target = document.body || document.documentElement;
+              if (!target) { resolve(false); return; }
+              obs.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
+              setTimeout(() => { obs.disconnect(); resolve(false); }, timeoutMs);
+            });
+          }
+          while (Date.now() - start < timeoutMs) {
+            if (poll()) return true;
+            await new Promise(r => setTimeout(r, 100));
+          }
+          return false;
+        })()
+        """
+
+        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+            let timeoutWork = DispatchWorkItem {
+                continuation.resume(throwing: BrowserError.timeout(seconds: timeout + 1))
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + timeout + 1, execute: timeoutWork)
+
+            tab.webView.evaluateJavaScript(js) { result, error in
+                timeoutWork.cancel()
+                if let error = error {
+                    continuation.resume(throwing: BrowserError.evaluateFailed(error.localizedDescription))
+                    return
+                }
+                continuation.resume(returning: result as? Bool ?? false)
             }
         }
     }

@@ -7,7 +7,7 @@ final class MCPProtocolTests: XCTestCase {
 
     func testToolCount() {
         let tools = TestToolHandler.tools()
-        XCTAssertEqual(tools.count, 8)
+        XCTAssertEqual(tools.count, 9)
     }
 
     func testToolNames() {
@@ -22,6 +22,7 @@ final class MCPProtocolTests: XCTestCase {
             "browser_navigate",
             "browser_screenshot",
             "browser_set_window_size",
+            "browser_wait",
         ])
     }
 
@@ -96,6 +97,17 @@ final class MCPProtocolTests: XCTestCase {
         XCTAssertEqual(tool!.inputSchema.properties["tab_id"]?.type, "string")
     }
 
+    func testWaitSchema() {
+        let tools = TestToolHandler.tools()
+        let tool = tools.first { $0.name == "browser_wait" }
+        XCTAssertNotNil(tool)
+        XCTAssertTrue(tool!.inputSchema.required?.contains("selector") ?? false)
+        XCTAssertEqual(tool!.inputSchema.properties["selector"]?.type, "string")
+        XCTAssertEqual(tool!.inputSchema.properties["state"]?.type, "string")
+        XCTAssertEqual(tool!.inputSchema.properties["timeout"]?.type, "number")
+        XCTAssertEqual(tool!.inputSchema.properties["tab_id"]?.type, "string")
+    }
+
     // MARK: - Validation logic
 
     func testValidateURL() {
@@ -125,6 +137,12 @@ final class MCPProtocolTests: XCTestCase {
         XCTAssertEqual(TestToolHandler.validateCall("browser_activate_tab", args: [:]), false)
         XCTAssertEqual(TestToolHandler.validateCall("browser_activate_tab", args: ["tab_id": .string("")]), false)
         XCTAssertEqual(TestToolHandler.validateCall("browser_activate_tab", args: ["tab_id": .string("tab-1")]), true)
+
+        // browser_wait: selector required, state/timeout/tab_id optional
+        XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: [:]), false)
+        XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: ["selector": .string("")]), false)
+        XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: ["selector": .string(".my-class")]), true)
+        XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: ["selector": .string("#id"), "state": .string("visible")]), true)
     }
 
     func testValidateUnknownTool() {
