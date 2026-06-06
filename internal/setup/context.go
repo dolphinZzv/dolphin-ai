@@ -7,6 +7,7 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
+	"dolphin/internal/watcher"
 	"dolphin/internal/hook"
 	"dolphin/internal/limit"
 	"dolphin/internal/llm"
@@ -39,7 +40,7 @@ type Context struct {
 	Brain               *brain.Brain
 	Scheduler           *scheduler.Scheduler
 	SubscriptionEngine  *brain.SubscriptionEngine
-	Watchers            []*brain.Watcher
+	Watchers            []*watcher.Watcher
 	AgentIO             *agentio.AgentIO
 	AgentLoop           *agentloop.AgentLoop
 	UserIO              *userio.UserIO

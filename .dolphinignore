@@ -1,0 +1,7 @@
+# Patterns matching these paths will not trigger file events.
+# One glob pattern per line. Lines starting with # are comments.
+
+*.log
+*.tmp
+*.swp
+.DS_Store

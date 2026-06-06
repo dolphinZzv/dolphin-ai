@@ -1,4 +1,4 @@
-package brain
+package watcher
 
 import (
 	"context"

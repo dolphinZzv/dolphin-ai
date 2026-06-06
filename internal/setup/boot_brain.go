@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"dolphin/internal/brain"
+	"dolphin/internal/watcher"
 	"dolphin/internal/command"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
@@ -48,13 +49,13 @@ func (b *BrainBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 
 	// Set up subscription engine and file watchers.
 	// Always watch the brain directory.
-	watchers := []*brain.Watcher{
-		brain.NewWatcher(brainDir, c.EventBus, 5*time.Second),
+	watchers := []*watcher.Watcher{
+		watcher.NewWatcher(brainDir, c.EventBus, 5*time.Second),
 	}
 	// Also watch the workspace root by default for SOUL.md etc.
 	workspace := c.Config.GetString("agent.workspace")
 	if workspace != "" && workspace != brainDir {
-		watchers = append(watchers, brain.NewWatcher(workspace, c.EventBus, 5*time.Second))
+		watchers = append(watchers, watcher.NewWatcher(workspace, c.EventBus, 5*time.Second))
 	}
 	// Watch additional paths from config.
 	for i := 0; ; i++ {
@@ -63,7 +64,7 @@ func (b *BrainBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		if p == "" {
 			break
 		}
-		watchers = append(watchers, brain.NewWatcher(p, c.EventBus, 5*time.Second))
+		watchers = append(watchers, watcher.NewWatcher(p, c.EventBus, 5*time.Second))
 	}
 	engine := brain.NewSubscriptionEngine(br, c.EventBus, c.Logger)
 	c.Watchers = watchers

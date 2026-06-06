@@ -16,6 +16,7 @@ import (
 	"dolphin/internal/signal"
 	"dolphin/internal/transport"
 	"dolphin/internal/userio"
+	"dolphin/internal/watcher"
 
 	"go.uber.org/zap"
 )
@@ -33,7 +34,7 @@ type Pipeline struct {
 	logger              *zap.Logger
 	cancel              context.CancelFunc
 	otelShutdown        func()
-	watchers            []*brain.Watcher
+	watchers            []*watcher.Watcher
 	subscriptionEngine  *brain.SubscriptionEngine
 	limitResetScheduler *limit.ResetScheduler
 }

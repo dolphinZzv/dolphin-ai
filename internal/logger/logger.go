@@ -2,6 +2,7 @@ package logger
 
 import (
 	"os"
+	"time"
 
 	"dolphin/internal/config"
 	"go.uber.org/zap"
@@ -14,14 +15,16 @@ func New(cfg *config.Config) *zap.Logger {
 	filePath := cfg.GetString("log.file")
 
 	var ws zapcore.WriteSyncer
+	var lj *lumberjack.Logger
 	if filePath != "" {
-		ws = zapcore.AddSync(&lumberjack.Logger{
+		lj = &lumberjack.Logger{
 			Filename:   filePath,
 			MaxSize:    cfg.GetInt("log.max_size"),
 			MaxBackups: cfg.GetInt("log.max_backups"),
 			MaxAge:     cfg.GetInt("log.max_age"),
 			Compress:   cfg.GetBool("log.compress"),
-		})
+		}
+		ws = zapcore.AddSync(lj)
 	}
 	if ws == nil {
 		ws = zapcore.AddSync(os.Stdout)
@@ -37,7 +40,20 @@ func New(cfg *config.Config) *zap.Logger {
 		level,
 	)
 
-	return zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	logger := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+
+	// Time-based rotation
+	if interval := cfg.GetDuration("log.rotate_interval"); interval > 0 && lj != nil {
+		go func() {
+			ticker := time.NewTicker(interval)
+			defer ticker.Stop()
+			for range ticker.C {
+				_ = lj.Rotate()
+			}
+		}()
+	}
+
+	return logger
 }
 
 func parseLevel(level string) zapcore.LevelEnabler {
