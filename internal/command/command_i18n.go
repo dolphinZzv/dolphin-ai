@@ -73,7 +73,10 @@ func init() {
 			"scheduler_disabled":  "disabled",
 
 			// context
-			"context_desc": "Show full system context (brain index, skills, etc.)",
+			"status_desc": "Show session status (ID, mode, context size)",
+
+				// context
+				"context_desc": "Show full system context (brain index, skills, etc.)",
 
 			// commands
 			"commands_manage":    "List and manage commands",
@@ -189,7 +192,10 @@ func init() {
 			"scheduler_disabled":  "已禁用",
 
 			// context
-			"context_desc": "显示完整系统上下文（大脑索引、技能等）",
+			"status_desc": "显示会话状态（ID、模式、上下文大小）",
+
+				// context
+				"context_desc": "显示完整系统上下文（大脑索引、技能等）",
 
 			// commands
 			"commands_manage":    "列出和管理命令",
