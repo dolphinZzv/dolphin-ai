@@ -87,6 +87,14 @@ enum TestToolHandler {
                 )
             ),
             ToolDef(
+                name: "browser_set_mode",
+                description: "Set the browser window mode: 'agent' (read-only, yellow border) or 'user' (interactive, green border).",
+                inputSchema: InputSchema(
+                    properties: ["mode": PropertySchema(type: "string", description: "Mode: 'agent' or 'user'", default: nil)],
+                    required: ["mode"]
+                )
+            ),
+            ToolDef(
                 name: "browser_wait",
                 description: "Wait for a condition on the page (element exists/visible/gone, or DOM stable). Returns true when condition is met, false on timeout.",
                 inputSchema: InputSchema(

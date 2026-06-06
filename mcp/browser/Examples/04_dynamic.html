@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Dynamic Content Test</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 600px; margin: 0 auto; }
+  button { padding: 0.5em 1em; margin-right: 0.5em; margin-top: 1em; }
+  .box { border: 1px solid #ddd; padding: 1em; margin-top: 1em; min-height: 50px; }
+  .loader { width: 20px; height: 20px; border: 3px solid #ddd; border-top-color: #333; border-radius: 50%; animation: spin 0.8s linear infinite; display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <h1>Dynamic Content Test</h1>
+  <p>Use this page to test browser_wait (exists/visible/gone/stable).</p>
+
+  <button id="addBtn">Add Element</button>
+  <button id="removeBtn">Remove Element</button>
+  <button id="toggleBtn">Toggle Visibility</button>
+  <button id="asyncBtn">Async Load (3s)</button>
+  <div class="loader" id="loader"></div>
+
+  <div class="box" id="container">
+    <p>Initial content. Click buttons to modify.</p>
+  </div>
+
+  <div id="target" style="margin-top: 1em; padding: 1em; background: #e3f2fd; display: none;">
+    Hidden target element
+  </div>
+
+  <script>
+    let counter = 0;
+
+    document.getElementById('addBtn').addEventListener('click', function() {
+      counter++;
+      const el = document.createElement('p');
+      el.id = 'dynamic-' + counter;
+      el.textContent = 'Dynamic element #' + counter + ' added at ' + new Date().toLocaleTimeString();
+      document.getElementById('container').appendChild(el);
+    });
+
+    document.getElementById('removeBtn').addEventListener('click', function() {
+      const container = document.getElementById('container');
+      const dynEl = container.querySelector('[id^="dynamic-"]');
+      if (dynEl) dynEl.remove();
+    });
+
+    document.getElementById('toggleBtn').addEventListener('click', function() {
+      const target = document.getElementById('target');
+      target.style.display = target.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.getElementById('asyncBtn').addEventListener('click', function() {
+      const loader = document.getElementById('loader');
+      loader.style.display = 'inline-block';
+      setTimeout(function() {
+        counter++;
+        const el = document.createElement('p');
+        el.id = 'dynamic-async';
+        el.textContent = 'Async element loaded after 3s at ' + new Date().toLocaleTimeString();
+        document.getElementById('container').appendChild(el);
+        loader.style.display = 'none';
+      }, 3000);
+    });
+  </script>
+</body>
+</html>

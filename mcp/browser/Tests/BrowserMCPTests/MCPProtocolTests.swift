@@ -7,7 +7,7 @@ final class MCPProtocolTests: XCTestCase {
 
     func testToolCount() {
         let tools = TestToolHandler.tools()
-        XCTAssertEqual(tools.count, 9)
+        XCTAssertEqual(tools.count, 10)
     }
 
     func testToolNames() {
@@ -21,6 +21,7 @@ final class MCPProtocolTests: XCTestCase {
             "browser_list_tabs",
             "browser_navigate",
             "browser_screenshot",
+            "browser_set_mode",
             "browser_set_window_size",
             "browser_wait",
         ])
@@ -108,6 +109,14 @@ final class MCPProtocolTests: XCTestCase {
         XCTAssertEqual(tool!.inputSchema.properties["tab_id"]?.type, "string")
     }
 
+    func testSetModeSchema() {
+        let tools = TestToolHandler.tools()
+        let tool = tools.first { $0.name == "browser_set_mode" }
+        XCTAssertNotNil(tool)
+        XCTAssertTrue(tool!.inputSchema.required?.contains("mode") ?? false)
+        XCTAssertEqual(tool!.inputSchema.properties["mode"]?.type, "string")
+    }
+
     // MARK: - Validation logic
 
     func testValidateURL() {
@@ -143,6 +152,12 @@ final class MCPProtocolTests: XCTestCase {
         XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: ["selector": .string("")]), false)
         XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: ["selector": .string(".my-class")]), true)
         XCTAssertEqual(TestToolHandler.validateCall("browser_wait", args: ["selector": .string("#id"), "state": .string("visible")]), true)
+
+        // browser_set_mode: mode required
+        XCTAssertEqual(TestToolHandler.validateCall("browser_set_mode", args: [:]), false)
+        XCTAssertEqual(TestToolHandler.validateCall("browser_set_mode", args: ["mode": .string("")]), false)
+        XCTAssertEqual(TestToolHandler.validateCall("browser_set_mode", args: ["mode": .string("agent")]), true)
+        XCTAssertEqual(TestToolHandler.validateCall("browser_set_mode", args: ["mode": .string("user")]), true)
     }
 
     func testValidateUnknownTool() {

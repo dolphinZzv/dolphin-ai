@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Basic Page</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 600px; margin: 0 auto; }
+  h1 { color: #333; }
+  p { line-height: 1.6; }
+</style>
+</head>
+<body>
+  <h1>Hello, Browser!</h1>
+  <p id="description">This is a basic test page for the DolphinzZ browser MCP.</p>
+  <p>Current time: <span id="time"></span></p>
+
+  <script>
+    document.getElementById('time').textContent = new Date().toLocaleString();
+  </script>
+</body>
+</html>

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Form Test</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 500px; margin: 0 auto; }
+  label { display: block; margin-top: 1em; }
+  input, textarea, select { width: 100%; padding: 0.5em; margin-top: 0.3em; }
+  button { margin-top: 1em; padding: 0.5em 2em; }
+  #result { margin-top: 1em; padding: 1em; border: 1px solid #ddd; }
+</style>
+</head>
+<body>
+  <h1>Form Test</h1>
+  <form id="testForm">
+    <label>Name: <input type="text" name="name" id="name" value="Test User"></label>
+    <label>Email: <input type="email" name="email" id="email" value="test@example.com"></label>
+    <label>Message: <textarea name="message" id="message">Hello!</textarea></label>
+    <label>Option:
+      <select name="option" id="option">
+        <option value="A">Option A</option>
+        <option value="B" selected>Option B</option>
+        <option value="C">Option C</option>
+      </select>
+    </label>
+    <button type="submit">Submit</button>
+  </form>
+  <div id="result"></div>
+
+  <script>
+    document.getElementById('testForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const data = {
+        name: document.getElementById('name').value,
+        email: document.getElementById('email').value,
+        message: document.getElementById('message').value,
+        option: document.getElementById('option').value,
+      };
+      document.getElementById('result').textContent = JSON.stringify(data, null, 2);
+    });
+  </script>
+</body>
+</html>

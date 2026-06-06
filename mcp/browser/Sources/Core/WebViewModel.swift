@@ -42,22 +42,38 @@ public class Tab: ObservableObject {
     @Published public var title: String = ""
 
     var navContinuation: CheckedContinuation<Void, Error>?
+    private var loadingObs: NSKeyValueObservation?
 
     init(id: String, configuration: WKWebViewConfiguration) {
         self.id = id
         self.webView = WKWebView(frame: .zero, configuration: configuration)
         self.webView.allowsBackForwardNavigationGestures = true
+        // Observe webView.isLoading via KVO for accurate loading state tracking
+        loadingObs = webView.observe(\.isLoading, options: [.initial, .new]) { [weak self] webView, _ in
+            Task { @MainActor in
+                self?.isLoading = webView.isLoading
+            }
+        }
     }
 
     deinit {
-        // WKWebView is cleaned up when Tab is deallocated
+        loadingObs?.invalidate()
     }
+}
+
+// MARK: - Browser Mode
+
+public enum BrowserMode: String, Codable {
+    case agent
+    case user
 }
 
 // MARK: - WebViewModel
 
 @MainActor
 public final class WebViewModel: NSObject, ObservableObject {
+    @Published public var mode: BrowserMode = .user
+
     @Published public var tabs: [String: Tab] = [:]
     @Published public var tabOrder: [String] = []
     @Published public var activeTabId: String = ""
@@ -93,9 +109,7 @@ public final class WebViewModel: NSObject, ObservableObject {
         let webpagePrefs = WKWebpagePreferences()
         webpagePrefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = webpagePrefs
-        if #available(macOS 14.0, *) {
-            config.preferences.isElementFullscreenEnabled = true
-        }
+        config.preferences.isElementFullscreenEnabled = true
         self.tabConfig = config
         super.init()
         applySavedUserAgent()
@@ -119,11 +133,12 @@ public final class WebViewModel: NSObject, ObservableObject {
     // MARK: - Tab management
 
     @discardableResult
-    public func createTab() -> String {
+    public func createTab(configuration: WKWebViewConfiguration? = nil) -> String {
         let id = UUID().uuidString
-        let tab = Tab(id: id, configuration: tabConfig)
+        let tab = Tab(id: id, configuration: configuration ?? tabConfig)
         applySavedUserAgent(to: tab)
         tab.webView.navigationDelegate = self
+        tab.webView.uiDelegate = self
         tabs[id] = tab
         tabOrder.append(id)
         activeTabId = id
@@ -136,6 +151,7 @@ public final class WebViewModel: NSObject, ObservableObject {
         guard tabs.count > 1 else { return }
         guard let tab = tabs[id] else { return }
         tab.webView.navigationDelegate = nil
+        tab.webView.uiDelegate = nil
         tabs.removeValue(forKey: id)
         tabOrder.removeAll { $0 == id }
         if activeTabId == id {
@@ -260,65 +276,79 @@ public final class WebViewModel: NSObject, ObservableObject {
             throw BrowserError.tabNotFound
         }
 
-        let timeoutMs = Int(timeout * 1000)
-        // JSON-encode the params to avoid injection issues in the JS template
-        let paramsData = try JSONSerialization.data(withJSONObject: [
-            "selector": selector,
-            "state": state,
-            "timeoutMs": timeoutMs,
-        ])
-        let paramsJson = String(data: paramsData, encoding: .utf8)!
+        let deadline = Date().addingTimeInterval(timeout)
 
-        let js = """
-        (async () => {
-          const params = JSON.parse('\(paramsJson)');
-          const { selector, state, timeoutMs } = params;
-          const start = Date.now();
-          const poll = () => {
-            const el = document.querySelector(selector);
-            switch (state) {
-              case 'exists': return el !== null;
-              case 'visible': return el !== null && el.offsetParent !== null && window.getComputedStyle(el).display !== 'none' && window.getComputedStyle(el).visibility !== 'hidden';
-              case 'gone': return el === null;
-              default: return false;
-            }
-          };
-          if (state === 'stable') {
-            return await new Promise(resolve => {
-              let timer;
-              const obs = new MutationObserver(() => {
+        if state == "stable" {
+            // Inject MutationObserver synchronously, poll for window._stable flag
+            let setupJS = """
+            (function() {
+              if (window._stableWatcher) { window._stableWatcher.disconnect(); }
+              window._stable = false;
+              var target = document.body || document.documentElement;
+              if (!target) { window._stable = true; return; }
+              var timer;
+              window._stableWatcher = new MutationObserver(function() {
                 clearTimeout(timer);
-                timer = setTimeout(() => { obs.disconnect(); resolve(true); }, 500);
+                timer = setTimeout(function() { window._stableWatcher.disconnect(); window._stable = true; }, 500);
               });
-              const target = document.body || document.documentElement;
-              if (!target) { resolve(false); return; }
-              obs.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
-              setTimeout(() => { obs.disconnect(); resolve(false); }, timeoutMs);
-            });
-          }
-          while (Date.now() - start < timeoutMs) {
-            if (poll()) return true;
-            await new Promise(r => setTimeout(r, 100));
-          }
-          return false;
-        })()
-        """
-
-        return try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
-            let timeoutWork = DispatchWorkItem {
-                continuation.resume(throwing: BrowserError.timeout(seconds: timeout + 1))
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + timeout + 1, execute: timeoutWork)
-
-            tab.webView.evaluateJavaScript(js) { result, error in
-                timeoutWork.cancel()
-                if let error = error {
-                    continuation.resume(throwing: BrowserError.evaluateFailed(error.localizedDescription))
-                    return
+              window._stableWatcher.observe(target, { childList: true, subtree: true, attributes: true, characterData: true });
+              timer = setTimeout(function() { window._stableWatcher.disconnect(); window._stable = true; }, 500);
+              setTimeout(function() { if(window._stableWatcher) { window._stableWatcher.disconnect(); window._stable = true; } }, \(Int(timeout * 1000)));
+            })()
+            """
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                tab.webView.evaluateJavaScript(setupJS) { _, error in
+                    if let error = error {
+                        continuation.resume(throwing: BrowserError.evaluateFailed(error.localizedDescription))
+                    } else {
+                        continuation.resume()
+                    }
                 }
-                continuation.resume(returning: result as? Bool ?? false)
             }
+
+            while Date() < deadline {
+                let checkJS = "window._stable ? 1 : 0"
+                let done = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+                    tab.webView.evaluateJavaScript(checkJS) { result, error in
+                        if let error = error {
+                            continuation.resume(throwing: BrowserError.evaluateFailed(error.localizedDescription))
+                        } else {
+                            continuation.resume(returning: (result as? NSNumber)?.boolValue ?? false)
+                        }
+                    }
+                }
+                if done { return true }
+                try await Task.sleep(nanoseconds: 100_000_000)
+            }
+            return false
         }
+
+        // Synchronous JS check + Swift polling for exists/visible/gone
+        let checkJS: String = {
+            switch state {
+            case "visible":
+                return "(function(){var e=document.querySelector('\(selector)');return e!==null&&e.offsetParent!==null&&getComputedStyle(e).display!=='none'&&getComputedStyle(e).visibility!=='hidden'?1:0})()"
+            case "gone":
+                return "(function(){return document.querySelector('\(selector)')===null?1:0})()"
+            default: // exists
+                return "(function(){return document.querySelector('\(selector)')!==null?1:0})()"
+            }
+        }()
+
+        while Date() < deadline {
+            let found = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Bool, Error>) in
+                tab.webView.evaluateJavaScript(checkJS) { result, error in
+                    if let error = error {
+                        continuation.resume(throwing: BrowserError.evaluateFailed(error.localizedDescription))
+                    } else {
+                        continuation.resume(returning: (result as? NSNumber)?.boolValue ?? false)
+                    }
+                }
+            }
+            if found { return true }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        return false
     }
 
     // MARK: - Screenshot
@@ -404,10 +434,18 @@ public final class WebViewModel: NSObject, ObservableObject {
 // MARK: - WKNavigationDelegate
 
 extension WebViewModel: WKNavigationDelegate {
+    public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
+        if navigationAction.targetFrame == nil {
+            // target="_blank" or new window — allow so createWebViewWith can handle it
+            decisionHandler(.allow)
+        } else {
+            decisionHandler(.allow)
+        }
+    }
+
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
         tab.url = webView.url?.absoluteString ?? ""
-        tab.isLoading = false
         tab.canGoBack = webView.canGoBack
         tab.canGoForward = webView.canGoForward
         tab.title = webView.title ?? ""
@@ -418,7 +456,6 @@ extension WebViewModel: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
-        tab.isLoading = false
         let nsError = error as NSError
         if nsError.code == NSURLErrorCancelled { return }
         tab.navContinuation?.resume(throwing: BrowserError.navigationFailed(error.localizedDescription))
@@ -428,7 +465,6 @@ extension WebViewModel: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
-        tab.isLoading = false
         tab.navContinuation?.resume(throwing: BrowserError.navigationFailed(error.localizedDescription))
         tab.navContinuation = nil
         syncTab(tab)
@@ -436,11 +472,31 @@ extension WebViewModel: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
-        tab.isLoading = true
         syncTab(tab)
     }
+}
 
-    public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        // Page content started loading
+// MARK: - WKUIDelegate
+
+extension WebViewModel: WKUIDelegate {
+    public func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        let tabId = createTab(configuration: configuration)
+        let tab = tabs[tabId]
+        if let url = navigationAction.request.url {
+            tab?.webView.load(URLRequest(url: url))
+        }
+        return tab?.webView
+    }
+
+    public func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable () -> Void) {
+        completionHandler()
+    }
+
+    public func webView(_ webView: WKWebView, runJavaScriptConfirmPanelWithMessage message: String, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (Bool) -> Void) {
+        completionHandler(true)
+    }
+
+    public func webView(_ webView: WKWebView, runJavaScriptTextInputPanelWithPrompt prompt: String, defaultText: String?, initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping @MainActor @Sendable (String?) -> Void) {
+        completionHandler(defaultText ?? "")
     }
 }

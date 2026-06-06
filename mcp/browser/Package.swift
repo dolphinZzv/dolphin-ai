@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "BrowserMCP",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     targets: [
         .target(
             name: "BrowserMCPCore",

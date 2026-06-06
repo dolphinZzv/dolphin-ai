@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Alert / Confirm / Prompt Test</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 500px; margin: 0 auto; }
+  button { padding: 0.5em 1em; margin-right: 0.5em; margin-top: 1em; }
+  #result { margin-top: 1em; padding: 1em; border: 1px solid #ddd; }
+</style>
+</head>
+<body>
+  <h1>Dialog Intercept Test</h1>
+  <button id="alertBtn">Show Alert</button>
+  <button id="confirmBtn">Show Confirm</button>
+  <button id="promptBtn">Show Prompt</button>
+
+  <div id="result">Results appear here...</div>
+
+  <script>
+    document.getElementById('alertBtn').addEventListener('click', function() {
+      alert('This is a test alert!');
+      document.getElementById('result').textContent = 'Alert dismissed at ' + new Date().toLocaleTimeString();
+    });
+
+    document.getElementById('confirmBtn').addEventListener('click', function() {
+      const result = confirm('Do you approve?');
+      document.getElementById('result').textContent = 'Confirm result: ' + result + ' at ' + new Date().toLocaleTimeString();
+    });
+
+    document.getElementById('promptBtn').addEventListener('click', function() {
+      const result = prompt('Enter something:', 'default value');
+      document.getElementById('result').textContent = 'Prompt result: ' + result + ' at ' + new Date().toLocaleTimeString();
+    });
+  </script>
+</body>
+</html>

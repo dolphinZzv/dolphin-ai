@@ -15,6 +15,15 @@ public struct ContentView: View {
             toolbar
             webViewArea
         }
+        .background(Color(NSColor.windowBackgroundColor))
+        .overlay(alignment: .bottomTrailing) {
+            ModeBadge(mode: viewModel.mode)
+                .padding(10)
+        }
+        .overlay(
+            RoundedRectangle(cornerRadius: 0)
+                .strokeBorder(viewModel.mode == .agent ? Color.yellow : Color.green, lineWidth: 4)
+        )
         .onReceive(viewModel.$currentURL) { url in
             urlText = url
         }
@@ -51,6 +60,7 @@ public struct ContentView: View {
         .frame(height: 28)
         .background(Color(NSColor.controlBackgroundColor))
         .overlay(Divider(), alignment: .bottom)
+        .allowsHitTesting(viewModel.mode == .user)
     }
 
     // MARK: - Toolbar
@@ -89,8 +99,10 @@ public struct ContentView: View {
                     .padding(.trailing, 4)
             }
         }
-        .padding(8)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .background(Color(NSColor.windowBackgroundColor))
+        .allowsHitTesting(viewModel.mode == .user)
     }
 
     // MARK: - WebView area
@@ -98,7 +110,7 @@ public struct ContentView: View {
     @ViewBuilder
     private var webViewArea: some View {
         if let tab = viewModel.activeTab {
-            WebViewWrapper(webView: tab.webView)
+            WebViewWrapper(webView: tab.webView, mode: viewModel.mode)
                 .id(tab.id)
         }
     }
@@ -143,10 +155,122 @@ struct TabBarItem: View {
 
 public struct WebViewWrapper: NSViewRepresentable {
     let webView: WKWebView
+    let mode: BrowserMode
 
-    public func makeNSView(context: Context) -> WKWebView {
-        webView
+    public init(webView: WKWebView, mode: BrowserMode) {
+        self.webView = webView
+        self.mode = mode
     }
 
-    public func updateNSView(_ nsView: WKWebView, context: Context) { }
+    public func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+        container.wantsLayer = true
+
+        webView.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(webView)
+        NSLayoutConstraint.activate([
+            webView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: container.topAnchor),
+            webView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        let overlay = OverlayView()
+        overlay.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(overlay)
+        NSLayoutConstraint.activate([
+            overlay.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            overlay.trailingAnchor.constraint(equalTo: container.trailingAnchor),
+            overlay.topAnchor.constraint(equalTo: container.topAnchor),
+            overlay.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+        ])
+
+        context.coordinator.overlay = overlay
+        context.coordinator.webView = webView
+        return container
+    }
+
+    public func updateNSView(_ nsView: NSView, context: Context) {
+        guard let overlay = context.coordinator.overlay, let webView = context.coordinator.webView else { return }
+        overlay.isHidden = mode == .user
+        if let window = nsView.window {
+            if mode == .agent {
+                window.makeFirstResponder(overlay)
+            } else {
+                window.makeFirstResponder(webView)
+            }
+        }
+    }
+
+    public func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    public static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.overlay = nil
+        coordinator.webView = nil
+    }
+}
+
+public final class Coordinator {
+    var overlay: OverlayView?
+    var webView: WKWebView?
+}
+
+// MARK: - Mode badge
+
+struct ModeBadge: View {
+    let mode: BrowserMode
+    @State private var breathing = false
+
+    var body: some View {
+        HStack(spacing: 3) {
+            Circle()
+                .fill(mode == .agent ? Color.yellow : Color.green)
+                .frame(width: 7, height: 7)
+                .scaleEffect(breathing ? 1.6 : 1.0)
+                .animation(.easeInOut(duration: 2).repeatForever(autoreverses: true), value: breathing)
+
+            Text(mode == .agent ? "Agent" : "User")
+                .font(.system(size: 10, weight: .medium))
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 3)
+        .background(.ultraThinMaterial)
+        .cornerRadius(4)
+        .onAppear { breathing = true }
+    }
+}
+
+/// Transparent overlay that swallows all mouse & keyboard events to prevent user interaction in agent mode.
+final class OverlayView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard !isHidden else { return nil }
+        return self
+    }
+
+    override var acceptsFirstResponder: Bool { !isHidden }
+
+    // Mouse events — swallow everything
+    override func mouseDown(with event: NSEvent) {}
+    override func mouseUp(with event: NSEvent) {}
+    override func mouseDragged(with event: NSEvent) {}
+    override func mouseMoved(with event: NSEvent) {}
+    override func mouseEntered(with event: NSEvent) {}
+    override func mouseExited(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) {}
+    override func rightMouseUp(with event: NSEvent) {}
+    override func rightMouseDragged(with event: NSEvent) {}
+    override func otherMouseDown(with event: NSEvent) {}
+    override func otherMouseUp(with event: NSEvent) {}
+    override func otherMouseDragged(with event: NSEvent) {}
+    override func scrollWheel(with event: NSEvent) {}
+    override func magnify(with event: NSEvent) {}
+    override func rotate(with event: NSEvent) {}
+    override func swipe(with event: NSEvent) {}
+
+    // Keyboard events — swallow everything
+    override func keyDown(with event: NSEvent) {}
+    override func keyUp(with event: NSEvent) {}
+    override func flagsChanged(with event: NSEvent) {}
 }

@@ -257,6 +257,23 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             }
         ),
         Tool(
+            name: "browser_set_mode",
+            description: "Set the browser window mode: 'agent' (read-only, yellow border) or 'user' (interactive, green border).",
+            properties: ["mode": PropertySchema(type: "string", description: "Mode: 'agent' or 'user'", default: nil)],
+            required: ["mode"],
+            validate: { args in
+                guard let m = args["mode"]?.stringValue, ["agent", "user"].contains(m) else {
+                    return "mode must be 'agent' or 'user'"
+                }
+                return nil
+            },
+            run: { args, vm, _ in
+                let m = args["mode"]!.stringValue!
+                await MainActor.run { vm.mode = BrowserMode(rawValue: m)! }
+                return toolResult(["status": "ok", "mode": m])
+            }
+        ),
+        Tool(
             name: "browser_wait",
             description: "Wait for a condition on the page (element exists/visible/gone, or DOM stable). Returns true when condition is met, false on timeout.",
             properties: [

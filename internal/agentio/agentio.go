@@ -117,10 +117,21 @@ func (a *AgentIO) Queue() chan *Turn {
 }
 
 func (a *AgentIO) OnResult(result *TurnResult) {
-	tio, ok := a.routes[result.TransportID]
+	if result.TransportID == "" {
+		// System/internal event (e.g. subscription trigger): broadcast to all transports.
+		for id := range a.routes {
+			a.writeResult(result, id)
+		}
+		return
+	}
+	a.writeResult(result, result.TransportID)
+}
+
+func (a *AgentIO) writeResult(result *TurnResult, transportID string) {
+	tio, ok := a.routes[transportID]
 	if !ok {
 		a.logger.Warn("OnResult: unknown transport",
-			zap.String("transport_id", result.TransportID),
+			zap.String("transport_id", transportID),
 		)
 		return
 	}
@@ -131,20 +142,20 @@ func (a *AgentIO) OnResult(result *TurnResult) {
 		if cap.Streamable {
 			// Streamable: write chunks as they arrive.
 			text := result.Text
-			if !a.replied[result.TransportID] {
+			if !a.replied[transportID] {
 				text = i18n.T("agentio.reply_prefix", a.agentName) + text
-				a.replied[result.TransportID] = true
+				a.replied[transportID] = true
 			}
 			if err := tio.Write(context.Background(), text); err != nil {
 				a.logger.Error("OnResult write failed",
 					zap.Error(err),
-					zap.String("transport_id", result.TransportID),
+					zap.String("transport_id", transportID),
 				)
 			}
 		} else {
 			// Chunk mode: buffer all text, write on Done.
 			a.bufMu.Lock()
-			a.buffers[result.TransportID] += result.Text
+			a.buffers[transportID] += result.Text
 			a.bufMu.Unlock()
 		}
 	}
@@ -153,15 +164,15 @@ func (a *AgentIO) OnResult(result *TurnResult) {
 		if !cap.Streamable {
 			// Chunk mode: flush buffered content as one complete message (no prompt prefix).
 			a.bufMu.Lock()
-			buf := a.buffers[result.TransportID]
-			delete(a.buffers, result.TransportID)
+			buf := a.buffers[transportID]
+			delete(a.buffers, transportID)
 			a.bufMu.Unlock()
 
 			if buf != "" {
 				if err := tio.Write(context.Background(), buf); err != nil {
 					a.logger.Error("OnResult write failed",
 						zap.Error(err),
-						zap.String("transport_id", result.TransportID),
+						zap.String("transport_id", transportID),
 					)
 				}
 			}
@@ -169,17 +180,17 @@ func (a *AgentIO) OnResult(result *TurnResult) {
 				if err := tio.Write(context.Background(), result.Error.Error()); err != nil {
 					a.logger.Error("OnResult write failed",
 						zap.Error(err),
-						zap.String("transport_id", result.TransportID),
+						zap.String("transport_id", transportID),
 					)
 				}
 			}
 		}
 
-		a.replied[result.TransportID] = false
+		a.replied[transportID] = false
 		if err := tio.Flush(); err != nil {
 			a.logger.Error("OnResult flush failed",
 				zap.Error(err),
-				zap.String("transport_id", result.TransportID),
+				zap.String("transport_id", transportID),
 			)
 		}
 	}
