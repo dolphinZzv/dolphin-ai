@@ -12,9 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// RegisterStatus registers the /status command.
-func RegisterStatus(r *Registry, sessMgr *session.Manager, mem memory.Memory, sessionMode string) {
-	r.Register(WithI18nShort(&cobra.Command{
+// RegisterSessionStatus registers the /session status subcommand.
+func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Memory, sessionMode string) {
+	parent, _, err := r.root.Find(strings.Fields("session"))
+	if err != nil || parent == r.root {
+		return // session command not found
+	}
+
+	parent.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "status",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			sess := sessMgr.Active()
@@ -32,13 +37,18 @@ func RegisterStatus(r *Registry, sessMgr *session.Manager, mem memory.Memory, se
 				if err == nil {
 					totalChars := 0
 					rounds := 0
+					toolCalls := 0
 					for _, m := range msgs {
 						totalChars += len(m.Content)
 						if m.Role == types.RoleUser {
 							rounds++
 						}
+						if m.Role == types.RoleTool {
+							toolCalls++
+						}
 					}
 					cmd.Printf("Rounds:        %d\n", rounds)
+					cmd.Printf("Tool Calls:    %d\n", toolCalls)
 					cmd.Printf("Context:       %d messages, %s characters\n",
 						len(msgs), comma(totalChars))
 				}
@@ -46,7 +56,7 @@ func RegisterStatus(r *Registry, sessMgr *session.Manager, mem memory.Memory, se
 
 			return nil
 		},
-	}, "command.status_desc"))
+	}, "command.session_status"))
 }
 
 // comma formats an integer with thousand separators.
