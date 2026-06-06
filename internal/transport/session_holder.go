@@ -9,9 +9,11 @@ import (
 	"github.com/rs/xid"
 )
 
-// SessionManager is the interface for creating sessions.
+// SessionManager is the interface for session lifecycle.
 type SessionManager interface {
 	NewSession(ctx context.Context) *session.Session
+	Active() *session.Session
+	Create(ctx context.Context) *session.Session
 }
 
 // SessionHolder provides NewSession/Session methods for transports.
@@ -20,6 +22,7 @@ type SessionHolder struct {
 	mgr     SessionManager
 	current *session.Session
 	mu      sync.Mutex
+	shared  bool
 }
 
 func NewSessionHolder(mgr SessionManager) *SessionHolder {
@@ -35,6 +38,18 @@ func (h *SessionHolder) SetSessionManager(mgr SessionManager) {
 func (h *SessionHolder) NewSession(ctx context.Context) *session.Session {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	if h.shared {
+		// Shared mode: always use the global active session.
+		if h.mgr != nil {
+			if s := h.mgr.Active(); s != nil {
+				return s
+			}
+			return h.mgr.Create(ctx)
+		}
+		// No manager — fall through to per-transport behavior.
+	}
+
 	if h.current != nil {
 		return h.current
 	}
@@ -48,6 +63,12 @@ func (h *SessionHolder) NewSession(ctx context.Context) *session.Session {
 		}
 	}
 	return h.current
+}
+
+func (h *SessionHolder) SetSessionMode(shared bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.shared = shared
 }
 
 func (h *SessionHolder) Session() *session.Session {

@@ -21,18 +21,20 @@ type interactiveRunner interface {
 }
 
 type UserIO struct {
-	agentIO    *agentio.AgentIO
-	cmdReg     *command.Registry
-	brain      *brain.Brain
-	sessionMgr *session.Manager
+	agentIO     *agentio.AgentIO
+	cmdReg      *command.Registry
+	brain       *brain.Brain
+	sessionMgr  *session.Manager
+	sessionMode string // "per_transport" or "shared"
 }
 
-func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, b *brain.Brain, mgr *session.Manager) *UserIO {
+func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, b *brain.Brain, mgr *session.Manager, sessionMode string) *UserIO {
 	return &UserIO{
-		agentIO:    a,
-		cmdReg:     cmdReg,
-		brain:      b,
-		sessionMgr: mgr,
+		agentIO:     a,
+		cmdReg:      cmdReg,
+		brain:       b,
+		sessionMgr:  mgr,
+		sessionMode: sessionMode,
 	}
 }
 
@@ -131,20 +133,23 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 		sess = u.sessionMgr.NewSession(ctx)
 	}
 	// Store transport-level user metadata in session data.
-	if m, ok := tio.(interface {
-		UserID() string
-		UserNick() string
-	}); ok {
-		if uid := m.UserID(); uid != "" {
-			sess.Set("user_id", uid)
+	// In shared mode, skip session.Data to avoid cross-transport overwrites.
+	if u.sessionMode != "shared" {
+		if m, ok := tio.(interface {
+			UserID() string
+			UserNick() string
+		}); ok {
+			if uid := m.UserID(); uid != "" {
+				sess.Set("user_id", uid)
+			}
+			if nick := m.UserNick(); nick != "" {
+				sess.Set("user_nick", nick)
+			}
 		}
-		if nick := m.UserNick(); nick != "" {
-			sess.Set("user_nick", nick)
-		}
-	}
-	if c, ok := tio.(interface{ ConversationID() string }); ok {
-		if cid := c.ConversationID(); cid != "" {
-			sess.Set("conversation_id", cid)
+		if c, ok := tio.(interface{ ConversationID() string }); ok {
+			if cid := c.ConversationID(); cid != "" {
+				sess.Set("conversation_id", cid)
+			}
 		}
 	}
 	u.agentIO.SendTurn(ctx, &agentio.Turn{

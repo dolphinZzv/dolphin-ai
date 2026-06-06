@@ -20,7 +20,7 @@ func TestUserIO(t *testing.T) {
 		mgr := session.NewManager(t.TempDir())
 		cmdReg := command.NewRegistry(mgr, sb)
 		aio := agentio.NewAgentIO(10, mgr, sb, logger, "Dolphin")
-		uio := NewUserIO(aio, cmdReg, nil, mgr)
+		uio := NewUserIO(aio, cmdReg, nil, mgr, "per_transport")
 
 		Convey("NewUserIO creates instance", func() {
 			So(uio, ShouldNotBeNil)
@@ -58,6 +58,44 @@ func TestUserIO(t *testing.T) {
 			uio.Handle(ctx, tio, "create detached session")
 
 			So(mgr.Active(), ShouldBeNil)
+		})
+	})
+}
+
+func TestUserIOSharedMode(t *testing.T) {
+	Convey("UserIO shared mode", t, func() {
+		logger, _ := zap.NewDevelopment()
+		sb := signal.NewBus()
+		mgr := session.NewManager(t.TempDir())
+		cmdReg := command.NewRegistry(mgr, sb)
+		aio := agentio.NewAgentIO(10, mgr, sb, logger, "Dolphin")
+		uio := NewUserIO(aio, cmdReg, nil, mgr, "shared")
+
+		Convey("Handle does not store user_id in session.Data in shared mode", func() {
+			tio := transport.NewNullTransport("test")
+			tio.SetSessionManager(mgr)
+			tio.SetSessionMode(true)
+			ctx := context.Background()
+			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "null"})
+
+			uio.Handle(ctx, tio, "hello")
+
+			sess := mgr.Active()
+			So(sess.Get("user_id"), ShouldBeNil)
+			So(sess.Get("user_nick"), ShouldBeNil)
+			So(sess.Get("conversation_id"), ShouldBeNil)
+		})
+
+		Convey("Handle in shared mode still creates session and queues turn", func() {
+			tio := transport.NewNullTransport("test")
+			tio.SetSessionManager(mgr)
+			tio.SetSessionMode(true)
+			ctx := context.Background()
+			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "null"})
+
+			uio.Handle(ctx, tio, "hello")
+
+			So(len(aio.Queue()), ShouldEqual, 1)
 		})
 	})
 }

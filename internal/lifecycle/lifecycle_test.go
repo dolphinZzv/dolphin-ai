@@ -65,3 +65,40 @@ func TestPipeline(t *testing.T) {
 		})
 	})
 }
+
+func TestPipelineSharedSession(t *testing.T) {
+	Convey("Pipeline with session.mode=shared", t, func() {
+		cfg := config.LoadConfigFromMap(map[string]any{
+			"llm.provider":       "openai",
+			"llm.model":          "gpt-4o",
+			"llm.openai.api_key": "test-key",
+			"llm.max_retries":    0,
+			"llm.timeout":        "30s",
+			"tool.timeout":       "30s",
+			"agent.max_rounds":   10,
+			"agent.buffer_size":  10,
+			"memory.window":      10,
+			"memory.dir":         t.TempDir(),
+			"brain.dir":          t.TempDir(),
+			"session.mode":       "shared",
+		})
+
+		Convey("New creates pipeline with shared session mode", func() {
+			p := New(cfg)
+			So(p, ShouldNotBeNil)
+			So(p.userIO, ShouldNotBeNil)
+		})
+
+		Convey("Start and Shutdown work with shared mode", func() {
+			p := New(cfg)
+			ctx := context.Background()
+
+			p.Start(ctx)
+			So(p.cancel, ShouldNotBeNil)
+
+			time.Sleep(50 * time.Millisecond)
+
+			p.Shutdown()
+		})
+	})
+}

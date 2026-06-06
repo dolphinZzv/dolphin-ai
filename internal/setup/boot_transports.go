@@ -35,6 +35,9 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 		}); ok {
 			sh.SetSessionManager(c.SessionMgr)
 		}
+		if sm, ok := tio.(interface{ SetSessionMode(bool) }); ok {
+			sm.SetSessionMode(c.Config.GetString("session.mode") == "shared")
+		}
 		if ss, ok := tio.(interface{ SetSession(*session.Session) }); ok {
 			if s := c.SessionMgr.Active(); s != nil {
 				ss.SetSession(s)

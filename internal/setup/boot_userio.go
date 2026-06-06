@@ -14,6 +14,6 @@ func (b *UserIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	if c.UserIO != nil {
 		return nil
 	}
-	c.UserIO = userio.NewUserIO(c.AgentIO, c.CmdReg, c.Brain, c.SessionMgr)
+	c.UserIO = userio.NewUserIO(c.AgentIO, c.CmdReg, c.Brain, c.SessionMgr, c.Config.GetString("session.mode"))
 	return nil
 }

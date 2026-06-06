@@ -66,6 +66,7 @@ func defaultConfig() *Config {
 			"memory.window":     40,
 			"memory.dir":        ".dolphin/sessions",
 			"brain.dir":         ".dolphin/brain",
+			"session.mode":     "per_transport",
 		},
 	}
 }
