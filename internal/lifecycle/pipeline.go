@@ -103,6 +103,52 @@ func (p *Pipeline) Start(ctx context.Context) {
 		}()
 	}
 
+	// Accumulate token usage and tool call count per-session from events.
+	p.eventBus.Subscribe(func(ctx context.Context, e event.Event) {
+		if e.SessionID == "" {
+			return
+		}
+		sess := p.sessionMgr.Get(e.SessionID)
+		if sess == nil {
+			return
+		}
+		switch e.Type {
+		case event.EventLLMComplete:
+			if v, ok := e.Payload["input_tokens"].(int); ok && v > 0 {
+				sess.Set("last_input_tokens", v)
+				acc := 0
+				if cur := sess.Get("input_tokens"); cur != nil {
+					acc, _ = cur.(int)
+				}
+				sess.Set("input_tokens", acc+v)
+			}
+			if v, ok := e.Payload["output_tokens"].(int); ok && v > 0 {
+				sess.Set("last_output_tokens", v)
+				acc := 0
+				if cur := sess.Get("output_tokens"); cur != nil {
+					acc, _ = cur.(int)
+				}
+				sess.Set("output_tokens", acc+v)
+			}
+		case event.EventContextComplete:
+			if prompt, ok := e.Payload["input"].(string); ok {
+				sess.Set("system_context", len(prompt))
+			}
+		case event.EventTurnStart:
+			acc := 0
+			if cur := sess.Get("rounds"); cur != nil {
+				acc, _ = cur.(int)
+			}
+			sess.Set("rounds", acc+1)
+		case event.EventToolComplete:
+			acc := 0
+			if cur := sess.Get("tool_calls"); cur != nil {
+				acc, _ = cur.(int)
+			}
+			sess.Set("tool_calls", acc+1)
+		}
+	})
+
 	go p.agentLoop.Run(ctx)
 
 	p.agentLoop.SetOnResult(func(tr agentio.TurnResult) {

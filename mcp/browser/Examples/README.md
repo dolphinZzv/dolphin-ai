@@ -13,6 +13,7 @@ Test HTML pages for the DolphinzZ Browser MCP.
 | `05_alerts.html` | Alert/confirm/prompt intercept |
 | `06_scroll.html` | Page scrolling |
 | `07_screenshot.html` | Visual elements for screenshot testing |
+| `08_console.html` | Console output (log/warn/error/exception/rejection) — test `browser_get_logs` |
 
 ## Usage
 

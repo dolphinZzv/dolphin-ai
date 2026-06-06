@@ -28,6 +28,18 @@ public enum BrowserError: LocalizedError {
     }
 }
 
+// MARK: - Browser log entry
+
+public struct BrowserLog: Codable, Sendable, CustomStringConvertible {
+    public let type: String // "log", "warn", "error", "exception", "rejection"
+    public let message: String
+    public let timestamp: Date
+
+    public var description: String {
+        "[\(type.uppercased())] \(message)"
+    }
+}
+
 // MARK: - Tab
 
 @MainActor
@@ -42,7 +54,11 @@ public class Tab: ObservableObject {
     @Published public var title: String = ""
 
     var navContinuation: CheckedContinuation<Void, Error>?
+    var pendingNavigation: WKNavigation?
     private var loadingObs: NSKeyValueObservation?
+
+    private let maxLogs = 1000
+    private var browserLogs: [BrowserLog] = []
 
     init(id: String, configuration: WKWebViewConfiguration) {
         self.id = id
@@ -58,6 +74,27 @@ public class Tab: ObservableObject {
 
     deinit {
         loadingObs?.invalidate()
+    }
+
+    /// Append a console log entry. Drops oldest entries if over the limit.
+    func appendLog(type: String, message: String, timestamp: Date) {
+        browserLogs.append(BrowserLog(type: type, message: message, timestamp: timestamp))
+        if browserLogs.count > maxLogs {
+            browserLogs.removeFirst(browserLogs.count - maxLogs)
+        }
+    }
+
+    /// Retrieve captured logs and clear the buffer. If type/search filters are provided,
+    /// only matching entries are returned (the entire buffer is still drained).
+    func getLogs(type filterType: String? = nil, search: String? = nil) -> [BrowserLog] {
+        let logs = browserLogs
+        browserLogs.removeAll()
+        if filterType == nil && search == nil { return logs }
+        return logs.filter { log in
+            if let t = filterType, log.type != t { return false }
+            if let s = search, !log.message.localizedCaseInsensitiveContains(s) { return false }
+            return true
+        }
     }
 }
 
@@ -110,8 +147,17 @@ public final class WebViewModel: NSObject, ObservableObject {
         webpagePrefs.allowsContentJavaScript = true
         config.defaultWebpagePreferences = webpagePrefs
         config.preferences.isElementFullscreenEnabled = true
+
+        // Inject console & error capture script — runs before page scripts.
+        let consoleScript = WKUserScript(source: Self.consoleCaptureJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        config.userContentController.addUserScript(consoleScript)
+
         self.tabConfig = config
         super.init()
+
+        // Register message handler after self is available.
+        config.userContentController.add(self, name: "consoleLogger")
+
         applySavedUserAgent()
         _ = createTab()
     }
@@ -128,6 +174,50 @@ public final class WebViewModel: NSObject, ObservableObject {
 
     public func setScreenshotDir(_ dir: String) {
         screenshotDir = dir
+    }
+
+    // MARK: - Console & error capture
+
+    private static let consoleCaptureJS = """
+    (function() {
+      if (window.__consoleCaptured) return;
+      window.__consoleCaptured = true;
+
+      var levels = ['log','debug','info','warn','error'];
+      levels.forEach(function(level) {
+        var original = console[level];
+        console[level] = function() {
+          var args = Array.prototype.slice.call(arguments).map(function(a) {
+            try {
+              return typeof a === 'object' ? JSON.stringify(a) : String(a);
+            } catch(e) { return String(a); }
+          }).join(' ');
+          try {
+            window.webkit.messageHandlers.consoleLogger.postMessage({type: level, message: args});
+          } catch(e) {}
+          return original.apply(console, arguments);
+        };
+      });
+
+      window.addEventListener('error', function(e) {
+        try {
+          window.webkit.messageHandlers.consoleLogger.postMessage({type: 'exception', message: e.message + ' at ' + e.filename + ':' + e.lineno + ':' + e.colno});
+        } catch(ex) {}
+      });
+
+      window.addEventListener('unhandledrejection', function(e) {
+        try {
+          window.webkit.messageHandlers.consoleLogger.postMessage({type: 'rejection', message: String(e.reason)});
+        } catch(ex) {}
+      });
+    })();
+    """
+
+    /// Retrieve all captured logs and clear the buffer for the given tab (defaults to active tab).
+    /// Optionally filter by log type or search text.
+    public func getLogs(tabId: String? = nil, type filterType: String? = nil, search: String? = nil) -> [BrowserLog] {
+        guard let tab = tabId.flatMap({ tabs[$0] }) ?? activeTab else { return [] }
+        return tab.getLogs(type: filterType, search: search)
     }
 
     // MARK: - Tab management
@@ -192,6 +282,15 @@ public final class WebViewModel: NSObject, ObservableObject {
 
     // MARK: - User-Agent
 
+    /// Returns the effective user-agent string from the first available web view.
+    public func currentUserAgent() async -> String {
+        if let custom = UserDefaults.standard.string(forKey: "user_agent"), !custom.isEmpty {
+            return custom
+        }
+        guard let tab = tabs.first?.value else { return "" }
+        return (try? await evaluate(script: "navigator.userAgent", in: tab.id)) ?? ""
+    }
+
     public func setUserAgent(_ ua: String?) {
         UserDefaults.standard.set(ua ?? "", forKey: "user_agent")
         for tab in tabs.values {
@@ -227,7 +326,7 @@ public final class WebViewModel: NSObject, ObservableObject {
                 return
             }
             tab.navContinuation = continuation
-            tab.webView.load(URLRequest(url: url))
+            tab.pendingNavigation = tab.webView.load(URLRequest(url: url))
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak tab] in
                 guard let tab, let cont = tab.navContinuation else { return }
@@ -445,6 +544,9 @@ extension WebViewModel: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
+        guard tab.pendingNavigation == nil || navigation === tab.pendingNavigation else { return }
+        tab.pendingNavigation = nil
+        tab.isLoading = false
         tab.url = webView.url?.absoluteString ?? ""
         tab.canGoBack = webView.canGoBack
         tab.canGoForward = webView.canGoForward
@@ -456,6 +558,9 @@ extension WebViewModel: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
+        guard tab.pendingNavigation == nil || navigation === tab.pendingNavigation else { return }
+        tab.pendingNavigation = nil
+        tab.isLoading = false
         let nsError = error as NSError
         if nsError.code == NSURLErrorCancelled { return }
         tab.navContinuation?.resume(throwing: BrowserError.navigationFailed(error.localizedDescription))
@@ -465,6 +570,9 @@ extension WebViewModel: WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
+        guard tab.pendingNavigation == nil || navigation === tab.pendingNavigation else { return }
+        tab.pendingNavigation = nil
+        tab.isLoading = false
         tab.navContinuation?.resume(throwing: BrowserError.navigationFailed(error.localizedDescription))
         tab.navContinuation = nil
         syncTab(tab)
@@ -473,6 +581,20 @@ extension WebViewModel: WKNavigationDelegate {
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         guard let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
         syncTab(tab)
+    }
+}
+
+// MARK: - WKScriptMessageHandler
+
+extension WebViewModel: WKScriptMessageHandler {
+    public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "consoleLogger",
+              let body = message.body as? [String: Any],
+              let type = body["type"] as? String,
+              let msg = body["message"] as? String,
+              let webView = message.webView,
+              let tab = tabs.first(where: { $0.value.webView === webView })?.value else { return }
+        tab.appendLog(type: type, message: msg, timestamp: Date())
     }
 }
 

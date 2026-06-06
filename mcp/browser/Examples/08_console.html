@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Console Capture Test</title>
+<style>
+  body { font-family: -apple-system, sans-serif; padding: 2em; max-width: 600px; margin: 0 auto; }
+  button { padding: 0.5em 1em; margin-right: 0.5em; margin-top: 0.5em; }
+  pre { background: #f5f5f5; padding: 1em; border-radius: 6px; overflow-x: auto; min-height: 100px; }
+  .controls { margin-top: 1.5em; }
+  .summary { display: flex; gap: 1em; margin: 1em 0; }
+  .badge { padding: 0.25em 0.75em; border-radius: 12px; font-size: 0.85em; font-weight: 600; }
+  .badge.log { background: #e3f2fd; color: #1565c0; }
+  .badge.warn { background: #fff3e0; color: #e65100; }
+  .badge.error { background: #ffebee; color: #c62828; }
+</style>
+</head>
+<body>
+  <h1>Console Capture Test</h1>
+  <p>This page exercises various console output types for testing <code>browser_get_logs</code>.</p>
+
+  <div class="summary">
+    <span class="badge log">console.log</span>
+    <span class="badge warn">console.warn</span>
+    <span class="badge error">console.error</span>
+  </div>
+
+  <div class="controls">
+    <button id="logBtn">console.log</button>
+    <button id="warnBtn">console.warn</button>
+    <button id="errorBtn">console.error</button>
+    <button id="exceptionBtn">Throw Exception</button>
+    <button id="rejectionBtn">Unhandled Rejection</button>
+    <button id="allBtn">Trigger All</button>
+  </div>
+
+  <pre id="output">// Click buttons to generate console output</pre>
+
+  <script>
+    var output = document.getElementById('output');
+
+    function logToPage(msg) {
+      output.textContent += '\n' + msg;
+    }
+
+    document.getElementById('logBtn').addEventListener('click', function() {
+      console.log('Hello from console.log at ' + new Date().toISOString());
+      logToPage('> console.log called');
+    });
+
+    document.getElementById('warnBtn').addEventListener('click', function() {
+      console.warn('Warning: this is a test warning message');
+      logToPage('> console.warn called');
+    });
+
+    document.getElementById('errorBtn').addEventListener('click', function() {
+      console.error('Error: something went wrong (test)');
+      logToPage('> console.error called');
+    });
+
+    document.getElementById('exceptionBtn').addEventListener('click', function() {
+      setTimeout(function() {
+        throw new Error('Uncaught test exception');
+      }, 100);
+      logToPage('> Exception thrown (see console)');
+    });
+
+    document.getElementById('rejectionBtn').addEventListener('click', function() {
+      new Promise(function(_, reject) {
+        reject(new Error('Unhandled promise rejection (test)'));
+      });
+      logToPage('> Unhandled rejection triggered (see console)');
+    });
+
+    document.getElementById('allBtn').addEventListener('click', function() {
+      console.log('Batch test: log message');
+      console.warn('Batch test: warn message');
+      console.error('Batch test: error message');
+      logToPage('> All console types triggered');
+    });
+
+    // Log on load
+    console.log('Page loaded at ' + new Date().toISOString());
+    console.info('Console capture test page ready');
+  </script>
+</body>
+</html>

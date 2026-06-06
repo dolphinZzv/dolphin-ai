@@ -7,7 +7,6 @@ import (
 
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
-	"dolphin/internal/types"
 
 	"github.com/spf13/cobra"
 )
@@ -19,44 +18,64 @@ func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Mem
 		return // session command not found
 	}
 
-	parent.AddCommand(WithI18nShort(&cobra.Command{
+	statusCmd := WithI18nShort(&cobra.Command{
 		Use: "status",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			sess := sessMgr.Active()
+		RunE: printSessionStatus(sessMgr, mem, sessionMode),
+	}, "command.session_status")
 
-			if sess != nil {
-				cmd.Printf("Session ID:    %s\n", sess.ID)
-			} else {
-				cmd.Println("Session ID:    (none)")
-			}
+	parent.AddCommand(statusCmd)
 
-			cmd.Printf("Session Mode:  %s\n", sessionMode)
+	// Top-level alias: /status
+	statusAlias := &cobra.Command{
+		Use:   "status",
+		Short: "Show session status",
+		RunE:  printSessionStatus(sessMgr, mem, sessionMode),
+	}
+	r.Register(statusAlias)
+}
 
-			if sess != nil && mem != nil {
-				msgs, err := mem.Read(context.Background(), sess.ID)
-				if err == nil {
-					totalChars := 0
-					rounds := 0
-					toolCalls := 0
-					for _, m := range msgs {
-						totalChars += len(m.Content)
-						if m.Role == types.RoleUser {
-							rounds++
-						}
-						if m.Role == types.RoleTool {
-							toolCalls++
-						}
-					}
-					cmd.Printf("Rounds:        %d\n", rounds)
-					cmd.Printf("Tool Calls:    %d\n", toolCalls)
-					cmd.Printf("Context:       %d messages, %s characters\n",
-						len(msgs), comma(totalChars))
+func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode string) func(cmd *cobra.Command, args []string) error {
+	return func(cmd *cobra.Command, args []string) error {
+		sess := sessMgr.Active()
+
+		if sess != nil {
+			cmd.Printf("Session ID:    %s\n", sess.ID)
+		} else {
+			cmd.Println("Session ID:    (none)")
+		}
+
+		cmd.Printf("Session Mode:  %s\n", sessionMode)
+		cmd.Printf("System Ctx:    %s characters\n", comma(tokenVal(sess.Get("system_context"))))
+
+		if sess != nil && mem != nil {
+			msgs, err := mem.Read(context.Background(), sess.ID)
+			if err == nil {
+				totalChars := 0
+				for _, m := range msgs {
+					totalChars += len(m.Content)
 				}
+				cmd.Printf("Rounds:        %s\n", comma(tokenVal(sess.Get("rounds"))))
+				cmd.Printf("Tool Calls:    %s\n", comma(tokenVal(sess.Get("tool_calls"))))
+				cmd.Printf("Input Tokens:  %s\n", comma(tokenVal(sess.Get("input_tokens"))))
+				cmd.Printf("Output Tokens: %s\n", comma(tokenVal(sess.Get("output_tokens"))))
+				cmd.Printf("Last Input:    %s\n", comma(tokenVal(sess.Get("last_input_tokens"))))
+				cmd.Printf("Last Output:   %s\n", comma(tokenVal(sess.Get("last_output_tokens"))))
+				cmd.Printf("Context:       %d messages, %s characters\n",
+					len(msgs), comma(totalChars))
 			}
+		}
 
-			return nil
-		},
-	}, "command.session_status"))
+		return nil
+	}
+}
+
+// tokenVal extracts an int from the session.Data value (may be nil or wrong type).
+func tokenVal(v any) int {
+	if v == nil {
+		return 0
+	}
+	n, _ := v.(int)
+	return n
 }
 
 // comma formats an integer with thousand separators.

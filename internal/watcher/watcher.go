@@ -14,6 +14,9 @@ import (
 // Watcher monitors a directory for file changes via polling and publishes
 // file.* events to the event bus. Patterns from .dolphinignore (in the
 // watched directory) are used to skip matching files.
+// The first scan after Start only builds the initial state snapshot; no events
+// are published until subsequent scans, preventing spurious triggers for
+// pre-existing files (e.g. watch-soul on startup).
 type Watcher struct {
 	dir            string
 	eventBus       *event.Bus
@@ -22,6 +25,7 @@ type Watcher struct {
 	mu             sync.Mutex
 	stopped        chan struct{}
 	running        bool
+	firstScan      bool
 	ignorePatterns []string // glob patterns from .dolphinignore
 }
 
@@ -34,11 +38,12 @@ func NewWatcher(dir string, eventBus *event.Bus, interval time.Duration) *Watche
 		interval = 5 * time.Second
 	}
 	w := &Watcher{
-		dir:      dir,
-		eventBus: eventBus,
-		interval: interval,
-		state:    make(map[string]time.Time),
-		stopped:  make(chan struct{}),
+		dir:       dir,
+		eventBus:  eventBus,
+		interval:  interval,
+		state:     make(map[string]time.Time),
+		stopped:   make(chan struct{}),
+		firstScan: true,
 	}
 	w.loadIgnorePatterns()
 	return w
@@ -184,7 +189,13 @@ func (w *Watcher) scan() {
 	w.mu.Lock()
 	prev := w.state
 	w.state = current
+	first := w.firstScan
+	w.firstScan = false
 	w.mu.Unlock()
+
+	if first {
+		return // first scan: build state only, no events for pre-existing files
+	}
 
 	// Detect new and modified files.
 	for rel, modTime := range current {

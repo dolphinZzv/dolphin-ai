@@ -95,6 +95,18 @@ enum TestToolHandler {
                 )
             ),
             ToolDef(
+                name: "browser_get_logs",
+                description: "Retrieve all captured console logs and runtime errors from the browser since the last call. Returns array of {type, message, timestamp}.",
+                inputSchema: InputSchema(
+                    properties: [
+                        "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+                        "type": PropertySchema(type: "string", description: "Filter by log type: log, debug, info, warn, error, exception, rejection", default: nil),
+                        "search": PropertySchema(type: "string", description: "Filter by case-insensitive substring match on message", default: nil),
+                    ],
+                    required: nil
+                )
+            ),
+            ToolDef(
                 name: "browser_wait",
                 description: "Wait for a condition on the page (element exists/visible/gone, or DOM stable). Returns true when condition is met, false on timeout.",
                 inputSchema: InputSchema(

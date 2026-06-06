@@ -91,12 +91,20 @@ func (m *Manager) LoadActive(ctx context.Context) {
 		return
 	}
 	m.current = sessions[len(sessions)-1]
+	// Ensure the loaded session is in known so Get() / event handlers can find it.
+	m.known[m.current.ID] = m.current
 }
 
 func (m *Manager) Active() *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.current
+}
+
+func (m *Manager) Get(id string) *Session {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.known[id]
 }
 
 func (m *Manager) List(ctx context.Context) ([]*Session, error) {

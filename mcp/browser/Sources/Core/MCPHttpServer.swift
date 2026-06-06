@@ -300,6 +300,28 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             }
         ),
         Tool(
+            name: "browser_get_logs",
+            description: "Retrieve all captured console logs and runtime errors from the browser since the last call to this tool. Returns an array of {type, message, timestamp} objects. Types: log, debug, info, warn, error, exception, rejection. Optionally filter by type or search text (case-insensitive substring match).",
+            properties: [
+                "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
+                "type": PropertySchema(type: "string", description: "Filter by log type: log, debug, info, warn, error, exception, rejection", default: nil),
+                "search": PropertySchema(type: "string", description: "Filter by case-insensitive substring match on message", default: nil),
+            ],
+            required: nil,
+            validate: { _ in nil },
+            run: { args, vm, _ in
+                let tabId = args["tab_id"]?.stringValue
+                let filterType = args["type"]?.stringValue
+                let search = args["search"]?.stringValue
+                let logs = await vm.getLogs(tabId: tabId, type: filterType, search: search)
+                let formatter = ISO8601DateFormatter()
+                let logList: [[String: Any]] = logs.map { log in
+                    ["type": log.type, "message": log.message, "timestamp": formatter.string(from: log.timestamp)]
+                }
+                return toolResult(["logs": logList])
+            }
+        ),
+        Tool(
             name: "browser_get_task_result",
             description: "Poll a task by taskId and return the result. Use this after calling a browser tool with async=1.",
             properties: ["taskId": PropertySchema(type: "string", description: "Task ID returned from an async browser tool call", default: nil)],
@@ -514,6 +536,23 @@ public final class MCPHttpServer: @unchecked Sendable {
         let args = params.arguments ?? [:]
         if let err = tool.validate(args) {
             sendJSONRPCError(connection, id: request.id, code: -32602, message: err)
+            return
+        }
+
+        // browser_get_logs and browser_set_window_size are synchronous
+        if name == "browser_get_logs" {
+            let tabId = args["tab_id"]?.stringValue
+            let filterType = args["type"]?.stringValue
+            let search = args["search"]?.stringValue
+            var logs: [BrowserLog] = []
+            DispatchQueue.main.sync { @MainActor in
+                logs = viewModel.getLogs(tabId: tabId, type: filterType, search: search)
+            }
+            let formatter = ISO8601DateFormatter()
+            let logList: [[String: Any]] = logs.map { log in
+                ["type": log.type, "message": log.message, "timestamp": formatter.string(from: log.timestamp)]
+            }
+            sendJSONRPCResult(connection, id: request.id, result: toolResult(["logs": logList]))
             return
         }
 

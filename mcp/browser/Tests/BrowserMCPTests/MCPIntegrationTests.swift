@@ -220,6 +220,162 @@ final class BrowserMCPIntegrationTests: XCTestCase {
         XCTAssertEqual(hostname, "www.bing.com")
     }
 
+    // MARK: - Console capture tests
+
+    func testConsoleLogCapture() throws {
+        // Load a data URL with inline JS that produces console output
+        let html = "<html><body><script>" +
+            "console.log('test log message');" +
+            "console.warn('test warn message');" +
+            "console.error('test error message');" +
+            "</script></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let dataURL = "data:text/html," + encoded
+
+        let navResp = try sendToolCall("browser_navigate", args: ["url": dataURL], timeout: 15)
+        let navResult = try extractResult(navResp)
+        XCTAssertEqual(navResult["status"] as? String, "ok")
+
+        // Give the page a moment to execute scripts
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Retrieve logs
+        let logsResp = try sendToolCall("browser_get_logs", args: [:])
+        let logsResult = try extractResult(logsResp)
+        let logs = logsResult["logs"] as? [[String: Any]]
+        XCTAssertNotNil(logs, "should return a logs array")
+        XCTAssertGreaterThanOrEqual(logs?.count ?? 0, 3, "should capture at least 3 console calls")
+
+        // Verify specific log entries exist
+        let messages = logs?.compactMap { $0["message"] as? String } ?? []
+        let types = logs?.compactMap { $0["type"] as? String } ?? []
+
+        XCTAssertTrue(messages.contains(where: { $0.contains("test log message") }), "should contain log message")
+        XCTAssertTrue(messages.contains(where: { $0.contains("test warn message") }), "should contain warn message")
+        XCTAssertTrue(messages.contains(where: { $0.contains("test error message") }), "should contain error message")
+        XCTAssertTrue(types.contains("log"), "should have log type")
+        XCTAssertTrue(types.contains("warn"), "should have warn type")
+        XCTAssertTrue(types.contains("error"), "should have error type")
+    }
+
+    func testConsoleGetLogsClearsBuffer() throws {
+        let html = "<html><body><script>console.log('first call');</script></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let dataURL = "data:text/html," + encoded
+
+        let navResp = try sendToolCall("browser_navigate", args: ["url": dataURL], timeout: 15)
+        XCTAssertNotNil(try? extractResult(navResp))
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // First read — should have the log
+        let r1 = try extractResult(sendToolCall("browser_get_logs", args: [:]))
+        let logs1 = r1["logs"] as? [[String: Any]] ?? []
+        XCTAssertGreaterThanOrEqual(logs1.count, 1)
+
+        // Second read — buffer should be cleared
+        let r2 = try extractResult(sendToolCall("browser_get_logs", args: [:]))
+        let logs2 = r2["logs"] as? [[String: Any]] ?? []
+        XCTAssertEqual(logs2.count, 0, "buffer should be empty after first read")
+    }
+
+    func testConsoleLogTimestamps() throws {
+        let html = "<html><body><script>console.log('timed log');</script></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let dataURL = "data:text/html," + encoded
+
+        let navResp = try sendToolCall("browser_navigate", args: ["url": dataURL], timeout: 15)
+        XCTAssertNotNil(try? extractResult(navResp))
+        Thread.sleep(forTimeInterval: 0.5)
+
+        let r = try extractResult(sendToolCall("browser_get_logs", args: [:]))
+        let logs = r["logs"] as? [[String: Any]] ?? []
+        XCTAssertGreaterThanOrEqual(logs.count, 1)
+
+        // Verify all entries have ISO8601 timestamps
+        for log in logs {
+            let ts = log["timestamp"] as? String
+            XCTAssertNotNil(ts, "each log should have a timestamp")
+            XCTAssertFalse(ts!.isEmpty, "timestamp should not be empty")
+        }
+    }
+
+    func testConsoleGetLogsFilterByType() throws {
+        let html = "<html><body><script>" +
+            "console.log('just a log');" +
+            "console.warn('just a warn');" +
+            "console.error('just an error');" +
+            "</script></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let dataURL = "data:text/html," + encoded
+
+        let navResp = try sendToolCall("browser_navigate", args: ["url": dataURL], timeout: 15)
+        XCTAssertNotNil(try? extractResult(navResp))
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Filter by type=error
+        let resp = try sendToolCall("browser_get_logs", args: ["type": "error"])
+        let result = try extractResult(resp)
+        let logs = result["logs"] as? [[String: Any]] ?? []
+        XCTAssertEqual(logs.count, 1, "should return exactly one error log")
+        XCTAssertEqual(logs.first?["type"] as? String, "error")
+        XCTAssertTrue((logs.first?["message"] as? String)?.contains("just an error") ?? false)
+    }
+
+    func testConsoleGetLogsSearchByMessage() throws {
+        let html = "<html><body><script>" +
+            "console.log('connection timeout to server');" +
+            "console.warn('disk space low');" +
+            "console.error('request timed out');" +
+            "</script></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let dataURL = "data:text/html," + encoded
+
+        let navResp = try sendToolCall("browser_navigate", args: ["url": dataURL], timeout: 15)
+        XCTAssertNotNil(try? extractResult(navResp))
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Search for "timeout" — should match 2 entries (log + error)
+        let resp = try sendToolCall("browser_get_logs", args: ["search": "timeout"])
+        let result = try extractResult(resp)
+        let logs = result["logs"] as? [[String: Any]] ?? []
+        XCTAssertEqual(logs.count, 2, "should find 2 logs containing 'timeout'")
+        for log in logs {
+            let msg = log["message"] as? String ?? ""
+            XCTAssertTrue(msg.localizedCaseInsensitiveContains("timeout"))
+        }
+    }
+
+    func testConsoleGetLogsFilterAndSearch() throws {
+        let html = "<html><body><script>" +
+            "console.log('user logged in');" +
+            "console.warn('login attempt failed');" +
+            "console.error('login error: db timeout');" +
+            "console.warn('cache miss');" +
+            "</script></body></html>"
+        let encoded = html.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)!
+        let dataURL = "data:text/html," + encoded
+
+        let navResp = try sendToolCall("browser_navigate", args: ["url": dataURL], timeout: 15)
+        XCTAssertNotNil(try? extractResult(navResp))
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Filter by type=warn + search="login" — should match only the warn entry
+        let resp = try sendToolCall("browser_get_logs", args: ["type": "warn", "search": "login"])
+        let result = try extractResult(resp)
+        let logs = result["logs"] as? [[String: Any]] ?? []
+        XCTAssertEqual(logs.count, 1, "should find 1 warn log containing 'login'")
+        XCTAssertEqual(logs.first?["type"] as? String, "warn")
+        XCTAssertTrue((logs.first?["message"] as? String)?.localizedCaseInsensitiveContains("login") ?? false)
+    }
+
+    func testConsoleGetLogsFilterUnknownType() throws {
+        // With no logs matching the filter, should return empty array (not nil)
+        let resp = try sendToolCall("browser_get_logs", args: ["type": "debug"])
+        let result = try extractResult(resp)
+        let logs = result["logs"] as? [[String: Any]] ?? []
+        XCTAssertEqual(logs.count, 0, "should return empty array when no logs match")
+    }
+
     // MARK: - Error handling
 
     func testNavigateWithInvalidURL() throws {

@@ -27,6 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     let viewModel = WebViewModel()
     var httpServer: MCPHttpServer?
     private var statusItem: NSStatusItem?
+    private var settingsWindowController: NSWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupMenuBar()
@@ -77,7 +78,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func showSettingsAction() {
         NSApp.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: NSApp, from: nil)
+
+        // Reuse existing settings window if still open
+        if let wc = settingsWindowController, let window = wc.window, window.isVisible {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+
+        let settingsView = SettingsView(viewModel: viewModel)
+        let hostingController = NSHostingController(rootView: settingsView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.title = "Settings"
+        window.styleMask = [.titled, .closable, .miniaturizable]
+
+        let wc = NSWindowController(window: window)
+        wc.showWindow(nil)
+        settingsWindowController = wc
     }
 
     // MARK: - URL handler (browser-mcp:// urls)

@@ -7,7 +7,7 @@ final class MCPProtocolTests: XCTestCase {
 
     func testToolCount() {
         let tools = TestToolHandler.tools()
-        XCTAssertEqual(tools.count, 10)
+        XCTAssertEqual(tools.count, 11)
     }
 
     func testToolNames() {
@@ -18,6 +18,7 @@ final class MCPProtocolTests: XCTestCase {
             "browser_close_tab",
             "browser_create_tab",
             "browser_evaluate",
+            "browser_get_logs",
             "browser_list_tabs",
             "browser_navigate",
             "browser_screenshot",
