@@ -220,4 +220,58 @@ func TestWatcherMultipleChanges(t *testing.T) {
 	if createCount != 2 {
 		t.Errorf("expected 2 create events, got %d", createCount)
 	}
+
+}
+func TestWatcherIgnoreNegation(t *testing.T) {
+	dir := t.TempDir()
+	// .dolphinignore: ignore *.log, but NOT important.log
+	dolphinignore := filepath.Join(dir, ".dolphinignore")
+	os.WriteFile(dolphinignore, []byte("*.log\n!important.log\n"), 0644)
+
+	bus := event.NewBus()
+	w := NewWatcher(dir, bus, 10*time.Millisecond)
+
+	var mu sync.Mutex
+	var events []event.Event
+	bus.Subscribe(func(ctx context.Context, e event.Event) {
+		mu.Lock()
+		events = append(events, e)
+		mu.Unlock()
+	})
+
+	w.Start(context.Background())
+	defer w.Stop()
+
+	time.Sleep(30 * time.Millisecond)
+
+	// Create a regular log file (should be ignored)
+	os.WriteFile(filepath.Join(dir, "debug.log"), []byte("debug"), 0644)
+	// Create an "important" log file (should NOT be ignored)
+	os.WriteFile(filepath.Join(dir, "important.log"), []byte("important"), 0644)
+	time.Sleep(50 * time.Millisecond)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	hasDebug := false
+	hasImportant := false
+	for _, e := range events {
+		if e.Type != event.EventFileCreate {
+			continue
+		}
+		p, _ := e.Payload["path"].(string)
+		if p == "debug.log" {
+			hasDebug = true
+		}
+		if p == "important.log" {
+			hasImportant = true
+		}
+	}
+
+	if hasDebug {
+		t.Error("debug.log should be ignored by *.log pattern")
+	}
+	if !hasImportant {
+		t.Error("important.log should NOT be ignored (negated by !important.log)")
+	}
 }

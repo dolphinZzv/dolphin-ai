@@ -65,35 +65,41 @@ func (w *Watcher) loadIgnorePatterns() {
 
 // isIgnored checks whether a relative path matches any ignore pattern.
 // isDir should be true when rel refers to a directory.
+// Lines starting with "!" negate (un-ignore) a previously matched pattern;
+// the last matching pattern wins, like .gitignore semantics.
 func (w *Watcher) isIgnored(rel string, isDir bool) bool {
+	ignored := false
 	for _, pattern := range w.ignorePatterns {
-		dirPat := strings.HasSuffix(pattern, "/")
-		cleanPat := strings.TrimSuffix(pattern, "/")
+		negate := strings.HasPrefix(pattern, "!")
+		pat := strings.TrimPrefix(pattern, "!")
 
-		// Directory-only pattern: only matches directories or files within.
+		dirPat := strings.HasSuffix(pat, "/")
+		cleanPat := strings.TrimSuffix(pat, "/")
+
+		match := false
 		if dirPat {
 			if isDir {
-				// Match directory basename vs pattern (e.g. ".git" matches ".git/")
 				if ok, _ := filepath.Match(cleanPat, filepath.Base(rel)); ok {
-					return true
+					match = true
 				}
 			}
-			// File or directory under a matched directory (e.g. ".dolphin/dolphin.log")
 			if strings.HasPrefix(rel, cleanPat+"/") {
-				return true
+				match = true
 			}
-			continue
+		} else {
+			if ok, _ := filepath.Match(cleanPat, filepath.Base(rel)); ok {
+				match = true
+			}
+			if ok, _ := filepath.Match(cleanPat, rel); ok {
+				match = true
+			}
 		}
 
-		// Non-directory pattern: match basename or full relative path.
-		if ok, _ := filepath.Match(cleanPat, filepath.Base(rel)); ok {
-			return true
-		}
-		if ok, _ := filepath.Match(cleanPat, rel); ok {
-			return true
+		if match {
+			ignored = !negate
 		}
 	}
-	return false
+	return ignored
 }
 
 // Start begins polling for file changes in a background goroutine.

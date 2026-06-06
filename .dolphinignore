@@ -1,7 +1,51 @@
 # Patterns matching these paths will not trigger file events.
 # One glob pattern per line. Lines starting with # are comments.
+# Lines starting with ! negate (un-ignore) a previously matched pattern.
+# The last matching pattern wins, like .gitignore semantics.
 
+# -- Logs, temp files, caches --
 *.log
 *.tmp
 *.swp
+*.swo
+*.bak
+*.cache
 .DS_Store
+Thumbs.db
+
+# -- Package manager / vendor dirs --
+node_modules/
+vendor/
+Pods/
+.bundle/
+.gradle/
+.jdks/
+
+# -- Build outputs --
+dist/
+build/
+target/
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.class
+*.jar
+*.pyc
+__pycache__/
+.venv/
+venv/
+.env
+coverage/
+.next/
+.nuxt/
+.cache/
+.build/
+
+# -- IDE / editors --
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
