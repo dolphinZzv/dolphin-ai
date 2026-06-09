@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"dolphin/internal/i18n"
+
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
 )
@@ -498,6 +500,24 @@ func TestEmailRequestPermission(t *testing.T) {
 		result, err := e.RequestPermission(context.Background(), "test")
 		So(err, ShouldNotBeNil)
 		So(result, ShouldEqual, PermissionDenied)
+	})
+}
+
+func TestEmailGetters(t *testing.T) {
+	Convey("Email.Context", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		So(e.Context(), ShouldEqual, i18n.T("transport.context_email"))
+	})
+
+	Convey("Email.Tools", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		So(e.Tools(), ShouldBeNil)
+	})
+
+	Convey("Email.Start", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		err := e.Start(context.Background())
+		So(err, ShouldBeNil)
 	})
 }
 
