@@ -41,3 +41,5 @@ bin/
 *.out
 BUG.md
 screenshots
+.build
+app

@@ -316,7 +316,7 @@ func (d *DingTalk) startStream() {
 		// while another goroutine tries to send on it, causing a panic.
 		// Disabling keepalive eliminates the pong goroutine entirely, and
 		// the only exit path becomes the read goroutine which is safe.
-		dtclient.WithKeepAlive(8760 * time.Hour), // ~1 year, effectively off
+		dtclient.WithKeepAlive(8760*time.Hour), // ~1 year, effectively off
 	)
 
 	cli.RegisterChatBotCallbackRouter(d.handleBotMessage)
