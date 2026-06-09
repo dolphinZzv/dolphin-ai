@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	gogit "github.com/go-git/go-git/v5"
 )
 
 func TestNew(t *testing.T) {
@@ -448,4 +450,92 @@ func TestReadIndexNoGit(t *testing.T) {
 	if !strings.Contains(idx, "Root index") || !strings.Contains(idx, "Sub index") {
 		t.Errorf("unexpected index content: %s", idx)
 	}
+}
+
+func TestAutoCommitMsg(t *testing.T) {
+	t.Run("single add", func(t *testing.T) {
+		status := gogit.Status{
+			"newfile.go": {Worktree: gogit.Untracked},
+		}
+		msg := autoCommitMsg(status)
+		if msg != "add newfile.go" {
+			t.Errorf("unexpected msg: %q", msg)
+		}
+	})
+
+	t.Run("multiple adds", func(t *testing.T) {
+		status := gogit.Status{
+			"a.go": {Worktree: gogit.Untracked},
+			"b.go": {Worktree: gogit.Untracked},
+			"c.go": {Worktree: gogit.Untracked},
+		}
+		msg := autoCommitMsg(status)
+		if !strings.Contains(msg, "a.go") || !strings.Contains(msg, "2 more") {
+			t.Errorf("unexpected msg: %q", msg)
+		}
+	})
+
+	t.Run("single update", func(t *testing.T) {
+		status := gogit.Status{
+			"main.go": {Worktree: gogit.Modified},
+		}
+		msg := autoCommitMsg(status)
+		if msg != "update main.go" {
+			t.Errorf("unexpected msg: %q", msg)
+		}
+	})
+
+	t.Run("multiple updates", func(t *testing.T) {
+		status := gogit.Status{
+			"a.go": {Worktree: gogit.Modified},
+			"b.go": {Worktree: gogit.Modified},
+		}
+		msg := autoCommitMsg(status)
+		if !strings.Contains(msg, "a.go") || !strings.Contains(msg, "1 more") {
+			t.Errorf("unexpected msg: %q", msg)
+		}
+	})
+
+	t.Run("mixed adds and updates", func(t *testing.T) {
+		status := gogit.Status{
+			"new.go":   {Worktree: gogit.Untracked},
+			"old.go":   {Worktree: gogit.Modified},
+			"other.go": {Worktree: gogit.Modified},
+		}
+		msg := autoCommitMsg(status)
+		if !strings.Contains(msg, "add new.go") {
+			t.Errorf("expected 'add new.go', got: %q", msg)
+		}
+		if !strings.Contains(msg, "update old.go") {
+			t.Errorf("expected 'update old.go', got: %q", msg)
+		}
+	})
+
+	t.Run("empty status", func(t *testing.T) {
+		status := gogit.Status{}
+		msg := autoCommitMsg(status)
+		if msg != "" {
+			t.Errorf("expected empty msg, got: %q", msg)
+		}
+	})
+}
+
+func TestIsInitialized(t *testing.T) {
+	t.Run("returns false for uninitialized directory", func(t *testing.T) {
+		b := New(t.TempDir())
+		if b.IsInitialized() {
+			t.Error("expected false for uninitialized brain")
+		}
+	})
+
+	t.Run("returns true after Init", func(t *testing.T) {
+		dir := t.TempDir()
+		b := New(dir)
+		if err := b.Init(context.Background()); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+		if !b.IsInitialized() {
+			t.Error("expected true after Init")
+		}
+	})
 }

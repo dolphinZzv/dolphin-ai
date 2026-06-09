@@ -452,6 +452,39 @@ func TestContextBuilderStageRegisterSection(t *testing.T) {
 	})
 }
 
+func TestBuildSystemPromptWithEventBus(t *testing.T) {
+	Convey("ContextBuilderStage.BuildSystemPrompt", t, func() {
+		Convey("publishes events when EventBus is set", func() {
+			eb := event.NewBus()
+			stage := &ContextBuilderStage{
+				BaseSystemPrompt: "test base",
+				EventBus:         eb,
+			}
+
+			var events []event.Event
+			eb.Subscribe(func(ctx context.Context, e event.Event) {
+				events = append(events, e)
+			})
+
+			prompt, err := stage.BuildSystemPrompt(context.Background())
+			So(err, ShouldBeNil)
+			So(prompt, ShouldContainSubstring, "test base")
+			So(len(events), ShouldEqual, 2)
+			So(events[0].Type, ShouldEqual, event.EventContextBuildStart)
+			So(events[1].Type, ShouldEqual, event.EventContextBuildComplete)
+		})
+
+		Convey("works without EventBus", func() {
+			stage := &ContextBuilderStage{
+				BaseSystemPrompt: "no events",
+			}
+			prompt, err := stage.BuildSystemPrompt(context.Background())
+			So(err, ShouldBeNil)
+			So(prompt, ShouldContainSubstring, "no events")
+		})
+	})
+}
+
 func TestLLMStageActiveModel(t *testing.T) {
 	Convey("LLMStage activeModel", t, func() {
 		Convey("returns Model when set", func() {

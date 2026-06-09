@@ -132,3 +132,39 @@ func TestBusSetLoggerSubscribe(t *testing.T) {
 		bus.Publish(context.Background(), Event{Type: EventPipelineStart})
 	})
 }
+
+func TestNewLogHandler(t *testing.T) {
+	Convey("NewLogHandler", t, func() {
+		logger := zap.NewNop()
+		handler := NewLogHandler(logger)
+		So(handler, ShouldNotBeNil)
+
+		Convey("handles error events", func() {
+			handler(context.Background(), Event{
+				Type:    EventLLMError,
+				Payload: map[string]any{"error": "api failed"},
+			})
+		})
+
+		Convey("handles retry events", func() {
+			handler(context.Background(), Event{
+				Type:    EventLLMRetry,
+				Payload: map[string]any{"attempt": 1},
+			})
+		})
+
+		Convey("handles debug-level events", func() {
+			handler(context.Background(), Event{
+				Type:    EventToolAssembly,
+				Payload: map[string]any{"tools": []string{"shell"}},
+			})
+		})
+
+		Convey("handles default info-level events", func() {
+			handler(context.Background(), Event{
+				Type:    EventTurnStart,
+				Payload: map[string]any{"session": "s1"},
+			})
+		})
+	})
+}

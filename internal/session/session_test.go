@@ -135,5 +135,122 @@ func TestSessionStruct(t *testing.T) {
 			So(s.Active, ShouldBeFalse)
 			So(s.CreatedAt.IsZero(), ShouldBeTrue)
 		})
+
+		Convey("Set and Get store and retrieve values", func() {
+			s := Session{ID: "test-session"}
+			s.Set("rounds", 5)
+			s.Set("name", "hello")
+			s.Set("enabled", true)
+
+			So(s.Get("rounds"), ShouldEqual, 5)
+			So(s.Get("name"), ShouldEqual, "hello")
+			So(s.Get("enabled"), ShouldEqual, true)
+			So(s.Get("nonexistent"), ShouldBeNil)
+		})
+
+		Convey("Get returns nil for unset key", func() {
+			s := Session{ID: "empty-session"}
+			So(s.Get("anything"), ShouldBeNil)
+		})
+	})
+}
+
+func TestManagerNewSession(t *testing.T) {
+	Convey("Manager.NewSession", t, func() {
+		mgr := NewManager(t.TempDir())
+
+		Convey("creates session with correct defaults", func() {
+			s := mgr.NewSession(context.Background())
+			So(s, ShouldNotBeNil)
+			So(s.ID, ShouldNotBeEmpty)
+			So(s.Active, ShouldBeFalse)
+			So(s.CreatedAt.IsZero(), ShouldBeFalse)
+		})
+	})
+}
+
+func TestManagerLoadActive(t *testing.T) {
+	Convey("Manager.LoadActive", t, func() {
+		Convey("loads session from disk", func() {
+			dir := t.TempDir()
+			mgr := NewManager(dir)
+			s := mgr.Create(context.Background())
+			s.Set("version", 2)
+
+			f, _ := os.Create(filepath.Join(dir, s.ID+".md"))
+			f.Close()
+
+			mgr2 := NewManager(dir)
+			mgr2.LoadActive(context.Background())
+			So(mgr2.Active(), ShouldNotBeNil)
+			So(mgr2.Active().ID, ShouldEqual, s.ID)
+		})
+
+		Convey("does nothing when no .md files exist", func() {
+			mgr := NewManager(t.TempDir())
+			mgr.LoadActive(context.Background())
+			So(mgr.Active(), ShouldBeNil)
+		})
+	})
+}
+
+func TestManagerGet(t *testing.T) {
+	Convey("Manager.Get", t, func() {
+		Convey("retrieves session by ID", func() {
+			mgr := NewManager(t.TempDir())
+			created := mgr.Create(context.Background())
+			created.Set("key", "val")
+
+			found := mgr.Get(created.ID)
+			So(found, ShouldNotBeNil)
+			So(found.ID, ShouldEqual, created.ID)
+			So(found.Get("key"), ShouldEqual, "val")
+		})
+
+		Convey("returns nil for unknown ID", func() {
+			mgr := NewManager(t.TempDir())
+			found := mgr.Get("nonexistent-id")
+			So(found, ShouldBeNil)
+		})
+	})
+}
+
+func TestManagerDelete(t *testing.T) {
+	Convey("Manager.Delete", t, func() {
+		Convey("deletes session", func() {
+			mgr := NewManager(t.TempDir())
+			s := mgr.Create(context.Background())
+
+			f, _ := os.Create(filepath.Join(mgr.dir, s.ID+".md"))
+			f.Close()
+
+			err := mgr.Delete(context.Background(), s.ID)
+			So(err, ShouldBeNil)
+			So(mgr.Get(s.ID), ShouldBeNil)
+		})
+
+		Convey("returns error for nonexistent session", func() {
+			mgr := NewManager(t.TempDir())
+			err := mgr.Delete(context.Background(), "nonexistent")
+			So(err, ShouldNotBeNil)
+		})
+	})
+}
+
+func TestManagerSwitchTo_DiskSession(t *testing.T) {
+	Convey("Manager.SwitchTo from disk", t, func() {
+		dir := t.TempDir()
+		mgr := NewManager(dir)
+		s := mgr.Create(context.Background())
+
+		f, _ := os.Create(filepath.Join(dir, s.ID+".md"))
+		f.Close()
+
+		mgr2 := NewManager(dir)
+		switched, err := mgr2.SwitchTo(context.Background(), s.ID)
+		So(err, ShouldBeNil)
+		So(switched.ID, ShouldEqual, s.ID)
+		So(switched.Active, ShouldBeTrue)
+		So(mgr2.Active().ID, ShouldEqual, s.ID)
 	})
 }

@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"dolphin/internal/i18n"
+	"github.com/spf13/cobra"
 )
 
 func TestLangListOutput(t *testing.T) {
@@ -87,4 +88,55 @@ func TestLangListViaExecute(t *testing.T) {
 	if !strings.Contains(output, "zh") {
 		t.Error("Execute output missing 'zh'")
 	}
+}
+
+func TestRunLangUseDirect(t *testing.T) {
+	original := i18n.Lang()
+	defer i18n.SetLang(original)
+
+	i18n.SetLang("en")
+
+	t.Run("valid switch", func(t *testing.T) {
+		var buf bytes.Buffer
+		cmd := WithI18nShort(&cobra.Command{Use: "test"}, "")
+		cmd.SetOut(&buf)
+		cmd.SetArgs([]string{"zh"})
+
+		err := runLangUse(cmd, []string{"zh"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i18n.Lang() != "zh" {
+			t.Errorf("expected zh, got %s", i18n.Lang())
+		}
+	})
+
+	t.Run("invalid code", func(t *testing.T) {
+		var buf bytes.Buffer
+		cmd := WithI18nShort(&cobra.Command{Use: "test"}, "")
+		cmd.SetOut(&buf)
+
+		err := runLangUse(cmd, []string{"fr"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i18n.Lang() != "zh" {
+			t.Errorf("expected zh (unchanged), got %s", i18n.Lang())
+		}
+	})
+
+	t.Run("trims whitespace from code", func(t *testing.T) {
+		var buf bytes.Buffer
+		cmd := WithI18nShort(&cobra.Command{Use: "test"}, "")
+		cmd.SetOut(&buf)
+		i18n.SetLang("en")
+
+		err := runLangUse(cmd, []string{"  zh  "})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i18n.Lang() != "zh" {
+			t.Errorf("expected zh after trim, got %s", i18n.Lang())
+		}
+	})
 }

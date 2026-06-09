@@ -279,3 +279,23 @@ func TestSubscribeMultipleTimes(t *testing.T) {
 		}
 	}
 }
+
+func TestUnsubscribe(t *testing.T) {
+	bus := NewBus()
+
+	ch := bus.Subscribe("sess1")
+	bus.Unsubscribe("sess1", ch)
+
+	bus.Send("sess1", Interrupt)
+
+	_, err := Recv(context.Background(), ch)
+	if err == nil {
+		t.Error("expected error on closed channel after unsubscribe")
+	}
+}
+
+func TestUnsubscribeUnknownSession(t *testing.T) {
+	bus := NewBus()
+	// Should not panic
+	bus.Unsubscribe("nonexistent", make(chan Signal))
+}

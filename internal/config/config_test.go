@@ -204,3 +204,97 @@ func TestConfigNilSafety(t *testing.T) {
 		So(cfg.Get("x"), ShouldBeNil)
 	})
 }
+
+func TestDetectLang(t *testing.T) {
+	Convey("DetectLang", t, func() {
+		Convey("returns en fallback when no env vars set", func() {
+			os.Unsetenv("LANG")
+			os.Unsetenv("LC_ALL")
+			os.Unsetenv("LC_MESSAGES")
+			So(DetectLang(), ShouldEqual, "en")
+		})
+
+		Convey("parses zh from LANG env", func() {
+			os.Setenv("LANG", "zh_CN.UTF-8")
+			defer os.Unsetenv("LANG")
+			So(DetectLang(), ShouldEqual, "zh")
+		})
+
+		Convey("parses en from LANG env", func() {
+			os.Setenv("LANG", "en_US.UTF-8")
+			defer os.Unsetenv("LANG")
+			So(DetectLang(), ShouldEqual, "en")
+		})
+
+		Convey("falls back to LC_ALL", func() {
+			os.Unsetenv("LANG")
+			os.Setenv("LC_ALL", "ja_JP.UTF-8")
+			defer os.Unsetenv("LC_ALL")
+			So(DetectLang(), ShouldEqual, "ja")
+		})
+
+		Convey("falls back to LC_MESSAGES", func() {
+			os.Unsetenv("LANG")
+			os.Unsetenv("LC_ALL")
+			os.Setenv("LC_MESSAGES", "fr_FR.UTF-8")
+			defer os.Unsetenv("LC_MESSAGES")
+			So(DetectLang(), ShouldEqual, "fr")
+		})
+
+		Convey("handles lang without suffix", func() {
+			os.Setenv("LANG", "zh")
+			defer os.Unsetenv("LANG")
+			So(DetectLang(), ShouldEqual, "zh")
+		})
+
+		Convey("handles lang with only region", func() {
+			os.Setenv("LANG", "en_US")
+			defer os.Unsetenv("LANG")
+			So(DetectLang(), ShouldEqual, "en")
+		})
+
+		Convey("handles lang with dot separator", func() {
+			os.Setenv("LANG", "C.UTF-8")
+			defer os.Unsetenv("LANG")
+			So(DetectLang(), ShouldEqual, "C")
+		})
+	})
+}
+
+func TestGetStringMap(t *testing.T) {
+	Convey("GetStringMap", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"llm.openai.api_key": "sk-abc",
+			"llm.openai.model":   "gpt-4",
+			"llm.anthropic.key":  "sk-xyz",
+			"llm.provider":       "openai",
+			"agent.name":         "Dolphin",
+		})
+
+		Convey("returns single-level keys under prefix", func() {
+			m := cfg.GetStringMap("llm.openai")
+			So(m["api_key"], ShouldEqual, "sk-abc")
+			So(m["model"], ShouldEqual, "gpt-4")
+			So(len(m), ShouldEqual, 2)
+		})
+
+		Convey("returns empty map for prefix with no matches", func() {
+			m := cfg.GetStringMap("nonexistent")
+			So(m, ShouldBeEmpty)
+			So(len(m), ShouldEqual, 0)
+		})
+
+		Convey("excludes multi-level keys beyond prefix", func() {
+			m := cfg.GetStringMap("llm")
+			So(m["provider"], ShouldEqual, "openai")
+			So(len(m), ShouldBeGreaterThan, 0)
+		})
+
+		Convey("handles empty config gracefully", func() {
+			empty := &Config{}
+			m := empty.GetStringMap("llm")
+			So(m, ShouldBeEmpty)
+			So(len(m), ShouldEqual, 0)
+		})
+	})
+}

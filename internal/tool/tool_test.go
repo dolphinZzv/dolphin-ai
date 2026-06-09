@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
+	"dolphin/internal/session"
 	"dolphin/internal/skill"
 	"dolphin/internal/types"
 	"github.com/h2non/gock"
@@ -489,6 +491,62 @@ func TestExecuteWithTimeout(t *testing.T) {
 	}
 }
 
+func TestRegistry_SourceManagement(t *testing.T) {
+	r := NewRegistry()
+
+	exec := &mockExecutor{defs: []types.ToolDef{{Name: "tool1"}}}
+	r.AddNamedSource("my-source", exec)
+
+	sources := r.ListSources()
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+	if sources[0].Name != "my-source" {
+		t.Errorf("expected 'my-source', got '%s'", sources[0].Name)
+	}
+	if !sources[0].Enabled {
+		t.Errorf("expected source to be enabled by default")
+	}
+
+	if err := r.DisableSource("my-source"); err != nil {
+		t.Fatal(err)
+	}
+	sources = r.ListSources()
+	if sources[0].Enabled {
+		t.Errorf("expected source to be disabled")
+	}
+
+	if err := r.EnableSource("my-source"); err != nil {
+		t.Fatal(err)
+	}
+	sources = r.ListSources()
+	if !sources[0].Enabled {
+		t.Errorf("expected source to be re-enabled")
+	}
+
+	if err := r.SetSourceEnabled("unknown", false); err == nil {
+		t.Fatal("expected error for unknown source")
+	}
+
+	r.AddNamedSource("broken", &mockExecutor{err: errors.New("list error")})
+	active2 := r.ListActiveSources(context.Background())
+	if len(active2) != 1 {
+		t.Errorf("expected 1 active source, got %d", len(active2))
+	}
+
+	r.AddSource(exec)
+	sources = r.ListSources()
+	hasAuto := false
+	for _, s := range sources {
+		if strings.HasPrefix(s.Name, "source_") {
+			hasAuto = true
+		}
+	}
+	if !hasAuto {
+		t.Errorf("expected auto-named source (source_N)")
+	}
+}
+
 func TestExecuteWithTimeoutExceeded(t *testing.T) {
 	r := NewRegistry()
 	r.RegisterBuiltin("hangs", "hangs forever", nil,
@@ -851,4 +909,91 @@ func TestSkill_deleteInvalidArgs(t *testing.T) {
 	if !result.IsError {
 		t.Fatal("expected IsError for invalid args")
 	}
+}
+
+func TestRegisterSessionTools(t *testing.T) {
+	r := NewRegistry()
+	mgr := session.NewManager(t.TempDir())
+
+	RegisterSessionTools(r, mgr)
+
+	ctx := context.Background()
+	s := mgr.Create(ctx)
+	mgr.Create(ctx)
+
+	t.Run("session_list lists sessions", func(t *testing.T) {
+		result, err := r.Execute(ctx, types.ToolCall{
+			ID:        "call-1",
+			Name:      "session_list",
+			Arguments: `{}`,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsError {
+			t.Fatalf("unexpected error: %s", result.Content)
+		}
+		if !strings.Contains(result.Content, s.ID) {
+			t.Errorf("expected session ID in output, got: %s", result.Content)
+		}
+	})
+
+	t.Run("session_switch switches to session", func(t *testing.T) {
+		result, err := r.Execute(ctx, types.ToolCall{
+			ID:        "call-2",
+			Name:      "session_switch",
+			Arguments: `{"id":"` + s.ID + `"}`,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.IsError {
+			t.Fatalf("unexpected error: %s", result.Content)
+		}
+		if !strings.Contains(result.Content, s.ID) {
+			t.Errorf("expected switched to session ID, got: %s", result.Content)
+		}
+	})
+
+	t.Run("session_switch with empty id returns error", func(t *testing.T) {
+		result, err := r.Execute(ctx, types.ToolCall{
+			ID:        "call-3",
+			Name:      "session_switch",
+			Arguments: `{"id":""}`,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatal("expected IsError for empty id")
+		}
+	})
+
+	t.Run("session_switch with invalid json returns error", func(t *testing.T) {
+		result, err := r.Execute(ctx, types.ToolCall{
+			ID:        "call-4",
+			Name:      "session_switch",
+			Arguments: `not json`,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatal("expected IsError for invalid json")
+		}
+	})
+
+	t.Run("session_switch to nonexistent returns error", func(t *testing.T) {
+		result, err := r.Execute(ctx, types.ToolCall{
+			ID:        "call-5",
+			Name:      "session_switch",
+			Arguments: `{"id":"nonexistent"}`,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.IsError {
+			t.Fatal("expected IsError for nonexistent session")
+		}
+	})
 }

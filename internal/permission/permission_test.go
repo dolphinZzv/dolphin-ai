@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"dolphin/internal/transport"
 )
 
 func TestLoad_FileNotExist(t *testing.T) {
@@ -229,5 +231,42 @@ func TestMatchRule(t *testing.T) {
 				t.Errorf("matchRule(%v, %v) = %v, want %v", tt.rule, tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestNewTestStore(t *testing.T) {
+	rules := map[string]RuleSet{
+		"shell": {Deny: []map[string]string{{"command": "echo *"}}},
+	}
+	s := NewTestStore(rules)
+	if s == nil {
+		t.Fatal("expected non-nil store")
+	}
+	if r := s.Check("shell", json.RawMessage(`{"command":"echo hi"}`)); r != Deny {
+		t.Errorf("expected Deny, got %s", r)
+	}
+}
+
+func TestResultString(t *testing.T) {
+	if Allow.String() != "allow" {
+		t.Errorf("expected 'allow', got %q", Allow.String())
+	}
+	if Deny.String() != "deny" {
+		t.Errorf("expected 'deny', got %q", Deny.String())
+	}
+	if NoMatch.String() != "no_match" {
+		t.Errorf("expected 'no_match', got %q", NoMatch.String())
+	}
+}
+
+func TestMapResult(t *testing.T) {
+	if MapResult(Allow) != transport.PermissionAlways {
+		t.Error("Allow should map to PermissionAlways")
+	}
+	if MapResult(Deny) != transport.PermissionDenied {
+		t.Error("Deny should map to PermissionDenied")
+	}
+	if MapResult(NoMatch) != transport.PermissionDenied {
+		t.Error("NoMatch should map to PermissionDenied")
 	}
 }

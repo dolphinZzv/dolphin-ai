@@ -136,3 +136,43 @@ func TestSkillStruct(t *testing.T) {
 		So(sk.Commands, ShouldResemble, []string{"cmd1"})
 	})
 }
+
+func TestSetAutoCommitter(t *testing.T) {
+	store := NewFileStore(t.TempDir())
+	store.SetAutoCommitter(&mockCommitter{})
+	if store.committer == nil {
+		t.Error("expected committer to be set")
+	}
+}
+
+func TestSeedDefaults(t *testing.T) {
+	Convey("SeedDefaults", t, func() {
+		ctx := context.Background()
+		store := NewFileStore(t.TempDir())
+
+		SeedDefaults(ctx, store)
+
+		Convey("creates skills-creator skill", func() {
+			sk, err := store.Get(ctx, "skills-creator")
+			So(err, ShouldBeNil)
+			So(sk, ShouldNotBeNil)
+			So(sk.Name, ShouldEqual, "skills-creator")
+			So(sk.Enabled, ShouldBeTrue)
+		})
+
+		Convey("does not overwrite existing skill", func() {
+			sk, _ := store.Get(ctx, "skills-creator")
+			sk.Enabled = false
+			store.Save(ctx, *sk)
+
+			SeedDefaults(ctx, store)
+
+			sk2, _ := store.Get(ctx, "skills-creator")
+			So(sk2.Enabled, ShouldBeFalse)
+		})
+	})
+}
+
+type mockCommitter struct{}
+
+func (m *mockCommitter) AutoCommit(_ context.Context, _ string) {}

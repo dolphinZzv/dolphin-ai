@@ -2,6 +2,7 @@ package agentio
 
 import (
 	"context"
+	"sync"
 	"testing"
 
 	"dolphin/internal/session"
@@ -10,6 +11,39 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
 )
+
+type writeRecorderTransport struct {
+	transport.NullTransport
+	mu      sync.Mutex
+	writes  []string
+	flushes int
+}
+
+func newWriteRecorderTransport(id string) *writeRecorderTransport {
+	return &writeRecorderTransport{NullTransport: *transport.NewNullTransport(id)}
+}
+
+func (w *writeRecorderTransport) Write(_ context.Context, msg string) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.writes = append(w.writes, msg)
+	return nil
+}
+
+func (w *writeRecorderTransport) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.flushes++
+	return nil
+}
+
+func (w *writeRecorderTransport) Written() []string {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	r := make([]string, len(w.writes))
+	copy(r, w.writes)
+	return r
+}
 
 func TestAgentIO(t *testing.T) {
 	Convey("AgentIO", t, func() {
@@ -143,6 +177,25 @@ func TestAgentIO(t *testing.T) {
 
 			got = aio.GetTransport("unknown")
 			So(got, ShouldBeNil)
+		})
+
+		Convey("session flip broadcasts to all transports", func() {
+			mgr2 := session.NewManager(t.TempDir())
+			aio := NewAgentIO(10, mgr2, sb, logger, "Dolphin")
+			t1 := newWriteRecorderTransport("t1")
+			t2 := newWriteRecorderTransport("t2")
+			aio.RegisterTransport("t1", t1)
+			aio.RegisterTransport("t2", t2)
+
+			s1 := mgr2.Create(context.Background())
+			mgr2.SwitchTo(context.Background(), s1.ID)
+
+			w1 := t1.Written()
+			w2 := t2.Written()
+			So(len(w1), ShouldBeGreaterThan, 0)
+			So(len(w2), ShouldBeGreaterThan, 0)
+			So(w1[0], ShouldContainSubstring, s1.ID)
+			So(w2[0], ShouldContainSubstring, s1.ID)
 		})
 	})
 }
