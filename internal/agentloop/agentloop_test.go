@@ -481,16 +481,16 @@ type appctxSection struct {
 	content string
 }
 
-func (s *appctxSection) Name() string                                    { return s.name }
-func (s *appctxSection) Index() int                                       { return 10 }
-func (s *appctxSection) BuildContent(_ context.Context) (string, error)   { return s.content, nil }
+func (s *appctxSection) Name() string                                   { return s.name }
+func (s *appctxSection) Index() int                                     { return 10 }
+func (s *appctxSection) BuildContent(_ context.Context) (string, error) { return s.content, nil }
 
 type mockActiveProvider struct {
 	active string
 }
 
 func (m *mockActiveProvider) ActiveModel() string { return m.active }
-func (m *mockActiveProvider) Name() string                              { return "mock" }
+func (m *mockActiveProvider) Name() string        { return "mock" }
 func (m *mockActiveProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	ch := make(chan llm.LLMChunk)
 	close(ch)
