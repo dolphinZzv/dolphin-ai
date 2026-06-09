@@ -18,8 +18,8 @@ import (
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
-	"dolphin/internal/types"
 	transport "dolphin/internal/transport"
+	"dolphin/internal/types"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/cobra"
@@ -343,10 +343,10 @@ func TestRegisterLimit(t *testing.T) {
 		r := NewRegistry(mgr, sb)
 
 		cfg := config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests.hard":        "100",
-			"llm.limit.max_input_tokens":         "50000",
-			"llm.limit.max_output_tokens.hard":   "100000",
-			"llm.limit.max_total_tokens":         "150000",
+			"llm.limit.max_requests.hard":      "100",
+			"llm.limit.max_input_tokens":       "50000",
+			"llm.limit.max_output_tokens.hard": "100000",
+			"llm.limit.max_total_tokens":       "150000",
 		})
 		store := limit.NewMemoryStore()
 		bus := event.NewBus()
