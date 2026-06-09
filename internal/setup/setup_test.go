@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"dolphin/internal/config"
+	"dolphin/internal/limit"
 	"dolphin/internal/session"
 	"dolphin/internal/userio"
 )
@@ -343,6 +344,37 @@ func TestObservabilityBootstrapper(t *testing.T) {
 	}
 }
 
+func TestObservabilityBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates otel shutdown when missing", func(t *testing.T) {
+		buses := &BusesBootstrapper{}
+		c := &Context{Config: config.LoadConfigFromMap(nil)}
+		err := buses.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("buses bootstrap error: %v", err)
+		}
+
+		obs := &ObservabilityBootstrapper{}
+		err = obs.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.OtelShutdown == nil {
+			t.Error("OtelShutdown should be set")
+		}
+	})
+
+	t.Run("no-op when OtelShutdown already set", func(t *testing.T) {
+		c := &Context{OtelShutdown: func() {}}
+		b := &ObservabilityBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
 func TestTransportsBootstrapper(t *testing.T) {
 	b := &TransportsBootstrapper{}
 	if b.Name() != "transports" {
@@ -351,6 +383,44 @@ func TestTransportsBootstrapper(t *testing.T) {
 	if b.Index() != 120 {
 		t.Errorf("Index() = %d", b.Index())
 	}
+}
+
+func TestLimitBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("skips when no limits configured", func(t *testing.T) {
+		logC := &Context{Config: config.LoadConfigFromMap(nil)}
+		logB := &LoggerBootstrapper{}
+		err := logB.Bootstrap(ctx, logC)
+		if err != nil {
+			t.Fatalf("logger bootstrap: %v", err)
+		}
+
+		buses := &BusesBootstrapper{}
+		c := &Context{Config: config.LoadConfigFromMap(nil), Logger: logC.Logger}
+		err = buses.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("buses bootstrap: %v", err)
+		}
+
+		b := &LimitBootstrapper{}
+		err = b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.Limit != nil {
+			t.Error("Limit should be nil when no limits configured")
+		}
+	})
+
+	t.Run("no-op when Limit already set", func(t *testing.T) {
+		c := &Context{Limit: &limit.Limiter{}}
+		b := &LimitBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
