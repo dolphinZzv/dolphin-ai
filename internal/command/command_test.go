@@ -380,19 +380,50 @@ func TestRegisterModels(t *testing.T) {
 		sb := signal.NewBus()
 		r := NewRegistry(mgr, sb)
 
-		mockProv := &mockLister{
-			models: []llm.ModelConfig{
-				{Name: "gpt-4", Provider: "openai", Vendor: "OpenAI", APIType: "openai", Model: "gpt-4"},
-				{Name: "claude-3", Provider: "anthropic", Vendor: "Anthropic", APIType: "anthropic", Model: "claude-3"},
-			},
-		}
-		RegisterModels(r, mockProv)
+		Convey("list models with data", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "gpt-4", Provider: "openai", Vendor: "OpenAI", APIType: "openai", Model: "gpt-4"},
+					{Name: "claude-3", Provider: "anthropic", Vendor: "Anthropic", APIType: "anthropic", Model: "claude-3"},
+				},
+			}
+			RegisterModels(r, mockProv)
 
-		output := r.Execute(context.Background(), "models", "")
-		So(output, ShouldContainSubstring, "gpt-4")
-		So(output, ShouldContainSubstring, "claude-3")
-		So(output, ShouldContainSubstring, "OpenAI")
-		So(output, ShouldContainSubstring, "Anthropic")
+			output := r.Execute(context.Background(), "models", "")
+			So(output, ShouldContainSubstring, "gpt-4")
+			So(output, ShouldContainSubstring, "claude-3")
+			So(output, ShouldContainSubstring, "OpenAI")
+			So(output, ShouldContainSubstring, "Anthropic")
+		})
+
+		Convey("list models when none available", func() {
+			mockProv := &mockLister{}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models", "")
+			So(output, ShouldContainSubstring, "No models available")
+		})
+
+		Convey("list subcommand works", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "model-a", Vendor: "test", APIType: "openai", Model: "gpt-4"},
+				},
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models list", "")
+			So(output, ShouldContainSubstring, "model-a")
+		})
+
+		Convey("models use switches active model", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "model-a", Vendor: "test", APIType: "openai", Model: "gpt-4"},
+				},
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models use model-a", "")
+			So(output, ShouldContainSubstring, "switched to model-a")
+		})
 	})
 }
 
@@ -668,6 +699,46 @@ func (m *mockLister) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan
 	ch := make(chan llm.LLMChunk)
 	close(ch)
 	return ch, nil
+}
+
+func TestRegisterSession(t *testing.T) {
+	Convey("RegisterSession", t, func() {
+		mgr := session.NewManager(t.TempDir())
+		sb := signal.NewBus()
+		r := NewRegistry(mgr, sb)
+		RegisterSession(r, mgr)
+
+		Convey("session new creates a session", func() {
+			output := r.Execute(context.Background(), "session new", "")
+			So(output, ShouldContainSubstring, "created session")
+		})
+
+		Convey("session list shows sessions", func() {
+			sess := mgr.Create(context.Background())
+			output := r.Execute(context.Background(), "session list", "")
+			So(output, ShouldContainSubstring, sess.ID[:8])
+		})
+
+		Convey("session list when none", func() {
+			output := r.Execute(context.Background(), "session list", "")
+			So(output, ShouldContainSubstring, "no sessions")
+		})
+
+		Convey("session switch prints message", func() {
+			output := r.Execute(context.Background(), "session switch abc123", "")
+			So(output, ShouldContainSubstring, "use /session new")
+		})
+
+		Convey("/new alias creates session", func() {
+			output := r.Execute(context.Background(), "new", "")
+			So(output, ShouldContainSubstring, "created session")
+		})
+
+		Convey("/clear alias creates session", func() {
+			output := r.Execute(context.Background(), "clear", "")
+			So(output, ShouldContainSubstring, "created session")
+		})
+	})
 }
 
 // Ensure Registry implements expected interface.
