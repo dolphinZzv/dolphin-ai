@@ -123,3 +123,57 @@ func TestSessionHolderNoManager(t *testing.T) {
 		})
 	})
 }
+
+func TestSessionHolderSetSessionManager(t *testing.T) {
+	Convey("SessionHolder.SetSessionManager", t, func() {
+		mgr := session.NewManager(t.TempDir())
+		ctx := context.Background()
+
+		Convey("replaces the manager", func() {
+			h := NewSessionHolder(nil)
+			h.SetSessionManager(mgr)
+			s := h.NewSession(ctx)
+			So(s, ShouldNotBeNil)
+			So(s.Active, ShouldBeFalse) // per-transport, not active
+		})
+	})
+}
+
+func TestSessionHolderSession(t *testing.T) {
+	Convey("SessionHolder.Session", t, func() {
+		Convey("returns nil when no session created", func() {
+			h := NewSessionHolder(nil)
+			So(h.Session(), ShouldBeNil)
+		})
+
+		Convey("returns current session after NewSession", func() {
+			h := NewSessionHolder(nil)
+			ctx := context.Background()
+			s := h.NewSession(ctx)
+			So(h.Session(), ShouldEqual, s)
+		})
+	})
+}
+
+func TestSessionHolderSetSession(t *testing.T) {
+	Convey("SessionHolder.SetSession", t, func() {
+		mgr := session.NewManager(t.TempDir())
+
+		Convey("sets a custom session", func() {
+			h := NewSessionHolder(mgr)
+			mySession := &session.Session{ID: "custom-id", Active: true}
+			h.SetSession(mySession)
+			So(h.Session(), ShouldEqual, mySession)
+		})
+
+		Convey("can override existing session", func() {
+			h := NewSessionHolder(mgr)
+			ctx := context.Background()
+			h.NewSession(ctx)
+
+			newSession := &session.Session{ID: "replaced"}
+			h.SetSession(newSession)
+			So(h.Session(), ShouldEqual, newSession)
+		})
+	})
+}

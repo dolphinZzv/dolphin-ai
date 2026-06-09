@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"encoding/base64"
 	"os"
 	"strings"
 	"testing"
@@ -373,5 +374,120 @@ func TestEmailBuilder(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(tio, ShouldNotBeNil)
 		So(tio.ID(), ShouldEqual, "email")
+	})
+}
+
+func TestValOrListValue(t *testing.T) {
+	Convey("valOr with []any value", t, func() {
+		cfg := map[string]any{
+			"senders": []any{"alice@example.com", "bob@example.com"},
+		}
+		So(valOr(cfg, "senders", ""), ShouldEqual, "alice@example.com,bob@example.com")
+	})
+}
+
+func TestIsSenderAllowed(t *testing.T) {
+	Convey("isSenderAllowed", t, func() {
+		Convey("empty whitelist denies all", func() {
+			e := NewEmail(EmailConfig{}, nil, "")
+			So(e.isSenderAllowed("any@example.com"), ShouldBeFalse)
+		})
+
+		Convey("exact match is allowed", func() {
+			e := NewEmail(EmailConfig{AllowSenders: "alice@example.com"}, nil, "")
+			So(e.isSenderAllowed("alice@example.com"), ShouldBeTrue)
+		})
+
+		Convey("non-matching sender is denied", func() {
+			e := NewEmail(EmailConfig{AllowSenders: "alice@example.com,bob@example.com"}, nil, "")
+			So(e.isSenderAllowed("mallory@evil.com"), ShouldBeFalse)
+		})
+
+		Convey("wildcard glob matches", func() {
+			e := NewEmail(EmailConfig{AllowSenders: "*@example.com"}, nil, "")
+			So(e.isSenderAllowed("anyone@example.com"), ShouldBeTrue)
+			So(e.isSenderAllowed("outsider@other.com"), ShouldBeFalse)
+		})
+	})
+}
+
+func TestExtractText(t *testing.T) {
+	Convey("extractText", t, func() {
+		Convey("empty string returns empty", func() {
+			So(extractText(""), ShouldEqual, "")
+			So(extractText("  "), ShouldEqual, "")
+		})
+
+		Convey("non-multipart raw text returns as-is", func() {
+			So(extractText("Hello World"), ShouldEqual, "Hello World")
+		})
+
+		Convey("non-multipart base64 decodes", func() {
+			encoded := base64.StdEncoding.EncodeToString([]byte("decoded text"))
+			So(extractText(encoded), ShouldEqual, "decoded text")
+		})
+
+		Convey("non-multipart invalid base64 returns raw", func() {
+			So(extractText("not-base64!!!"), ShouldEqual, "not-base64!!!")
+		})
+
+		Convey("invalid boundary returns raw", func() {
+			raw := "--\ncontent"
+			So(extractText(raw), ShouldEqual, raw)
+
+			raw2 := "--\r\ncontent"
+			So(extractText(raw2), ShouldEqual, raw2)
+		})
+
+		Convey("multipart extracts text/plain part", func() {
+			mime := "--boundary\r\n" +
+				"Content-Type: text/plain\r\n" +
+				"\r\n" +
+				"Hello World\r\n" +
+				"--boundary--\r\n"
+			So(extractText(mime), ShouldEqual, "Hello World")
+		})
+
+		Convey("multipart decodes base64 part", func() {
+			encoded := base64.StdEncoding.EncodeToString([]byte("decoded"))
+			mime := "--boundary\r\n" +
+				"Content-Type: text/plain\r\n" +
+				"Content-Transfer-Encoding: base64\r\n" +
+				"\r\n" +
+				encoded + "\r\n" +
+				"--boundary--\r\n"
+			So(extractText(mime), ShouldEqual, "decoded")
+		})
+
+		Convey("multipart decodes quoted-printable part", func() {
+			// "Hello W=6Frld" is "Hello World" in QP
+			mime := "--boundary\r\n" +
+				"Content-Type: text/plain\r\n" +
+				"Content-Transfer-Encoding: quoted-printable\r\n" +
+				"\r\n" +
+				"Hello W=6Frld\r\n" +
+				"--boundary--\r\n"
+			So(extractText(mime), ShouldEqual, "Hello World")
+		})
+
+		Convey("multipart skips non-text parts", func() {
+			mime := "--boundary\r\n" +
+				"Content-Type: application/json\r\n" +
+				"\r\n" +
+				`{"key":"value"}` + "\r\n" +
+				"--boundary--\r\n"
+			So(extractText(mime), ShouldEqual, "")
+		})
+
+		Convey("multipart with bad base64 data returns raw content", func() {
+			mime := "--boundary\r\n" +
+				"Content-Type: text/plain\r\n" +
+				"Content-Transfer-Encoding: base64\r\n" +
+				"\r\n" +
+				"not-valid-base64!!!\r\n" +
+				"--boundary--\r\n"
+			// base64 decode fails, returns raw bytes
+			So(extractText(mime), ShouldEqual, "not-valid-base64!!!")
+		})
 	})
 }

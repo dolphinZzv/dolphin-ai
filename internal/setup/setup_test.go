@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"dolphin/internal/config"
+	"dolphin/internal/session"
+	"dolphin/internal/userio"
 )
 
 // ---------------------------------------------------------------------------
@@ -194,6 +196,35 @@ func TestSessionBootstrapper(t *testing.T) {
 	}
 }
 
+func TestSessionBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates session manager when missing", func(t *testing.T) {
+		c := &Context{Config: config.LoadConfigFromMap(map[string]any{"memory": map[string]any{"dir": t.TempDir()}})}
+		b := &SessionBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.SessionMgr == nil {
+			t.Fatal("SessionMgr should be set")
+		}
+	})
+
+	t.Run("no-op when SessionMgr already set", func(t *testing.T) {
+		mgr := session.NewManager(t.TempDir())
+		c := &Context{SessionMgr: mgr}
+		b := &SessionBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.SessionMgr != mgr {
+			t.Error("SessionMgr should not be replaced")
+		}
+	})
+}
+
 func TestMemoryBootstrapper(t *testing.T) {
 	b := &MemoryBootstrapper{}
 	if b.Name() != "memory" {
@@ -272,6 +303,34 @@ func TestUserIOBootstrapper(t *testing.T) {
 	if b.Index() != 100 {
 		t.Errorf("Index() = %d", b.Index())
 	}
+}
+
+func TestUserIOBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("creates userio when missing", func(t *testing.T) {
+		c := &Context{
+			Config:     config.LoadConfigFromMap(nil),
+			SessionMgr: session.NewManager(t.TempDir()),
+		}
+		b := &UserIOBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.UserIO == nil {
+			t.Fatal("UserIO should be set")
+		}
+	})
+
+	t.Run("no-op when UserIO already set", func(t *testing.T) {
+		c := &Context{UserIO: &userio.UserIO{}}
+		b := &UserIOBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
 }
 
 func TestObservabilityBootstrapper(t *testing.T) {
