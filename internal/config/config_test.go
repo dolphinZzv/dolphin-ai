@@ -44,7 +44,7 @@ log:
   level: debug
 `)
 		path := filepath.Join(dir, "config.yaml")
-		os.WriteFile(path, yamlContent, 0644)
+		_ = os.WriteFile(path, yamlContent, 0644)
 
 		cfg, err := LoadConfig(path)
 		So(err, ShouldBeNil)
@@ -181,8 +181,8 @@ func TestFlatten(t *testing.T) {
 
 func TestApplyEnvOverrides(t *testing.T) {
 	Convey("applyEnvOverrides applies DOLPHIN_ env vars", t, func() {
-		os.Setenv("DOLPHIN_LLM_MODEL", "gpt-4-turbo")
-		defer os.Unsetenv("DOLPHIN_LLM_MODEL")
+		_ = os.Setenv("DOLPHIN_LLM_MODEL", "gpt-4-turbo")
+		defer func() { _ = os.Unsetenv("DOLPHIN_LLM_MODEL") }()
 
 		cfg := LoadConfigFromMap(map[string]any{
 			"llm.model": "gpt-4",
@@ -208,54 +208,54 @@ func TestConfigNilSafety(t *testing.T) {
 func TestDetectLang(t *testing.T) {
 	Convey("DetectLang", t, func() {
 		Convey("returns en fallback when no env vars set", func() {
-			os.Unsetenv("LANG")
-			os.Unsetenv("LC_ALL")
-			os.Unsetenv("LC_MESSAGES")
+			_ = os.Unsetenv("LANG")
+			_ = os.Unsetenv("LC_ALL")
+			_ = os.Unsetenv("LC_MESSAGES")
 			So(DetectLang(), ShouldEqual, "en")
 		})
 
 		Convey("parses zh from LANG env", func() {
-			os.Setenv("LANG", "zh_CN.UTF-8")
-			defer os.Unsetenv("LANG")
+			_ = os.Setenv("LANG", "zh_CN.UTF-8")
+			defer func() { _ = os.Unsetenv("LANG") }()
 			So(DetectLang(), ShouldEqual, "zh")
 		})
 
 		Convey("parses en from LANG env", func() {
-			os.Setenv("LANG", "en_US.UTF-8")
-			defer os.Unsetenv("LANG")
+			_ = os.Setenv("LANG", "en_US.UTF-8")
+			defer func() { _ = os.Unsetenv("LANG") }()
 			So(DetectLang(), ShouldEqual, "en")
 		})
 
 		Convey("falls back to LC_ALL", func() {
-			os.Unsetenv("LANG")
-			os.Setenv("LC_ALL", "ja_JP.UTF-8")
-			defer os.Unsetenv("LC_ALL")
+			_ = os.Unsetenv("LANG")
+			_ = os.Setenv("LC_ALL", "ja_JP.UTF-8")
+			defer func() { _ = os.Unsetenv("LC_ALL") }()
 			So(DetectLang(), ShouldEqual, "ja")
 		})
 
 		Convey("falls back to LC_MESSAGES", func() {
-			os.Unsetenv("LANG")
-			os.Unsetenv("LC_ALL")
-			os.Setenv("LC_MESSAGES", "fr_FR.UTF-8")
-			defer os.Unsetenv("LC_MESSAGES")
+			_ = os.Unsetenv("LANG")
+			_ = os.Unsetenv("LC_ALL")
+			_ = os.Setenv("LC_MESSAGES", "fr_FR.UTF-8")
+			defer func() { _ = os.Unsetenv("LC_MESSAGES") }()
 			So(DetectLang(), ShouldEqual, "fr")
 		})
 
 		Convey("handles lang without suffix", func() {
-			os.Setenv("LANG", "zh")
-			defer os.Unsetenv("LANG")
+			_ = os.Setenv("LANG", "zh")
+			defer func() { _ = os.Unsetenv("LANG") }()
 			So(DetectLang(), ShouldEqual, "zh")
 		})
 
 		Convey("handles lang with only region", func() {
-			os.Setenv("LANG", "en_US")
-			defer os.Unsetenv("LANG")
+			_ = os.Setenv("LANG", "en_US")
+			defer func() { _ = os.Unsetenv("LANG") }()
 			So(DetectLang(), ShouldEqual, "en")
 		})
 
 		Convey("handles lang with dot separator", func() {
-			os.Setenv("LANG", "C.UTF-8")
-			defer os.Unsetenv("LANG")
+			_ = os.Setenv("LANG", "C.UTF-8")
+			defer func() { _ = os.Unsetenv("LANG") }()
 			So(DetectLang(), ShouldEqual, "C")
 		})
 	})

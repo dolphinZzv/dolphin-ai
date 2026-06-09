@@ -188,7 +188,7 @@ func TestAgentIO(t *testing.T) {
 			aio.RegisterTransport("t2", t2)
 
 			s1 := mgr2.Create(context.Background())
-			mgr2.SwitchTo(context.Background(), s1.ID)
+			_, _ = mgr2.SwitchTo(context.Background(), s1.ID)
 
 			w1 := t1.Written()
 			w2 := t2.Written()

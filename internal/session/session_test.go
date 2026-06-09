@@ -74,7 +74,7 @@ func TestManagerList(t *testing.T) {
 			// Create .md files on disk (simulating first message write).
 			for _, id := range []string{s1.ID, mgr.Active().ID} {
 				f, _ := os.Create(filepath.Join(dir, id+".md"))
-				f.Close()
+				_ = f.Close()
 			}
 
 			sessions, err := mgr.List(ctx)
@@ -121,7 +121,7 @@ func TestManagerOnFliped(t *testing.T) {
 
 			s1 := mgr.Create(ctx)
 			mgr.Create(ctx)
-			mgr.SwitchTo(ctx, s1.ID)
+			_, _ = mgr.SwitchTo(ctx, s1.ID)
 			So(flippedID, ShouldEqual, s1.ID)
 		})
 	})
@@ -178,7 +178,7 @@ func TestManagerLoadActive(t *testing.T) {
 			s.Set("version", 2)
 
 			f, _ := os.Create(filepath.Join(dir, s.ID+".md"))
-			f.Close()
+			_ = f.Close()
 
 			mgr2 := NewManager(dir)
 			mgr2.LoadActive(context.Background())
@@ -222,7 +222,7 @@ func TestManagerDelete(t *testing.T) {
 			s := mgr.Create(context.Background())
 
 			f, _ := os.Create(filepath.Join(mgr.dir, s.ID+".md"))
-			f.Close()
+			_ = f.Close()
 
 			err := mgr.Delete(context.Background(), s.ID)
 			So(err, ShouldBeNil)
@@ -244,7 +244,7 @@ func TestManagerSwitchTo_DiskSession(t *testing.T) {
 		s := mgr.Create(context.Background())
 
 		f, _ := os.Create(filepath.Join(dir, s.ID+".md"))
-		f.Close()
+		_ = f.Close()
 
 		mgr2 := NewManager(dir)
 		switched, err := mgr2.SwitchTo(context.Background(), s.ID)

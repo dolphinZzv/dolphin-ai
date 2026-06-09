@@ -539,3 +539,76 @@ func TestIsInitialized(t *testing.T) {
 		}
 	})
 }
+
+func TestAutoCommit(t *testing.T) {
+	t.Run("does nothing when repo is nil", func(t *testing.T) {
+		b := New(t.TempDir())
+		b.AutoCommit(context.Background(), "test")
+	})
+
+	t.Run("commits when there are changes", func(t *testing.T) {
+		dir := t.TempDir()
+		b := New(dir)
+		if err := b.Init(context.Background()); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		// Write directly to disk (not through Brain.Write which auto-commits).
+		if err := os.WriteFile(filepath.Join(dir, "newfile.md"), []byte("content"), 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		b.AutoCommit(context.Background(), "")
+
+		commits, err := b.GitLog(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("GitLog failed: %v", err)
+		}
+		if len(commits) == 0 {
+			t.Fatal("expected at least 1 commit after AutoCommit")
+		}
+		if !strings.Contains(commits[0].Message, "add") {
+			t.Errorf("expected commit message about 'add', got: %s", commits[0].Message)
+		}
+	})
+
+	t.Run("does nothing when tree is clean", func(t *testing.T) {
+		dir := t.TempDir()
+		b := New(dir)
+		if err := b.Init(context.Background()); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		before, _ := b.GitLog(context.Background(), 1)
+		b.AutoCommit(context.Background(), "should not commit")
+		after, _ := b.GitLog(context.Background(), 1)
+
+		if len(before) > 0 && len(after) > 0 {
+			if before[0].Hash != after[0].Hash {
+				t.Error("AutoCommit should not create a commit when tree is clean")
+			}
+		}
+	})
+
+	t.Run("uses custom commit message", func(t *testing.T) {
+		dir := t.TempDir()
+		b := New(dir)
+		if err := b.Init(context.Background()); err != nil {
+			t.Fatalf("Init failed: %v", err)
+		}
+
+		if err := os.WriteFile(filepath.Join(dir, "another.md"), []byte("data"), 0644); err != nil {
+			t.Fatalf("WriteFile failed: %v", err)
+		}
+
+		b.AutoCommit(context.Background(), "my custom message")
+
+		commits, err := b.GitLog(context.Background(), 1)
+		if err != nil {
+			t.Fatalf("GitLog failed: %v", err)
+		}
+		if len(commits) == 0 || commits[0].Message != "my custom message" {
+			t.Errorf("expected 'my custom message', got: %s", commits[0].Message)
+		}
+	})
+}

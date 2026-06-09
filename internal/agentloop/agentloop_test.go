@@ -511,6 +511,133 @@ func TestToolStageProcessEmptyCalls(t *testing.T) {
 	})
 }
 
+func TestLLMStageTryComplete(t *testing.T) {
+	Convey("LLMStage.tryComplete", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		Convey("processes chunks and builds response", func() {
+			provider := &chunkProvider{
+				chunks: []llm.LLMChunk{
+					{Content: "Hello", InputTokens: 10},
+					{Content: " world", OutputTokens: 5},
+					{Content: "", Done: true},
+				},
+			}
+			stage := &LLMStage{
+				Provider: provider,
+				Model:    "test-model",
+				EventBus: eb,
+				Logger:   logger,
+			}
+			state := &State{
+				Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			}
+
+			var events []event.Event
+			eb.Subscribe(func(ctx context.Context, e event.Event) {
+				events = append(events, e)
+			})
+
+			err := stage.tryComplete(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(len(state.Messages), ShouldEqual, 2)
+			So(state.Messages[1].Role, ShouldEqual, types.RoleAssistant)
+			So(state.Messages[1].Content, ShouldEqual, "Hello world")
+
+			So(len(events), ShouldBeGreaterThanOrEqualTo, 3)
+		})
+
+		Convey("handles chunk error", func() {
+			provider := &chunkProvider{
+				chunks: []llm.LLMChunk{
+					{Error: fmt.Errorf("api error")},
+				},
+			}
+			stage := &LLMStage{
+				Provider: provider,
+				Model:    "test-model",
+				EventBus: eb,
+				Logger:   logger,
+			}
+			state := &State{
+				Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			}
+
+			err := stage.tryComplete(context.Background(), state)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldEqual, "api error")
+		})
+
+		Convey("handles tool calls in chunks", func() {
+			provider := &chunkProvider{
+				chunks: []llm.LLMChunk{
+					{Content: "let me check"},
+					{ToolCalls: []types.ToolCall{{ID: "tc-1", Name: "shell", Arguments: `{"cmd":"ls"}`}}},
+					{Content: "", Done: true},
+				},
+			}
+			stage := &LLMStage{
+				Provider: provider,
+				Model:    "test-model",
+				EventBus: eb,
+				Logger:   logger,
+			}
+			state := &State{
+				Messages: []types.Message{{Role: types.RoleUser, Content: "do it"}},
+			}
+
+			err := stage.tryComplete(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(len(state.ToolCalls), ShouldEqual, 1)
+			So(state.ToolCalls[0].Name, ShouldEqual, "shell")
+		})
+
+		Convey("calls OnChunk callback for each content chunk", func() {
+			provider := &chunkProvider{
+				chunks: []llm.LLMChunk{
+					{Content: "a"},
+					{Content: "b"},
+					{Content: "", Done: true},
+				},
+			}
+			var chunks []string
+			stage := &LLMStage{
+				Provider: provider,
+				Model:    "test-model",
+				EventBus: eb,
+				Logger:   logger,
+			}
+			state := &State{
+				Messages: []types.Message{{Role: types.RoleUser, Content: "x"}},
+				OnChunk: func(text string) {
+					chunks = append(chunks, text)
+				},
+			}
+
+			err := stage.tryComplete(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(chunks, ShouldResemble, []string{"a", "b"})
+		})
+	})
+}
+
+type chunkProvider struct {
+	chunks []llm.LLMChunk
+}
+
+func (c *chunkProvider) Name() string { return "chunk-provider" }
+func (c *chunkProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk, len(c.chunks))
+	for _, chunk := range c.chunks {
+		ch <- chunk
+	}
+	close(ch)
+	return ch, nil
+}
+func (c *chunkProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
+func (c *chunkProvider) ActiveModel() string                                 { return "" }
+
 type appctxSection struct {
 	name    string
 	content string
