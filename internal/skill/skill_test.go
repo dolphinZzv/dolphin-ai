@@ -2,6 +2,8 @@ package skill
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -176,3 +178,164 @@ func TestSeedDefaults(t *testing.T) {
 type mockCommitter struct{}
 
 func (m *mockCommitter) AutoCommit(_ context.Context, _ string) {}
+
+func TestMigrateFlatFiles(t *testing.T) {
+	Convey("migrateFlatFiles", t, func() {
+		Convey("converts flat .md file to directory layout", func() {
+			dir := t.TempDir()
+			content := "---\nname: my-skill\ndescription: test\nenabled: true\n---\nHello world\n"
+			os.WriteFile(filepath.Join(dir, "my-skill.md"), []byte(content), 0644)
+
+			migrateFlatFiles(dir)
+
+			_, err := os.Stat(filepath.Join(dir, "my-skill.md"))
+			So(os.IsNotExist(err), ShouldBeTrue)
+
+			skillDir := filepath.Join(dir, "my-skill")
+			_, err = os.Stat(skillDir)
+			So(err, ShouldBeNil)
+
+			sk, err := readFile(filepath.Join(skillDir, "SKILL.md"))
+			So(err, ShouldBeNil)
+			So(sk.Name, ShouldEqual, "my-skill")
+			So(sk.Description, ShouldEqual, "test")
+
+			_, err = os.Stat(filepath.Join(skillDir, "metadata.json"))
+			So(err, ShouldBeNil)
+		})
+
+		Convey("removes index.md during migration", func() {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "index.md"), []byte("# old index"), 0644)
+			os.WriteFile(filepath.Join(dir, "test.md"), []byte("---\nname: test\n---\nbody"), 0644)
+
+			migrateFlatFiles(dir)
+
+			_, err := os.Stat(filepath.Join(dir, "index.md"))
+			So(os.IsNotExist(err), ShouldBeTrue)
+		})
+
+		Convey("skips files when subdirectory already exists", func() {
+			dir := t.TempDir()
+			os.WriteFile(filepath.Join(dir, "existing.md"), []byte("---\nname: existing\n---\nbody"), 0644)
+			os.MkdirAll(filepath.Join(dir, "existing"), 0755)
+			os.WriteFile(filepath.Join(dir, "existing", "SENTINEL"), []byte("keep"), 0644)
+
+			migrateFlatFiles(dir)
+
+			_, err := os.Stat(filepath.Join(dir, "existing.md"))
+			So(os.IsNotExist(err), ShouldBeTrue)
+			_, err = os.Stat(filepath.Join(dir, "existing", "SENTINEL"))
+			So(err, ShouldBeNil)
+		})
+
+		Convey("does nothing when dir does not exist", func() {
+			migrateFlatFiles("/tmp/nonexistent-skill-dir-12345")
+		})
+	})
+}
+
+func TestFileStoreDirNotExist(t *testing.T) {
+	Convey("FileStore with non-existent dir", t, func() {
+		store := &FileStore{dir: "/tmp/nonexistent-filestore-12345"}
+
+		Convey("List returns nil, nil", func() {
+			skills, err := store.List(context.Background())
+			So(err, ShouldBeNil)
+			So(skills, ShouldBeNil)
+		})
+	})
+}
+
+func TestReadFile(t *testing.T) {
+	Convey("readFile", t, func() {
+		Convey("parses YAML frontmatter and body", func() {
+			dir := t.TempDir()
+			content := "---\nname: my-skill\ndescription: a test\nenabled: true\n---\nThis is the prompt\n"
+			path := filepath.Join(dir, "SKILL.md")
+			os.WriteFile(path, []byte(content), 0644)
+
+			sk, err := readFile(path)
+			So(err, ShouldBeNil)
+			So(sk.Name, ShouldEqual, "my-skill")
+			So(sk.Description, ShouldEqual, "a test")
+			So(sk.Enabled, ShouldBeTrue)
+			So(sk.Prompt, ShouldEqual, "This is the prompt")
+		})
+
+		Convey("infers name from parent dir when frontmatter has no name", func() {
+			dir := t.TempDir()
+			skillDir := filepath.Join(dir, "inferred-skill")
+			os.MkdirAll(skillDir, 0755)
+			content := "---\ndescription: no name in frontmatter\n---\nbody\n"
+			path := filepath.Join(skillDir, "SKILL.md")
+			os.WriteFile(path, []byte(content), 0644)
+
+			sk, err := readFile(path)
+			So(err, ShouldBeNil)
+			So(sk.Name, ShouldEqual, "inferred-skill")
+		})
+
+		Convey("treats file without frontmatter as prompt-only", func() {
+			dir := t.TempDir()
+			skillDir := filepath.Join(dir, "prompt-only")
+			os.MkdirAll(skillDir, 0755)
+			path := filepath.Join(skillDir, "SKILL.md")
+			os.WriteFile(path, []byte("Just a prompt"), 0644)
+
+			sk, err := readFile(path)
+			So(err, ShouldBeNil)
+			So(sk.Name, ShouldEqual, "prompt-only")
+			So(sk.Prompt, ShouldEqual, "Just a prompt")
+		})
+
+		Convey("parses frontmatter-only file (no body)", func() {
+			dir := t.TempDir()
+			skillDir := filepath.Join(dir, "empty-body")
+			os.MkdirAll(skillDir, 0755)
+			path := filepath.Join(skillDir, "SKILL.md")
+			os.WriteFile(path, []byte("---\nname: empty-body\ndescription: no body\n---\n"), 0644)
+
+			sk, err := readFile(path)
+			So(err, ShouldBeNil)
+			So(sk.Name, ShouldEqual, "empty-body")
+			So(sk.Prompt, ShouldEqual, "")
+		})
+	})
+}
+
+func TestWriteFile(t *testing.T) {
+	Convey("writeFile", t, func() {
+		Convey("writes YAML frontmatter with prompt body", func() {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "SKILL.md")
+			sk := &Skill{Name: "test", Description: "desc", Prompt: "body text"}
+
+			err := writeFile(path, sk)
+			So(err, ShouldBeNil)
+
+			data, _ := os.ReadFile(path)
+			content := string(data)
+			So(content, ShouldContainSubstring, "---\n")
+			So(content, ShouldContainSubstring, "name: test")
+			So(content, ShouldContainSubstring, "body text")
+		})
+	})
+}
+
+func TestWriteMetaFile(t *testing.T) {
+	Convey("writeMetaFile", t, func() {
+		Convey("writes JSON metadata", func() {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "meta.json")
+			sk := &Skill{Name: "meta-test", Description: "meta desc"}
+
+			err := writeMetaFile(path, sk)
+			So(err, ShouldBeNil)
+
+			data, _ := os.ReadFile(path)
+			So(string(data), ShouldContainSubstring, "meta-test")
+			So(string(data), ShouldContainSubstring, "meta desc")
+		})
+	})
+}

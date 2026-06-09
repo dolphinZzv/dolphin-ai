@@ -476,3 +476,150 @@ memory:
 // Unused import guard — these types are used within the test helpers.
 var _ = trace.Span(nil)
 var _ = attribute.Bool("", false)
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		input string
+		max   int
+		want  string
+	}{
+		{"hello", 10, "hello"},
+		{"hello", 5, "hello"},
+		{"hello world", 5, "hello"},
+		{"", 10, ""},
+		{"abc", 0, ""},
+		{"abcdef", 3, "abc"},
+	}
+	for _, tc := range tests {
+		got := truncate(tc.input, tc.max)
+		if got != tc.want {
+			t.Errorf("truncate(%q, %d) = %q; want %q", tc.input, tc.max, got, tc.want)
+		}
+	}
+}
+
+func TestValidSessionID(t *testing.T) {
+	tests := []struct {
+		sid  string
+		want string
+	}{
+		{"valid-session-1", "valid-session-1"},
+		{"", ""},
+		{string(make([]byte, 201)), ""},
+		{"ascii-only", "ascii-only"},
+		{"会话ID", ""},
+	}
+	for _, tc := range tests {
+		got := validSessionID(tc.sid)
+		if got != tc.want {
+			t.Errorf("validSessionID(%q) = %q; want %q", tc.sid, got, tc.want)
+		}
+	}
+}
+
+func TestOTelHook_LLMStartWithPayload(t *testing.T) {
+	tp := otel.GetTracerProvider()
+	h := NewOTelHook(tp)
+	ctx := context.Background()
+
+	err := h.Handle(ctx, event.Event{
+		Type:      event.EventLLMStart,
+		SessionID: "sess-llm-payload",
+		Payload: map[string]any{
+			"model": "gpt-4",
+			"tools": []string{"tool1", "tool2"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = h.Handle(ctx, event.Event{
+		Type:      event.EventLLMComplete,
+		SessionID: "sess-llm-payload",
+		Payload: map[string]any{
+			"tokens":                      100,
+			"input_tokens":                50,
+			"output_tokens":               50,
+			"total_tokens":                100,
+			"cache_creation_input_tokens": 25,
+			"cache_read_input_tokens":     25,
+			"prompt_cached_tokens":        10,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOTelHook_LLMErrorWithMessage(t *testing.T) {
+	tp := otel.GetTracerProvider()
+	h := NewOTelHook(tp)
+	ctx := context.Background()
+
+	_, span := h.tracer.Start(ctx, "test-llm-err")
+	h.saveSpan(event.Event{Type: event.EventLLMError, SessionID: "sess-llm-err-msg"}, span)
+
+	err := h.Handle(ctx, event.Event{
+		Type:      event.EventLLMError,
+		SessionID: "sess-llm-err-msg",
+		Payload:   map[string]any{"error": "rate limit exceeded"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOTelHook_LLMRetry(t *testing.T) {
+	tp := otel.GetTracerProvider()
+	h := NewOTelHook(tp)
+	ctx := context.Background()
+
+	_, span := h.tracer.Start(ctx, "test-llm-retry")
+	h.saveSpan(event.Event{Type: event.EventLLMRetry, SessionID: "sess-llm-retry"}, span)
+
+	err := h.Handle(ctx, event.Event{
+		Type:      event.EventLLMRetry,
+		SessionID: "sess-llm-retry",
+		Payload: map[string]any{
+			"attempt": 2,
+			"error":   "timeout",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOTelHook_ToolStartWithInput(t *testing.T) {
+	tp := otel.GetTracerProvider()
+	h := NewOTelHook(tp)
+	ctx := context.Background()
+
+	err := h.Handle(ctx, event.Event{
+		Type:      event.EventToolStart,
+		SessionID: "sess-tool-input",
+		Payload: map[string]any{
+			"tool":  "search",
+			"input": "find something",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, span := h.tracer.Start(ctx, "test-tool-err-out")
+	h.saveSpan(event.Event{Type: event.EventToolError, SessionID: "sess-tool-input"}, span)
+
+	err = h.Handle(ctx, event.Event{
+		Type:      event.EventToolError,
+		SessionID: "sess-tool-input",
+		Payload: map[string]any{
+			"input": "find something",
+			"error": "not found",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

@@ -63,8 +63,71 @@ func TestRegistryDispatch(t *testing.T) {
 			So(h2.count.Load(), ShouldEqual, 1)
 		})
 
+		Convey("continues when handler returns error", func() {
+			errH := &errHandler{name: "error"}
+			okH := &testHandler{name: "ok"}
+			r.Register(errH)
+			r.Register(okH)
+
+			r.Dispatch(ctx, event.Event{})
+			So(okH.count.Load(), ShouldEqual, 1)
+		})
+
 		Convey("does not panic when no handlers registered", func() {
 			So(func() { r.Dispatch(ctx, event.Event{}) }, ShouldNotPanic)
 		})
 	})
+}
+
+func TestRegistryDispatchCheck(t *testing.T) {
+	Convey("Registry.DispatchCheck", t, func() {
+		r := NewRegistry()
+		ctx := context.Background()
+
+		Convey("returns nil when no handlers registered", func() {
+			err := r.DispatchCheck(ctx, event.Event{})
+			So(err, ShouldBeNil)
+		})
+
+		Convey("returns nil when all handlers succeed", func() {
+			r.Register(&testHandler{name: "h1"})
+			r.Register(&testHandler{name: "h2"})
+
+			err := r.DispatchCheck(ctx, event.Event{})
+			So(err, ShouldBeNil)
+		})
+
+		Convey("returns first error and stops dispatching", func() {
+			r.Register(&errHandler{name: "e1"})
+			called := false
+			r.Register(handlerFunc(func(ctx context.Context, e event.Event) error {
+				called = true
+				return nil
+			}))
+
+			err := r.DispatchCheck(ctx, event.Event{})
+			So(err, ShouldEqual, errHookFailed)
+			So(called, ShouldBeFalse)
+		})
+	})
+}
+
+type errHandler struct{ name string }
+
+func (h *errHandler) Name() string { return h.name }
+func (h *errHandler) Handle(_ context.Context, _ event.Event) error {
+	return errHookFailed
+}
+
+var errHookFailed = &errHookError{"hook failed"}
+
+type errHookError struct{ msg string }
+
+func (e *errHookError) Error() string { return e.msg }
+
+type handlerFunc func(ctx context.Context, e event.Event) error
+
+func (f handlerFunc) Name() string { return "func" }
+func (f handlerFunc) Handle(ctx context.Context, e event.Event) error {
+	return f(ctx, e)
 }
