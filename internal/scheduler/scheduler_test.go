@@ -95,9 +95,9 @@ func TestSafeFilename(t *testing.T) {
 
 func TestTruncate(t *testing.T) {
 	tests := []struct {
-		s      string
-		max    int
-		want   string
+		s    string
+		max  int
+		want string
 	}{
 		{"hello", 10, "hello"},
 		{"hello", 3, "hel"},
@@ -213,14 +213,14 @@ func TestFormatBrainFile(t *testing.T) {
 	t.Run("task with last error", func(t *testing.T) {
 		lastRun := now.Add(-10 * time.Minute)
 		task := &Task{
-			Name:      "failed-task",
-			Schedule:  "* * * * *",
-			Command:   "echo fail",
-			Enabled:   true,
-			CreatedAt: now.Add(-24 * time.Hour),
-			LastRunAt: &lastRun,
+			Name:       "failed-task",
+			Schedule:   "* * * * *",
+			Command:    "echo fail",
+			Enabled:    true,
+			CreatedAt:  now.Add(-24 * time.Hour),
+			LastRunAt:  &lastRun,
 			LastStatus: "failed",
-			LastError: "exit status 1",
+			LastError:  "exit status 1",
 		}
 		result := formatBrainFile(task)
 		if !strings.Contains(result, "exit status 1") {
