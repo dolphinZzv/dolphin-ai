@@ -2,6 +2,7 @@ package agentloop
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -14,8 +15,10 @@ import (
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/permission"
+	"dolphin/internal/signal"
 	"dolphin/internal/skill"
 	"dolphin/internal/testhelper"
+	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
 	. "github.com/smartystreets/goconvey/convey"
@@ -508,6 +511,160 @@ func TestToolStageProcessEmptyCalls(t *testing.T) {
 		state := &State{}
 		err := stage.Process(context.Background(), state)
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestToolStageProcessDenied(t *testing.T) {
+	Convey("ToolStage.Process with denied permission", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		var gotEvents []event.Event
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			gotEvents = append(gotEvents, e)
+		})
+
+		permStore := newTestStore(map[string]permission.RuleSet{
+			"shell": {Deny: []map[string]string{{"command": "*"}}},
+		})
+		reg := tool.NewRegistry()
+		reg.RegisterBuiltin("shell", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			return &types.ToolResult{Content: "ok", IsError: false}, nil
+		})
+
+		stage := &ToolStage{
+			ToolRegistry:    reg,
+			Logger:          logger,
+			EventBus:        eb,
+			PermissionStore: permStore,
+			Workmode:        "default",
+		}
+		state := &State{SessionID: "s1"}
+		state.ToolCalls = []types.ToolCall{
+			{ID: "call1", Name: "shell", Arguments: `{"command":"ls"}`},
+		}
+
+		err := stage.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(state.ToolCalls, ShouldBeEmpty)
+		So(len(state.Messages), ShouldEqual, 1)
+		So(state.Messages[0].Role, ShouldEqual, types.RoleTool)
+		So(state.Messages[0].ToolCallID, ShouldEqual, "call1")
+		So(state.ToolsCalled, ShouldBeTrue)
+		So(len(state.ToolResults), ShouldEqual, 1)
+		So(state.ToolResults[0].IsError, ShouldBeTrue)
+		So(len(gotEvents), ShouldBeGreaterThan, 0)
+		hasToolError := false
+		for _, e := range gotEvents {
+			if e.Type == event.EventToolError {
+				hasToolError = true
+				break
+			}
+		}
+		So(hasToolError, ShouldBeTrue)
+	})
+}
+
+func TestToolStageProcessSignalInterrupt(t *testing.T) {
+	Convey("ToolStage.Process with signal interrupt between calls", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+		var gotEvents []event.Event
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			gotEvents = append(gotEvents, e)
+		})
+
+		sigBus.ForSession("s1")
+
+		handlerRunning := make(chan struct{})
+		handlerResume := make(chan struct{})
+		reg := tool.NewRegistry()
+		reg.RegisterBuiltin("first", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			close(handlerRunning)
+			<-handlerResume
+			return &types.ToolResult{Content: "ok", IsError: false}, nil
+		})
+		reg.RegisterBuiltin("second", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			return &types.ToolResult{Content: "ok", IsError: false}, nil
+		})
+
+		stage := &ToolStage{
+			ToolRegistry: reg,
+			Logger:       logger,
+			EventBus:     eb,
+			SignalBus:    sigBus,
+		}
+		state := &State{SessionID: "s1"}
+		state.ToolCalls = []types.ToolCall{
+			{ID: "c1", Name: "first", Arguments: `{}`},
+			{ID: "c2", Name: "second", Arguments: `{}`},
+		}
+
+		go func() {
+			<-handlerRunning
+			sigBus.Send("s1", signal.Interrupt)
+			close(handlerResume)
+		}()
+
+		err := stage.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		hasInterrupt := false
+		for _, e := range gotEvents {
+			if e.Type == event.EventTurnInterrupt {
+				hasInterrupt = true
+				break
+			}
+		}
+		So(hasInterrupt, ShouldBeTrue)
+	})
+}
+
+func TestToolStageProcessSuccess(t *testing.T) {
+	Convey("ToolStage.Process with successful execution", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		var gotEvents []event.Event
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			gotEvents = append(gotEvents, e)
+		})
+
+		reg := tool.NewRegistry()
+		reg.RegisterBuiltin("shell", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			return &types.ToolResult{Content: "done", IsError: false}, nil
+		})
+
+		stage := &ToolStage{
+			ToolRegistry: reg,
+			Logger:       logger,
+			EventBus:     eb,
+		}
+		state := &State{SessionID: "s1"}
+		state.ToolCalls = []types.ToolCall{
+			{ID: "call1", Name: "shell", Arguments: `{"command":"ls"}`},
+		}
+
+		err := stage.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(len(state.Messages), ShouldEqual, 1)
+		So(state.Messages[0].Content, ShouldEqual, "done")
+		So(state.Messages[0].Role, ShouldEqual, types.RoleTool)
+		So(state.Messages[0].ToolCallID, ShouldEqual, "call1")
+		So(len(state.ToolResults), ShouldEqual, 1)
+		So(state.ToolResults[0].Content, ShouldEqual, "done")
+		So(state.ToolResults[0].IsError, ShouldBeFalse)
+
+		hasStart := false
+		hasComplete := false
+		for _, e := range gotEvents {
+			switch e.Type {
+			case event.EventToolStart:
+				hasStart = true
+			case event.EventToolComplete:
+				hasComplete = true
+			}
+		}
+		So(hasStart, ShouldBeTrue)
+		So(hasComplete, ShouldBeTrue)
 	})
 }
 

@@ -36,11 +36,12 @@ llm:
 启动：
 
 ```shell
-./dolphin
+dolphin
 ```
 
-看到以下输出即表示运行成功：
+如需加载自定义配置文件：
 
+```shell
+dolphin --config /path/to/config.yaml
 ```
-hello dolphin
-```
+
