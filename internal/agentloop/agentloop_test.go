@@ -2,11 +2,13 @@ package agentloop
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
+	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
@@ -517,4 +519,167 @@ func (s *incrementStage) Name() string { return "increment" }
 func (s *incrementStage) Process(ctx context.Context, state *State) error {
 	*s.count++
 	return nil
+}
+
+func TestNewAgentLoop(t *testing.T) {
+	Convey("NewAgentLoop", t, func() {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		a := NewAgentLoop(q, c, logger, eb)
+		So(a, ShouldNotBeNil)
+		So(a.queue, ShouldEqual, q)
+		So(a.compositor, ShouldEqual, c)
+		So(a.logger, ShouldEqual, logger)
+		So(a.eventBus, ShouldEqual, eb)
+	})
+}
+
+func TestSetOnResult(t *testing.T) {
+	Convey("SetOnResult", t, func() {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+		a := NewAgentLoop(q, c, logger, nil)
+
+		called := false
+		a.SetOnResult(func(result agentio.TurnResult) {
+			called = true
+		})
+		So(a.onResult, ShouldNotBeNil)
+
+		a.onResult(agentio.TurnResult{})
+		So(called, ShouldBeTrue)
+	})
+}
+
+func TestValidSessionID(t *testing.T) {
+	Convey("validSessionID", t, func() {
+		Convey("returns normal session ID as-is", func() {
+			So(validSessionID("session-123"), ShouldEqual, "session-123")
+		})
+		Convey("returns empty for too long session ID", func() {
+			long := make([]byte, 201)
+			for i := range long {
+				long[i] = 'a'
+			}
+			So(validSessionID(string(long)), ShouldEqual, "")
+		})
+		Convey("returns empty for non-ASCII session ID", func() {
+			So(validSessionID("会话"), ShouldEqual, "")
+		})
+		Convey("handles empty session ID", func() {
+			So(validSessionID(""), ShouldEqual, "")
+		})
+		Convey("handles exactly 200 chars", func() {
+			str := make([]byte, 200)
+			for i := range str {
+				str[i] = 'a'
+			}
+			So(validSessionID(string(str)), ShouldEqual, string(str))
+		})
+	})
+}
+
+func TestPublishTurnEvent(t *testing.T) {
+	Convey("publishTurnEvent", t, func() {
+		Convey("skips when eventBus is nil", func() {
+			q := make(chan *agentio.Turn)
+			c := NewCompositor(nil, nil, 10)
+			logger, _ := zap.NewDevelopment()
+			a := NewAgentLoop(q, c, logger, nil)
+
+			So(func() {
+				a.publishTurnEvent(context.Background(), event.EventTurnStart, "sid", time.Now(), nil)
+			}, ShouldNotPanic)
+		})
+
+		Convey("publishes event with correct type", func() {
+			eb := event.NewBus()
+			q := make(chan *agentio.Turn)
+			c := NewCompositor(nil, nil, 10)
+			logger, _ := zap.NewDevelopment()
+			a := NewAgentLoop(q, c, logger, eb)
+
+			var receivedType event.Type
+			eb.Subscribe(func(ctx context.Context, e event.Event) {
+				receivedType = e.Type
+			})
+
+			a.publishTurnEvent(context.Background(), event.EventTurnComplete, "sid", time.Now(), nil)
+			So(receivedType, ShouldEqual, event.EventTurnComplete)
+		})
+
+		Convey("publishes event with error payload", func() {
+			eb := event.NewBus()
+			q := make(chan *agentio.Turn)
+			c := NewCompositor(nil, nil, 10)
+			logger, _ := zap.NewDevelopment()
+			a := NewAgentLoop(q, c, logger, eb)
+
+			var payload map[string]any
+			eb.Subscribe(func(ctx context.Context, e event.Event) {
+				payload = e.Payload
+			})
+
+			a.publishTurnEvent(context.Background(), event.EventTurnError, "sid", time.Now(), fmt.Errorf("oops"))
+			So(payload, ShouldNotBeNil)
+			So(payload["error"], ShouldEqual, "oops")
+			So(payload["duration_ms"], ShouldNotBeNil)
+		})
+	})
+}
+
+func TestAgentLoopRunAndProcess(t *testing.T) {
+	Convey("AgentLoop Run and processTurn", t, func() {
+		q := make(chan *agentio.Turn, 1)
+		mem := memory.NewFileMemory(t.TempDir(), 10)
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		compositor := NewCompositor(
+			[]Stage{&MemoryReadStage{Memory: mem}},
+			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
+			1,
+		)
+
+		a := NewAgentLoop(q, compositor, logger, eb)
+
+		var resultCallCount int
+		a.SetOnResult(func(result agentio.TurnResult) {
+			resultCallCount++
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go a.Run(ctx)
+
+		q <- &agentio.Turn{
+			SessionID:   "test-session",
+			Input:       "hello",
+			Context:     "test-ctx",
+			TransportID: "test-transport",
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+
+		So(resultCallCount, ShouldBeGreaterThan, 0)
+	})
+}
+
+func TestAgentLoopRunContextDone(t *testing.T) {
+	Convey("AgentLoop.Run exits on context done", t, func() {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+		a := NewAgentLoop(q, c, logger, nil)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		So(func() { a.Run(ctx) }, ShouldNotPanic)
+	})
 }

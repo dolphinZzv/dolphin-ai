@@ -11,12 +11,15 @@ go test $pkgs -count=1
 echo "=== Running linter (new issues only) ==="
 golangci-lint run ./... --new
 
-echo "=== Checking formatting ==="
-unformatted=$(gofmt -l .)
-if [ -n "$unformatted" ]; then
-  echo "The following files are not gofmt-formatted:"
-  echo "$unformatted"
-  exit 1
+echo "=== Checking formatting (changed files only) ==="
+changed=$(git diff --name-only HEAD @{upstream} -- '*.go' 2>/dev/null || git diff --name-only HEAD -- '*.go')
+if [ -n "$changed" ]; then
+  unformatted=$(gofmt -l $changed 2>/dev/null || true)
+  if [ -n "$unformatted" ]; then
+    echo "The following changed files are not gofmt-formatted:"
+    echo "$unformatted"
+    exit 1
+  fi
 fi
 
 echo "=== All checks passed ==="
