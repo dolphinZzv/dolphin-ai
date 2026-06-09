@@ -11,4 +11,12 @@ go test $pkgs -count=1
 echo "=== Running linter (new issues only) ==="
 golangci-lint run ./... --new
 
+echo "=== Checking formatting ==="
+unformatted=$(gofmt -l .)
+if [ -n "$unformatted" ]; then
+  echo "The following files are not gofmt-formatted:"
+  echo "$unformatted"
+  exit 1
+fi
+
 echo "=== All checks passed ==="
