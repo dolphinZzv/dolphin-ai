@@ -385,6 +385,119 @@ func TestRealLLMCompositor(t *testing.T) {
 	})
 }
 
+func TestStageNameMethods(t *testing.T) {
+	Convey("Stage Name() methods return correct names", t, func() {
+		Convey("MemoryReadStage.Name", func() {
+			s := &MemoryReadStage{}
+			So(s.Name(), ShouldEqual, "memory_read")
+		})
+		Convey("ContextBuilderStage.Name", func() {
+			s := &ContextBuilderStage{}
+			So(s.Name(), ShouldEqual, "context_builder")
+		})
+		Convey("LLMStage.Name", func() {
+			s := &LLMStage{}
+			So(s.Name(), ShouldEqual, "llm")
+		})
+		Convey("ToolStage.Name", func() {
+			s := &ToolStage{}
+			So(s.Name(), ShouldEqual, "tool")
+		})
+		Convey("MemoryWriteStage.Name", func() {
+			s := &MemoryWriteStage{}
+			So(s.Name(), ShouldEqual, "memory_write")
+		})
+	})
+}
+
+func TestTruncateStr(t *testing.T) {
+	Convey("truncateStr", t, func() {
+		Convey("returns string unchanged when within max", func() {
+			So(truncateStr("hello", 10), ShouldEqual, "hello")
+		})
+		Convey("truncates when string exceeds max", func() {
+			So(truncateStr("hello world", 5), ShouldEqual, "hello")
+		})
+		Convey("handles empty string", func() {
+			So(truncateStr("", 5), ShouldEqual, "")
+		})
+		Convey("handles zero max", func() {
+			So(truncateStr("hello", 0), ShouldEqual, "")
+		})
+	})
+}
+
+func TestCompositorSetTurnTimeout(t *testing.T) {
+	Convey("Compositor.SetTurnTimeout", t, func() {
+		c := NewCompositor(nil, nil, 10)
+		c.SetTurnTimeout(5 * time.Second)
+		So(c.turnTimeout, ShouldEqual, 5*time.Second)
+	})
+}
+
+func TestContextBuilderStageRegisterSection(t *testing.T) {
+	Convey("ContextBuilderStage RegisterSection", t, func() {
+		Convey("registers a section that appears in build", func() {
+			stage := &ContextBuilderStage{
+				BaseSystemPrompt: "base",
+			}
+			stage.RegisterSection(&appctxSection{name: "custom", content: "custom content"})
+			state := &State{}
+			err := stage.Process(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(state.SystemPrompt, ShouldContainSubstring, "custom content")
+		})
+	})
+}
+
+func TestLLMStageActiveModel(t *testing.T) {
+	Convey("LLMStage activeModel", t, func() {
+		Convey("returns Model when set", func() {
+			s := &LLMStage{Model: "gpt-4"}
+			So(s.activeModel(), ShouldEqual, "gpt-4")
+		})
+		Convey("returns empty when Model empty and Provider has no ActiveModel", func() {
+			s := &LLMStage{}
+			So(s.activeModel(), ShouldEqual, "")
+		})
+		Convey("calls Provider.ActiveModel when Model is empty and provider supports it", func() {
+			s := &LLMStage{Provider: &mockActiveProvider{active: "claude-3"}}
+			So(s.activeModel(), ShouldEqual, "claude-3")
+		})
+	})
+}
+
+func TestToolStageProcessEmptyCalls(t *testing.T) {
+	Convey("ToolStage.Process with empty calls", t, func() {
+		stage := &ToolStage{}
+		state := &State{}
+		err := stage.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+	})
+}
+
+type appctxSection struct {
+	name    string
+	content string
+}
+
+func (s *appctxSection) Name() string                                    { return s.name }
+func (s *appctxSection) Index() int                                       { return 10 }
+func (s *appctxSection) BuildContent(_ context.Context) (string, error)   { return s.content, nil }
+
+type mockActiveProvider struct {
+	active string
+}
+
+func (m *mockActiveProvider) ActiveModel() string { return m.active }
+func (m *mockActiveProvider) Name() string                              { return "mock" }
+func (m *mockActiveProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk)
+	close(ch)
+	return ch, nil
+}
+func (m *mockActiveProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
+
 type countingMemory struct {
 	inner memory.Memory
 }
