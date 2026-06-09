@@ -184,7 +184,7 @@ func TestMigrateFlatFiles(t *testing.T) {
 		Convey("converts flat .md file to directory layout", func() {
 			dir := t.TempDir()
 			content := "---\nname: my-skill\ndescription: test\nenabled: true\n---\nHello world\n"
-			os.WriteFile(filepath.Join(dir, "my-skill.md"), []byte(content), 0644)
+			_ = os.WriteFile(filepath.Join(dir, "my-skill.md"), []byte(content), 0644)
 
 			migrateFlatFiles(dir)
 
@@ -206,8 +206,8 @@ func TestMigrateFlatFiles(t *testing.T) {
 
 		Convey("removes index.md during migration", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "index.md"), []byte("# old index"), 0644)
-			os.WriteFile(filepath.Join(dir, "test.md"), []byte("---\nname: test\n---\nbody"), 0644)
+			_ = os.WriteFile(filepath.Join(dir, "index.md"), []byte("# old index"), 0644)
+			_ = os.WriteFile(filepath.Join(dir, "test.md"), []byte("---\nname: test\n---\nbody"), 0644)
 
 			migrateFlatFiles(dir)
 
@@ -217,9 +217,9 @@ func TestMigrateFlatFiles(t *testing.T) {
 
 		Convey("skips files when subdirectory already exists", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "existing.md"), []byte("---\nname: existing\n---\nbody"), 0644)
-			os.MkdirAll(filepath.Join(dir, "existing"), 0755)
-			os.WriteFile(filepath.Join(dir, "existing", "SENTINEL"), []byte("keep"), 0644)
+			_ = os.WriteFile(filepath.Join(dir, "existing.md"), []byte("---\nname: existing\n---\nbody"), 0644)
+			_ = os.MkdirAll(filepath.Join(dir, "existing"), 0755)
+			_ = os.WriteFile(filepath.Join(dir, "existing", "SENTINEL"), []byte("keep"), 0644)
 
 			migrateFlatFiles(dir)
 
@@ -253,7 +253,7 @@ func TestReadFile(t *testing.T) {
 			dir := t.TempDir()
 			content := "---\nname: my-skill\ndescription: a test\nenabled: true\n---\nThis is the prompt\n"
 			path := filepath.Join(dir, "SKILL.md")
-			os.WriteFile(path, []byte(content), 0644)
+			_ = os.WriteFile(path, []byte(content), 0644)
 
 			sk, err := readFile(path)
 			So(err, ShouldBeNil)
@@ -266,10 +266,10 @@ func TestReadFile(t *testing.T) {
 		Convey("infers name from parent dir when frontmatter has no name", func() {
 			dir := t.TempDir()
 			skillDir := filepath.Join(dir, "inferred-skill")
-			os.MkdirAll(skillDir, 0755)
+			_ = os.MkdirAll(skillDir, 0755)
 			content := "---\ndescription: no name in frontmatter\n---\nbody\n"
 			path := filepath.Join(skillDir, "SKILL.md")
-			os.WriteFile(path, []byte(content), 0644)
+			_ = os.WriteFile(path, []byte(content), 0644)
 
 			sk, err := readFile(path)
 			So(err, ShouldBeNil)
@@ -279,9 +279,9 @@ func TestReadFile(t *testing.T) {
 		Convey("treats file without frontmatter as prompt-only", func() {
 			dir := t.TempDir()
 			skillDir := filepath.Join(dir, "prompt-only")
-			os.MkdirAll(skillDir, 0755)
+			_ = os.MkdirAll(skillDir, 0755)
 			path := filepath.Join(skillDir, "SKILL.md")
-			os.WriteFile(path, []byte("Just a prompt"), 0644)
+			_ = os.WriteFile(path, []byte("Just a prompt"), 0644)
 
 			sk, err := readFile(path)
 			So(err, ShouldBeNil)
@@ -292,9 +292,9 @@ func TestReadFile(t *testing.T) {
 		Convey("parses frontmatter-only file (no body)", func() {
 			dir := t.TempDir()
 			skillDir := filepath.Join(dir, "empty-body")
-			os.MkdirAll(skillDir, 0755)
+			_ = os.MkdirAll(skillDir, 0755)
 			path := filepath.Join(skillDir, "SKILL.md")
-			os.WriteFile(path, []byte("---\nname: empty-body\ndescription: no body\n---\n"), 0644)
+			_ = os.WriteFile(path, []byte("---\nname: empty-body\ndescription: no body\n---\n"), 0644)
 
 			sk, err := readFile(path)
 			So(err, ShouldBeNil)
