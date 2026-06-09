@@ -134,3 +134,10 @@ func TestManager_NoProvider(t *testing.T) {
 		t.Error("expected error when no providers registered")
 	}
 }
+
+func TestManager_Name(t *testing.T) {
+	mgr := NewManager()
+	if mgr.Name() != "manager" {
+		t.Errorf("Name = %q", mgr.Name())
+	}
+}

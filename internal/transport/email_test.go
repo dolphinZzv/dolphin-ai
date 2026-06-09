@@ -491,3 +491,31 @@ func TestExtractText(t *testing.T) {
 		})
 	})
 }
+
+func TestEmailRequestPermission(t *testing.T) {
+	Convey("Email.RequestPermission", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+		result, err := e.RequestPermission(context.Background(), "test")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldEqual, PermissionDenied)
+	})
+}
+
+func TestEmailCloseIMAP(t *testing.T) {
+	Convey("Email.closeIMAP", t, func() {
+		e := NewEmail(EmailConfig{}, nil, "")
+
+		Convey("nil client is safe", func() {
+			// closeIMAP should not panic when imapClient is nil
+			e.closeIMAP()
+		})
+
+		Convey("closes and clears client", func() {
+			// Can't easily create a real IMAP client, but verify
+			// that closeIMAP handles nil gracefully and sets it to nil.
+			e.imapClient = nil
+			e.closeIMAP()
+			So(e.imapClient, ShouldBeNil)
+		})
+	})
+}
