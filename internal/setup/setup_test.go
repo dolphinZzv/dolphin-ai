@@ -891,8 +891,8 @@ func TestLoadTransportConfigs_email(t *testing.T) {
 
 func TestLoadTransportConfigs_wework(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"wework.enabled":   true,
-		"wework.bot_id":    "test-bot",
+		"wework.enabled":    true,
+		"wework.bot_id":     "test-bot",
 		"wework.bot_secret": "test-secret",
 	})
 	tcs, err := loadTransportConfigs(cfg, "dolphin")
@@ -1024,7 +1024,7 @@ func TestLoadMCPServers_multipleServers(t *testing.T) {
 		"mcp_servers.1.type":    "url",
 		"mcp_servers.1.enabled": true,
 		"mcp_servers.1.url":     "http://example.com/active",
-		"mcp_servers.2.type": "stdio",
+		"mcp_servers.2.type":    "stdio",
 	})
 	reg := tool.NewRegistry()
 	logger, _ := zap.NewDevelopment()
@@ -1034,12 +1034,12 @@ func TestLoadMCPServers_multipleServers(t *testing.T) {
 
 func TestLoadMCPServers_stdioWithArgs(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"mcp_servers.0.name":       "cli-srv",
-		"mcp_servers.0.type":       "stdio",
-		"mcp_servers.0.enabled":    true,
-		"mcp_servers.0.command":    "nonexistent-cmd",
-		"mcp_servers.0.args.0":     "--flag",
-		"mcp_servers.0.args.1":     "value",
+		"mcp_servers.0.name":    "cli-srv",
+		"mcp_servers.0.type":    "stdio",
+		"mcp_servers.0.enabled": true,
+		"mcp_servers.0.command": "nonexistent-cmd",
+		"mcp_servers.0.args.0":  "--flag",
+		"mcp_servers.0.args.1":  "value",
 	})
 	reg := tool.NewRegistry()
 	logger, _ := zap.NewDevelopment()
@@ -1065,10 +1065,10 @@ func TestLoadMCPServers_iterationBreak(t *testing.T) {
 		"mcp_servers.0.type":    "url",
 		"mcp_servers.0.enabled": true,
 		"mcp_servers.0.url":     "http://example.com/0",
-		"mcp_servers.2.name":     "srv-2",
-		"mcp_servers.2.type":     "url",
-		"mcp_servers.2.enabled":  true,
-		"mcp_servers.2.url":      "http://example.com/2",
+		"mcp_servers.2.name":    "srv-2",
+		"mcp_servers.2.type":    "url",
+		"mcp_servers.2.enabled": true,
+		"mcp_servers.2.url":     "http://example.com/2",
 	})
 	reg := tool.NewRegistry()
 	logger, _ := zap.NewDevelopment()
@@ -1264,13 +1264,13 @@ func TestCreateProvider_withConfig(t *testing.T) {
 
 func TestCreateProvider_withModels(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.deepseek.api_key":                       "sk-test",
-		"llm.deepseek.provider":                      "deepseek",
-		"llm.deepseek.api_type":                      "anthropic",
-		"llm.model":                                  "deepseek-chat",
-		"llm.deepseek.models.0.name":                 "deepseek-chat",
-		"llm.deepseek.models.0.max_tokens":           8192,
-		"llm.deepseek.models.0.temperature":          0.7,
+		"llm.deepseek.api_key":              "sk-test",
+		"llm.deepseek.provider":             "deepseek",
+		"llm.deepseek.api_type":             "anthropic",
+		"llm.model":                         "deepseek-chat",
+		"llm.deepseek.models.0.name":        "deepseek-chat",
+		"llm.deepseek.models.0.max_tokens":  8192,
+		"llm.deepseek.models.0.temperature": 0.7,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
 	provider := c.createProvider("deepseek", nil)
