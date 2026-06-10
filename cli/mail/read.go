@@ -24,7 +24,7 @@ func newReadCmd(cfg *Config) *cobra.Command {
 		Use:   "read",
 		Short: "Read emails from IMAP inbox",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return readMails(cfg, limit)
+			return readMails(os.Stdout, cfg, limit)
 		},
 	}
 
@@ -33,7 +33,7 @@ func newReadCmd(cfg *Config) *cobra.Command {
 	return cmd
 }
 
-func readMails(cfg *Config, limit int) error {
+func readMails(w io.Writer, cfg *Config, limit int) error {
 	client, err := imapclient.DialTLS(cfg.IMAPAddr(), &imapclient.Options{
 		TLSConfig: &tls.Config{ServerName: cfg.IMAPServer},
 	})
@@ -47,7 +47,11 @@ func readMails(cfg *Config, limit int) error {
 	}
 	defer func() { _ = client.Logout().Wait() }()
 
-	_, err = client.Select("INBOX", nil).Wait()
+	return readMailsWithClient(w, client, limit)
+}
+
+func readMailsWithClient(w io.Writer, client *imapclient.Client, limit int) error {
+	_, err := client.Select("INBOX", nil).Wait()
 	if err != nil {
 		return fmt.Errorf("imap select: %w", err)
 	}
@@ -59,7 +63,7 @@ func readMails(cfg *Config, limit int) error {
 
 	all := searchRes.AllSeqNums()
 	if len(all) == 0 {
-		fmt.Println("inbox is empty")
+		fmt.Fprintln(w, "inbox is empty")
 		return nil
 	}
 
@@ -80,7 +84,7 @@ func readMails(cfg *Config, limit int) error {
 	}
 
 	// Print table.
-	tw := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
+	tw := tabwriter.NewWriter(w, 0, 0, 3, ' ', 0)
 	defer func() { _ = tw.Flush() }()
 	_, _ = fmt.Fprintf(tw, "ID\tDate\tFrom\tSubject\tSeen\n")
 	_, _ = fmt.Fprintf(tw, "--\t----\t----\t-------\t----\n")
@@ -126,7 +130,7 @@ func readMails(cfg *Config, limit int) error {
 		}
 		body = mimeText(body)
 		if body != "" {
-			fmt.Printf("\n--- %s ---\n%s\n", msg.Envelope.Subject, body)
+			fmt.Fprintf(w, "\n--- %s ---\n%s\n", msg.Envelope.Subject, body)
 		}
 		break
 	}

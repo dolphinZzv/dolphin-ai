@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
+	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/emersion/go-imap/v2/imapserver"
+	"github.com/emersion/go-imap/v2/imapserver/imapmemserver"
 )
 
 func TestConfigLoad(t *testing.T) {
@@ -323,4 +328,245 @@ func TestMimeTextInvalidMultipart(t *testing.T) {
 	if got != "--" {
 		t.Errorf("mimeText(invalid multipart) = %q, want %q", got, "--")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// readMailsWithClient tests (integration via in-memory IMAP server)
+// ---------------------------------------------------------------------------
+
+const testUsername = "test@example.com"
+const testPassword = "pass"
+
+func newTestIMAPServer(t *testing.T) (net.Listener, *imapserver.Server) {
+	t.Helper()
+	memServer := imapmemserver.New()
+	user := imapmemserver.NewUser(testUsername, testPassword)
+	if err := user.Create("INBOX", nil); err != nil {
+		t.Fatalf("Create INBOX: %v", err)
+	}
+	memServer.AddUser(user)
+
+	srv := imapserver.New(&imapserver.Options{
+		NewSession: func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memServer.NewSession(), nil, nil
+		},
+		InsecureAuth: true,
+		Caps: imap.CapSet{
+			imap.CapIMAP4rev1: {},
+			imap.CapIMAP4rev2: {},
+		},
+	})
+
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	go func() {
+		if err := srv.Serve(ln); err != nil {
+			t.Logf("IMAP server exited: %v", err)
+		}
+	}()
+	return ln, srv
+}
+
+func dialTestIMAP(t *testing.T, ln net.Listener) *imapclient.Client {
+	t.Helper()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
+	}
+	client := imapclient.New(conn, nil)
+	if err := client.Login(testUsername, testPassword).Wait(); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	return client
+}
+
+func appendMsg(t *testing.T, client *imapclient.Client, raw string) {
+	t.Helper()
+	appendCmd := client.Append("INBOX", int64(len(raw)), nil)
+	_, err := appendCmd.Write([]byte(raw))
+	if err != nil {
+		t.Fatalf("Append Write: %v", err)
+	}
+	if err := appendCmd.Close(); err != nil {
+		t.Fatalf("Append Close: %v", err)
+	}
+	if _, err := appendCmd.Wait(); err != nil {
+		t.Fatalf("Append Wait: %v", err)
+	}
+}
+
+const testMsg1 = "From: alice@example.com\r\nSubject: Hello\r\nDate: Mon, 02 Jun 2025 10:00:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nFirst message body\r\n"
+const testMsg2 = "From: bob@example.com\r\nSubject: Meeting\r\nDate: Tue, 03 Jun 2025 14:30:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nMeeting at 3pm\r\n"
+
+func TestReadMailsWithClient_EmptyInbox(t *testing.T) {
+	ln, srv := newTestIMAPServer(t)
+	defer srv.Close()
+
+	client := dialTestIMAP(t, ln)
+	var buf bytes.Buffer
+	err := readMailsWithClient(&buf, client, 10)
+	if err != nil {
+		t.Fatalf("readMailsWithClient: %v", err)
+	}
+	if !strings.Contains(buf.String(), "inbox is empty") {
+		t.Errorf("expected 'inbox is empty', got: %q", buf.String())
+	}
+	_ = client.Logout().Wait()
+	_ = client.Close()
+}
+
+func TestReadMailsWithClient_SingleMessage(t *testing.T) {
+	ln, srv := newTestIMAPServer(t)
+	defer srv.Close()
+
+	client := dialTestIMAP(t, ln)
+	appendMsg(t, client, testMsg1)
+
+	var buf bytes.Buffer
+	err := readMailsWithClient(&buf, client, 10)
+	if err != nil {
+		t.Fatalf("readMailsWithClient: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Hello") {
+		t.Errorf("output missing subject 'Hello': %q", output)
+	}
+	if !strings.Contains(output, "alice@example.com") {
+		t.Errorf("output missing sender: %q", output)
+	}
+	if !strings.Contains(output, "ID") {
+		t.Errorf("output missing table header: %q", output)
+	}
+	if !strings.Contains(output, "Seen") {
+		t.Errorf("output missing Seen column: %q", output)
+	}
+	_ = client.Logout().Wait()
+	_ = client.Close()
+}
+
+func TestReadMailsWithClient_MultipleMessages(t *testing.T) {
+	ln, srv := newTestIMAPServer(t)
+	defer srv.Close()
+
+	client := dialTestIMAP(t, ln)
+	appendMsg(t, client, testMsg1)
+	appendMsg(t, client, testMsg2)
+
+	var buf bytes.Buffer
+	err := readMailsWithClient(&buf, client, 10)
+	if err != nil {
+		t.Fatalf("readMailsWithClient: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Hello") {
+		t.Errorf("output missing first subject: %q", output)
+	}
+	if !strings.Contains(output, "Meeting") {
+		t.Errorf("output missing second subject: %q", output)
+	}
+	if !strings.Contains(output, "alice@example.com") {
+		t.Error("table missing alice@example.com")
+	}
+	if !strings.Contains(output, "bob@example.com") {
+		t.Error("table missing bob@example.com")
+	}
+	_ = client.Logout().Wait()
+	_ = client.Close()
+}
+
+func TestReadMailsWithClient_Limit(t *testing.T) {
+	ln, srv := newTestIMAPServer(t)
+	defer srv.Close()
+
+	client := dialTestIMAP(t, ln)
+	appendMsg(t, client, testMsg1)
+	appendMsg(t, client, testMsg2)
+
+	var buf bytes.Buffer
+	// Limit 1 — only the newest (last appended) message should appear.
+	err := readMailsWithClient(&buf, client, 1)
+	if err != nil {
+		t.Fatalf("readMailsWithClient: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Meeting") {
+		t.Errorf("output missing newest subject: %q", output)
+	}
+	if strings.Contains(output, "First message body") {
+		t.Errorf("limit=1 should exclude old message body, got: %q", output)
+	}
+	_ = client.Logout().Wait()
+	_ = client.Close()
+}
+
+func TestReadMailsWithClient_SeenMessage(t *testing.T) {
+	ln, srv := newTestIMAPServer(t)
+	defer srv.Close()
+
+	client := dialTestIMAP(t, ln)
+	const seenMsg = "From: charlie@example.com\r\nSubject: Seen One\r\nDate: Mon, 02 Jun 2025 08:00:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nThis is seen\r\n"
+	appendCmd := client.Append("INBOX", int64(len(seenMsg)), &imap.AppendOptions{
+		Flags: []imap.Flag{imap.FlagSeen},
+	})
+	_, _ = appendCmd.Write([]byte(seenMsg))
+	_ = appendCmd.Close()
+	if _, err := appendCmd.Wait(); err != nil {
+		t.Fatalf("Append Wait: %v", err)
+	}
+	appendMsg(t, client, testMsg1)
+
+	var buf bytes.Buffer
+	err := readMailsWithClient(&buf, client, 10)
+	if err != nil {
+		t.Fatalf("readMailsWithClient: %v", err)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "Seen One") {
+		t.Errorf("output missing seen subject: %q", output)
+	}
+	_ = client.Logout().Wait()
+	_ = client.Close()
+}
+
+func TestReadMailsWithClient_SelectError(t *testing.T) {
+	memServer := imapmemserver.New()
+	user := imapmemserver.NewUser(testUsername, testPassword)
+	memServer.AddUser(user)
+
+	srv := imapserver.New(&imapserver.Options{
+		NewSession: func(conn *imapserver.Conn) (imapserver.Session, *imapserver.GreetingData, error) {
+			return memServer.NewSession(), nil, nil
+		},
+		InsecureAuth: true,
+		Caps: imap.CapSet{imap.CapIMAP4rev1: {}},
+	})
+	ln, err := net.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Close()
+
+	conn, _ := net.Dial("tcp", ln.Addr().String())
+	client := imapclient.New(conn, nil)
+	if err := client.Login(testUsername, testPassword).Wait(); err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+
+	var buf bytes.Buffer
+	err = readMailsWithClient(&buf, client, 10)
+	if err == nil {
+		t.Fatal("expected error selecting non-existent mailbox")
+	}
+	if !strings.Contains(err.Error(), "imap select") {
+		t.Errorf("error should mention imap select, got: %v", err)
+	}
+	_ = client.Logout().Wait()
+	_ = client.Close()
 }
