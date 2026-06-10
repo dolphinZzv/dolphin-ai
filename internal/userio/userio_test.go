@@ -2,6 +2,7 @@ package userio
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"dolphin/internal/agentio"
@@ -12,6 +13,36 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
 )
+
+type captureWriteTransport struct {
+	transport.NullTransport
+	written string
+}
+
+func (t *captureWriteTransport) Write(_ context.Context, text string) error {
+	t.written += text
+	return nil
+}
+
+func (t *captureWriteTransport) Flush() error { return nil }
+
+type writeFailTransport struct {
+	transport.NullTransport
+}
+
+func (t *writeFailTransport) Write(_ context.Context, _ string) error {
+	return fmt.Errorf("write error")
+}
+
+func (t *writeFailTransport) Flush() error { return nil }
+
+type flushFailTransport struct {
+	transport.NullTransport
+}
+
+func (t *flushFailTransport) Write(_ context.Context, text string) error { return nil }
+
+func (t *flushFailTransport) Flush() error { return fmt.Errorf("flush error") }
 
 func TestUserIO(t *testing.T) {
 	Convey("UserIO", t, func() {
@@ -258,6 +289,71 @@ func TestUserIOHandleUnknownCmd(t *testing.T) {
 				t.Error("expected a turn to be queued")
 			}
 		})
+	})
+}
+
+func TestUserIOHandleSystemCmdOutput(t *testing.T) {
+	Convey("Handle with system command output", t, func() {
+		logger, _ := zap.NewDevelopment()
+		sb := signal.NewBus()
+		mgr := session.NewManager(t.TempDir())
+		cmdReg := command.NewRegistry(mgr, sb)
+		aio := agentio.NewAgentIO(10, mgr, sb, logger, "Dolphin")
+		uio := NewUserIO(aio, cmdReg, nil, mgr, "per_transport")
+
+		Convey("captures non-interactive command output and writes it", func() {
+			tio := &captureWriteTransport{NullTransport: *transport.NewNullTransport("test")}
+			ctx := context.Background()
+			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "stdio"})
+
+			result := uio.Handle(ctx, tio, "/echo hello world")
+			So(result, ShouldBeFalse)
+			So(tio.written, ShouldContainSubstring, "hello world")
+		})
+	})
+}
+
+func TestUserIOHandleInteractiveCmdOnNullTransport(t *testing.T) {
+	Convey("Handle with interactive cmd on non-interactive transport", t, func() {
+		logger, _ := zap.NewDevelopment()
+		mgr := session.NewManager(t.TempDir())
+		cmdReg := command.NewRegistry(mgr, signal.NewBus())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "Dolphin")
+		uio := NewUserIO(aio, cmdReg, nil, mgr, "per_transport")
+
+		Convey("falls through to LLM when transport cannot run interactive", func() {
+			tio := transport.NewNullTransport("test")
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test"})
+
+			uio.Handle(ctx, tio, "/vim")
+
+			select {
+			case turn := <-aio.Queue():
+				So(turn, ShouldNotBeNil)
+				So(turn.Input, ShouldContainSubstring, "vim")
+			default:
+			}
+		})
+	})
+}
+
+func TestWriteLine_WriteError(t *testing.T) {
+	Convey("WriteLine with Write error", t, func() {
+		uio := &UserIO{}
+		tio := &writeFailTransport{}
+		err := uio.WriteLine(context.Background(), tio, "hello")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "write error")
+	})
+}
+
+func TestWriteLine_FlushError(t *testing.T) {
+	Convey("WriteLine with Flush error", t, func() {
+		uio := &UserIO{}
+		tio := &flushFailTransport{}
+		err := uio.WriteLine(context.Background(), tio, "hello")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldContainSubstring, "flush error")
 	})
 }
 
