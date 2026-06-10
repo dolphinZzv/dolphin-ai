@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"dolphin/internal/agentio"
+	"dolphin/internal/brain"
 	"dolphin/internal/command"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
@@ -354,6 +355,102 @@ func TestWriteLine_FlushError(t *testing.T) {
 		err := uio.WriteLine(context.Background(), tio, "hello")
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldContainSubstring, "flush error")
+	})
+}
+
+func TestUserIOHandleBrainScriptDisabled(t *testing.T) {
+	Convey("Handle with disabled brain script", t, func() {
+		ctx := context.Background()
+		dir := t.TempDir()
+		b := brain.New(dir)
+		So(b.Init(ctx), ShouldBeNil)
+
+		err := brain.WriteScript(ctx, b, brain.Script{
+			Name:    "mytest",
+			Enabled: false,
+			Content: "echo hello",
+		})
+		So(err, ShouldBeNil)
+
+		logger, _ := zap.NewDevelopment()
+		mgr := session.NewManager(t.TempDir())
+		cmdReg := command.NewRegistry(mgr, signal.NewBus())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "Dolphin")
+		uio := NewUserIO(aio, cmdReg, b, mgr, "per_transport")
+
+		tio := &captureWriteTransport{NullTransport: *transport.NewNullTransport("test")}
+		ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
+
+		result := uio.Handle(ctx, tio, "/mytest")
+
+		So(result, ShouldBeFalse)
+		So(tio.written, ShouldContainSubstring, `script "mytest" is disabled`)
+	})
+}
+
+func TestUserIOHandleBrainScriptNoContent(t *testing.T) {
+	Convey("Handle with enabled brain script but no content", t, func() {
+		ctx := context.Background()
+		dir := t.TempDir()
+		b := brain.New(dir)
+		So(b.Init(ctx), ShouldBeNil)
+
+		err := brain.WriteScript(ctx, b, brain.Script{
+			Name:    "myempty",
+			Enabled: true,
+			Content: "",
+		})
+		So(err, ShouldBeNil)
+
+		logger, _ := zap.NewDevelopment()
+		mgr := session.NewManager(t.TempDir())
+		cmdReg := command.NewRegistry(mgr, signal.NewBus())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "Dolphin")
+		uio := NewUserIO(aio, cmdReg, b, mgr, "per_transport")
+
+		tio := &captureWriteTransport{NullTransport: *transport.NewNullTransport("test")}
+		ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
+
+		result := uio.Handle(ctx, tio, "/myempty")
+
+		So(result, ShouldBeFalse)
+		So(tio.written, ShouldContainSubstring, `script "myempty" has no content`)
+	})
+}
+
+func TestUserIOHandleBrainScriptEnabled(t *testing.T) {
+	Convey("Handle with enabled brain script sends turn with script content", t, func() {
+		ctx := context.Background()
+		dir := t.TempDir()
+		b := brain.New(dir)
+		So(b.Init(ctx), ShouldBeNil)
+
+		err := brain.WriteScript(ctx, b, brain.Script{
+			Name:    "chat",
+			Enabled: true,
+			Content: "You are a helpful assistant.",
+		})
+		So(err, ShouldBeNil)
+
+		logger, _ := zap.NewDevelopment()
+		mgr := session.NewManager(t.TempDir())
+		cmdReg := command.NewRegistry(mgr, signal.NewBus())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "Dolphin")
+		uio := NewUserIO(aio, cmdReg, b, mgr, "per_transport")
+
+		tio := transport.NewNullTransport("test")
+		ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
+
+		result := uio.Handle(ctx, tio, "/chat")
+
+		So(result, ShouldBeTrue)
+
+		select {
+		case turn := <-aio.Queue():
+			So(turn.Input, ShouldContainSubstring, "helpful assistant")
+		default:
+			t.Error("expected a turn to be queued")
+		}
 	})
 }
 
