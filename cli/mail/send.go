@@ -12,6 +12,8 @@ import (
 	"github.com/yuin/goldmark"
 )
 
+var tlsDialer = tls.Dial
+
 func newSendCmd(cfg *Config) *cobra.Command {
 	var to, subject, bodyFile string
 
@@ -52,7 +54,7 @@ func sendMail(cfg *Config, to, subject, body string) error {
 	msg := buildMessage(from, to, subject, body)
 
 	tlsCfg := &tls.Config{ServerName: cfg.SMTPServer}
-	conn, err := tls.Dial("tcp", cfg.SMTPAddr(), tlsCfg)
+	conn, err := tlsDialer("tcp", cfg.SMTPAddr(), tlsCfg)
 	if err != nil {
 		return fmt.Errorf("smtp connect: %w", err)
 	}

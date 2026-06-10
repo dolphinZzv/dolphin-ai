@@ -1,8 +1,17 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/base64"
+	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"testing"
@@ -569,4 +578,300 @@ func TestReadMailsWithClient_SelectError(t *testing.T) {
 	}
 	_ = client.Logout().Wait()
 	_ = client.Close()
+}
+
+// ---------------------------------------------------------------------------
+// newSendCmd tests
+// ---------------------------------------------------------------------------
+
+func TestNewSendCmdBodyRequired(t *testing.T) {
+	cmd := newSendCmd(&Config{})
+	err := cmd.RunE(cmd, []string{})
+	if err == nil {
+		t.Fatal("expected error for empty body")
+	}
+	if !strings.Contains(err.Error(), "body is required") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestNewSendCmdToRequired(t *testing.T) {
+	cmd := newSendCmd(&Config{})
+	err := cmd.RunE(cmd, []string{"body text"})
+	if err == nil {
+		t.Fatal("expected error for missing recipient")
+	}
+	if !strings.Contains(err.Error(), "recipient") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestNewSendCmdInvalidBodyFile(t *testing.T) {
+	cmd := newSendCmd(&Config{})
+	_ = cmd.Flags().Set("file", "/nonexistent/file.txt")
+	err := cmd.RunE(cmd, []string{})
+	if err == nil {
+		t.Fatal("expected error for invalid file")
+	}
+	if !strings.Contains(err.Error(), "read body file") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// sendMail tests (with in-process TLS SMTP server)
+// ---------------------------------------------------------------------------
+
+func testSMTPServer(t *testing.T) (*Config, func(), *string) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		DNSNames:     []string{"localhost"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+	cert := tls.Certificate{
+		Certificate: [][]byte{certDER},
+		PrivateKey:  key,
+	}
+
+	ln, err := tls.Listen("tcp", "localhost:0", &tls.Config{
+		Certificates: []tls.Certificate{cert},
+	})
+	if err != nil {
+		t.Fatalf("tls listen: %v", err)
+	}
+
+	var capturedBody string
+	done := make(chan struct{})
+
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		write := func(s string) { _, _ = rw.WriteString(s); _ = rw.Flush() }
+		readLn := func() string {
+			line, err := rw.ReadString('\n')
+			if err != nil {
+				return ""
+			}
+			return strings.TrimRight(line, "\r\n")
+		}
+
+		write("220 localhost SMTP test server ready\r\n")
+
+		for {
+			line := readLn()
+			if line == "" {
+				break
+			}
+			parts := strings.SplitN(line, " ", 2)
+			cmd := strings.ToUpper(parts[0])
+
+			switch cmd {
+			case "EHLO":
+				write("250-localhost\r\n250 AUTH PLAIN\r\n")
+			case "AUTH":
+				write("235 Authentication successful\r\n")
+			case "MAIL":
+				write("250 OK\r\n")
+			case "RCPT":
+				write("250 OK\r\n")
+			case "DATA":
+				write("354 Start mail input; end with <CRLF>.<CRLF>\r\n")
+				var bodyLines []string
+				for {
+					l := readLn()
+					if l == "." {
+						break
+					}
+					bodyLines = append(bodyLines, l)
+				}
+				capturedBody = strings.Join(bodyLines, "\r\n")
+				write("250 OK: message accepted\r\n")
+			case "QUIT":
+				write("221 Bye\r\n")
+				return
+			default:
+				write("500 unrecognized command\r\n")
+			}
+		}
+		close(done)
+	}()
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+
+	cfg := &Config{
+		SMTPServer: "localhost",
+		SMTPPort:   port,
+		Email:      "sender@test.com",
+		Password:   "testpass",
+	}
+
+	cleanup := func() {
+		_ = ln.Close()
+		<-done
+	}
+
+	return cfg, cleanup, &capturedBody
+}
+
+func TestSendMail(t *testing.T) {
+	cfg, cleanup, capturedBody := testSMTPServer(t)
+	defer cleanup()
+
+	oldDialer := tlsDialer
+	tlsDialer = func(network, addr string, tlsCfg *tls.Config) (*tls.Conn, error) {
+		tlsCfg.ServerName = "localhost"
+		tlsCfg.InsecureSkipVerify = true
+		return tls.Dial(network, cfg.SMTPAddr(), tlsCfg)
+	}
+	defer func() { tlsDialer = oldDialer }()
+
+	err := sendMail(cfg, "recipient@test.com", "Test Subject", "Hello **world**")
+	if err != nil {
+		t.Fatalf("sendMail: %v", err)
+	}
+
+	if !strings.Contains(*capturedBody, "Test Subject") {
+		t.Errorf("captured body missing subject: %q", *capturedBody)
+	}
+	if !strings.Contains(*capturedBody, "Hello **world**") {
+		t.Errorf("captured body missing text content: %q", *capturedBody)
+	}
+	if !strings.Contains(*capturedBody, "<strong>world</strong>") {
+		t.Errorf("captured body missing rendered HTML: %q", *capturedBody)
+	}
+}
+
+func TestSendMailDialError(t *testing.T) {
+	oldDialer := tlsDialer
+	tlsDialer = func(_, _ string, _ *tls.Config) (*tls.Conn, error) {
+		return nil, fmt.Errorf("connection refused")
+	}
+	defer func() { tlsDialer = oldDialer }()
+
+	cfg := &Config{SMTPServer: "localhost", SMTPPort: "25", Email: "a@b.com", Password: "p"}
+	err := sendMail(cfg, "to@test.com", "Sub", "body")
+	if err == nil {
+		t.Fatal("expected dial error")
+	}
+	if !strings.Contains(err.Error(), "smtp connect") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+// testSMTPServerRejectAuth is like testSMTPServer but rejects AUTH with 535.
+func testSMTPServerRejectAuth(t *testing.T) (*Config, func()) {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		DNSNames:     []string{"localhost"},
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().Add(time.Hour),
+	}
+	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create cert: %v", err)
+	}
+	cert := tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: key}
+
+	ln, err := tls.Listen("tcp", "localhost:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	if err != nil {
+		t.Fatalf("tls listen: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		conn, err := ln.Accept()
+		if err != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+
+		rw := bufio.NewReadWriter(bufio.NewReader(conn), bufio.NewWriter(conn))
+		write := func(s string) { _, _ = rw.WriteString(s); _ = rw.Flush() }
+		readLn := func() string {
+			line, err := rw.ReadString('\n')
+			if err != nil {
+				return ""
+			}
+			return strings.TrimRight(line, "\r\n")
+		}
+
+		write("220 localhost SMTP test server ready\r\n")
+
+		for {
+			line := readLn()
+			if line == "" {
+				break
+			}
+			parts := strings.SplitN(line, " ", 2)
+			cmd := strings.ToUpper(parts[0])
+
+			switch cmd {
+			case "EHLO":
+				write("250-localhost\r\n250 AUTH PLAIN\r\n")
+			case "AUTH":
+				write("535 Authentication failed\r\n")
+			default:
+				write("500 unrecognized command\r\n")
+			}
+		}
+		close(done)
+	}()
+
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	cfg := &Config{
+		SMTPServer: "localhost",
+		SMTPPort:   port,
+		Email:      "sender@test.com",
+		Password:   "testpass",
+	}
+	cleanup := func() {
+		_ = ln.Close()
+		<-done
+	}
+	return cfg, cleanup
+}
+
+func TestSendMailAuthError(t *testing.T) {
+	cfg, cleanup := testSMTPServerRejectAuth(t)
+	defer cleanup()
+
+	oldDialer := tlsDialer
+	tlsDialer = func(network, addr string, tlsCfg *tls.Config) (*tls.Conn, error) {
+		tlsCfg.ServerName = "localhost"
+		tlsCfg.InsecureSkipVerify = true
+		return tls.Dial(network, cfg.SMTPAddr(), tlsCfg)
+	}
+	defer func() { tlsDialer = oldDialer }()
+
+	err := sendMail(cfg, "to@test.com", "Sub", "body")
+	if err == nil {
+		t.Fatal("expected auth error")
+	}
+	if !strings.Contains(err.Error(), "smtp auth") {
+		t.Errorf("unexpected error: %v", err)
+	}
 }
