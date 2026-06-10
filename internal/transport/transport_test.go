@@ -407,19 +407,17 @@ func TestWithInfoAndGetInfo(t *testing.T) {
 	}
 }
 
-func TestGetInfoNilContext(t *testing.T) {
-	// GetInfo on nil context panics; test via recover that we handle the panic
-	// or simply verify that calling with a valid context returns nil.
+func TestGetInfoEmptyContext(t *testing.T) {
 	got := GetInfo(context.Background())
 	if got != nil {
 		t.Fatal("expected nil from context without info")
 	}
 }
 
-func TestGetInfoEmptyContext(t *testing.T) {
-	got := GetInfo(context.Background())
+func TestGetInfoNilContext(t *testing.T) {
+	got := GetInfo(nil)
 	if got != nil {
-		t.Fatal("expected nil from empty context")
+		t.Fatal("expected nil from nil context")
 	}
 }
 

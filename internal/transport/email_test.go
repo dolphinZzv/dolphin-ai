@@ -117,6 +117,38 @@ func TestEmailBuildMessage(t *testing.T) {
 			So(msg, ShouldContainSubstring, "MIME-Version: 1.0")
 			So(msg, ShouldContainSubstring, "Content-Type: text/plain; charset=\"UTF-8\"")
 		})
+
+		Convey("includes In-Reply-To and References when messageID provided", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+			}, nil, "Bot")
+
+			msg := e.buildMessage("user@example.com", "Re: Test", "Reply", "msg-123", "")
+			So(msg, ShouldContainSubstring, "In-Reply-To: <msg-123>")
+			So(msg, ShouldContainSubstring, "References: <msg-123>")
+		})
+
+		Convey("quotes original body in text/plain when provided", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+			}, nil, "")
+
+			msg := e.buildMessage("user@example.com", "Re: Test", "Reply", "", "Original\nmessage\nbody")
+			So(msg, ShouldContainSubstring, "> Original")
+			So(msg, ShouldContainSubstring, "> message")
+			So(msg, ShouldContainSubstring, "> body")
+		})
+
+		Convey("quotes original body in HTML blockquote when provided", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+			}, nil, "")
+
+			msg := e.buildMessage("user@example.com", "Re: Test", "Reply", "", "Quoted text")
+			So(msg, ShouldContainSubstring, "<blockquote")
+			So(msg, ShouldContainSubstring, "Quoted text")
+			So(msg, ShouldContainSubstring, "</blockquote>")
+		})
 	})
 }
 
@@ -144,6 +176,34 @@ func TestEmailFlushNoOp(t *testing.T) {
 
 		err := e.Flush()
 		So(err, ShouldBeNil)
+	})
+}
+
+func TestEmailRejectMessage(t *testing.T) {
+	Convey("Email.rejectMessage", t, func() {
+		Convey("does not panic with empty allowSenders", func() {
+			e := NewEmail(EmailConfig{EmailAddress: "bot@example.com"}, nil, "Bot")
+			So(func() {
+				e.rejectMessage(context.Background(), "user@example.com", "Test", "msg-1")
+			}, ShouldNotPanic)
+		})
+
+		Convey("does not panic with allowSenders set", func() {
+			e := NewEmail(EmailConfig{
+				EmailAddress: "bot@example.com",
+				AllowSenders: "user@example.com",
+			}, nil, "Bot")
+			So(func() {
+				e.rejectMessage(context.Background(), "user@example.com", "Test", "msg-1")
+			}, ShouldNotPanic)
+		})
+
+		Convey("does not panic with empty messageID", func() {
+			e := NewEmail(EmailConfig{EmailAddress: "bot@example.com"}, nil, "Bot")
+			So(func() {
+				e.rejectMessage(context.Background(), "user@example.com", "Test", "")
+			}, ShouldNotPanic)
+		})
 	})
 }
 
