@@ -22,6 +22,13 @@ import (
 	"go.uber.org/zap"
 )
 
+type wsConn interface {
+	ReadMessage() (int, []byte, error)
+	WriteMessage(int, []byte) error
+	Close() error
+	SetWriteDeadline(time.Time) error
+}
+
 const (
 	wssURL             = "wss://openws.work.weixin.qq.com"
 	heartbeatInterval  = 30 * time.Second
@@ -77,7 +84,7 @@ type WeWork struct {
 	logger    *zap.Logger
 	agentName string
 
-	conn   *websocket.Conn
+	conn   wsConn
 	connMu sync.Mutex
 
 	writeMu sync.Mutex
@@ -256,7 +263,7 @@ func (w *WeWork) connectAndServe() error {
 }
 
 // subscribe sends aibot_subscribe to authenticate.
-func (w *WeWork) subscribe(conn *websocket.Conn) error {
+func (w *WeWork) subscribe(conn wsConn) error {
 	payload := map[string]any{
 		"cmd": "aibot_subscribe",
 		"headers": map[string]string{
