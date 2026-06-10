@@ -544,7 +544,7 @@ func TestReadMailsWithClient_SelectError(t *testing.T) {
 			return memServer.NewSession(), nil, nil
 		},
 		InsecureAuth: true,
-		Caps: imap.CapSet{imap.CapIMAP4rev1: {}},
+		Caps:         imap.CapSet{imap.CapIMAP4rev1: {}},
 	})
 	ln, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
