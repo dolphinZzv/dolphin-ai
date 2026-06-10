@@ -6,10 +6,20 @@ import (
 	"strings"
 	"testing"
 
+	"dolphin/internal/agentio"
+	"dolphin/internal/brain"
+	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/limit"
+	"dolphin/internal/llm"
+	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
+	"dolphin/internal/signal"
+	"dolphin/internal/tool"
+	"dolphin/internal/transport"
 	"dolphin/internal/userio"
+
+	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -780,4 +790,660 @@ func TestLoadCatalogFromConfig(t *testing.T) {
 			t.Errorf("expected nil, got %d entries", len(entries))
 		}
 	})
+}
+
+// ---------------------------------------------------------------------------
+// loadTransportConfigs
+// ---------------------------------------------------------------------------
+
+func TestLoadTransportConfigs_empty(t *testing.T) {
+	cfg := config.LoadConfigFromMap(nil)
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tcs) == 0 {
+		t.Fatal("expected at least stdio transport")
+	}
+	if tcs[0].Type != "stdio" {
+		t.Errorf("expected first transport to be stdio, got %s", tcs[0].Type)
+	}
+}
+
+func TestLoadTransportConfigs_explicit(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"transport.0.type":    "stdio",
+		"transport.0.enabled": true,
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tcs) != 1 {
+		t.Fatalf("expected 1 transport, got %d", len(tcs))
+	}
+	if tcs[0].Type != "stdio" {
+		t.Errorf("expected stdio, got %s", tcs[0].Type)
+	}
+}
+
+func TestLoadTransportConfigs_explicitDisabled(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"transport.0.type":    "stdio",
+		"transport.0.enabled": false,
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(tcs) != 1 {
+		t.Fatalf("expected 1 fallback transport, got %d", len(tcs))
+	}
+	if tcs[0].Type != "stdio" {
+		t.Errorf("expected fallback stdio, got %s", tcs[0].Type)
+	}
+}
+
+func TestLoadTransportConfigs_dingtalk(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"dingtalk.enabled":       true,
+		"dingtalk.client_id":     "test-id",
+		"dingtalk.client_secret": "test-secret",
+		"dingtalk.webhook_url":   "http://webhook",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "dingtalk" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected dingtalk transport, got %v", tcs)
+	}
+}
+
+func TestLoadTransportConfigs_email(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"email.enabled":  true,
+		"email.address":  "bot@test.com",
+		"email.password": "secret",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "email" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected email transport, got %v", tcs)
+	}
+}
+
+func TestLoadTransportConfigs_wework(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"wework.enabled":   true,
+		"wework.bot_id":    "test-bot",
+		"wework.bot_secret": "test-secret",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "wework" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected wework transport, got %v", tcs)
+	}
+}
+
+func TestLoadTransportConfigs_skipsEmailWithoutPassword(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"email.enabled": true,
+		"email.address": "bot@test.com",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, tc := range tcs {
+		if tc.Type == "email" {
+			t.Fatal("email should not be added without password")
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// loadMCPServers
+// ---------------------------------------------------------------------------
+
+func TestLoadMCPServers_empty(t *testing.T) {
+	cfg := config.LoadConfigFromMap(nil)
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_unknownBuiltin(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "nonexistent",
+		"mcp_servers.0.type":    "builtin",
+		"mcp_servers.0.enabled": true,
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_missingURL(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "srv",
+		"mcp_servers.0.type":    "url",
+		"mcp_servers.0.enabled": true,
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_missingCommand(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "srv",
+		"mcp_servers.0.type":    "stdio",
+		"mcp_servers.0.enabled": true,
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_disabled(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "srv",
+		"mcp_servers.0.type":    "url",
+		"mcp_servers.0.enabled": false,
+		"mcp_servers.0.url":     "http://example.com",
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_urlType(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "remote-srv",
+		"mcp_servers.0.type":    "url",
+		"mcp_servers.0.enabled": true,
+		"mcp_servers.0.url":     "http://example.com/mcp",
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_httpType(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "http-srv",
+		"mcp_servers.0.type":    "http",
+		"mcp_servers.0.enabled": true,
+		"mcp_servers.0.url":     "http://example.com/http-mcp",
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_multipleServers(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "disabled-srv",
+		"mcp_servers.0.type":    "url",
+		"mcp_servers.0.enabled": false,
+		"mcp_servers.0.url":     "http://example.com/disabled",
+		"mcp_servers.1.name":    "active-srv",
+		"mcp_servers.1.type":    "url",
+		"mcp_servers.1.enabled": true,
+		"mcp_servers.1.url":     "http://example.com/active",
+		"mcp_servers.2.type": "stdio",
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_stdioWithArgs(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":       "cli-srv",
+		"mcp_servers.0.type":       "stdio",
+		"mcp_servers.0.enabled":    true,
+		"mcp_servers.0.command":    "nonexistent-cmd",
+		"mcp_servers.0.args.0":     "--flag",
+		"mcp_servers.0.args.1":     "value",
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_builtinRegistration(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "playwright",
+		"mcp_servers.0.type":    "builtin",
+		"mcp_servers.0.enabled": true,
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+func TestLoadMCPServers_iterationBreak(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"mcp_servers.0.name":    "srv-0",
+		"mcp_servers.0.type":    "url",
+		"mcp_servers.0.enabled": true,
+		"mcp_servers.0.url":     "http://example.com/0",
+		"mcp_servers.2.name":     "srv-2",
+		"mcp_servers.2.type":     "url",
+		"mcp_servers.2.enabled":  true,
+		"mcp_servers.2.url":      "http://example.com/2",
+	})
+	reg := tool.NewRegistry()
+	logger, _ := zap.NewDevelopment()
+
+	loadMCPServers(cfg, reg, logger)
+}
+
+// ---------------------------------------------------------------------------
+// LLMBootstrapper Bootstrap
+// ---------------------------------------------------------------------------
+
+func TestLLMBootstrapperBootstrap_legacy(t *testing.T) {
+	b := &LLMBootstrapper{}
+	logC := &Context{Config: config.LoadConfigFromMap(map[string]any{
+		"log":          map[string]any{"level": "debug"},
+		"llm.model":    "gpt-4",
+		"llm.provider": "openai",
+	})}
+	logB := &LoggerBootstrapper{}
+	if err := logB.Bootstrap(context.Background(), logC); err != nil {
+		t.Fatal(err)
+	}
+
+	c := &Context{Config: config.LoadConfigFromMap(map[string]any{
+		"llm.model":    "gpt-4",
+		"llm.provider": "openai",
+	}), Logger: logC.Logger}
+
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.LLMProvider == nil {
+		t.Fatal("LLMProvider should be set")
+	}
+}
+
+func TestLLMBootstrapperBootstrap_noop(t *testing.T) {
+	b := &LLMBootstrapper{}
+	c := &Context{LLMProvider: &llmProviderMock{}}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+type llmProviderMock struct{}
+
+func (m *llmProviderMock) Name() string { return "mock" }
+func (m *llmProviderMock) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk)
+	close(ch)
+	return ch, nil
+}
+func (m *llmProviderMock) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	return nil, nil
+}
+
+// ---------------------------------------------------------------------------
+// SchedulerBootstrapper Bootstrap
+// ---------------------------------------------------------------------------
+
+func TestSchedulerBootstrapperBootstrap_noop(t *testing.T) {
+	b := &SchedulerBootstrapper{}
+	c := &Context{Scheduler: &scheduler.Scheduler{}}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// AgentIOBootstrapper Bootstrap
+// ---------------------------------------------------------------------------
+
+func TestAgentIOBootstrapperBootstrap_noop(t *testing.T) {
+	b := &AgentIOBootstrapper{}
+	c := &Context{AgentIO: &agentio.AgentIO{}}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ToolsBootstrapper Bootstrap
+// ---------------------------------------------------------------------------
+
+func TestToolsBootstrapperBootstrap_noop(t *testing.T) {
+	b := &ToolsBootstrapper{}
+	c := &Context{ToolReg: tool.NewRegistry()}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TransportsBootstrapper Bootstrap
+// ---------------------------------------------------------------------------
+
+func TestTransportsBootstrapperBootstrap_noop(t *testing.T) {
+	b := &TransportsBootstrapper{}
+	c := &Context{Transports: make([]transport.IO, 0)}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SchedulerBootstrapper Bootstrap
+// ---------------------------------------------------------------------------
+
+func TestSchedulerBootstrapperBootstrap_full(t *testing.T) {
+	b := &SchedulerBootstrapper{}
+	dir := t.TempDir()
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"memory": map[string]any{"dir": dir},
+		}),
+		Logger:  zap.NewNop(),
+		Brain:   &brain.Brain{},
+		ToolReg: tool.NewRegistry(),
+		CmdReg:  command.NewRegistry(nil, nil),
+	}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Scheduler == nil {
+		t.Fatal("Scheduler should be set")
+	}
+}
+
+func TestBrainBootstrapperBootstrap_noop(t *testing.T) {
+	b := &BrainBootstrapper{}
+	c := &Context{Brain: &brain.Brain{}}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBrainBootstrapperBootstrap_full(t *testing.T) {
+	b := &BrainBootstrapper{}
+	dir := t.TempDir()
+
+	buses := &BusesBootstrapper{}
+	mgr := session.NewManager(dir)
+	sb := signal.NewBus()
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"brain.dir": dir,
+		}),
+		Logger:  zap.NewNop(),
+		ToolReg: tool.NewRegistry(),
+		CmdReg:  command.NewRegistry(mgr, sb),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Brain == nil {
+		t.Fatal("Brain should be set")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// createProvider
+// ---------------------------------------------------------------------------
+
+func TestCreateProvider_withConfig(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.openai.api_key":  "sk-test",
+		"llm.openai.base_url": "http://test",
+		"llm.openai.provider": "openai",
+		"llm.model":           "gpt-4",
+		"llm.max_tokens":      4096,
+		"llm.temperature":     0.7,
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	provider := c.createProvider("openai", nil)
+	if provider == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+func TestCreateProvider_withModels(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.deepseek.api_key":                       "sk-test",
+		"llm.deepseek.provider":                      "deepseek",
+		"llm.deepseek.api_type":                      "anthropic",
+		"llm.model":                                  "deepseek-chat",
+		"llm.deepseek.models.0.name":                 "deepseek-chat",
+		"llm.deepseek.models.0.max_tokens":           8192,
+		"llm.deepseek.models.0.temperature":          0.7,
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	provider := c.createProvider("deepseek", nil)
+	if provider == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// LimitBootstrapper Bootstrap full path
+// ---------------------------------------------------------------------------
+
+func TestLimitBootstrapperBootstrap_full(t *testing.T) {
+	b := &LimitBootstrapper{}
+	dir := t.TempDir()
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.max_requests": 100,
+			"limit.dir":              dir,
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set")
+	}
+}
+
+func TestLimitBootstrapperBootstrap_byEnabled(t *testing.T) {
+	b := &LimitBootstrapper{}
+	dir := t.TempDir()
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.enabled": true,
+			"limit.dir":         dir,
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set with enabled=true")
+	}
+}
+
+func TestLimitBootstrapperBootstrap_byHardLimit(t *testing.T) {
+	b := &LimitBootstrapper{}
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.max_requests.hard": 50,
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set with hard limit")
+	}
+}
+
+func TestLimitBootstrapperBootstrap_byTokenLimit(t *testing.T) {
+	b := &LimitBootstrapper{}
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.max_total_tokens": 100000,
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set with token limit")
+	}
+}
+
+func TestLimitBootstrapperBootstrap_defaultStoreDir(t *testing.T) {
+	b := &LimitBootstrapper{}
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.max_requests": 100,
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set with default store dir")
+	}
+}
+
+func TestLimitBootstrapperBootstrap_withWebhook(t *testing.T) {
+	b := &LimitBootstrapper{}
+	dir := t.TempDir()
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.max_requests": 100,
+			"limit.dir":              dir,
+			"agent.webhook.url":      "http://example.com/webhook",
+			"agent.webhook.type":     "http",
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set with webhook")
+	}
+}
+
+func TestLimitBootstrapperBootstrap_withCron(t *testing.T) {
+	b := &LimitBootstrapper{}
+	dir := t.TempDir()
+	buses := &BusesBootstrapper{}
+	c := &Context{
+		Config: config.LoadConfigFromMap(map[string]any{
+			"llm.limit.max_requests": 100,
+			"limit.dir":              dir,
+			"llm.limit.reset_cron":   "0 0 * * *",
+		}),
+		Logger: zap.NewNop(),
+	}
+	err := buses.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("buses bootstrap: %v", err)
+	}
+	err = b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.Limit == nil {
+		t.Fatal("Limit should be set with cron")
+	}
 }
