@@ -875,3 +875,81 @@ func TestSendMailAuthError(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// buildMessage tests
+// ---------------------------------------------------------------------------
+
+func TestBuildMessageHeaders(t *testing.T) {
+	msg := buildMessage("alice@test.com", "bob@test.com", "Hello", "body")
+	if !strings.Contains(msg, "From: alice@test.com\r\n") {
+		t.Errorf("missing From header")
+	}
+	if !strings.Contains(msg, "To: bob@test.com\r\n") {
+		t.Errorf("missing To header")
+	}
+	if !strings.Contains(msg, "Subject: Hello\r\n") {
+		t.Errorf("missing Subject header")
+	}
+	if !strings.Contains(msg, "MIME-Version: 1.0\r\n") {
+		t.Errorf("missing MIME-Version header")
+	}
+}
+
+func TestBuildMessageMultipartStructure(t *testing.T) {
+	msg := buildMessage("a@b.com", "c@d.com", "S", "hello")
+	if !strings.Contains(msg, "Content-Type: multipart/alternative;") {
+		t.Errorf("expected multipart/alternative, got: %q", msg)
+	}
+	if !strings.Contains(msg, "--=_mail_cli_boundary") {
+		t.Errorf("expected boundary marker")
+	}
+	// Both plain text and HTML parts
+	if !strings.Contains(msg, "Content-Type: text/plain;") {
+		t.Errorf("expected text/plain part")
+	}
+	if !strings.Contains(msg, "Content-Type: text/html;") {
+		t.Errorf("expected text/html part")
+	}
+	// Trailing boundary
+	if !strings.Contains(msg, "--=_mail_cli_boundary--") {
+		t.Errorf("expected closing boundary")
+	}
+}
+
+func TestBuildMessageMarkdownRendering(t *testing.T) {
+	body := "Hello **world** and *italic*"
+	msg := buildMessage("a@b.com", "c@d.com", "S", body)
+	if !strings.Contains(msg, "<strong>world</strong>") {
+		t.Errorf("expected bold HTML, got: %q", msg)
+	}
+	if !strings.Contains(msg, "<em>italic</em>") {
+		t.Errorf("expected italic HTML, got: %q", msg)
+	}
+	// Plain text part preserves original markdown
+	if !strings.Contains(msg, "Hello **world**") {
+		t.Errorf("expected original markdown in text/plain part")
+	}
+}
+
+func TestBuildMessageCodeBlock(t *testing.T) {
+	body := "```go\nfmt.Println(\"hi\")\n```"
+	msg := buildMessage("a@b.com", "c@d.com", "S", body)
+	if !strings.Contains(msg, "<code") {
+		t.Errorf("expected <code> in HTML output")
+	}
+	if !strings.Contains(msg, "fmt.Println") {
+		t.Errorf("expected code content in output")
+	}
+}
+
+func TestBuildMessageEmptyBody(t *testing.T) {
+	msg := buildMessage("a@b.com", "c@d.com", "S", "")
+	if !strings.Contains(msg, "Content-Type: multipart/alternative;") {
+		t.Errorf("expected multipart even for empty body: %q", msg)
+	}
+	// HTML should contain an empty paragraph or similar
+	if !strings.Contains(msg, "<html><body>") {
+		t.Errorf("expected HTML structure")
+	}
+}
