@@ -15,13 +15,16 @@ import (
 )
 
 type mockWSConn struct {
-	mu          sync.Mutex
-	readMsg     func() (int, []byte, error)
-	writeMsg    func(int, []byte) error
-	closeFn     func() error
-	deadlineFn  func(time.Time) error
-	writeLog    []struct{ msgType int; data []byte }
-	closed      bool
+	mu         sync.Mutex
+	readMsg    func() (int, []byte, error)
+	writeMsg   func(int, []byte) error
+	closeFn    func() error
+	deadlineFn func(time.Time) error
+	writeLog   []struct {
+		msgType int
+		data    []byte
+	}
+	closed bool
 }
 
 func (m *mockWSConn) ReadMessage() (int, []byte, error) {
@@ -36,7 +39,10 @@ func (m *mockWSConn) ReadMessage() (int, []byte, error) {
 
 func (m *mockWSConn) WriteMessage(msgType int, data []byte) error {
 	m.mu.Lock()
-	m.writeLog = append(m.writeLog, struct{ msgType int; data []byte }{msgType, append([]byte{}, data...)})
+	m.writeLog = append(m.writeLog, struct {
+		msgType int
+		data    []byte
+	}{msgType, append([]byte{}, data...)})
 	fn := m.writeMsg
 	m.mu.Unlock()
 	if fn != nil {
@@ -301,8 +307,8 @@ func TestWeWorkHandleMessageCallback(t *testing.T) {
 				"req_id": "req-123",
 			},
 			"body": map[string]any{
-				"msgid":   "msg-1",
-				"chatid":  "chat-1",
+				"msgid":    "msg-1",
+				"chatid":   "chat-1",
 				"chattype": chatType,
 				"from": map[string]string{
 					"userid": userID,
@@ -339,7 +345,7 @@ func TestWeWorkHandleMessageCallback(t *testing.T) {
 		}
 		data := makeMsg("text", "", "single", "user1")
 		var raw map[string]any
-		json.Unmarshal(data, &raw)
+		_ = json.Unmarshal(data, &raw)
 		delete(raw["body"].(map[string]any), "text")
 		data, _ = json.Marshal(raw)
 
@@ -620,8 +626,8 @@ func TestWeWorkRejectMessage(t *testing.T) {
 	t.Run("connected sends rejection message", func(t *testing.T) {
 		mock := &mockWSConn{}
 		w := &WeWork{
-			logger: zap.NewNop(),
-			conn:   mock,
+			logger:     zap.NewNop(),
+			conn:       mock,
 			allowUsers: []string{"allowed_user"},
 		}
 		w.rejectMessage("req-reject-1", "unauthorized_user")
@@ -1087,8 +1093,8 @@ func TestWeWorkProactiveMessage(t *testing.T) {
 			t.Fatal("expected write")
 		}
 		var msg struct {
-			Cmd     string         `json:"cmd"`
-			Body    map[string]any `json:"body"`
+			Cmd  string         `json:"cmd"`
+			Body map[string]any `json:"body"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			t.Fatalf("decode: %v", err)
@@ -1118,8 +1124,8 @@ func TestWeWorkProactiveMessage(t *testing.T) {
 			t.Fatal("expected write")
 		}
 		var msg struct {
-			Cmd     string         `json:"cmd"`
-			Body    map[string]any `json:"body"`
+			Cmd  string         `json:"cmd"`
+			Body map[string]any `json:"body"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			t.Fatalf("decode: %v", err)
@@ -1191,8 +1197,8 @@ func TestWeWorkWriteConnected(t *testing.T) {
 			t.Fatal("expected write")
 		}
 		var msg struct {
-			Cmd     string         `json:"cmd"`
-			Body    map[string]any `json:"body"`
+			Cmd  string         `json:"cmd"`
+			Body map[string]any `json:"body"`
 		}
 		if err := json.Unmarshal(data, &msg); err != nil {
 			t.Fatalf("decode: %v", err)

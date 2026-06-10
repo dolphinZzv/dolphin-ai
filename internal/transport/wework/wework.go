@@ -197,13 +197,13 @@ func (w *WeWork) connectAndServe() error {
 
 	w.connMu.Lock()
 	if w.conn != nil {
-		w.conn.Close()
+		_ = w.conn.Close()
 	}
 	w.conn = conn
 	w.connMu.Unlock()
 
 	if err := w.subscribe(conn); err != nil {
-		conn.Close()
+		_ = conn.Close()
 		return fmt.Errorf("subscribe: %w", err)
 	}
 
@@ -412,7 +412,7 @@ func (w *WeWork) rejectMessage(reqID, userID string) {
 	conn := w.conn
 	w.connMu.Unlock()
 	if conn != nil {
-		conn.WriteMessage(websocket.TextMessage, data)
+		_ = conn.WriteMessage(websocket.TextMessage, data)
 	}
 	w.writeMu.Unlock()
 }
@@ -453,9 +453,9 @@ func (w *WeWork) sendPing() {
 	if conn == nil {
 		return
 	}
-	conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	conn.WriteMessage(websocket.TextMessage, data)
-	conn.SetWriteDeadline(time.Time{})
+	_ = conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	_ = conn.WriteMessage(websocket.TextMessage, data)
+	_ = conn.SetWriteDeadline(time.Time{})
 }
 
 // ---------------------------------------------------------------------------
@@ -944,7 +944,7 @@ func (w *WeWork) Close() error {
 
 	w.connMu.Lock()
 	if w.conn != nil {
-		w.conn.Close()
+		_ = w.conn.Close()
 		w.conn = nil
 	}
 	w.connMu.Unlock()
