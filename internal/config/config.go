@@ -97,34 +97,8 @@ func DetectLang() string {
 
 // Validate checks required configuration fields and returns an error if any are missing.
 func (c *Config) Validate() error {
-	// Check for new-style multi-provider config: any known provider with api_key.
-	knownProviders := []string{"openai", "anthropic"}
-	hasProvider := false
-	for _, name := range knownProviders {
-		if c.GetString("llm."+name+".api_key") != "" {
-			hasProvider = true
-			break
-		}
-	}
-	if !hasProvider {
-		// Legacy single-provider mode.
-		provider := c.GetString("llm.provider")
-		if provider == "" {
-			return fmt.Errorf("config: missing llm.provider")
-		}
-		required := []string{"llm.provider", "llm.model", "llm." + provider + ".api_key"}
-		var missing []string
-		for _, key := range required {
-			if c.GetString(key) == "" {
-				missing = append(missing, key)
-			}
-		}
-		if len(missing) > 0 {
-			return fmt.Errorf("config: missing required fields: %s", strings.Join(missing, ", "))
-		}
-	}
-	if c.GetString("llm.model") == "" {
-		return fmt.Errorf("config: missing llm.model")
+	if c.GetString("llm.use") == "" {
+		return fmt.Errorf("config: missing llm.use")
 	}
 	return nil
 }
@@ -277,7 +251,7 @@ func flatten(data map[string]any, prefix string) map[string]any {
 }
 
 // applyEnvOverrides applies DOLPHIN_ prefixed env vars over config values.
-// DOLPHIN_LLM_PROVIDER → key "llm.provider"
+// DOLPHIN_LLM_USE → key "llm.use"
 // Case-insensitive matching preserves the original casing of existing keys
 // (e.g. DOLPHIN_OTEL_HEADERS_AUTHORIZATION matches otel.headers.Authorization).
 func (c *Config) applyEnvOverrides() {

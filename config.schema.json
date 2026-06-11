@@ -13,8 +13,7 @@
       "description": "LLM provider and model configuration. Known fields listed below; any other key is treated as a provider section (e.g. deepseek_anthropic, deepseek_openai).",
       "type": "object",
       "properties": {
-        "provider": { "type": "string", "description": "Default LLM provider name" },
-        "model": { "type": "string", "description": "Default model name" },
+        "use": { "type": "string", "description": "Active model name (references a model from any provider's model list)" },
         "max_tokens": { "type": "integer", "minimum": 1, "default": 4096 },
         "max_retries": { "type": "integer", "minimum": 0, "default": 3 },
         "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Request timeout, e.g. 30s, 5m" },

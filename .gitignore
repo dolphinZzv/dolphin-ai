@@ -44,3 +44,7 @@ screenshots
 .build
 app
 .omo
+
+# Development artifacts
+improvement.md
+e2e/

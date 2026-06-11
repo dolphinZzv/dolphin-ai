@@ -22,13 +22,11 @@ func TestDefaultConfig(t *testing.T) {
 func TestLoadConfigFromMap(t *testing.T) {
 	Convey("LoadConfigFromMap", t, func() {
 		cfg := LoadConfigFromMap(map[string]any{
-			"llm.provider": "anthropic",
-			"llm.model":    "claude-3",
-			"log.level":    "debug",
+			"llm.use":   "claude-3",
+			"log.level": "debug",
 		})
 		So(cfg, ShouldNotBeNil)
-		So(cfg.GetString("llm.provider"), ShouldEqual, "anthropic")
-		So(cfg.GetString("llm.model"), ShouldEqual, "claude-3")
+		So(cfg.GetString("llm.use"), ShouldEqual, "claude-3")
 		So(cfg.GetString("log.level"), ShouldEqual, "debug")
 	})
 }
@@ -38,8 +36,7 @@ func TestLoadConfig(t *testing.T) {
 		dir := t.TempDir()
 		yamlContent := []byte(`
 llm:
-  provider: openai
-  model: gpt-4
+  use: gpt-4
 log:
   level: debug
 `)
@@ -49,8 +46,7 @@ log:
 		cfg, err := LoadConfig(path)
 		So(err, ShouldBeNil)
 		So(cfg, ShouldNotBeNil)
-		So(cfg.GetString("llm.provider"), ShouldEqual, "openai")
-		So(cfg.GetString("llm.model"), ShouldEqual, "gpt-4")
+		So(cfg.GetString("llm.use"), ShouldEqual, "gpt-4")
 		So(cfg.GetString("log.level"), ShouldEqual, "debug")
 	})
 
@@ -134,27 +130,16 @@ func TestConfigSet(t *testing.T) {
 
 func TestConfigValidate(t *testing.T) {
 	Convey("Validate", t, func() {
-		Convey("passes when required fields are present", func() {
+		Convey("passes when llm.use is set", func() {
 			cfg := LoadConfigFromMap(map[string]any{
-				"llm.provider":       "openai",
-				"llm.model":          "gpt-4",
-				"llm.openai.api_key": "sk-test",
+				"llm.use": "gpt-4",
 			})
 			err := cfg.Validate()
 			So(err, ShouldBeNil)
 		})
 
-		Convey("fails when llm.provider is missing", func() {
+		Convey("fails when llm.use is missing", func() {
 			cfg := LoadConfigFromMap(map[string]any{})
-			err := cfg.Validate()
-			So(err, ShouldNotBeNil)
-		})
-
-		Convey("fails when api_key is missing", func() {
-			cfg := LoadConfigFromMap(map[string]any{
-				"llm.provider": "openai",
-				"llm.model":    "gpt-4",
-			})
 			err := cfg.Validate()
 			So(err, ShouldNotBeNil)
 		})
@@ -165,30 +150,28 @@ func TestFlatten(t *testing.T) {
 	Convey("flatten converts nested map to dot notation", t, func() {
 		input := map[string]any{
 			"llm": map[string]any{
-				"provider": "anthropic",
-				"model":    "claude-3",
+				"use": "claude-3",
 			},
 			"log": map[string]any{
 				"level": "info",
 			},
 		}
 		result := flatten(input, "")
-		So(result["llm.provider"], ShouldEqual, "anthropic")
-		So(result["llm.model"], ShouldEqual, "claude-3")
+		So(result["llm.use"], ShouldEqual, "claude-3")
 		So(result["log.level"], ShouldEqual, "info")
 	})
 }
 
 func TestApplyEnvOverrides(t *testing.T) {
 	Convey("applyEnvOverrides applies DOLPHIN_ env vars", t, func() {
-		_ = os.Setenv("DOLPHIN_LLM_MODEL", "gpt-4-turbo")
-		defer func() { _ = os.Unsetenv("DOLPHIN_LLM_MODEL") }()
+		_ = os.Setenv("DOLPHIN_LLM_USE", "gpt-4-turbo")
+		defer func() { _ = os.Unsetenv("DOLPHIN_LLM_USE") }()
 
 		cfg := LoadConfigFromMap(map[string]any{
-			"llm.model": "gpt-4",
+			"llm.use": "gpt-4",
 		})
 		cfg.applyEnvOverrides()
-		So(cfg.GetString("llm.model"), ShouldEqual, "gpt-4-turbo")
+		So(cfg.GetString("llm.use"), ShouldEqual, "gpt-4-turbo")
 	})
 }
 
@@ -267,7 +250,7 @@ func TestGetStringMap(t *testing.T) {
 			"llm.openai.api_key": "sk-abc",
 			"llm.openai.model":   "gpt-4",
 			"llm.anthropic.key":  "sk-xyz",
-			"llm.provider":       "openai",
+			"llm.use":            "openai",
 			"agent.name":         "Dolphin",
 		})
 
@@ -286,7 +269,7 @@ func TestGetStringMap(t *testing.T) {
 
 		Convey("excludes multi-level keys beyond prefix", func() {
 			m := cfg.GetStringMap("llm")
-			So(m["provider"], ShouldEqual, "openai")
+			So(m["use"], ShouldEqual, "openai")
 			So(len(m), ShouldBeGreaterThan, 0)
 		})
 

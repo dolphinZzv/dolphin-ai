@@ -548,7 +548,6 @@ func TestDiscoverProviderNames(t *testing.T) {
 			"llm.openai.api_key":    "sk-abc",
 			"llm.anthropic.api_key": "sk-xyz",
 			"llm.deepseek.api_key":  "sk-123",
-			"llm.provider":          "openai",
 		}
 		names := discoverProviderNames(cfg)
 		if len(names) == 0 {
@@ -564,7 +563,7 @@ func TestDiscoverProviderNames(t *testing.T) {
 	})
 
 	t.Run("returns nil when no providers configured", func(t *testing.T) {
-		cfg := configMap{"llm.model": "gpt-4"}
+		cfg := configMap{"llm.use": "gpt-4"}
 		names := discoverProviderNames(cfg)
 		if names != nil {
 			t.Errorf("expected nil, got %v", names)
@@ -587,21 +586,6 @@ func TestDiscoverProviderNames(t *testing.T) {
 		}
 	})
 
-	t.Run("puts preferred provider first", func(t *testing.T) {
-		cfg := configMap{
-			"llm.openai.api_key":    "sk-abc",
-			"llm.anthropic.api_key": "sk-xyz",
-			"llm.deepseek.api_key":  "sk-123",
-			"llm.provider":          "deepseek",
-		}
-		names := discoverProviderNames(cfg)
-		if len(names) < 2 {
-			t.Fatalf("expected at least 2 providers, got %d", len(names))
-		}
-		if names[0] != "deepseek" {
-			t.Errorf("expected deepseek first, got %s", names[0])
-		}
-	})
 
 	t.Run("empty config", func(t *testing.T) {
 		cfg := configMap{}
@@ -612,42 +596,6 @@ func TestDiscoverProviderNames(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
-// isPreferredProvider
-// ---------------------------------------------------------------------------
-
-func TestIsPreferredProvider(t *testing.T) {
-	t.Run("matches by provider field", func(t *testing.T) {
-		cfg := configMap{"llm.openai.provider": "openai"}
-		if !isPreferredProvider(cfg, "openai", "openai") {
-			t.Error("should match by provider field")
-		}
-	})
-
-	t.Run("matches by api_type", func(t *testing.T) {
-		cfg := configMap{"llm.deepseek.api_type": "anthropic"}
-		if !isPreferredProvider(cfg, "deepseek", "anthropic") {
-			t.Error("should match by api_type")
-		}
-	})
-
-	t.Run("matches by section name", func(t *testing.T) {
-		cfg := configMap{}
-		if !isPreferredProvider(cfg, "claude", "claude") {
-			t.Error("should match by section name")
-		}
-	})
-
-	t.Run("no match", func(t *testing.T) {
-		cfg := configMap{}
-		if isPreferredProvider(cfg, "openai", "anthropic") {
-			t.Error("should not match different names")
-		}
-	})
-}
-
-// ---------------------------------------------------------------------------
-// parseProviderModels
 // ---------------------------------------------------------------------------
 
 func TestParseProviderModels(t *testing.T) {
@@ -1093,8 +1041,7 @@ func TestLLMBootstrapperBootstrap_legacy(t *testing.T) {
 	b := &LLMBootstrapper{}
 	logC := &Context{Config: config.LoadConfigFromMap(map[string]any{
 		"log":          map[string]any{"level": "debug"},
-		"llm.model":    "gpt-4",
-		"llm.provider": "openai",
+		"llm.use":    "gpt-4",
 	})}
 	logB := &LoggerBootstrapper{}
 	if err := logB.Bootstrap(context.Background(), logC); err != nil {
@@ -1102,8 +1049,7 @@ func TestLLMBootstrapperBootstrap_legacy(t *testing.T) {
 	}
 
 	c := &Context{Config: config.LoadConfigFromMap(map[string]any{
-		"llm.model":    "gpt-4",
-		"llm.provider": "openai",
+		"llm.use":    "gpt-4",
 	}), Logger: logC.Logger}
 
 	err := b.Bootstrap(context.Background(), c)
@@ -1260,7 +1206,6 @@ func TestCreateProvider_withConfig(t *testing.T) {
 		"llm.openai.api_key":  "sk-test",
 		"llm.openai.base_url": "http://test",
 		"llm.openai.provider": "openai",
-		"llm.model":           "gpt-4",
 		"llm.max_tokens":      4096,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
@@ -1275,7 +1220,6 @@ func TestCreateProvider_withModels(t *testing.T) {
 		"llm.deepseek.api_key":              "sk-test",
 		"llm.deepseek.provider":             "deepseek",
 		"llm.deepseek.api_type":             "anthropic",
-		"llm.model":                         "deepseek-chat",
 		"llm.deepseek.models.0.name":        "deepseek-chat",
 		"llm.deepseek.models.0.max_tokens":  8192,
 		"llm.deepseek.models.0.temperature": 0.7,

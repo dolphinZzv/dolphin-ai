@@ -16,8 +16,7 @@ func TestPipeline(t *testing.T) {
 			cfg, err := config.LoadConfig("../../config.yaml")
 			if err != nil {
 				cfg = config.LoadConfigFromMap(map[string]any{
-					"llm.provider":       "openai",
-					"llm.model":          "gpt-4o",
+					"llm.use":          "gpt-4o",
 					"llm.openai.api_key": "test-key",
 					"llm.max_retries":    0,
 					"llm.timeout":        "30s",
@@ -41,8 +40,7 @@ func TestPipeline(t *testing.T) {
 
 		Convey("Start and Shutdown work", func() {
 			cfg := config.LoadConfigFromMap(map[string]any{
-				"llm.provider":       "openai",
-				"llm.model":          "gpt-4o",
+				"llm.use":          "gpt-4o",
 				"llm.openai.api_key": "test-key",
 				"llm.max_retries":    0,
 				"llm.timeout":        "30s",
@@ -70,8 +68,7 @@ func TestPipeline(t *testing.T) {
 func TestPipelineSharedSession(t *testing.T) {
 	Convey("Pipeline with session.mode=shared", t, func() {
 		cfg := config.LoadConfigFromMap(map[string]any{
-			"llm.provider":       "openai",
-			"llm.model":          "gpt-4o",
+			"llm.use":          "gpt-4o",
 			"llm.openai.api_key": "test-key",
 			"llm.max_retries":    0,
 			"llm.timeout":        "30s",
@@ -108,8 +105,7 @@ func TestPipelineTokenAccumulation(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.provider":       "openai",
-		"llm.model":          "gpt-4o",
+		"llm.use":          "gpt-4o",
 		"llm.openai.api_key": "test-key",
 		"llm.max_retries":    0,
 		"llm.timeout":        "30s",
@@ -213,8 +209,7 @@ func TestPipelineTokenAccumulationNewSession(t *testing.T) {
 	t.Parallel()
 
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.provider":       "openai",
-		"llm.model":          "gpt-4o",
+		"llm.use":          "gpt-4o",
 		"llm.openai.api_key": "test-key",
 		"llm.max_retries":    0,
 		"llm.timeout":        "30s",

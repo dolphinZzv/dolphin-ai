@@ -2,7 +2,6 @@ package setup
 
 import (
 	"context"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -28,14 +27,9 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	providerNames := discoverProviderNames(c.Config)
 	if len(providerNames) == 0 {
 		// Legacy single-provider mode.
-		providerName := c.Config.GetString("llm.provider")
-		if providerName == "" {
-			providerName = "openai"
-		}
-		c.Logger.Warn("no providers configured via llm.<name>.api_key, falling back to legacy",
-			zap.String("provider", providerName))
-		provider := c.createProvider(providerName, nil)
-		mgr.AddProvider(providerName, provider)
+		c.Logger.Warn("no providers configured via llm.<name>.api_key, falling back to legacy")
+		provider := c.createProvider("openai", nil)
+		mgr.AddProvider("openai", provider)
 	} else {
 		for _, name := range providerNames {
 			models := parseProviderModels(c.Config, name)
@@ -48,7 +42,7 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		}
 	}
 
-	active := c.Config.GetString("llm.model")
+	active := c.Config.GetString("llm.use")
 	if active != "" {
 		mgr.SetActiveModel(active)
 	}
@@ -58,7 +52,6 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 
 // discoverProviderNames finds all provider section names from config.
 // It looks for keys matching llm.<name>.api_key, skipping known LLM-level fields.
-// The result is sorted with preferred provider (matching llm.provider by api_type) first.
 func discoverProviderNames(cfg interface {
 	GetString(string) string
 	Keys() []string
@@ -86,35 +79,7 @@ func discoverProviderNames(cfg interface {
 		return nil
 	}
 
-	// Sort with preferred provider first.
-	// Matches llm.provider against: provider field > api_type > section name.
-	if preferred := cfg.GetString("llm.provider"); preferred != "" {
-		sort.SliceStable(providers, func(i, j int) bool {
-			prefI := isPreferredProvider(cfg, providers[i], preferred)
-			prefJ := isPreferredProvider(cfg, providers[j], preferred)
-			if prefI && !prefJ {
-				return true
-			}
-			if prefJ && !prefI {
-				return false
-			}
-			return i < j
-		})
-	}
-
 	return providers
-}
-
-// matchProvider checks if a provider section matches the preferred value.
-// Checks: provider field > api_type > section name.
-func isPreferredProvider(cfg interface{ GetString(string) string }, name, preferred string) bool {
-	if cfg.GetString("llm."+name+".provider") == preferred {
-		return true
-	}
-	if cfg.GetString("llm."+name+".api_type") == preferred {
-		return true
-	}
-	return name == preferred
 }
 
 func parseProviderModels(cfg interface {
@@ -168,7 +133,6 @@ func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Prov
 		Provider:   name,
 		Vendor:     c.Config.GetString("llm." + name + ".provider"),
 		APIType:    c.Config.GetString("llm." + name + ".api_type"),
-		Model:      c.Config.GetString("llm.model"),
 		APIKey:     c.Config.GetString("llm." + name + ".api_key"),
 		BaseURL:    c.Config.GetString("llm." + name + ".base_url"),
 		MaxTokens:  c.Config.GetInt("llm.max_tokens"),
