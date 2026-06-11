@@ -927,7 +927,6 @@ func TestPanda_HandleMsgPush_HistoricalZeroTimestamp(t *testing.T) {
 	}
 }
 
-
 // --- isImageExt ---
 
 func TestIsImageExt(t *testing.T) {
@@ -1109,7 +1108,6 @@ func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 		t.Fatal("timed out waiting for frame")
 	}
 }
-
 
 // --- helpers ---
 
