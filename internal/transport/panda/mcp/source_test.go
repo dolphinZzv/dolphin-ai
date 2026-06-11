@@ -555,7 +555,6 @@ func TestSendImage_WriteError(t *testing.T) {
 	}
 }
 
-
 // --- helpers ---
 
 func contains(s, substr string) bool {
