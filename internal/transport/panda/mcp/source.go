@@ -19,20 +19,20 @@ func NewFileUploadSource(serverURL string, tokenGetter func() string, writeFn fu
 		logger = zap.NewNop()
 	}
 	return &pandaSource{
-		serverURL:       serverURL,
-		token:           tokenGetter,
-		writeFn:         writeFn,
-		writeContentFn:  writeContentFn,
-		logger:          logger,
+		serverURL:      serverURL,
+		token:          tokenGetter,
+		writeFn:        writeFn,
+		writeContentFn: writeContentFn,
+		logger:         logger,
 	}
 }
 
 type pandaSource struct {
-	serverURL       string
-	token           func() string
-	writeFn         func(ctx context.Context, text string) error
-	writeContentFn  func(ctx context.Context, text string, contentType int) error
-	logger          *zap.Logger
+	serverURL      string
+	token          func() string
+	writeFn        func(ctx context.Context, text string) error
+	writeContentFn func(ctx context.Context, text string, contentType int) error
+	logger         *zap.Logger
 }
 
 func (s *pandaSource) List(ctx context.Context) ([]types.ToolDef, error) {

@@ -90,8 +90,8 @@ type Panda struct {
 	lastSenderID string
 	lastConvID   string
 
-	connectedAt   int64  // unix millis; filters out messages older than this after reconnect
-	firstConnect  bool
+	connectedAt  int64 // unix millis; filters out messages older than this after reconnect
+	firstConnect bool
 }
 
 // NewPanda creates a new panda transport.
