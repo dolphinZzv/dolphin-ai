@@ -8,29 +8,31 @@ import (
 )
 
 type ModelConfig struct {
-	Name        string        `json:"name"`
-	Provider    string        `json:"provider"`
-	Vendor      string        `json:"vendor,omitempty"`
-	APIType     string        `json:"api_type,omitempty"`
-	Model       string        `json:"model"`
-	MaxTokens   int           `json:"max_tokens"`
-	Temperature float64       `json:"temperature"`
-	MaxRetries  int           `json:"max_retries"`
-	Timeout     time.Duration `json:"timeout"`
-	TopP        float64       `json:"top_p"`
-	Stop        []string      `json:"stop"`
+	Name            string        `json:"name"`
+	Provider        string        `json:"provider"`
+	Vendor          string        `json:"vendor,omitempty"`
+	APIType         string        `json:"api_type,omitempty"`
+	Model           string        `json:"model"`
+	MaxTokens       int           `json:"max_tokens"`
+	Temperature     float64       `json:"temperature"`
+	MaxRetries      int           `json:"max_retries"`
+	Timeout         time.Duration `json:"timeout"`
+	TopP            float64       `json:"top_p"`
+	Stop            []string      `json:"stop"`
+	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
 }
 
 type LLMRequest struct {
-	Messages    []types.Message
-	System      string
-	Model       string
-	MaxTokens   int
-	Temperature float64
-	Timeout     time.Duration
-	TopP        float64
-	Stop        []string
-	Tools       []types.ToolDef
+	Messages        []types.Message
+	System          string
+	Model           string
+	MaxTokens       int
+	Temperature     float64
+	Timeout         time.Duration
+	TopP            float64
+	Stop            []string
+	Tools           []types.ToolDef
+	ReasoningEffort string
 }
 
 type LLMChunk struct {

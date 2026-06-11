@@ -195,22 +195,24 @@ func BuildOpenAIRequest(model string, messages []OpenAIMessage, cfg Config, req 
 
 	tools := BuildOpenAITools(req.Tools)
 	body := struct {
-		Model       string          `json:"model"`
-		Messages    []OpenAIMessage `json:"messages"`
-		Temperature float64         `json:"temperature"`
-		TopP        float64         `json:"top_p,omitempty"`
-		MaxTokens   int             `json:"max_tokens"`
-		Stream      bool            `json:"stream"`
-		Stop        []string        `json:"stop,omitempty"`
-		Tools       []OpenAITool    `json:"tools,omitempty"`
+		Model           string          `json:"model"`
+		Messages        []OpenAIMessage `json:"messages"`
+		Temperature     float64         `json:"temperature"`
+		TopP            float64         `json:"top_p,omitempty"`
+		MaxTokens       int             `json:"max_tokens"`
+		Stream          bool            `json:"stream"`
+		Stop            []string        `json:"stop,omitempty"`
+		Tools           []OpenAITool    `json:"tools,omitempty"`
+		ReasoningEffort string          `json:"reasoning_effort,omitempty"`
 	}{
-		Model:       model,
-		Messages:    messages,
-		Temperature: temperature,
-		TopP:        req.TopP,
-		MaxTokens:   req.MaxTokens,
-		Stream:      true,
-		Stop:        req.Stop,
+		Model:           model,
+		Messages:        messages,
+		Temperature:     temperature,
+		TopP:            req.TopP,
+		MaxTokens:       req.MaxTokens,
+		Stream:          true,
+		Stop:            req.Stop,
+		ReasoningEffort: req.ReasoningEffort,
 	}
 	if len(tools) > 0 {
 		body.Tools = tools

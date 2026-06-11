@@ -68,15 +68,20 @@ type AnthropicMessage struct {
 }
 
 type AnthropicRequest struct {
-	Model       string             `json:"model"`
-	Messages    []AnthropicMessage `json:"messages"`
-	System      string             `json:"system,omitempty"`
-	MaxTokens   int                `json:"max_tokens"`
-	Temperature float64            `json:"temperature"`
-	TopP        float64            `json:"top_p,omitempty"`
-	Stream      bool               `json:"stream"`
-	Stop        []string           `json:"stop_sequences,omitempty"`
-	Tools       []AnthropicTool    `json:"tools,omitempty"`
+	Model        string             `json:"model"`
+	Messages     []AnthropicMessage `json:"messages"`
+	System       string             `json:"system,omitempty"`
+	MaxTokens    int                `json:"max_tokens"`
+	Temperature  float64            `json:"temperature"`
+	TopP         float64            `json:"top_p,omitempty"`
+	Stream       bool               `json:"stream"`
+	Stop         []string           `json:"stop_sequences,omitempty"`
+	Tools        []AnthropicTool    `json:"tools,omitempty"`
+	OutputConfig *OutputConfig      `json:"output_config,omitempty"`
+}
+
+type OutputConfig struct {
+	Effort string `json:"effort"`
 }
 
 type AnthropicTool struct {
@@ -202,6 +207,9 @@ func BuildAnthropicRequest(model string, messages []AnthropicMessage, cfg Config
 		TopP:        req.TopP,
 		Stream:      true,
 		Stop:        req.Stop,
+	}
+	if req.ReasoningEffort != "" {
+		body.OutputConfig = &OutputConfig{Effort: req.ReasoningEffort}
 	}
 	if len(req.Tools) > 0 {
 		body.Tools = BuildAnthropicTools(req.Tools)

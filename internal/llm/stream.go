@@ -69,8 +69,9 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 		var payload struct {
 			Choices []struct {
 				Delta struct {
-					Content   string            `json:"content"`
-					ToolCalls []json.RawMessage `json:"tool_calls"`
+					Content           string            `json:"content"`
+					ReasoningContent  string            `json:"reasoning_content"`
+					ToolCalls         []json.RawMessage `json:"tool_calls"`
 				} `json:"delta"`
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
@@ -172,9 +173,14 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 			}, nil
 		}
 
+		thinking := ""
+		if choice.Delta.ReasoningContent != "" {
+			thinking = choice.Delta.ReasoningContent
+		}
 		return LLMChunk{
-			Content: choice.Delta.Content,
-			Done:    choice.FinishReason == "stop",
+			Content:  choice.Delta.Content,
+			Thinking: thinking,
+			Done:     choice.FinishReason == "stop",
 		}, nil
 	}
 

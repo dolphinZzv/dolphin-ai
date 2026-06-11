@@ -196,6 +196,7 @@
             "additionalProperties": false,
             "properties": {
               "name": { "type": "string", "description": "Model name" },
+              "reasoning_effort": { "type": "string", "enum": ["high", "max"], "description": "DeepSeek reasoning effort level" },
               "max_tokens": { "type": "integer", "minimum": 1 },
               "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },
               "max_retries": { "type": "integer", "minimum": 0 },

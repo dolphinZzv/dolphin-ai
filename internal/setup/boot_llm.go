@@ -114,15 +114,16 @@ func parseProviderModels(cfg interface {
 		}
 
 		models = append(models, llm.ModelConfig{
-			Name:        name,
-			Provider:    provider,
-			Vendor:      vendor,
-			APIType:     apiType,
-			Model:       name,
-			MaxTokens:   maxTokens,
-			Temperature: cfg.GetFloat(prefix + ".temperature"),
-			MaxRetries:  maxRetries,
-			Timeout:     timeout,
+			Name:            name,
+			Provider:        provider,
+			Vendor:          vendor,
+			APIType:         apiType,
+			Model:           name,
+			MaxTokens:       maxTokens,
+			Temperature:     cfg.GetFloat(prefix + ".temperature"),
+			MaxRetries:      maxRetries,
+			Timeout:         timeout,
+			ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
 		})
 	}
 	return models
