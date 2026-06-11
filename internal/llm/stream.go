@@ -69,9 +69,9 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 		var payload struct {
 			Choices []struct {
 				Delta struct {
-					Content           string            `json:"content"`
-					ReasoningContent  string            `json:"reasoning_content"`
-					ToolCalls         []json.RawMessage `json:"tool_calls"`
+					Content          string            `json:"content"`
+					ReasoningContent string            `json:"reasoning_content"`
+					ToolCalls        []json.RawMessage `json:"tool_calls"`
 				} `json:"delta"`
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
