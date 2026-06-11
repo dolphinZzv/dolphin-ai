@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -166,7 +169,12 @@ func (p *Panda) Read(ctx context.Context) (string, error) {
 
 // Write sends a text message. If conv_id is configured, uses that;
 // otherwise replies to the conversation the last incoming message came from.
+// Automatically uploads local image paths found in the text.
 func (p *Panda) Write(ctx context.Context, text string) error {
+	if p.token != "" {
+		text = p.autoUploadImages(ctx, text)
+	}
+
 	convID := p.cfg.ConvID
 
 	p.mu.Lock()
@@ -245,6 +253,117 @@ func (p *Panda) WriteContent(ctx context.Context, text string, contentType int) 
 	}
 
 	return p.writeFrame(frame)
+}
+
+// isImageExt returns true if the file extension is a common image format.
+func isImageExt(ext string) bool {
+	ext = strings.ToLower(ext)
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp":
+		return true
+	}
+	return false
+}
+
+// autoUploadImages scans text for local image file paths, uploads them to the
+// panda-ai server, and replaces each path with a markdown image link.
+func (p *Panda) autoUploadImages(ctx context.Context, text string) string {
+	// Quick check for common path patterns — avoids scanning when unnecessary
+	if !strings.ContainsAny(text, "/\\") {
+		return text
+	}
+
+	// Check each whitespace-separated token
+	var result []string
+	for _, token := range strings.Fields(text) {
+		trimmed := strings.Trim(token, "'\"(),.;!?")
+		if isImageExt(filepath.Ext(trimmed)) {
+			if info, err := os.Stat(trimmed); err == nil && !info.IsDir() && info.Size() > 0 {
+				uploaded, err := p.uploadImage(ctx, trimmed)
+				if err == nil && uploaded != "" {
+					fileName := filepath.Base(trimmed)
+					result = append(result, fmt.Sprintf("![%s](%s)", fileName, uploaded))
+					continue
+				}
+			}
+		}
+		result = append(result, token)
+	}
+
+	return strings.Join(result, " ")
+}
+
+// uploadImage uploads a local image file to the panda-ai server and returns the URL.
+func (p *Panda) uploadImage(ctx context.Context, filePath string) (string, error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+
+	ext := strings.ToLower(filepath.Ext(filePath))
+	fileType := 1 // default: file
+	switch ext {
+	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp":
+		fileType = 0 // image
+	case ".mp3", ".wav", ".ogg", ".aac", ".m4a", ".amr":
+		fileType = 2 // audio
+	case ".mp4", ".avi", ".mov", ".wmv", ".flv":
+		fileType = 3 // video
+	}
+
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	fw, err := w.CreateFormFile("file", filepath.Base(filePath))
+	if err != nil {
+		return "", fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := io.Copy(fw, f); err != nil {
+		return "", fmt.Errorf("copy file: %w", err)
+	}
+	w.WriteField("file_type", fmt.Sprintf("%d", fileType))
+	w.Close()
+
+	serverURL := strings.TrimRight(p.cfg.Server, "/")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, serverURL+"/api/v1/files/upload", &buf)
+	if err != nil {
+		return "", fmt.Errorf("create upload request: %w", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+p.token)
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("upload request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("upload failed (status %d)", resp.StatusCode)
+	}
+
+	var envelope struct {
+		Code int             `json:"code"`
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(respData, &envelope); err != nil {
+		return "", fmt.Errorf("parse response: %w", err)
+	}
+	if envelope.Code != 0 {
+		return "", fmt.Errorf("upload rejected (code %d)", envelope.Code)
+	}
+
+	var result struct {
+		URL string `json:"url"`
+	}
+	if err := json.Unmarshal(envelope.Data, &result); err != nil {
+		return "", fmt.Errorf("parse upload data: %w", err)
+	}
+	return result.URL, nil
 }
 
 func (p *Panda) Flush() error { return nil }
