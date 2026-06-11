@@ -20,8 +20,8 @@ import (
 	"dolphin/internal/transport"
 	"dolphin/internal/userio"
 
-	"go.uber.org/zap"
 	"github.com/h2non/gock"
+	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
