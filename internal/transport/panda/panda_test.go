@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -924,6 +926,190 @@ func TestPanda_HandleMsgPush_HistoricalZeroTimestamp(t *testing.T) {
 		t.Fatal("expected message with zero timestamp to pass")
 	}
 }
+
+
+// --- isImageExt ---
+
+func TestIsImageExt(t *testing.T) {
+	tests := []struct {
+		ext      string
+		expected bool
+	}{
+		{".png", true},
+		{".jpg", true},
+		{".jpeg", true},
+		{".gif", true},
+		{".webp", true},
+		{".bmp", true},
+		{".PNG", true},
+		{".JPG", true},
+		{".pdf", false},
+		{".txt", false},
+		{".mp4", false},
+		{".exe", false},
+		{"", false},
+	}
+	for _, tt := range tests {
+		got := isImageExt(tt.ext)
+		if got != tt.expected {
+			t.Errorf("isImageExt(%q) = %v, want %v", tt.ext, got, tt.expected)
+		}
+	}
+}
+
+// --- autoUploadImages ---
+
+func TestAutoUploadImages_LocalPathReplaced(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "screenshot.png")
+	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"code":0,"msg":"ok","data":{"url":"http://example.com/uploaded.png"}}`))
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	result := p.autoUploadImages(context.Background(), tmpFile)
+	if !strings.Contains(result, "![screenshot.png]") {
+		t.Fatalf("expected markdown image link, got: %s", result)
+	}
+	if !strings.Contains(result, "http://example.com/uploaded.png") {
+		t.Fatalf("expected uploaded URL in result, got: %s", result)
+	}
+}
+
+func TestAutoUploadImages_NoPath(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.token = "test-token"
+
+	result := p.autoUploadImages(context.Background(), "hello world")
+	if result != "hello world" {
+		t.Fatalf("expected unchanged text, got: %s", result)
+	}
+}
+
+func TestAutoUploadImages_NoToken(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	// token is empty — autoUploadImages should NOT be called since Write() checks p.token != ""
+	result := p.autoUploadImages(context.Background(), "/tmp/screenshot.png")
+	if result != "/tmp/screenshot.png" {
+		t.Fatalf("expected unchanged text when no token, got: %s", result)
+	}
+}
+
+func TestAutoUploadImages_NonImagePath(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "document.pdf")
+	if err := os.WriteFile(tmpFile, []byte("pdf-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.token = "test-token"
+
+	result := p.autoUploadImages(context.Background(), tmpFile)
+	if !strings.Contains(result, "document.pdf") {
+		t.Fatalf("expected non-image path to remain unchanged, got: %s", result)
+	}
+}
+
+func TestAutoUploadImages_UploadFails(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "fail.png")
+	if err := os.WriteFile(tmpFile, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	result := p.autoUploadImages(context.Background(), tmpFile)
+	if !strings.Contains(result, "fail.png") {
+		t.Fatalf("expected fallback to original path when upload fails, got: %s", result)
+	}
+}
+
+// --- Write with auto-upload ---
+
+func TestPanda_Write_AutoUploadsImage(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "write_test.png")
+	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var uploadCalled bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/files/upload" {
+			uploadCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"code":0,"msg":"ok","data":{"url":"http://example.com/written.png"}}`))
+			return
+		}
+	}))
+	defer srv.Close()
+
+	got := make(chan frame, 1)
+	wsSrv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+		}
+		return nil
+	})
+	defer wsSrv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:   srv.URL,
+		ConvID:   "conv_auto",
+		Account:  "test",
+		Password: "test",
+	}, nil, "test")
+	p.token = "test-token"
+	p.userID = "bot"
+
+	u := "ws://" + wsSrv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	if err := p.Write(context.Background(), tmpFile); err != nil {
+		t.Fatal(err)
+	}
+
+	if !uploadCalled {
+		t.Fatal("expected upload to be called")
+	}
+
+	select {
+	case f := <-got:
+		var payload msgSendPayload
+		if err := json.Unmarshal(f.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(payload.Body, "http://example.com/written.png") {
+			t.Fatalf("expected uploaded URL in body, got: %s", payload.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for frame")
+	}
+}
+
 
 // --- helpers ---
 
