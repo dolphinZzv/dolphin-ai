@@ -255,7 +255,7 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 			ch <- LLMChunk{Error: fmt.Errorf("llm: request failed: %w", err)}
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		cleanup := context.AfterFunc(ctx, func() { resp.Body.Close() })
 		defer cleanup()
@@ -327,7 +327,7 @@ func DiscoverAnthropicModels(cfg Config) ([]ModelConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("llm: discover models: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
