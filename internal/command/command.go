@@ -14,6 +14,20 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// renderModeKey is the context key for the output render mode ("none" or "markdown").
+type renderModeKey struct{}
+
+// RenderModeFrom returns the render mode from the command's context.
+// Returns "none" if not set.
+// RenderModeFrom returns the render mode from the command's context.
+// Returns "none" if not set.
+func RenderModeFrom(cmd *cobra.Command) string {
+	if v := cmd.Context().Value(renderModeKey{}); v != nil {
+		return v.(string)
+	}
+	return "none"
+}
+
 // annotationI18nShort is the annotation key for a dynamic i18n Short description.
 const annotationI18nShort = "i18n_short"
 
@@ -100,11 +114,12 @@ func (r *Registry) Execute(ctx context.Context, line string, renderMode string) 
 	fields := strings.Fields(line)
 	r.root.SetArgs(fields)
 	r.execMu.Lock()
-	r.root.SetContext(ctx)
+	renderCtx := context.WithValue(ctx, renderModeKey{}, renderMode)
+	r.root.SetContext(renderCtx)
 	// Cobra only propagates root.ctx to subcommands when cmd.ctx is nil
 	// (first call). Walk the tree to set ctx on every node so subsequent
 	// calls also get the correct transport info.
-	walkSetContext(r.root, ctx)
+	walkSetContext(r.root, renderCtx)
 	_, _ = r.root.ExecuteC()
 	r.execMu.Unlock()
 	return strings.TrimRight(buf.String(), "\n")

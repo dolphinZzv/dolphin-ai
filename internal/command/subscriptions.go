@@ -27,13 +27,25 @@ func RegisterSubscriptionCmd(r *Registry, br *brain.Brain) {
 				cmd.Println(i18n.T("command.subscription_none"))
 				return nil
 			}
-			cmd.Println(i18n.T("command.subscription_list"))
-			for _, s := range subs {
-				status := i18n.T("command.subscription_disabled")
-				if s.Enabled {
-					status = i18n.T("command.subscription_enabled")
+			if RenderModeFrom(cmd) == "markdown" {
+				cmd.Println("| Name | Description | Event | Status |")
+				cmd.Println("|------|-------------|-------|--------|")
+				for _, s := range subs {
+					status := i18n.T("command.subscription_disabled")
+					if s.Enabled {
+						status = "✅ " + i18n.T("command.subscription_enabled")
+					}
+					cmd.Printf("| %s | %s | `%s` | %s |\n", s.Name, s.Description, s.EventPattern, status)
 				}
-				cmd.Printf("  %s — %s [%s] (%s)\n", s.Name, s.Description, s.EventPattern, status)
+			} else {
+				cmd.Println(i18n.T("command.subscription_list"))
+				for _, s := range subs {
+					status := i18n.T("command.subscription_disabled")
+					if s.Enabled {
+						status = i18n.T("command.subscription_enabled")
+					}
+					cmd.Printf("  %s — %s [%s] (%s)\n", s.Name, s.Description, s.EventPattern, status)
+				}
 			}
 			cmd.Printf(i18n.T("command.subscription_total"), len(subs))
 			return nil
@@ -75,13 +87,25 @@ func RegisterSubscriptionCmd(r *Registry, br *brain.Brain) {
 			cmd.Println(i18n.T("command.subscription_none"))
 			return nil
 		}
-		cmd.Println(i18n.T("command.subscription_list"))
-		for _, s := range subs {
-			status := i18n.T("command.subscription_disabled")
-			if s.Enabled {
-				status = i18n.T("command.subscription_enabled")
+		if RenderModeFrom(cmd) == "markdown" {
+			cmd.Println("| Name | Description | Event | Status |")
+			cmd.Println("|------|-------------|-------|--------|")
+			for _, s := range subs {
+				status := i18n.T("command.subscription_disabled")
+				if s.Enabled {
+					status = "✅ " + i18n.T("command.subscription_enabled")
+				}
+				cmd.Printf("| %s | %s | `%s` | %s |\n", s.Name, s.Description, s.EventPattern, status)
 			}
-			cmd.Printf("  %s — %s [%s] (%s)\n", s.Name, s.Description, s.EventPattern, status)
+		} else {
+			cmd.Println(i18n.T("command.subscription_list"))
+			for _, s := range subs {
+				status := i18n.T("command.subscription_disabled")
+				if s.Enabled {
+					status = i18n.T("command.subscription_enabled")
+				}
+				cmd.Printf("  %s — %s [%s] (%s)\n", s.Name, s.Description, s.EventPattern, status)
+			}
 		}
 		cmd.Printf(i18n.T("command.subscription_total"), len(subs))
 		return nil

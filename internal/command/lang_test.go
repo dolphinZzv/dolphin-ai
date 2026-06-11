@@ -2,6 +2,7 @@ package command
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"sort"
 	"strings"
@@ -81,7 +82,7 @@ func TestLangListViaExecute(t *testing.T) {
 	r := NewRegistry(nil, nil)
 	RegisterLang(r)
 
-	output := r.Execute(nil, "lang", "")
+	output := r.Execute(context.Background(), "lang", "")
 	t.Logf("Execute output:\n%s", output)
 	t.Logf("Execute output bytes: %q", output)
 

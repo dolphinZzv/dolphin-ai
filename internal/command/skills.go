@@ -31,13 +31,26 @@ func RegisterSkills(r *Registry, skillStore interface {
 				cmd.Println("No skills available")
 				return nil
 			}
-			cmd.Println("Available skills:")
-			for _, sk := range skills {
-				enabled := "disabled"
-				if sk.Enabled {
-					enabled = "enabled"
+			if RenderModeFrom(cmd) == "markdown" {
+				cmd.Print("**Available skills:**\n\n")
+				cmd.Println("| Name | Status |")
+				cmd.Println("|------|--------|")
+				for _, sk := range skills {
+					enabled := "disabled"
+					if sk.Enabled {
+						enabled = "✅ enabled"
+					}
+					cmd.Printf("| %s | %s |\n", sk.Name, enabled)
 				}
-				cmd.Printf("  %s (%s)\n", sk.Name, enabled)
+			} else {
+				cmd.Println("Available skills:")
+				for _, sk := range skills {
+					enabled := "disabled"
+					if sk.Enabled {
+						enabled = "enabled"
+					}
+					cmd.Printf("  %s (%s)\n", sk.Name, enabled)
+				}
 			}
 			cmd.Printf("  (total: %d skills)\n", len(skills))
 			return nil

@@ -65,7 +65,12 @@ func RegisterMCP(r *Registry, mgr mcpManager) {
 			// Track categorized tools.
 			categorized := make(map[string]bool, len(defs))
 
-			cmd.Println(i18n.T("command.mcp_loaded"))
+			isMarkdown := RenderModeFrom(cmd) == "markdown"
+			if isMarkdown {
+				cmd.Print("**" + i18n.T("command.mcp_loaded") + "**\n\n")
+			} else {
+				cmd.Println(i18n.T("command.mcp_loaded"))
+			}
 
 			for _, cat := range toolCategories {
 				var matched []types.ToolDef
@@ -81,9 +86,17 @@ func RegisterMCP(r *Registry, mgr mcpManager) {
 				sort.Slice(matched, func(i, j int) bool {
 					return matched[i].Name < matched[j].Name
 				})
-				cmd.Printf("\n  [%s]\n", cat.Name)
-				for _, t := range matched {
-					cmd.Printf("  %s — %s\n", t.Name, t.Description)
+				if isMarkdown {
+					cmd.Printf("### %s\n\n", cat.Name)
+					for _, t := range matched {
+						cmd.Printf("- **%s**: %s\n", t.Name, t.Description)
+					}
+					cmd.Println()
+				} else {
+					cmd.Printf("\n  [%s]\n", cat.Name)
+					for _, t := range matched {
+						cmd.Printf("  %s — %s\n", t.Name, t.Description)
+					}
 				}
 			}
 
@@ -98,22 +111,41 @@ func RegisterMCP(r *Registry, mgr mcpManager) {
 				sort.Slice(other, func(i, j int) bool {
 					return other[i].Name < other[j].Name
 				})
-				cmd.Printf("\n  [%s]\n", i18n.T("command.mcp_other"))
-				for _, t := range other {
-					cmd.Printf("  %s — %s\n", t.Name, t.Description)
+				if isMarkdown {
+					cmd.Printf("### %s\n\n", i18n.T("command.mcp_other"))
+					for _, t := range other {
+						cmd.Printf("- **%s**: %s\n", t.Name, t.Description)
+					}
+					cmd.Println()
+				} else {
+					cmd.Printf("\n  [%s]\n", i18n.T("command.mcp_other"))
+					for _, t := range other {
+						cmd.Printf("  %s — %s\n", t.Name, t.Description)
+					}
 				}
 			}
 
 			// Show source status.
 			sources := mgr.ListActiveSources(ctx)
 			if len(sources) > 0 {
-				cmd.Printf("\n%s\n", i18n.T("command.mcp_sources"))
-				for _, s := range sources {
-					status := i18n.T("command.mcp_enabled")
-					if !s.Enabled {
-						status = i18n.T("command.mcp_disabled")
+				if isMarkdown {
+					cmd.Printf("### %s\n\n", i18n.T("command.mcp_sources"))
+					for _, s := range sources {
+						status := i18n.T("command.mcp_enabled")
+						if !s.Enabled {
+							status = i18n.T("command.mcp_disabled")
+						}
+						cmd.Printf("- **%s**: %s\n", s.Name, status)
 					}
-					cmd.Printf("  %s — %s\n", s.Name, status)
+				} else {
+					cmd.Printf("\n%s\n", i18n.T("command.mcp_sources"))
+					for _, s := range sources {
+						status := i18n.T("command.mcp_enabled")
+						if !s.Enabled {
+							status = i18n.T("command.mcp_disabled")
+						}
+						cmd.Printf("  %s — %s\n", s.Name, status)
+					}
 				}
 			}
 

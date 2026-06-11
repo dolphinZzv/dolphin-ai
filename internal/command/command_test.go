@@ -343,10 +343,14 @@ func TestRegisterLimit(t *testing.T) {
 		r := NewRegistry(mgr, sb)
 
 		cfg := config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests.hard":      "100",
-			"llm.limit.max_input_tokens":       "50000",
-			"llm.limit.max_output_tokens.hard": "100000",
-			"llm.limit.max_total_tokens":       "150000",
+			"llm.limit.max_requests.hard":                "100",
+			"llm.limit.max_input_tokens":                 "50000",
+			"llm.limit.max_output_tokens.hard":           "100000",
+			"llm.limit.max_total_tokens":                 "150000",
+			"llm.openai.api_key":                         "sk-test",
+			"llm.openai.models.0.name":                   "deepseek-v4-flash",
+			"llm.openai.models.0.limit.max_requests":     "50",
+			"llm.openai.models.0.limit.max_total_tokens": "25000",
 		})
 		store := limit.NewMemoryStore()
 		bus := event.NewBus()
@@ -363,6 +367,8 @@ func TestRegisterLimit(t *testing.T) {
 		So(output, ShouldContainSubstring, "input tokens")
 		So(output, ShouldContainSubstring, "output tokens")
 		So(output, ShouldContainSubstring, "total tokens")
+		So(output, ShouldContainSubstring, "deepseek-v4-flash")
+		So(output, ShouldContainSubstring, "50")
 	})
 
 	Convey("RegisterLimit with nil limiter", t, func() {

@@ -29,12 +29,24 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 				cmd.Println("no sessions")
 				return nil
 			}
-			for _, s := range sessions {
-				active := ""
-				if s.Active {
-					active = " [active]"
+			if RenderModeFrom(cmd) == "markdown" {
+				cmd.Println("| ID | Status |")
+				cmd.Println("|----|--------|")
+				for _, s := range sessions {
+					status := ""
+					if s.Active {
+						status = " 🟢 active"
+					}
+					cmd.Printf("| %s%s |\n", s.ID[:8], status)
 				}
-				cmd.Printf("  %s%s\n", s.ID[:8], active)
+			} else {
+				for _, s := range sessions {
+					active := ""
+					if s.Active {
+						active = " [active]"
+					}
+					cmd.Printf("  %s%s\n", s.ID[:8], active)
+				}
 			}
 			return nil
 		},

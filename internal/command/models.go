@@ -45,16 +45,29 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 				active = mgr.ActiveModel()
 			}
 
-			cmd.Println("Available models:")
-			cmd.Printf("   %-30s %-12s %-10s %s\n", "Name", "Vendor", "API Type", "Model")
-			for _, mc := range models {
-				mark := "  "
-				suffix := ""
-				if mc.Name == active {
-					mark = ">>"
-					suffix = " (active)"
+			if RenderModeFrom(cmd) == "markdown" {
+				cmd.Print("**Available models:**\n\n")
+				cmd.Println("| Name | Vendor | API Type | Model |")
+				cmd.Println("|------|--------|----------|-------|")
+				for _, mc := range models {
+					suffix := ""
+					if mc.Name == active {
+						suffix = " 🟢"
+					}
+					cmd.Printf("| %s | %s | %s | %s%s |\n", mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
 				}
-				cmd.Printf("%s %-30s %-12s %-10s %s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+			} else {
+				cmd.Println("Available models:")
+				cmd.Printf("   %-30s %-12s %-10s %s\n", "Name", "Vendor", "API Type", "Model")
+				for _, mc := range models {
+					mark := "  "
+					suffix := ""
+					if mc.Name == active {
+						mark = ">>"
+						suffix = " (active)"
+					}
+					cmd.Printf("%s %-30s %-12s %-10s %s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+				}
 			}
 			cmd.Printf("  (total: %d models)\n", len(models))
 			return nil
@@ -96,16 +109,29 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 			active = mgr.ActiveModel()
 		}
 
-		cmd.Println("Available models:")
-		cmd.Printf("   %-30s %-12s %-10s %s\n", "Name", "Vendor", "API Type", "Model")
-		for _, mc := range models {
-			mark := "  "
-			suffix := ""
-			if mc.Name == active {
-				mark = ">>"
-				suffix = " (active)"
+		if RenderModeFrom(cmd) == "markdown" {
+			cmd.Print("**Available models:**\n\n")
+			cmd.Println("| Name | Vendor | API Type | Model |")
+			cmd.Println("|------|--------|----------|-------|")
+			for _, mc := range models {
+				suffix := ""
+				if mc.Name == active {
+					suffix = " 🟢"
+				}
+				cmd.Printf("| %s | %s | %s | %s%s |\n", mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
 			}
-			cmd.Printf("%s %-30s %-12s %-10s %s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+		} else {
+			cmd.Println("Available models:")
+			cmd.Printf("   %-30s %-12s %-10s %s\n", "Name", "Vendor", "API Type", "Model")
+			for _, mc := range models {
+				mark := "  "
+				suffix := ""
+				if mc.Name == active {
+					mark = ">>"
+					suffix = " (active)"
+				}
+				cmd.Printf("%s %-30s %-12s %-10s %s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+			}
 		}
 		cmd.Printf("  (total: %d models)\n", len(models))
 		return nil

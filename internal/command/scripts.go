@@ -27,13 +27,26 @@ func RegisterScripts(r *Registry, br *brain.Brain) {
 				cmd.Println(i18n.T("command.scripts_none"))
 				return nil
 			}
-			cmd.Println(i18n.T("command.scripts_available"))
-			for _, s := range scripts {
-				status := i18n.T("command.scripts_disabled")
-				if s.Enabled {
-					status = i18n.T("command.scripts_enabled")
+			if RenderModeFrom(cmd) == "markdown" {
+				cmd.Print("**" + i18n.T("command.scripts_available") + "**\n\n")
+				cmd.Println("| Name | Description | Status |")
+				cmd.Println("|------|-------------|--------|")
+				for _, s := range scripts {
+					status := i18n.T("command.scripts_disabled")
+					if s.Enabled {
+						status = "✅ " + i18n.T("command.scripts_enabled")
+					}
+					cmd.Printf("| %s | %s | %s |\n", s.Name, s.Description, status)
 				}
-				cmd.Printf("  %s — %s (%s)\n", s.Name, s.Description, status)
+			} else {
+				cmd.Println(i18n.T("command.scripts_available"))
+				for _, s := range scripts {
+					status := i18n.T("command.scripts_disabled")
+					if s.Enabled {
+						status = i18n.T("command.scripts_enabled")
+					}
+					cmd.Printf("  %s — %s (%s)\n", s.Name, s.Description, status)
+				}
 			}
 			cmd.Printf(i18n.T("command.scripts_total"), len(scripts))
 			return nil
@@ -81,13 +94,26 @@ func RegisterScripts(r *Registry, br *brain.Brain) {
 			cmd.Println(i18n.T("command.scripts_none"))
 			return nil
 		}
-		cmd.Println(i18n.T("command.scripts_available"))
-		for _, s := range scripts {
-			status := i18n.T("command.scripts_disabled")
-			if s.Enabled {
-				status = i18n.T("command.scripts_enabled")
+		if RenderModeFrom(cmd) == "markdown" {
+			cmd.Print("**" + i18n.T("command.scripts_available") + "**\n\n")
+			cmd.Println("| Name | Description | Status |")
+			cmd.Println("|------|-------------|--------|")
+			for _, s := range scripts {
+				status := i18n.T("command.scripts_disabled")
+				if s.Enabled {
+					status = "✅ " + i18n.T("command.scripts_enabled")
+				}
+				cmd.Printf("| %s | %s | %s |\n", s.Name, s.Description, status)
 			}
-			cmd.Printf("  %s — %s (%s)\n", s.Name, s.Description, status)
+		} else {
+			cmd.Println(i18n.T("command.scripts_available"))
+			for _, s := range scripts {
+				status := i18n.T("command.scripts_disabled")
+				if s.Enabled {
+					status = i18n.T("command.scripts_enabled")
+				}
+				cmd.Printf("  %s — %s (%s)\n", s.Name, s.Description, status)
+			}
 		}
 		cmd.Printf(i18n.T("command.scripts_total"), len(scripts))
 		return nil

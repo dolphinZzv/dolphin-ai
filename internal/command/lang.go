@@ -43,15 +43,29 @@ func runLangList(cmd *cobra.Command, args []string) error {
 	}
 	sort.Strings(names)
 
-	cmd.Println(i18n.T("command.lang_available"))
-	for _, code := range names {
-		mark := "  "
-		suffix := ""
-		if code == current {
-			mark = ">>"
-			suffix = " " + i18n.T("command.lang_active")
+	if RenderModeFrom(cmd) == "markdown" {
+		cmd.Println(i18n.T("command.lang_available"))
+		cmd.Println()
+		cmd.Println("| Code | Name |")
+		cmd.Println("|------|------|")
+		for _, code := range names {
+			suffix := ""
+			if code == current {
+				suffix = " 🟢"
+			}
+			cmd.Printf("| %s | %s%s |\n", code, supportedLangs[code], suffix)
 		}
-		cmd.Printf("%s %-6s %s%s\n", mark, code, supportedLangs[code], suffix)
+	} else {
+		cmd.Println(i18n.T("command.lang_available"))
+		for _, code := range names {
+			mark := "  "
+			suffix := ""
+			if code == current {
+				mark = ">>"
+				suffix = " " + i18n.T("command.lang_active")
+			}
+			cmd.Printf("%s %-6s %s%s\n", mark, code, supportedLangs[code], suffix)
+		}
 	}
 	return nil
 }

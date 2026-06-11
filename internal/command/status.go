@@ -61,19 +61,38 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 				}
 			}
 		}
-		cmd.Printf("Provider:      %s\n", providerName)
-		cmd.Printf("Model:         %s\n", activeModel)
+
+		isMarkdown := RenderModeFrom(cmd) == "markdown"
+		if isMarkdown {
+			cmd.Print("**Session Status**\n\n")
+			cmd.Println("| Key | Value |")
+			cmd.Println("|-----|-------|")
+			cmd.Printf("| **Provider** | %s |\n", providerName)
+			cmd.Printf("| **Model** | %s |\n", activeModel)
+		} else {
+			cmd.Printf("Provider:      %s\n", providerName)
+			cmd.Printf("Model:         %s\n", activeModel)
+		}
 
 		sess := sessMgr.Active()
 
-		if sess != nil {
-			cmd.Printf("Session ID:    %s\n", sess.ID)
+		if isMarkdown {
+			if sess != nil {
+				cmd.Printf("| **Session ID** | %s |\n", sess.ID)
+			} else {
+				cmd.Println("| **Session ID** | (none) |")
+			}
+			cmd.Printf("| **Session Mode** | %s |\n", sessionMode)
+			cmd.Printf("| **System Ctx** | %s characters |\n", comma(tokenVal(sess.Get("system_context"))))
 		} else {
-			cmd.Println("Session ID:    (none)")
+			if sess != nil {
+				cmd.Printf("Session ID:    %s\n", sess.ID)
+			} else {
+				cmd.Println("Session ID:    (none)")
+			}
+			cmd.Printf("Session Mode:  %s\n", sessionMode)
+			cmd.Printf("System Ctx:    %s characters\n", comma(tokenVal(sess.Get("system_context"))))
 		}
-
-		cmd.Printf("Session Mode:  %s\n", sessionMode)
-		cmd.Printf("System Ctx:    %s characters\n", comma(tokenVal(sess.Get("system_context"))))
 
 		if sess != nil && mem != nil {
 			msgs, err := mem.Read(context.Background(), sess.ID)
@@ -82,14 +101,25 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 				for _, m := range msgs {
 					totalChars += len(m.Content)
 				}
-				cmd.Printf("Rounds:        %s\n", comma(tokenVal(sess.Get("rounds"))))
-				cmd.Printf("Tool Calls:    %s\n", comma(tokenVal(sess.Get("tool_calls"))))
-				cmd.Printf("Input Tokens:  %s\n", comma(tokenVal(sess.Get("input_tokens"))))
-				cmd.Printf("Output Tokens: %s\n", comma(tokenVal(sess.Get("output_tokens"))))
-				cmd.Printf("Last Input:    %s\n", comma(tokenVal(sess.Get("last_input_tokens"))))
-				cmd.Printf("Last Output:   %s\n", comma(tokenVal(sess.Get("last_output_tokens"))))
-				cmd.Printf("Context:       %d messages, %s characters\n",
-					len(msgs), comma(totalChars))
+				if isMarkdown {
+					cmd.Printf("| **Rounds** | %s |\n", comma(tokenVal(sess.Get("rounds"))))
+					cmd.Printf("| **Tool Calls** | %s |\n", comma(tokenVal(sess.Get("tool_calls"))))
+					cmd.Printf("| **Input Tokens** | %s |\n", comma(tokenVal(sess.Get("input_tokens"))))
+					cmd.Printf("| **Output Tokens** | %s |\n", comma(tokenVal(sess.Get("output_tokens"))))
+					cmd.Printf("| **Last Input** | %s |\n", comma(tokenVal(sess.Get("last_input_tokens"))))
+					cmd.Printf("| **Last Output** | %s |\n", comma(tokenVal(sess.Get("last_output_tokens"))))
+					cmd.Printf("| **Context** | %d messages, %s characters |\n",
+						len(msgs), comma(totalChars))
+				} else {
+					cmd.Printf("Rounds:        %s\n", comma(tokenVal(sess.Get("rounds"))))
+					cmd.Printf("Tool Calls:    %s\n", comma(tokenVal(sess.Get("tool_calls"))))
+					cmd.Printf("Input Tokens:  %s\n", comma(tokenVal(sess.Get("input_tokens"))))
+					cmd.Printf("Output Tokens: %s\n", comma(tokenVal(sess.Get("output_tokens"))))
+					cmd.Printf("Last Input:    %s\n", comma(tokenVal(sess.Get("last_input_tokens"))))
+					cmd.Printf("Last Output:   %s\n", comma(tokenVal(sess.Get("last_output_tokens"))))
+					cmd.Printf("Context:       %d messages, %s characters\n",
+						len(msgs), comma(totalChars))
+				}
 			}
 		}
 
