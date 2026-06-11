@@ -810,6 +810,122 @@ func TestPanda_readLoop_ProcessesFrame(t *testing.T) {
 	}
 }
 
+func TestPanda_WriteContent_Image(t *testing.T) {
+	got := make(chan frame, 1)
+	srv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+		}
+		return nil
+	})
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:   "http://" + srv.Listener.Addr().String(),
+		ConvID:   "conv_42",
+		Account:  "test",
+		Password: "test",
+	}, nil, "test")
+
+	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	if err := p.WriteContent(context.Background(), "http://example.com/img.png", 1); err != nil {
+		t.Fatal(err)
+	}
+
+	select {
+	case f := <-got:
+		if f.Type != msgTypeSend {
+			t.Fatalf("expected msgTypeSend(1), got %d", f.Type)
+		}
+		var payload msgSendPayload
+		if err := json.Unmarshal(f.Payload, &payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.ContentType != 1 {
+			t.Fatalf("expected ContentType=1, got %d", payload.ContentType)
+		}
+		if payload.Body != "http://example.com/img.png" {
+			t.Fatalf("expected body with url, got '%s'", payload.Body)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for frame")
+	}
+}
+
+func TestPanda_WriteContent_NoConv(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	err := p.WriteContent(context.Background(), "hello", 1)
+	if err == nil {
+		t.Fatal("expected error when no conv_id")
+	}
+	if !strings.Contains(err.Error(), "no conv_id") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// --- handleMsgPush historical message filtering ---
+
+func TestPanda_HandleMsgPush_HistoricalMessage(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.userID = "bot"
+	p.allowUsers = []string{"*"}
+	p.connectedAt = 2000 // messages before this timestamp should be filtered
+
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "old message", Timestamp: 1000}
+	data, _ := json.Marshal(push)
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 0 {
+		t.Fatal("expected historical message to be filtered")
+	}
+
+	// Current message should pass
+	push = msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "new message", Timestamp: 3000}
+	data, _ = json.Marshal(push)
+	if err := p.handleMsgPush(data); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected current message to pass")
+	}
+	msg := <-p.msgChan
+	if msg != "new message" {
+		t.Fatalf("expected 'new message', got '%s'", msg)
+	}
+}
+
+func TestPanda_HandleMsgPush_HistoricalZeroTimestamp(t *testing.T) {
+	// When Timestamp is 0 (default), should not be filtered even with connectedAt set
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.userID = "bot"
+	p.allowUsers = []string{"*"}
+	p.connectedAt = 2000
+
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "no timestamp", Timestamp: 0}
+	data, _ := json.Marshal(push)
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message with zero timestamp to pass")
+	}
+}
+
+
 // --- helpers ---
 
 // newTestWSServer creates a WebSocket test server that echoes or handles messages.

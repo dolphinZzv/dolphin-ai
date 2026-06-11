@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"dolphin/internal/transport"
@@ -414,6 +415,146 @@ func TestUploadFile_InvalidResponseJSON(t *testing.T) {
 		t.Fatal("expected error for invalid JSON response")
 	}
 }
+
+// --- SEND_IMAGE tests ---
+
+func TestSendImage_InvalidArgs(t *testing.T) {
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
+
+	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
+	result, err := s.Execute(ctx, types.ToolCall{Name: "SEND_IMAGE", Arguments: `{invalid}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for invalid args")
+	}
+}
+
+func TestSendImage_NoToken(t *testing.T) {
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
+
+	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
+	result, err := s.Execute(ctx, types.ToolCall{Name: "SEND_IMAGE", Arguments: `{"file_path":"/tmp/test.png"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for empty token")
+	}
+	if result.Content != "not authenticated" {
+		t.Fatalf("expected 'not authenticated', got '%s'", result.Content)
+	}
+}
+
+func TestSendImage_FileNotFound(t *testing.T) {
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
+
+	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
+	result, err := s.Execute(ctx, types.ToolCall{Name: "SEND_IMAGE", Arguments: `{"file_path":"/tmp/nonexistent_img_xyz.png"}`})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for nonexistent file")
+	}
+}
+
+func TestSendImage_Success(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "test_send.png")
+	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	var sentBody string
+	var sentContentType int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"code":0,"msg":"ok","data":{"file_id":"file_img","url":"http://example.com/img.png","size":456,"name":"test_send.png","width":100,"height":200}}`))
+	}))
+	defer srv.Close()
+
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error {
+		sentBody = text
+		sentContentType = contentType
+		return nil
+	}, zap.NewNop())
+
+	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
+	result, err := s.Execute(ctx, types.ToolCall{Name: "SEND_IMAGE", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if sentContentType != 1 {
+		t.Fatalf("expected ContentType=1, got %d", sentContentType)
+	}
+	if sentBody != "http://example.com/img.png" {
+		t.Fatalf("expected image URL, got '%s'", sentBody)
+	}
+	if !strings.Contains(result.Content, "sent successfully") {
+		t.Fatalf("expected success message, got: %s", result.Content)
+	}
+}
+
+func TestSendImage_NotAnImage(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "test_send.txt")
+	if err := os.WriteFile(tmpFile, []byte("text data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"code":0,"msg":"ok","data":{"file_id":"file_txt","url":"http://example.com/file.txt","size":99,"name":"test_send.txt","width":0,"height":0}}`))
+	}))
+	defer srv.Close()
+
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
+
+	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
+	result, err := s.Execute(ctx, types.ToolCall{Name: "SEND_IMAGE", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for non-image file")
+	}
+	if !strings.Contains(result.Content, "not a valid image") {
+		t.Fatalf("expected 'not a valid image' error, got: %s", result.Content)
+	}
+}
+
+func TestSendImage_WriteError(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "test_write_err.png")
+	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"code":0,"msg":"ok","data":{"file_id":"file_err","url":"http://example.com/err.png","size":10,"name":"test_write_err.png","width":10,"height":10}}`))
+	}))
+	defer srv.Close()
+
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error {
+		return fmt.Errorf("send failed")
+	}, zap.NewNop())
+
+	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
+	result, err := s.Execute(ctx, types.ToolCall{Name: "SEND_IMAGE", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected error for send failure")
+	}
+}
+
 
 // --- helpers ---
 
