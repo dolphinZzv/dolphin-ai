@@ -272,7 +272,7 @@ func TestAnthropicStreamDecoder_MessageDelta(t *testing.T) {
 
 	dec := NewAnthropicDecoder(strings.NewReader(body))
 
-	dec.Decode() // content
+	_, _ = dec.Decode() // content
 
 	chunk, err := dec.Decode()
 	if err != nil {
@@ -428,7 +428,7 @@ func TestStreamDecoder_DeepSeekCharByChar(t *testing.T) {
 	// Per-character chunks with proper JSON escaping
 	for _, r := range args {
 		escaped := strings.ReplaceAll(string(r), `"`, `\"`)
-		b.WriteString(fmt.Sprintf(`data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"%s"}}]},"finish_reason":null}]}`+"\n\n", escaped))
+		fmt.Fprintf(&b, `data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"%s"}}]},"finish_reason":null}]}`+"\n\n", escaped)
 	}
 
 	// Final chunk: tool_calls finish_reason + usage in same chunk
@@ -538,7 +538,7 @@ func TestBuildOpenAIRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["temperature"] != 1.0 {
 			t.Errorf("expected default temperature 1.0, got %v", body["temperature"])
 		}
@@ -553,7 +553,7 @@ func TestBuildOpenAIRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["temperature"] != 0.5 {
 			t.Errorf("expected 0.5, got %v", body["temperature"])
 		}
@@ -569,7 +569,7 @@ func TestBuildOpenAIRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["temperature"] != 0.3 {
 			t.Errorf("expected 0.3, got %v", body["temperature"])
 		}
@@ -577,8 +577,8 @@ func TestBuildOpenAIRequest(t *testing.T) {
 
 	t.Run("with tools", func(t *testing.T) {
 		req := LLMRequest{
-			Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-			Tools:    []types.ToolDef{{Name: "greet", Description: "Say hello"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Tools:     []types.ToolDef{{Name: "greet", Description: "Say hello"}},
 			MaxTokens: 100,
 		}
 		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
@@ -586,7 +586,7 @@ func TestBuildOpenAIRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if _, ok := body["tools"]; !ok {
 			t.Error("expected tools in body")
 		}
@@ -594,8 +594,8 @@ func TestBuildOpenAIRequest(t *testing.T) {
 
 	t.Run("with stop", func(t *testing.T) {
 		req := LLMRequest{
-			Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-			Stop:     []string{"\n"},
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Stop:      []string{"\n"},
 			MaxTokens: 100,
 		}
 		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
@@ -603,7 +603,7 @@ func TestBuildOpenAIRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["stop"] == nil {
 			t.Error("expected stop field")
 		}
@@ -611,8 +611,8 @@ func TestBuildOpenAIRequest(t *testing.T) {
 
 	t.Run("with top_p", func(t *testing.T) {
 		req := LLMRequest{
-			Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-			TopP:     0.9,
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			TopP:      0.9,
 			MaxTokens: 100,
 		}
 		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
@@ -620,7 +620,7 @@ func TestBuildOpenAIRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["top_p"] != 0.9 {
 			t.Errorf("expected top_p 0.9, got %v", body["top_p"])
 		}
@@ -641,7 +641,7 @@ func TestBuildAnthropicRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["system"] != "You are helpful." {
 			t.Errorf("expected system prompt")
 		}
@@ -662,7 +662,7 @@ func TestBuildAnthropicRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if _, ok := body["tools"]; !ok {
 			t.Error("expected tools in body")
 		}
@@ -680,7 +680,7 @@ func TestBuildAnthropicRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["stop_sequences"] == nil {
 			t.Error("expected stop_sequences field")
 		}
@@ -692,7 +692,7 @@ func TestBuildAnthropicRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["temperature"] != 1.0 {
 			t.Errorf("expected default temperature 1.0, got %v", body["temperature"])
 		}
@@ -708,7 +708,7 @@ func TestBuildAnthropicRequest(t *testing.T) {
 			t.Fatal(err)
 		}
 		var body map[string]any
-		json.Unmarshal(data, &body)
+		_ = json.Unmarshal(data, &body)
 		if body["temperature"] != 0.3 {
 			t.Errorf("expected 0.3, got %v", body["temperature"])
 		}
@@ -1186,4 +1186,3 @@ func TestRootAnthropicProvider_CompleteStreamNetworkError(t *testing.T) {
 		t.Fatal("expected error chunk")
 	}
 }
-

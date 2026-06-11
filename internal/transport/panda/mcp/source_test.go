@@ -230,7 +230,7 @@ func TestFileUpload_Success_NonImage(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if contains(result.Content, "![" ) {
+	if contains(result.Content, "![") {
 		t.Fatal("non-image result should not contain markdown image syntax")
 	}
 }

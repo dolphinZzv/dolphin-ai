@@ -19,10 +19,10 @@ func NewFileUploadSource(serverURL string, tokenGetter func() string, writeFn fu
 		logger = zap.NewNop()
 	}
 	return &pandaSource{
-		serverURL:   serverURL,
-		token:       tokenGetter,
-		writeFn:     writeFn,
-		logger:      logger,
+		serverURL: serverURL,
+		token:     tokenGetter,
+		writeFn:   writeFn,
+		logger:    logger,
 	}
 }
 

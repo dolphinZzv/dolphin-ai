@@ -20,7 +20,7 @@ func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Mem
 	}
 
 	statusCmd := WithI18nShort(&cobra.Command{
-		Use: "status",
+		Use:  "status",
 		RunE: printSessionStatus(sessMgr, mem, sessionMode, llmProvider),
 	}, "command.session_status")
 

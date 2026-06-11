@@ -165,16 +165,16 @@ func parseProviderModels(cfg interface {
 
 func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Provider {
 	cfg := llm.Config{
-		Provider:    name,
-		Vendor:      c.Config.GetString("llm." + name + ".provider"),
-		APIType:     c.Config.GetString("llm." + name + ".api_type"),
-		Model:       c.Config.GetString("llm.model"),
-		APIKey:      c.Config.GetString("llm." + name + ".api_key"),
-		BaseURL:     c.Config.GetString("llm." + name + ".base_url"),
-		MaxTokens:   c.Config.GetInt("llm.max_tokens"),
-		MaxRetries:  c.Config.GetInt("llm.max_retries"),
-		Timeout:     c.Config.GetDuration("llm.timeout"),
-		Headers:     c.Config.GetStringMap("llm." + name + ".headers"),
+		Provider:   name,
+		Vendor:     c.Config.GetString("llm." + name + ".provider"),
+		APIType:    c.Config.GetString("llm." + name + ".api_type"),
+		Model:      c.Config.GetString("llm.model"),
+		APIKey:     c.Config.GetString("llm." + name + ".api_key"),
+		BaseURL:    c.Config.GetString("llm." + name + ".base_url"),
+		MaxTokens:  c.Config.GetInt("llm.max_tokens"),
+		MaxRetries: c.Config.GetInt("llm.max_retries"),
+		Timeout:    c.Config.GetDuration("llm.timeout"),
+		Headers:    c.Config.GetStringMap("llm." + name + ".headers"),
 	}
 	if len(models) > 0 {
 		cfg.Models = models

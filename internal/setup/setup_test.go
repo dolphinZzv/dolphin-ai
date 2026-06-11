@@ -71,7 +71,7 @@ type configMapFull struct {
 	configMap
 	ints      map[string]int
 	floats    map[string]float64
-	 durations map[string]time.Duration
+	durations map[string]time.Duration
 }
 
 func (m configMapFull) GetInt(key string) int {

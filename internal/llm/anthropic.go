@@ -68,15 +68,15 @@ type AnthropicMessage struct {
 }
 
 type AnthropicRequest struct {
-	Model       string           `json:"model"`
+	Model       string             `json:"model"`
 	Messages    []AnthropicMessage `json:"messages"`
-	System      string           `json:"system,omitempty"`
-	MaxTokens   int              `json:"max_tokens"`
-	Temperature float64          `json:"temperature"`
-	TopP        float64          `json:"top_p,omitempty"`
-	Stream      bool             `json:"stream"`
-	Stop        []string         `json:"stop_sequences,omitempty"`
-	Tools       []AnthropicTool  `json:"tools,omitempty"`
+	System      string             `json:"system,omitempty"`
+	MaxTokens   int                `json:"max_tokens"`
+	Temperature float64            `json:"temperature"`
+	TopP        float64            `json:"top_p,omitempty"`
+	Stream      bool               `json:"stream"`
+	Stop        []string           `json:"stop_sequences,omitempty"`
+	Tools       []AnthropicTool    `json:"tools,omitempty"`
 }
 
 type AnthropicTool struct {
@@ -146,7 +146,7 @@ func BuildAnthropicMessages(req LLMRequest, logger *zap.Logger) []AnthropicMessa
 				for _, tc := range m.ToolCalls {
 					var input any = map[string]any{}
 					if tc.Arguments != "" {
-						json.Unmarshal([]byte(tc.Arguments), &input)
+						_ = json.Unmarshal([]byte(tc.Arguments), &input)
 					}
 					blocks = append(blocks, map[string]any{
 						"type":  "tool_use",
