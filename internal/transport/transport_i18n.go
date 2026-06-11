@@ -24,6 +24,10 @@ func init() {
 			"email_no_whitelist":   "Bot whitelist is not configured. Please contact the administrator.",
 			"context_email":        "Current message is from email.",
 
+			// panda
+			"context_panda":        "Current message is from Panda AI IM server. Supports markdown responses.",
+			"panda_no_interactive": "Panda transport does not support interactive permission requests. Add rules to permissions.json.",
+
 			// permission
 			"perm_no_interactive": "transport does not support interactive permission requests, add rules to permissions.json",
 		},
@@ -46,6 +50,10 @@ func init() {
 			"email_denied":         "抱歉，您没有权限向此邮箱发送消息，您的邮件已被忽略。",
 			"email_no_whitelist":   "机器人暂未配置白名单，请联系管理员配置后使用",
 			"context_email":        "当前消息来自邮件",
+
+			// panda
+			"context_panda":        "当前消息来自 Panda AI 即时通讯服务器。支持 markdown 格式回复。",
+			"panda_no_interactive": "Panda 传输不支持交互式权限请求，请在 permissions.json 中添加规则",
 
 			// permission
 			"perm_no_interactive": "该传输方式不支持交互式权限请求，请在 permissions.json 中添加规则",

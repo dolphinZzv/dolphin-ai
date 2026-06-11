@@ -5,8 +5,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"dolphin/internal/llm"
+	_ "dolphin/internal/llm/custom"
+	_ "dolphin/internal/llm/deepseek"
+	_ "dolphin/internal/llm/volcengine"
 
 	"go.uber.org/zap"
 )
@@ -117,6 +121,7 @@ func parseProviderModels(cfg interface {
 	GetString(string) string
 	GetInt(string) int
 	GetFloat(string) float64
+	GetDuration(string) time.Duration
 }, provider string) []llm.ModelConfig {
 	var models []llm.ModelConfig
 	for i := 0; ; i++ {
@@ -127,14 +132,32 @@ func parseProviderModels(cfg interface {
 		}
 		vendor := cfg.GetString("llm." + provider + ".provider")
 		apiType := cfg.GetString("llm." + provider + ".api_type")
+
+		maxTokens := cfg.GetInt(prefix + ".max_tokens")
+		if maxTokens == 0 {
+			maxTokens = cfg.GetInt("llm.max_tokens")
+		}
+
+		maxRetries := cfg.GetInt(prefix + ".max_retries")
+		if maxRetries == 0 {
+			maxRetries = cfg.GetInt("llm.max_retries")
+		}
+
+		timeout := cfg.GetDuration(prefix + ".timeout")
+		if timeout == 0 {
+			timeout = cfg.GetDuration("llm.timeout")
+		}
+
 		models = append(models, llm.ModelConfig{
 			Name:        name,
 			Provider:    provider,
 			Vendor:      vendor,
 			APIType:     apiType,
 			Model:       name,
-			MaxTokens:   cfg.GetInt(prefix + ".max_tokens"),
+			MaxTokens:   maxTokens,
 			Temperature: cfg.GetFloat(prefix + ".temperature"),
+			MaxRetries:  maxRetries,
+			Timeout:     timeout,
 		})
 	}
 	return models
@@ -148,7 +171,6 @@ func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Prov
 		Model:       c.Config.GetString("llm.model"),
 		APIKey:      c.Config.GetString("llm." + name + ".api_key"),
 		BaseURL:     c.Config.GetString("llm." + name + ".base_url"),
-		Temperature: c.Config.GetFloat("llm.temperature"),
 		MaxTokens:   c.Config.GetInt("llm.max_tokens"),
 		MaxRetries:  c.Config.GetInt("llm.max_retries"),
 		Timeout:     c.Config.GetDuration("llm.timeout"),

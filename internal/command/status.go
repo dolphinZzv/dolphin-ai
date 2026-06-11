@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
 
@@ -12,7 +13,7 @@ import (
 )
 
 // RegisterSessionStatus registers the /session status subcommand.
-func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Memory, sessionMode string) {
+func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Memory, sessionMode string, llmProvider llm.Provider) {
 	parent, _, err := r.root.Find(strings.Fields("session"))
 	if err != nil || parent == r.root {
 		return // session command not found
@@ -20,7 +21,7 @@ func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Mem
 
 	statusCmd := WithI18nShort(&cobra.Command{
 		Use: "status",
-		RunE: printSessionStatus(sessMgr, mem, sessionMode),
+		RunE: printSessionStatus(sessMgr, mem, sessionMode, llmProvider),
 	}, "command.session_status")
 
 	parent.AddCommand(statusCmd)
@@ -29,13 +30,40 @@ func RegisterSessionStatus(r *Registry, sessMgr *session.Manager, mem memory.Mem
 	statusAlias := &cobra.Command{
 		Use:   "status",
 		Short: "Show session status",
-		RunE:  printSessionStatus(sessMgr, mem, sessionMode),
+		RunE:  printSessionStatus(sessMgr, mem, sessionMode, llmProvider),
 	}
 	r.Register(statusAlias)
 }
 
-func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode string) func(cmd *cobra.Command, args []string) error {
+func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode string, llmProvider llm.Provider) func(cmd *cobra.Command, args []string) error {
 	return func(cmd *cobra.Command, args []string) error {
+		// LLM provider & model info.
+		providerName := "unknown"
+		activeModel := "unknown"
+		if llmProvider != nil {
+			providerName = llmProvider.Name()
+			if a, ok := llmProvider.(interface{ ActiveModel() string }); ok {
+				if m := a.ActiveModel(); m != "" {
+					activeModel = m
+				}
+			}
+			if mm, ok := llmProvider.(interface {
+				Models(ctx context.Context) ([]llm.ModelConfig, error)
+				ActiveModel() string
+			}); ok {
+				if models, err := mm.Models(context.Background()); err == nil {
+					for _, mc := range models {
+						if mc.Name == mm.ActiveModel() && mc.Provider != "" {
+							providerName = mc.Provider
+							break
+						}
+					}
+				}
+			}
+		}
+		cmd.Printf("Provider:      %s\n", providerName)
+		cmd.Printf("Model:         %s\n", activeModel)
+
 		sess := sessMgr.Active()
 
 		if sess != nil {

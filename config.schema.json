@@ -15,7 +15,6 @@
       "properties": {
         "provider": { "type": "string", "description": "Default LLM provider name" },
         "model": { "type": "string", "description": "Default model name" },
-        "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },
         "max_tokens": { "type": "integer", "minimum": 1, "default": 4096 },
         "max_retries": { "type": "integer", "minimum": 0, "default": 3 },
         "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Request timeout, e.g. 30s, 5m" },
@@ -44,7 +43,8 @@
         "max_size": { "type": "integer", "description": "Max log file size in MB", "default": 100 },
         "max_backups": { "type": "integer", "default": 30 },
         "max_age": { "type": "integer", "description": "Max days to retain logs", "default": 30 },
-        "compress": { "type": "boolean", "default": true }
+        "compress": { "type": "boolean", "default": true },
+        "rotate_interval": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Log rotation interval, e.g. 24h" }
       }
     },
     "tool": {
@@ -122,6 +122,17 @@
         "allow_users": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "panda": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "server": { "type": "string", "format": "uri" },
+        "account": { "type": "string" },
+        "password": { "type": "string" },
+        "allow_users": { "type": "array", "items": { "type": "string" } }
+      }
+    },
     "email": {
       "type": "object",
       "additionalProperties": false,
@@ -187,7 +198,9 @@
             "properties": {
               "name": { "type": "string", "description": "Model name" },
               "max_tokens": { "type": "integer", "minimum": 1 },
-              "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+              "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },
+              "max_retries": { "type": "integer", "minimum": 0 },
+              "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Request timeout, e.g. 30s, 5m" },
               "limit": {
                 "type": "object",
                 "description": "Per-model usage limits",

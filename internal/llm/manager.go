@@ -124,6 +124,15 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 	for _, mc := range m.models {
 		if mc.Name == modelName {
 			apiModel = mc.Model
+			if mc.Temperature != 0 {
+				req.Temperature = mc.Temperature
+			}
+			if mc.MaxTokens != 0 {
+				req.MaxTokens = mc.MaxTokens
+			}
+			if mc.Timeout != 0 {
+				req.Timeout = mc.Timeout
+			}
 			break
 		}
 	}

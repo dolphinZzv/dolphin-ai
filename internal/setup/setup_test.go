@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/brain"
@@ -65,11 +66,12 @@ func (m configMap) Keys() []string {
 	return keys
 }
 
-// configMapFull implements GetString, GetInt, GetFloat for parseProviderModels.
+// configMapFull implements GetString, GetInt, GetFloat, GetDuration for parseProviderModels.
 type configMapFull struct {
 	configMap
-	ints   map[string]int
-	floats map[string]float64
+	ints      map[string]int
+	floats    map[string]float64
+	 durations map[string]time.Duration
 }
 
 func (m configMapFull) GetInt(key string) int {
@@ -84,6 +86,13 @@ func (m configMapFull) GetFloat(key string) float64 {
 		return 0
 	}
 	return m.floats[key]
+}
+
+func (m configMapFull) GetDuration(key string) time.Duration {
+	if m.durations == nil {
+		return 0
+	}
+	return m.durations[key]
 }
 
 // ---------------------------------------------------------------------------
@@ -1253,7 +1262,6 @@ func TestCreateProvider_withConfig(t *testing.T) {
 		"llm.openai.provider": "openai",
 		"llm.model":           "gpt-4",
 		"llm.max_tokens":      4096,
-		"llm.temperature":     0.7,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
 	provider := c.createProvider("openai", nil)

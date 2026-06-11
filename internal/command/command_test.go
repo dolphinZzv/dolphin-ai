@@ -443,7 +443,7 @@ func TestRegisterSessionStatus(t *testing.T) {
 		mem := memory.NewFileMemory(t.TempDir(), 100)
 		mem.Write(context.Background(), sess.ID, types.Message{Role: types.RoleUser, Content: "hello"})
 
-		RegisterSessionStatus(r, mgr, mem, "shared")
+		RegisterSessionStatus(r, mgr, mem, "shared", nil)
 
 		Convey("status shows session info", func() {
 			output := r.Execute(context.Background(), "session status", "")
@@ -470,7 +470,7 @@ func TestRegisterSessionStatusWithMode(t *testing.T) {
 		sess := mgr.Create(context.Background())
 		sess.Set("rounds", 3)
 
-		RegisterSessionStatus(r, mgr, mem, "per_transport")
+		RegisterSessionStatus(r, mgr, mem, "per_transport", nil)
 		output := r.Execute(context.Background(), "session status", "")
 		So(output, ShouldContainSubstring, sess.ID[:8])
 		So(output, ShouldContainSubstring, "per_transport")
@@ -640,7 +640,7 @@ func TestAllRegistrationCommandsNoPanic(t *testing.T) {
 		RegisterLimit(r, nil)
 		RegisterScheduler(r, &mockSchedLister{})
 		RegisterSkills(r, skill.NewFileStore(t.TempDir()))
-		RegisterSessionStatus(r, mgr, memory.NewFileMemory(t.TempDir(), 10), "shared")
+		RegisterSessionStatus(r, mgr, memory.NewFileMemory(t.TempDir(), 10), "shared", nil)
 
 		So(func() { r.Execute(context.Background(), "context", "") }, ShouldNotPanic)
 		So(func() { r.Execute(context.Background(), "scheduler", "") }, ShouldNotPanic)

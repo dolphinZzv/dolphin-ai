@@ -145,7 +145,26 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 			tcs = append(tcs, transportConfig{Type: "email", Config: emailCfg})
 		}
 	}
-	if cfg.GetBool("wework.enabled") {
+	if cfg.GetBool("panda.enabled") {
+			pandaServer := cfg.GetString("panda.server")
+			pandaAccount := cfg.GetString("panda.account")
+			pandaPassword := cfg.GetString("panda.password")
+			if !hasTransportType(tcs, "panda") && pandaServer != "" && pandaAccount != "" && pandaPassword != "" {
+				tcs = append(tcs, transportConfig{
+					Type: "panda",
+					Config: map[string]any{
+						"type":        "panda",
+						"agent_name":  agentName,
+						"server":      pandaServer,
+						"account":     pandaAccount,
+						"password":    pandaPassword,
+						"conv_id":     cfg.GetString("panda.conv_id"),
+						"allow_users": configListOrString(cfg, "panda.allow_users"),
+					},
+				})
+			}
+		}
+		if cfg.GetBool("wework.enabled") {
 		botID := cfg.GetString("wework.bot_id")
 		botSecret := cfg.GetString("wework.bot_secret")
 		if botID == "" {

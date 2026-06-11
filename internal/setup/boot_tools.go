@@ -50,7 +50,7 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	command.RegisterSkills(c.CmdReg, c.SkillStore)
 	command.RegisterModels(c.CmdReg, c.LLMProvider)
 	command.RegisterLimit(c.CmdReg, c.Limit)
-	command.RegisterSessionStatus(c.CmdReg, c.SessionMgr, c.Mem, c.Config.GetString("session.mode"))
+	command.RegisterSessionStatus(c.CmdReg, c.SessionMgr, c.Mem, c.Config.GetString("session.mode"), c.LLMProvider)
 	command.RegisterContext(c.CmdReg, func(ctx context.Context) (string, error) {
 		cbs := &agentloop.ContextBuilderStage{
 			SkillStore: c.SkillStore,

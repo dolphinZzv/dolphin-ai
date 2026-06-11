@@ -8,350 +8,170 @@ import (
 	"io"
 	"strings"
 	"testing"
+	"time"
 
 	"dolphin/internal/types"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
 )
 
-func TestNewProvider_OpenAI(t *testing.T) {
-	p := NewProvider(Config{Provider: "openai", APIKey: "key"}, zap.NewNop())
-	if p.Name() != "openai" {
-		t.Fatalf("expected 'openai', got '%s'", p.Name())
+func TestOpenAIBuildMessages_WithToolCalls(t *testing.T) {
+	msgs := BuildOpenAIMessages(LLMRequest{
+		Messages: []types.Message{
+			{
+				Role:    types.RoleAssistant,
+				Content: "I'll call a tool",
+				ToolCalls: []types.ToolCall{
+					{ID: "call-1", Name: "greet", Arguments: `{"name":"world"}`},
+				},
+			},
+			{
+				Role:       types.RoleTool,
+				ToolCallID: "call-1",
+				Content:    "Hello, world!",
+			},
+		},
+	}, zap.NewNop())
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+	if msgs[0].Role != "assistant" {
+		t.Fatalf("expected 'assistant', got '%s'", msgs[0].Role)
+	}
+	if msgs[0].Content != nil {
+		t.Fatalf("expected nil content for assistant with tool calls")
+	}
+	if len(msgs[0].ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(msgs[0].ToolCalls))
+	}
+	if msgs[1].Role != "tool" {
+		t.Fatalf("expected 'tool', got '%s'", msgs[1].Role)
+	}
+	if msgs[1].ToolCallID != "call-1" {
+		t.Fatalf("expected 'call-1', got '%s'", msgs[1].ToolCallID)
 	}
 }
 
-func TestNewProvider_Anthropic(t *testing.T) {
-	p := NewProvider(Config{Provider: "anthropic", APIKey: "key"}, zap.NewNop())
-	if p.Name() != "anthropic" {
-		t.Fatalf("expected 'anthropic', got '%s'", p.Name())
+func TestAnthropicBuildMessages_WithToolCalls(t *testing.T) {
+	msgs := BuildAnthropicMessages(LLMRequest{
+		Messages: []types.Message{
+			{
+				Role:    types.RoleAssistant,
+				Content: "I'll call a tool",
+				ToolCalls: []types.ToolCall{
+					{ID: "call-1", Name: "greet", Arguments: `{"name":"world"}`},
+				},
+			},
+			{
+				Role:       types.RoleTool,
+				ToolCallID: "call-1",
+				Content:    "Hello, world!",
+			},
+		},
+	}, zap.NewNop())
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
 	}
-}
-
-func TestNewProvider_UnknownDefaultsToOpenAI(t *testing.T) {
-	p := NewProvider(Config{Provider: "unknown", APIKey: "key"}, zap.NewNop())
-	if p.Name() != "openai" {
-		t.Fatalf("expected 'openai', got '%s'", p.Name())
-	}
-}
-
-func TestOpenAIProvider_CompleteStream(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.openai.com").
-		Post("/v1/chat/completions").
-		Reply(200).
-		BodyString("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n")
-
-	provider := &openAIProvider{
-		cfg:    Config{Model: "gpt-4", APIKey: "test-key"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
+	var parsed []map[string]any
+	if err := json.Unmarshal(msgs[0].Content, &parsed); err != nil {
 		t.Fatal(err)
 	}
-
-	var content string
-	for chunk := range ch {
-		if chunk.Error != nil {
-			t.Fatal(chunk.Error)
-		}
-		content += chunk.Content
+	// Should have text + tool_use blocks
+	if len(parsed) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(parsed))
 	}
-
-	if content != "Hello world" {
-		t.Fatalf("expected 'Hello world', got '%s'", content)
+	if parsed[0]["type"] != "text" {
+		t.Fatalf("expected 'text', got '%s'", parsed[0]["type"])
+	}
+	if parsed[1]["type"] != "tool_use" {
+		t.Fatalf("expected 'tool_use', got '%s'", parsed[1]["type"])
+	}
+	// Tool result should be a user message with tool_result block
+	if err := json.Unmarshal(msgs[1].Content, &parsed); err != nil {
+		t.Fatal(err)
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("expected 1 content block, got %d", len(parsed))
+	}
+	if parsed[0]["type"] != "tool_result" {
+		t.Fatalf("expected 'tool_result', got '%s'", parsed[0]["type"])
 	}
 }
 
-func TestOpenAIProvider_CompleteStreamHTTPError(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.openai.com").
-		Post("/v1/chat/completions").
-		Reply(401).
-		JSON(map[string]any{
-			"error": map[string]any{"message": "Invalid API key"},
-		})
-
-	provider := &openAIProvider{
-		cfg:    Config{Model: "gpt-4", APIKey: "bad-key"},
-		logger: zap.NewNop(),
+func TestAnthropicBuildMessages_WithThinking(t *testing.T) {
+	msgs := BuildAnthropicMessages(LLMRequest{
+		Messages: []types.Message{
+			{
+				Role:              types.RoleAssistant,
+				Content:           "visible text",
+				Thinking:          "hidden reasoning",
+				ThinkingSignature: "sig-abc",
+			},
+		},
+	}, zap.NewNop())
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
+	var parsed []map[string]any
+	if err := json.Unmarshal(msgs[0].Content, &parsed); err != nil {
 		t.Fatal(err)
 	}
-
-	chunk := <-ch
-	if chunk.Error == nil {
-		t.Fatal("expected error chunk")
+	if len(parsed) != 2 {
+		t.Fatalf("expected 2 content blocks, got %d", len(parsed))
 	}
-	if !strings.Contains(chunk.Error.Error(), "Invalid API key") {
-		t.Fatalf("unexpected error: %v", chunk.Error)
+	if parsed[0]["type"] != "thinking" {
+		t.Fatalf("expected first block type 'thinking', got '%s'", parsed[0]["type"])
+	}
+	if parsed[0]["thinking"] != "hidden reasoning" {
+		t.Fatalf("expected thinking 'hidden reasoning', got '%v'", parsed[0]["thinking"])
+	}
+	if parsed[0]["signature"] != "sig-abc" {
+		t.Fatalf("expected signature 'sig-abc', got '%v'", parsed[0]["signature"])
+	}
+	if parsed[1]["type"] != "text" {
+		t.Fatalf("expected second block type 'text', got '%s'", parsed[1]["type"])
+	}
+	if parsed[1]["text"] != "visible text" {
+		t.Fatalf("expected text 'visible text', got '%v'", parsed[1]["text"])
 	}
 }
 
-func TestOpenAIProvider_CompleteStreamHTTPErrorNoMessage(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.openai.com").
-		Post("/v1/chat/completions").
-		Reply(500).
-		BodyString("Internal Server Error")
-
-	provider := &openAIProvider{
-		cfg:    Config{Model: "gpt-4", APIKey: "key"},
-		logger: zap.NewNop(),
+func TestBuildOpenAITools(t *testing.T) {
+	tools := []types.ToolDef{
+		{Name: "greet", Description: "Say hello", Schema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "echo", Description: "Echo input"},
 	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
+	result := BuildOpenAITools(tools)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(result))
 	}
-
-	chunk := <-ch
-	if chunk.Error == nil {
-		t.Fatal("expected error chunk")
+	if result[0].Function.Name != "greet" {
+		t.Fatalf("expected 'greet', got '%s'", result[0].Function.Name)
 	}
-	if !strings.Contains(chunk.Error.Error(), "500") {
-		t.Fatalf("expected status 500 in error, got: %v", chunk.Error)
+	if result[0].Function.Description != "Say hello" {
+		t.Fatalf("unexpected description: %s", result[0].Function.Description)
+	}
+	// nil schema should become {"type":"object"}
+	if string(result[1].Function.Parameters) != `{"type":"object"}` {
+		t.Fatalf("expected default schema, got %s", string(result[1].Function.Parameters))
 	}
 }
 
-func TestOpenAIProvider_CompleteStreamNetworkError(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.openai.com").
-		Post("/v1/chat/completions").
-		ReplyError(errors.New("connection timeout"))
-
-	provider := &openAIProvider{
-		cfg:    Config{Model: "gpt-4", APIKey: "key"},
-		logger: zap.NewNop(),
+func TestBuildAnthropicTools(t *testing.T) {
+	tools := []types.ToolDef{
+		{Name: "greet", Description: "Say hello", Schema: json.RawMessage(`{"type":"object"}`)},
+		{Name: "echo", Description: "Echo input"},
 	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
+	result := BuildAnthropicTools(tools)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(result))
 	}
-
-	chunk := <-ch
-	if chunk.Error == nil {
-		t.Fatal("expected error chunk")
+	if result[0].Name != "greet" {
+		t.Fatalf("expected 'greet', got '%s'", result[0].Name)
 	}
-	if !strings.Contains(chunk.Error.Error(), "connection timeout") {
-		t.Fatalf("unexpected error: %v", chunk.Error)
-	}
-}
-
-func TestOpenAIProvider_CompleteStreamCustomBaseURL(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://custom.example.com").
-		Post("/v1/chat/completions").
-		Reply(200).
-		BodyString("data: {\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\ndata: [DONE]\n")
-
-	provider := &openAIProvider{
-		cfg:    Config{Model: "gpt-4", APIKey: "key", BaseURL: "https://custom.example.com"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var content string
-	for chunk := range ch {
-		if chunk.Error != nil {
-			t.Fatal(chunk.Error)
-		}
-		content += chunk.Content
-	}
-
-	if content != "ok" {
-		t.Fatalf("expected 'ok', got '%s'", content)
-	}
-}
-
-func TestOpenAIProvider_CompleteStreamEmptyResponse(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.openai.com").
-		Post("/v1/chat/completions").
-		Reply(200).
-		BodyString("")
-
-	provider := &openAIProvider{
-		cfg:    Config{Model: "gpt-4", APIKey: "key"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var chunks int
-	for chunk := range ch {
-		chunks++
-		if chunk.Error != nil {
-			t.Fatal(chunk.Error)
-		}
-		_ = chunk.Done
-	}
-
-	if chunks != 1 {
-		t.Fatalf("expected 1 chunk (Done), got %d", chunks)
-	}
-}
-
-func TestAnthropicProvider_CompleteStream(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.anthropic.com").
-		Post("/v1/messages").
-		Reply(200).
-		BodyString("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello\"}}\n\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\" world\"}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\ndata: {\"type\":\"message_stop\"}\n")
-
-	provider := &anthropicProvider{
-		cfg:    Config{Model: "claude-3-opus", APIKey: "ant-key"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var content string
-	var done bool
-	for chunk := range ch {
-		if chunk.Error != nil {
-			t.Fatal(chunk.Error)
-		}
-		content += chunk.Content
-		if chunk.Done {
-			done = true
-		}
-	}
-
-	if content != "Hello world" {
-		t.Fatalf("expected 'Hello world', got '%s'", content)
-	}
-	if !done {
-		t.Fatal("expected done signal")
-	}
-}
-
-func TestAnthropicProvider_CompleteStreamHTTPError(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.anthropic.com").
-		Post("/v1/messages").
-		Reply(400).
-		JSON(map[string]any{
-			"error": map[string]any{"message": "Invalid request"},
-		})
-
-	provider := &anthropicProvider{
-		cfg:    Config{Model: "claude-3", APIKey: "key"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	chunk := <-ch
-	if chunk.Error == nil {
-		t.Fatal("expected error chunk")
-	}
-	if !strings.Contains(chunk.Error.Error(), "Invalid request") {
-		t.Fatalf("unexpected error: %v", chunk.Error)
-	}
-}
-
-func TestAnthropicProvider_CompleteStreamNetworkError(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.anthropic.com").
-		Post("/v1/messages").
-		ReplyError(errors.New("connection refused"))
-
-	provider := &anthropicProvider{
-		cfg:    Config{Model: "claude-3", APIKey: "key"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	chunk := <-ch
-	if chunk.Error == nil {
-		t.Fatal("expected error chunk")
-	}
-	if !strings.Contains(chunk.Error.Error(), "connection refused") {
-		t.Fatalf("unexpected error: %v", chunk.Error)
-	}
-}
-
-func TestAnthropicProvider_CompleteStreamCustomBaseURL(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://custom.anthropic.com").
-		Post("/v1/messages").
-		Reply(200).
-		BodyString("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hi\"}}\n\ndata: {\"type\":\"message_stop\"}\n")
-
-	provider := &anthropicProvider{
-		cfg:    Config{Model: "claude-3", APIKey: "key", BaseURL: "https://custom.anthropic.com"},
-		logger: zap.NewNop(),
-	}
-
-	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	var content string
-	for chunk := range ch {
-		if chunk.Error != nil {
-			t.Fatal(chunk.Error)
-		}
-		content += chunk.Content
-	}
-
-	if content != "hi" {
-		t.Fatalf("expected 'hi', got '%s'", content)
+	// nil schema should become {"type":"object"}
+	if string(result[1].InputSchema) != `{"type":"object"}` {
+		t.Fatalf("expected default schema, got %s", string(result[1].InputSchema))
 	}
 }
 
@@ -594,169 +414,6 @@ func TestDefaultSchema_NonEmpty(t *testing.T) {
 	}
 }
 
-func TestBuildOpenAITools(t *testing.T) {
-	tools := []types.ToolDef{
-		{Name: "greet", Description: "Say hello", Schema: json.RawMessage(`{"type":"object"}`)},
-		{Name: "echo", Description: "Echo input"},
-	}
-	result := buildOpenAITools(tools)
-	if len(result) != 2 {
-		t.Fatalf("expected 2 tools, got %d", len(result))
-	}
-	if result[0].Function.Name != "greet" {
-		t.Fatalf("expected 'greet', got '%s'", result[0].Function.Name)
-	}
-	if result[0].Function.Description != "Say hello" {
-		t.Fatalf("unexpected description: %s", result[0].Function.Description)
-	}
-	// nil schema should become {"type":"object"}
-	if string(result[1].Function.Parameters) != `{"type":"object"}` {
-		t.Fatalf("expected default schema, got %s", string(result[1].Function.Parameters))
-	}
-}
-
-func TestBuildAnthropicTools(t *testing.T) {
-	tools := []types.ToolDef{
-		{Name: "greet", Description: "Say hello", Schema: json.RawMessage(`{"type":"object"}`)},
-		{Name: "echo", Description: "Echo input"},
-	}
-	result := buildAnthropicTools(tools)
-	if len(result) != 2 {
-		t.Fatalf("expected 2 tools, got %d", len(result))
-	}
-	if result[0].Name != "greet" {
-		t.Fatalf("expected 'greet', got '%s'", result[0].Name)
-	}
-	// nil schema should become {"type":"object"}
-	if string(result[1].InputSchema) != `{"type":"object"}` {
-		t.Fatalf("expected default schema, got %s", string(result[1].InputSchema))
-	}
-}
-
-func TestOpenAIBuildMessages_WithToolCalls(t *testing.T) {
-	provider := &openAIProvider{cfg: Config{}, logger: zap.NewNop()}
-	msgs := provider.buildOpenAIMessages(LLMRequest{
-		Messages: []types.Message{
-			{
-				Role:    types.RoleAssistant,
-				Content: "I'll call a tool",
-				ToolCalls: []types.ToolCall{
-					{ID: "call-1", Name: "greet", Arguments: `{"name":"world"}`},
-				},
-			},
-			{
-				Role:       types.RoleTool,
-				ToolCallID: "call-1",
-				Content:    "Hello, world!",
-			},
-		},
-	})
-	if len(msgs) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(msgs))
-	}
-	if msgs[0].Role != "assistant" {
-		t.Fatalf("expected 'assistant', got '%s'", msgs[0].Role)
-	}
-	if msgs[0].Content != nil {
-		t.Fatalf("expected nil content for assistant with tool calls")
-	}
-	if len(msgs[0].ToolCalls) != 1 {
-		t.Fatalf("expected 1 tool call, got %d", len(msgs[0].ToolCalls))
-	}
-	if msgs[1].Role != "tool" {
-		t.Fatalf("expected 'tool', got '%s'", msgs[1].Role)
-	}
-	if msgs[1].ToolCallID != "call-1" {
-		t.Fatalf("expected 'call-1', got '%s'", msgs[1].ToolCallID)
-	}
-}
-
-func TestAnthropicBuildMessages_WithToolCalls(t *testing.T) {
-	provider := &anthropicProvider{cfg: Config{}, logger: zap.NewNop()}
-	msgs := provider.buildAnthropicMessages(LLMRequest{
-		Messages: []types.Message{
-			{
-				Role:    types.RoleAssistant,
-				Content: "I'll call a tool",
-				ToolCalls: []types.ToolCall{
-					{ID: "call-1", Name: "greet", Arguments: `{"name":"world"}`},
-				},
-			},
-			{
-				Role:       types.RoleTool,
-				ToolCallID: "call-1",
-				Content:    "Hello, world!",
-			},
-		},
-	})
-	if len(msgs) != 2 {
-		t.Fatalf("expected 2 messages, got %d", len(msgs))
-	}
-	var parsed []map[string]any
-	if err := json.Unmarshal(msgs[0].Content, &parsed); err != nil {
-		t.Fatal(err)
-	}
-	// Should have text + tool_use blocks
-	if len(parsed) != 2 {
-		t.Fatalf("expected 2 content blocks, got %d", len(parsed))
-	}
-	if parsed[0]["type"] != "text" {
-		t.Fatalf("expected 'text', got '%s'", parsed[0]["type"])
-	}
-	if parsed[1]["type"] != "tool_use" {
-		t.Fatalf("expected 'tool_use', got '%s'", parsed[1]["type"])
-	}
-	// Tool result should be a user message with tool_result block
-	if err := json.Unmarshal(msgs[1].Content, &parsed); err != nil {
-		t.Fatal(err)
-	}
-	if len(parsed) != 1 {
-		t.Fatalf("expected 1 content block, got %d", len(parsed))
-	}
-	if parsed[0]["type"] != "tool_result" {
-		t.Fatalf("expected 'tool_result', got '%s'", parsed[0]["type"])
-	}
-}
-
-func TestAnthropicBuildMessages_WithThinking(t *testing.T) {
-	provider := &anthropicProvider{cfg: Config{}, logger: zap.NewNop()}
-	msgs := provider.buildAnthropicMessages(LLMRequest{
-		Messages: []types.Message{
-			{
-				Role:              types.RoleAssistant,
-				Content:           "visible text",
-				Thinking:          "hidden reasoning",
-				ThinkingSignature: "sig-abc",
-			},
-		},
-	})
-	if len(msgs) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(msgs))
-	}
-	var parsed []map[string]any
-	if err := json.Unmarshal(msgs[0].Content, &parsed); err != nil {
-		t.Fatal(err)
-	}
-	if len(parsed) != 2 {
-		t.Fatalf("expected 2 content blocks, got %d", len(parsed))
-	}
-	if parsed[0]["type"] != "thinking" {
-		t.Fatalf("expected first block type 'thinking', got '%s'", parsed[0]["type"])
-	}
-	if parsed[0]["thinking"] != "hidden reasoning" {
-		t.Fatalf("expected thinking 'hidden reasoning', got '%v'", parsed[0]["thinking"])
-	}
-	if parsed[0]["signature"] != "sig-abc" {
-		t.Fatalf("expected signature 'sig-abc', got '%v'", parsed[0]["signature"])
-	}
-	if parsed[1]["type"] != "text" {
-		t.Fatalf("expected second block type 'text', got '%s'", parsed[1]["type"])
-	}
-	if parsed[1]["text"] != "visible text" {
-		t.Fatalf("expected text 'visible text', got '%v'", parsed[1]["text"])
-	}
-}
-
 func TestStreamDecoder_DeepSeekCharByChar(t *testing.T) {
 	// Simulate DeepSeek's character-by-character streaming:
 	//   chunk 1: id+name + empty arguments
@@ -836,3 +493,697 @@ func TestStreamDecoder_ToolCalls(t *testing.T) {
 		t.Fatalf("expected '{\"name\":\"world\"}', got '%s'", chunk.ToolCalls[0].Arguments)
 	}
 }
+
+func TestOpenAIChatURL(t *testing.T) {
+	tests := []struct {
+		baseURL string
+		want    string
+	}{
+		{"", "https://api.openai.com/v1/chat/completions"},
+		{"https://custom.example.com", "https://custom.example.com/v1/chat/completions"},
+		{"https://ark.cn-beijing.volces.com/api/v3", "https://ark.cn-beijing.volces.com/api/v3/chat/completions"},
+		{"https://api.deepseek.com/v1", "https://api.deepseek.com/v1/chat/completions"},
+	}
+	for _, tt := range tests {
+		got := OpenAIChatURL(tt.baseURL)
+		if got != tt.want {
+			t.Errorf("OpenAIChatURL(%q) = %q, want %q", tt.baseURL, got, tt.want)
+		}
+	}
+}
+
+func TestAnthropicChatURL(t *testing.T) {
+	tests := []struct {
+		baseURL string
+		want    string
+	}{
+		{"", "https://api.anthropic.com/v1/messages"},
+		{"https://custom.example.com", "https://custom.example.com/v1/messages"},
+	}
+	for _, tt := range tests {
+		got := AnthropicChatURL(tt.baseURL)
+		if got != tt.want {
+			t.Errorf("AnthropicChatURL(%q) = %q, want %q", tt.baseURL, got, tt.want)
+		}
+	}
+}
+
+func TestBuildOpenAIRequest(t *testing.T) {
+	msgs := []OpenAIMessage{{Role: "user", Content: "hello"}}
+	req := LLMRequest{Model: "gpt-4", Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, MaxTokens: 100}
+
+	t.Run("default temperature", func(t *testing.T) {
+		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["temperature"] != 1.0 {
+			t.Errorf("expected default temperature 1.0, got %v", body["temperature"])
+		}
+		if body["stream"] != true {
+			t.Errorf("expected stream true")
+		}
+	})
+
+	t.Run("custom temperature", func(t *testing.T) {
+		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{Temperature: 0.5}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["temperature"] != 0.5 {
+			t.Errorf("expected 0.5, got %v", body["temperature"])
+		}
+	})
+
+	t.Run("req temperature overrides cfg", func(t *testing.T) {
+		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{Temperature: 0.9}, LLMRequest{
+			Messages:    []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			MaxTokens:   100,
+			Temperature: 0.3,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["temperature"] != 0.3 {
+			t.Errorf("expected 0.3, got %v", body["temperature"])
+		}
+	})
+
+	t.Run("with tools", func(t *testing.T) {
+		req := LLMRequest{
+			Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Tools:    []types.ToolDef{{Name: "greet", Description: "Say hello"}},
+			MaxTokens: 100,
+		}
+		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if _, ok := body["tools"]; !ok {
+			t.Error("expected tools in body")
+		}
+	})
+
+	t.Run("with stop", func(t *testing.T) {
+		req := LLMRequest{
+			Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Stop:     []string{"\n"},
+			MaxTokens: 100,
+		}
+		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["stop"] == nil {
+			t.Error("expected stop field")
+		}
+	})
+
+	t.Run("with top_p", func(t *testing.T) {
+		req := LLMRequest{
+			Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			TopP:     0.9,
+			MaxTokens: 100,
+		}
+		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["top_p"] != 0.9 {
+			t.Errorf("expected top_p 0.9, got %v", body["top_p"])
+		}
+	})
+}
+
+func TestBuildAnthropicRequest(t *testing.T) {
+	msgs := []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}}
+	req := LLMRequest{
+		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		System:    "You are helpful.",
+		MaxTokens: 100,
+	}
+
+	t.Run("basic request", func(t *testing.T) {
+		data, err := BuildAnthropicRequest("claude-3", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["system"] != "You are helpful." {
+			t.Errorf("expected system prompt")
+		}
+		if body["stream"] != true {
+			t.Errorf("expected stream true")
+		}
+	})
+
+	t.Run("with tools", func(t *testing.T) {
+		req := LLMRequest{
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			System:    "You are helpful.",
+			MaxTokens: 100,
+			Tools:     []types.ToolDef{{Name: "greet", Description: "Say hello"}},
+		}
+		data, err := BuildAnthropicRequest("claude-3", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if _, ok := body["tools"]; !ok {
+			t.Error("expected tools in body")
+		}
+	})
+
+	t.Run("with stop", func(t *testing.T) {
+		req := LLMRequest{
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			System:    "You are helpful.",
+			Stop:      []string{"\n"},
+			MaxTokens: 100,
+		}
+		data, err := BuildAnthropicRequest("claude-3", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["stop_sequences"] == nil {
+			t.Error("expected stop_sequences field")
+		}
+	})
+
+	t.Run("default temperature", func(t *testing.T) {
+		data, err := BuildAnthropicRequest("claude-3", msgs, Config{}, req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["temperature"] != 1.0 {
+			t.Errorf("expected default temperature 1.0, got %v", body["temperature"])
+		}
+	})
+
+	t.Run("req temperature overrides cfg", func(t *testing.T) {
+		data, err := BuildAnthropicRequest("claude-3", msgs, Config{Temperature: 0.9}, LLMRequest{
+			Messages:    []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			MaxTokens:   100,
+			Temperature: 0.3,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var body map[string]any
+		json.Unmarshal(data, &body)
+		if body["temperature"] != 0.3 {
+			t.Errorf("expected 0.3, got %v", body["temperature"])
+		}
+	})
+}
+
+func TestStreamOpenAI(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(200).
+		BodyString("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n")
+
+	body := []byte(`{"model":"gpt-4","stream":true}`)
+	ch, err := StreamOpenAI(context.Background(), "https://api.openai.com/v1/chat/completions", "test-key", nil, body, time.Second*5, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var content string
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatal(chunk.Error)
+		}
+		content += chunk.Content
+	}
+	if content != "hello" {
+		t.Fatalf("expected 'hello', got '%s'", content)
+	}
+}
+
+func TestStreamOpenAI_HTTPError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(401).
+		JSON(map[string]any{"error": map[string]any{"message": "bad key"}})
+
+	body := []byte(`{}`)
+	ch, err := StreamOpenAI(context.Background(), "https://api.openai.com/v1/chat/completions", "bad-key", nil, body, time.Second*5, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(chunk.Error.Error(), "bad key") {
+		t.Fatalf("unexpected error: %v", chunk.Error)
+	}
+}
+
+func TestStreamOpenAI_NetworkError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		ReplyError(errors.New("dial timeout"))
+
+	body := []byte(`{}`)
+	ch, err := StreamOpenAI(context.Background(), "https://api.openai.com/v1/chat/completions", "key", nil, body, time.Second*5, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestStreamAnthropic(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(200).
+		BodyString("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"hi\"}}\n\ndata: {\"type\":\"message_stop\"}\n")
+
+	body := []byte(`{}`)
+	ch, err := StreamAnthropic(context.Background(), "https://api.anthropic.com/v1/messages", "ant-key", nil, body, time.Second*5, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var content string
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatal(chunk.Error)
+		}
+		content += chunk.Content
+	}
+	if content != "hi" {
+		t.Fatalf("expected 'hi', got '%s'", content)
+	}
+}
+
+func TestStreamAnthropic_HTTPError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(400).
+		JSON(map[string]any{"error": map[string]any{"message": "bad request"}})
+
+	body := []byte(`{}`)
+	ch, err := StreamAnthropic(context.Background(), "https://api.anthropic.com/v1/messages", "key", nil, body, time.Second*5, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(chunk.Error.Error(), "bad request") {
+		t.Fatalf("unexpected error: %v", chunk.Error)
+	}
+}
+
+func TestStreamAnthropic_NetworkError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		ReplyError(errors.New("refused"))
+
+	body := []byte(`{}`)
+	ch, err := StreamAnthropic(context.Background(), "https://api.anthropic.com/v1/messages", "key", nil, body, time.Second*5, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestBuildOpenAITools_Empty(t *testing.T) {
+	result := BuildOpenAITools(nil)
+	if result != nil {
+		t.Fatal("expected nil for empty tools")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Root-level provider tests
+// ---------------------------------------------------------------------------
+
+func TestRootOpenAIProvider_Name(t *testing.T) {
+	p := &openAIProvider{}
+	if p.Name() != "openai" {
+		t.Errorf("Name = %q", p.Name())
+	}
+}
+
+func TestRootOpenAIProvider_Models(t *testing.T) {
+	t.Run("returns cfg.Models when populated", func(t *testing.T) {
+		p := &openAIProvider{
+			cfg: Config{
+				Models: []ModelConfig{
+					{Name: "gpt-4", Model: "gpt-4", Provider: "openai"},
+				},
+			},
+		}
+		models, err := p.Models(context.Background())
+		if err != nil {
+			t.Fatalf("Models returned error: %v", err)
+		}
+		if len(models) != 1 || models[0].Name != "gpt-4" {
+			t.Errorf("got %+v", models)
+		}
+	})
+
+	t.Run("returns default model when cfg.Models is empty", func(t *testing.T) {
+		p := &openAIProvider{
+			cfg: Config{
+				Model:       "gpt-4",
+				MaxTokens:   4096,
+				Temperature: 0.7,
+			},
+		}
+		models, err := p.Models(context.Background())
+		if err != nil {
+			t.Fatalf("Models returned error: %v", err)
+		}
+		if len(models) != 1 {
+			t.Fatalf("expected 1 model, got %d", len(models))
+		}
+		if models[0].Name != "gpt-4" {
+			t.Errorf("Name = %q", models[0].Name)
+		}
+	})
+}
+
+func TestRootOpenAIProvider_chatURL(t *testing.T) {
+	t.Run("default base URL", func(t *testing.T) {
+		p := &openAIProvider{}
+		url := p.chatURL("")
+		if url != "https://api.openai.com/v1/chat/completions" {
+			t.Errorf("unexpected URL: %s", url)
+		}
+	})
+
+	t.Run("custom base URL", func(t *testing.T) {
+		p := &openAIProvider{}
+		url := p.chatURL("https://custom.api.com")
+		if url != "https://custom.api.com/v1/chat/completions" {
+			t.Errorf("unexpected URL: %s", url)
+		}
+	})
+}
+
+func TestRootOpenAIProvider_CompleteStream(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(200).
+		BodyString("data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\" world\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n")
+
+	provider := &openAIProvider{
+		cfg:    Config{Model: "gpt-4", APIKey: "sk-key", BaseURL: "https://api.openai.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var content string
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatal(chunk.Error)
+		}
+		content += chunk.Content
+	}
+	if content != "Hello world" {
+		t.Fatalf("expected 'Hello world', got '%s'", content)
+	}
+}
+
+func TestRootOpenAIProvider_CompleteStreamHTTPError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(401).
+		JSON(map[string]any{"error": map[string]any{"message": "Invalid API key"}})
+
+	provider := &openAIProvider{
+		cfg:    Config{Model: "gpt-4", APIKey: "bad-key", BaseURL: "https://api.openai.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error chunk")
+	}
+	if !strings.Contains(chunk.Error.Error(), "Invalid API key") {
+		t.Fatalf("unexpected error: %v", chunk.Error)
+	}
+}
+
+func TestRootOpenAIProvider_CompleteStreamNetworkError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		ReplyError(errors.New("connection timeout"))
+
+	provider := &openAIProvider{
+		cfg:    Config{Model: "gpt-4", APIKey: "key", BaseURL: "https://api.openai.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error chunk")
+	}
+}
+
+func TestRootOpenAIProvider_CompleteStreamEmptyResponse(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(200).
+		BodyString("")
+
+	provider := &openAIProvider{
+		cfg:    Config{Model: "gpt-4", APIKey: "key", BaseURL: "https://api.openai.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if chunk := <-ch; chunk.Error != nil {
+		t.Fatal(chunk.Error)
+	}
+}
+
+func TestRootAnthropicProvider_Name(t *testing.T) {
+	p := &anthropicProvider{}
+	if p.Name() != "anthropic" {
+		t.Errorf("Name = %q", p.Name())
+	}
+}
+
+func TestRootAnthropicProvider_Models(t *testing.T) {
+	t.Run("returns cfg.Models when populated", func(t *testing.T) {
+		p := &anthropicProvider{
+			cfg: Config{
+				Models: []ModelConfig{
+					{Name: "claude-3", Model: "claude-3", Provider: "anthropic"},
+				},
+			},
+		}
+		models, err := p.Models(context.Background())
+		if err != nil {
+			t.Fatalf("Models returned error: %v", err)
+		}
+		if len(models) != 1 || models[0].Name != "claude-3" {
+			t.Errorf("got %+v", models)
+		}
+	})
+
+	t.Run("returns default model when cfg.Models is empty", func(t *testing.T) {
+		p := &anthropicProvider{
+			cfg: Config{
+				Model:       "claude-3",
+				MaxTokens:   8192,
+				Temperature: 0.7,
+			},
+		}
+		models, err := p.Models(context.Background())
+		if err != nil {
+			t.Fatalf("Models returned error: %v", err)
+		}
+		if len(models) != 1 {
+			t.Fatalf("expected 1 model, got %d", len(models))
+		}
+		if models[0].Name != "claude-3" {
+			t.Errorf("Name = %q", models[0].Name)
+		}
+	})
+}
+
+func TestRootAnthropicProvider_chatURL(t *testing.T) {
+	t.Run("default base URL", func(t *testing.T) {
+		p := &anthropicProvider{}
+		url := p.chatURL("")
+		if url != "https://api.anthropic.com/v1/messages" {
+			t.Errorf("unexpected URL: %s", url)
+		}
+	})
+
+	t.Run("custom base URL", func(t *testing.T) {
+		p := &anthropicProvider{}
+		url := p.chatURL("https://custom.anthropic.com")
+		if url != "https://custom.anthropic.com/v1/messages" {
+			t.Errorf("unexpected URL: %s", url)
+		}
+	})
+}
+
+func TestRootAnthropicProvider_CompleteStream(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(200).
+		BodyString("data: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\"Hello\"}}\n\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"text\":\" world\"}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"}}\n\ndata: {\"type\":\"message_stop\"}\n")
+
+	provider := &anthropicProvider{
+		cfg:    Config{Model: "claude-3", APIKey: "sk-key", BaseURL: "https://api.anthropic.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var content string
+	for chunk := range ch {
+		if chunk.Error != nil {
+			t.Fatal(chunk.Error)
+		}
+		content += chunk.Content
+	}
+	if content != "Hello world" {
+		t.Fatalf("expected 'Hello world', got '%s'", content)
+	}
+}
+
+func TestRootAnthropicProvider_CompleteStreamHTTPError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(400).
+		JSON(map[string]any{"error": map[string]any{"message": "bad request"}})
+
+	provider := &anthropicProvider{
+		cfg:    Config{Model: "claude-3", APIKey: "key", BaseURL: "https://api.anthropic.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error chunk")
+	}
+	if !strings.Contains(chunk.Error.Error(), "bad request") {
+		t.Fatalf("unexpected error: %v", chunk.Error)
+	}
+}
+
+func TestRootAnthropicProvider_CompleteStreamNetworkError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		ReplyError(errors.New("refused"))
+
+	provider := &anthropicProvider{
+		cfg:    Config{Model: "claude-3", APIKey: "key", BaseURL: "https://api.anthropic.com"},
+		logger: zap.NewNop(),
+	}
+
+	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error chunk")
+	}
+}
+

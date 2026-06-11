@@ -8,6 +8,7 @@ import (
 	"dolphin/internal/config"
 	"dolphin/internal/setup"
 	_ "dolphin/internal/transport/dingtalk"
+	_ "dolphin/internal/transport/panda"
 	_ "dolphin/internal/transport/wework"
 )
 
