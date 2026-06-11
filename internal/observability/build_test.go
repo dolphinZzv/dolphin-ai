@@ -64,7 +64,7 @@ func TestBuildObservability_Disabled(t *testing.T) {
 func TestBuildObservability_EnabledNoEndpoint(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
 		"otel.enabled":       true,
-		"llm.use":       "openai",
+		"llm.use":            "openai",
 		"llm.openai.api_key": "test",
 	})
 	hr := hook.NewRegistry()

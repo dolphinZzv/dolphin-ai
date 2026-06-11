@@ -586,7 +586,6 @@ func TestDiscoverProviderNames(t *testing.T) {
 		}
 	})
 
-
 	t.Run("empty config", func(t *testing.T) {
 		cfg := configMap{}
 		names := discoverProviderNames(cfg)
@@ -1040,8 +1039,8 @@ func TestLoadMCPServers_iterationBreak(t *testing.T) {
 func TestLLMBootstrapperBootstrap_legacy(t *testing.T) {
 	b := &LLMBootstrapper{}
 	logC := &Context{Config: config.LoadConfigFromMap(map[string]any{
-		"log":          map[string]any{"level": "debug"},
-		"llm.use":    "gpt-4",
+		"log":     map[string]any{"level": "debug"},
+		"llm.use": "gpt-4",
 	})}
 	logB := &LoggerBootstrapper{}
 	if err := logB.Bootstrap(context.Background(), logC); err != nil {
@@ -1049,7 +1048,7 @@ func TestLLMBootstrapperBootstrap_legacy(t *testing.T) {
 	}
 
 	c := &Context{Config: config.LoadConfigFromMap(map[string]any{
-		"llm.use":    "gpt-4",
+		"llm.use": "gpt-4",
 	}), Logger: logC.Logger}
 
 	err := b.Bootstrap(context.Background(), c)

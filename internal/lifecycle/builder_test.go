@@ -11,7 +11,7 @@ import (
 func TestBuilder(t *testing.T) {
 	Convey("Builder", t, func() {
 		cfg := config.LoadConfigFromMap(map[string]any{
-			"llm.use":          "gpt-4o",
+			"llm.use":            "gpt-4o",
 			"llm.openai.api_key": "test-key",
 			"llm.max_retries":    0,
 			"llm.timeout":        "30s",
@@ -74,7 +74,7 @@ func TestBuilder(t *testing.T) {
 func TestBuilderCommands(t *testing.T) {
 	Convey("Builder commands", t, func() {
 		cfg := config.LoadConfigFromMap(map[string]any{
-			"llm.use":          "gpt-4o",
+			"llm.use":            "gpt-4o",
 			"llm.openai.api_key": "test-key",
 			"llm.max_retries":    0,
 			"llm.timeout":        "30s",

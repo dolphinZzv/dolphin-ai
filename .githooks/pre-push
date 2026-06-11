@@ -22,4 +22,72 @@ if [ -n "$changed" ]; then
   fi
 fi
 
+echo "=== Checking coverage for changed source files (≥80% required) ==="
+changed_src=$(git diff --name-only HEAD @{upstream} -- '*.go' 2>/dev/null || git diff --name-only HEAD -- '*.go')
+if [ -n "$changed_src" ]; then
+  # Only non-test source files count toward the coverage gate.
+  src_files=$(echo "$changed_src" | grep -v '_test\.go$')
+  if [ -n "$src_files" ]; then
+    src_pkgs=$(echo "$src_files" \
+      | sed 's|/[^/]*$||' \
+      | sort -u \
+      | while read -r dir; do go list "./$dir" 2>/dev/null; done \
+      | grep -v "internal/limit" || true)
+
+    for pkg in $src_pkgs; do
+      test_files=$(go list -f '{{len .TestGoFiles}}' "$pkg" 2>/dev/null || echo "0")
+      if [ "$test_files" = "0" ]; then
+        continue
+      fi
+
+      # Collect basenames of changed source files in this package.
+      pkg_files=""
+      for f in $src_files; do
+        imp=$(go list -f '{{.ImportPath}}' "./$(dirname "$f")" 2>/dev/null)
+        if [ "$imp" = "$pkg" ]; then
+          pkg_files="$pkg_files $(basename "$f")"
+        fi
+      done
+      pkg_files=$(echo "$pkg_files" | xargs)
+      [ -z "$pkg_files" ] && continue
+
+      tmpcov=$(mktemp)
+      output=$(go test -coverprofile="$tmpcov" -count=1 "$pkg" 2>&1)
+      echo "$output"
+
+      if echo "$output" | grep -q "^--- FAIL"; then
+        rm -f "$tmpcov"
+        exit 1
+      fi
+
+      # Build alternation pattern: config.go|config_i18n.go
+      pattern=$(echo "$pkg_files" | tr ' ' '|')
+
+      coverage=$(awk -F'[: ]' -v pat="$pattern" '
+        $1 == "mode" { next }
+        {
+          n = split($1, parts, "/")
+          fname = parts[n]
+          if (fname ~ pat) {
+            stmts += $3
+            if ($4 > 0) covered += $3
+          }
+        }
+        END {
+          if (stmts > 0) printf "%.1f\n", (covered/stmts)*100
+          else print "0"
+        }
+      ' "$tmpcov")
+      rm -f "$tmpcov"
+
+      if [ "$(printf '%s < 80\n' "$coverage" | bc -l 2>/dev/null)" = "1" ]; then
+        echo "ERROR: changed file(s) in $pkg have ${coverage}% coverage (minimum 80%)"
+        exit 1
+      fi
+    done
+  fi
+fi
+
+echo "=== All checks passed ==="
+
 echo "=== All checks passed ==="
