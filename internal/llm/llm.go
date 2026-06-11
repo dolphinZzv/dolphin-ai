@@ -61,16 +61,16 @@ type Provider interface {
 }
 
 type Config struct {
-	Provider    string // display name (config section name)
-	Vendor      string // vendor name for factory lookup (e.g. "deepseek")
-	APIType     string // API protocol: "openai" or "anthropic" (defaults to Provider)
-	Model       string
-	APIKey      string
-	BaseURL     string
-	Temperature float64
-	MaxTokens   int
-	MaxRetries  int
-	Timeout     time.Duration
+	Provider      string // display name (config section name)
+	Vendor        string // vendor name for factory lookup (e.g. "deepseek")
+	APIType       string // API protocol: "openai" or "anthropic" (defaults to Provider)
+	Model         string
+	APIKey        string
+	BaseURL       string
+	Temperature   float64
+	MaxTokens     int
+	MaxRetries    int
+	Timeout       time.Duration
 	Headers       map[string]string // custom HTTP headers for this provider
 	Models        []ModelConfig     // models registered for this provider
 	ModelDiscover bool              // fetch model list from vendor API
