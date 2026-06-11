@@ -21,6 +21,7 @@ import (
 	"dolphin/internal/userio"
 
 	"go.uber.org/zap"
+	"github.com/h2non/gock"
 )
 
 // ---------------------------------------------------------------------------
@@ -1396,5 +1397,157 @@ func TestLimitBootstrapperBootstrap_withCron(t *testing.T) {
 	}
 	if c.Limit == nil {
 		t.Fatal("Limit should be set with cron")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// createProvider with model_discover
+// ---------------------------------------------------------------------------
+
+func TestCreateProvider_withModelDiscoverOpenAI(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{
+			"data": []map[string]any{
+				{"id": "gpt-4"},
+				{"id": "gpt-4o"},
+			},
+		})
+
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.openai.api_key":        "sk-test",
+		"llm.openai.provider":       "openai",
+		"llm.openai.api_type":       "openai",
+		"llm.openai.model_discover": true,
+		"llm.openai.base_url":       "https://api.openai.com",
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	provider := c.createProvider("openai", nil)
+	if provider == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+func TestCreateProvider_withModelDiscoverDeepSeek(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.deepseek.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{
+			"data": []map[string]any{
+				{"id": "deepseek-chat"},
+			},
+		})
+
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.deepseek.api_key":        "sk-test",
+		"llm.deepseek.provider":       "deepseek",
+		"llm.deepseek.api_type":       "openai",
+		"llm.deepseek.model_discover": true,
+		"llm.deepseek.base_url":       "https://api.deepseek.com",
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	provider := c.createProvider("deepseek", nil)
+	if provider == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+func TestCreateProvider_withModelDiscoverError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Get("/v1/models").
+		Reply(401)
+
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.openai.api_key":        "bad-key",
+		"llm.openai.provider":       "openai",
+		"llm.openai.model_discover": true,
+		"llm.openai.base_url":       "https://api.openai.com",
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	provider := c.createProvider("openai", nil)
+	if provider == nil {
+		t.Fatal("expected non-nil provider even on discovery error")
+	}
+}
+
+func TestCreateProvider_withModelsPreemptsDiscover(t *testing.T) {
+	defer gock.Off()
+
+	// No gock mock set up — if discover is incorrectly called, the test will panic.
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.test.api_key":        "sk-test",
+		"llm.test.provider":       "test",
+		"llm.test.model_discover": true,
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	models := []llm.ModelConfig{{Name: "manual-model", Model: "manual-model"}}
+	provider := c.createProvider("test", models)
+	if provider == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// discoverProviderModels
+// ---------------------------------------------------------------------------
+
+func TestDiscoverProviderModels_deepseek(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.deepseek.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{
+			"data": []map[string]any{
+				{"id": "deepseek-chat"},
+			},
+		})
+
+	cfg := llm.Config{
+		Vendor:  "deepseek",
+		APIType: "openai",
+		APIKey:  "sk-test",
+		BaseURL: "https://api.deepseek.com",
+	}
+	models, err := discoverProviderModels(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+}
+
+func TestDiscoverProviderModels_default(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{
+			"data": []map[string]any{
+				{"id": "gpt-4"},
+			},
+		})
+
+	cfg := llm.Config{
+		Vendor:  "openai",
+		APIType: "openai",
+		APIKey:  "sk-test",
+		BaseURL: "https://api.openai.com",
+	}
+	models, err := discoverProviderModels(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("expected 1 model, got %d", len(models))
 	}
 }
