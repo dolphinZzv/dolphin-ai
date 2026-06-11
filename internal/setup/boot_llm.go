@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"dolphin/internal/llm"
+	"dolphin/internal/llm/deepseek"
 	_ "dolphin/internal/llm/custom"
-	_ "dolphin/internal/llm/deepseek"
 	_ "dolphin/internal/llm/volcengine"
 
 	"go.uber.org/zap"
@@ -130,19 +130,47 @@ func parseProviderModels(cfg interface {
 }
 
 func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Provider {
+	modelDiscover := c.Config.GetBool("llm." + name + ".model_discover")
+
 	cfg := llm.Config{
-		Provider:   name,
-		Vendor:     c.Config.GetString("llm." + name + ".provider"),
-		APIType:    c.Config.GetString("llm." + name + ".api_type"),
-		APIKey:     c.Config.GetString("llm." + name + ".api_key"),
-		BaseURL:    c.Config.GetString("llm." + name + ".base_url"),
-		MaxTokens:  c.Config.GetInt("llm.max_tokens"),
-		MaxRetries: c.Config.GetInt("llm.max_retries"),
-		Timeout:    c.Config.GetDuration("llm.timeout"),
-		Headers:    c.Config.GetStringMap("llm." + name + ".headers"),
+		Provider:       name,
+		Vendor:         c.Config.GetString("llm." + name + ".provider"),
+		APIType:        c.Config.GetString("llm." + name + ".api_type"),
+		APIKey:         c.Config.GetString("llm." + name + ".api_key"),
+		BaseURL:        c.Config.GetString("llm." + name + ".base_url"),
+		MaxTokens:      c.Config.GetInt("llm.max_tokens"),
+		MaxRetries:     c.Config.GetInt("llm.max_retries"),
+		Timeout:        c.Config.GetDuration("llm.timeout"),
+		Headers:        c.Config.GetStringMap("llm." + name + ".headers"),
+		ModelDiscover:  modelDiscover,
 	}
 	if len(models) > 0 {
 		cfg.Models = models
+	} else if modelDiscover {
+		discovered, err := discoverProviderModels(cfg)
+		if err != nil {
+			c.Logger.Warn("model discovery failed",
+				zap.String("provider", name),
+				zap.Error(err),
+			)
+		} else if len(discovered) > 0 {
+			c.Logger.Info("model discovery succeeded",
+				zap.String("provider", name),
+				zap.Int("count", len(discovered)),
+			)
+			cfg.Models = discovered
+		}
 	}
 	return llm.NewProvider(cfg, c.Logger)
+}
+
+// discoverProviderModels dispatches model discovery to the vendor-specific
+// implementation, falling back to generic api_type-based discovery.
+func discoverProviderModels(cfg llm.Config) ([]llm.ModelConfig, error) {
+	switch cfg.Vendor {
+	case "deepseek":
+		return deepseek.DiscoverModels(cfg)
+	default:
+		return llm.DiscoverModels(cfg, nil)
+	}
 }

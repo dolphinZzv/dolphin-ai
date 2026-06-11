@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"dolphin/internal/types"
@@ -290,4 +291,62 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 	}()
 
 	return ch, nil
+}
+
+// AnthropicModelsURL constructs the models list URL from a base URL.
+func AnthropicModelsURL(baseURL string) string {
+	if baseURL == "" {
+		baseURL = "https://api.anthropic.com"
+	}
+	trimmed := strings.TrimRight(baseURL, "/")
+	return trimmed + "/v1/models"
+}
+
+// anthropicModelsListResponse is the response from Anthropic's GET /v1/models endpoint.
+type anthropicModelsListResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// DiscoverAnthropicModels calls the Anthropic /v1/models endpoint and returns the model list.
+func DiscoverAnthropicModels(cfg Config) ([]ModelConfig, error) {
+	url := AnthropicModelsURL(cfg.BaseURL)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("llm: discover models: %w", err)
+	}
+	req.Header.Set("x-api-key", cfg.APIKey)
+	req.Header.Set("anthropic-version", "2023-06-01")
+	for k, v := range cfg.Headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("llm: discover models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("llm: discover models: %s (status %d)", strings.TrimSpace(string(body)), resp.StatusCode)
+	}
+
+	var result anthropicModelsListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("llm: discover models: decode: %w", err)
+	}
+
+	models := make([]ModelConfig, 0, len(result.Data))
+	for _, m := range result.Data {
+		models = append(models, ModelConfig{
+			Name:    m.ID,
+			Model:   m.ID,
+			Vendor:  cfg.Vendor,
+			APIType: cfg.APIType,
+		})
+	}
+	return models, nil
 }

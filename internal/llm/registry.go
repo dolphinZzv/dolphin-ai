@@ -1,6 +1,10 @@
 package llm
 
-import "go.uber.org/zap"
+import (
+	"strings"
+
+	"go.uber.org/zap"
+)
 
 // ProviderFactory creates a Provider from config and logger.
 type ProviderFactory func(cfg Config, logger *zap.Logger) Provider
@@ -35,4 +39,20 @@ func NewProvider(cfg Config, logger *zap.Logger) Provider {
 		factory = providerFactories["openai"]
 	}
 	return factory(cfg, logger)
+}
+
+// DiscoverModels fetches the model list from the API, falling back to api_type-based dispatch.
+// Vendor-specific discovery (e.g. deepseek) is handled by the caller.
+func DiscoverModels(cfg Config, logger *zap.Logger) ([]ModelConfig, error) {
+	apiType := cfg.APIType
+	if apiType == "" {
+		apiType = cfg.Provider
+	}
+	apiType = strings.ToLower(apiType)
+
+	if apiType == "anthropic" {
+		return DiscoverAnthropicModels(cfg)
+	}
+	// Default to OpenAI-compatible for "openai" and everything else.
+	return DiscoverOpenAIModels(cfg)
 }

@@ -157,7 +157,7 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             description: "Take a screenshot and save to a file, return the file path",
             properties: [
                 "url": PropertySchema(type: "string", description: "Optional URL to navigate to first", default: nil),
-                "output_dir": PropertySchema(type: "string", description: "Screenshot output directory, default: screenshots", default: nil),
+                "output_dir": PropertySchema(type: "string", description: "Screenshot output directory, default: $(TMPDIR)/screenshots", default: nil),
                 "tab_id": PropertySchema(type: "string", description: "Tab ID (optional, defaults to active tab)", default: nil),
             ],
             required: nil,
@@ -165,7 +165,7 @@ private func makeTools(viewModel: WebViewModel, taskManager: TaskManager) -> [To
             run: { args, vm, _ in
                 let url = args["url"]?.stringValue
                 let tabId = args["tab_id"]?.stringValue
-                let outputDir = args["output_dir"]?.stringValue ?? "screenshots"
+                let outputDir = args["output_dir"]?.stringValue
                 let path = try await vm.screenshot(url: url, outputDir: outputDir, in: tabId)
                 return toolResult(["path": path])
             }

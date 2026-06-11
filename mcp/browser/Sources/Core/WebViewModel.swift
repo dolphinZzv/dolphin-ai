@@ -138,7 +138,7 @@ public final class WebViewModel: NSObject, ObservableObject {
         set { storedWindowHeight = Double(newValue) }
     }
 
-    private var screenshotDir: String = "screenshots"
+    private var screenshotDir: String = NSTemporaryDirectory() + "screenshots"
     private let tabConfig: WKWebViewConfiguration
 
     override public init() {
@@ -149,7 +149,7 @@ public final class WebViewModel: NSObject, ObservableObject {
         config.preferences.isElementFullscreenEnabled = true
 
         // Inject console & error capture script — runs before page scripts.
-        let consoleScript = WKUserScript(source: Self.consoleCaptureJS, injectionTime: .atDocumentStart, forMainFrameOnly: false)
+        let consoleScript = WKUserScript(source: Self.consoleCaptureJS, injectionTime: .atDocumentStart, forMainFrameOnly: true)
         config.userContentController.addUserScript(consoleScript)
 
         self.tabConfig = config

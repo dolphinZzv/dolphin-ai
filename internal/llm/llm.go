@@ -71,6 +71,7 @@ type Config struct {
 	MaxTokens   int
 	MaxRetries  int
 	Timeout     time.Duration
-	Headers     map[string]string // custom HTTP headers for this provider
-	Models      []ModelConfig     // models registered for this provider
+	Headers       map[string]string // custom HTTP headers for this provider
+	Models        []ModelConfig     // models registered for this provider
+	ModelDiscover bool              // fetch model list from vendor API
 }

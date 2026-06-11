@@ -1162,6 +1162,10 @@ func TestRootAnthropicProvider_CompleteStreamHTTPError(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Discovery tests
+// ---------------------------------------------------------------------------
+
 func TestRootAnthropicProvider_CompleteStreamNetworkError(t *testing.T) {
 	defer gock.Off()
 
@@ -1184,5 +1188,187 @@ func TestRootAnthropicProvider_CompleteStreamNetworkError(t *testing.T) {
 	chunk := <-ch
 	if chunk.Error == nil {
 		t.Fatal("expected error chunk")
+	}
+}
+
+func TestOpenAIModelsURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		expected string
+	}{
+		{"default", "", "https://api.openai.com/v1/models"},
+		{"custom root", "https://custom.api.com", "https://custom.api.com/v1/models"},
+		{"with /v1", "https://api.openai.com/v1", "https://api.openai.com/v1/models"},
+		{"with /v3", "https://ark.cn-beijing.volces.com/api/v3", "https://ark.cn-beijing.volces.com/api/v3/models"},
+		{"with plan/v3", "https://ark.cn-beijing.volces.com/api/plan/v3", "https://ark.cn-beijing.volces.com/api/plan/v3/models"},
+		{"trailing slash", "https://api.openai.com/", "https://api.openai.com/v1/models"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := OpenAIModelsURL(tt.baseURL)
+			if got != tt.expected {
+				t.Errorf("OpenAIModelsURL(%q) = %q, want %q", tt.baseURL, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestAnthropicModelsURL(t *testing.T) {
+	tests := []struct {
+		name     string
+		baseURL  string
+		expected string
+	}{
+		{"default", "", "https://api.anthropic.com/v1/models"},
+		{"custom", "https://custom.anthropic.com", "https://custom.anthropic.com/v1/models"},
+		{"deepseek anthropic", "https://api.deepseek.com/anthropic", "https://api.deepseek.com/anthropic/v1/models"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := AnthropicModelsURL(tt.baseURL)
+			if got != tt.expected {
+				t.Errorf("AnthropicModelsURL(%q) = %q, want %q", tt.baseURL, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestDiscoverOpenAIModels(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{
+			"data": []map[string]any{
+				{"id": "gpt-4"},
+				{"id": "gpt-4o"},
+				{"id": "gpt-4o-mini"},
+			},
+		})
+
+	cfg := Config{
+		Vendor:  "openai",
+		APIType: "openai",
+		APIKey:  "sk-test",
+		BaseURL: "https://api.openai.com",
+	}
+	models, err := DiscoverOpenAIModels(cfg)
+	if err != nil {
+		t.Fatalf("DiscoverOpenAIModels returned error: %v", err)
+	}
+	if len(models) != 3 {
+		t.Fatalf("expected 3 models, got %d", len(models))
+	}
+	if models[0].Name != "gpt-4" || models[0].Vendor != "openai" || models[0].APIType != "openai" {
+		t.Errorf("unexpected model[0]: %+v", models[0])
+	}
+}
+
+func TestDiscoverOpenAIModels_HTTPError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Get("/v1/models").
+		Reply(401).
+		JSON(map[string]any{"error": map[string]any{"message": "bad key"}})
+
+	cfg := Config{APIKey: "bad-key", BaseURL: "https://api.openai.com"}
+	_, err := DiscoverOpenAIModels(cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDiscoverAnthropicModels(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{
+			"data": []map[string]any{
+				{"id": "claude-3-opus-20240229"},
+				{"id": "claude-3-sonnet-20240229"},
+			},
+		})
+
+	cfg := Config{
+		Vendor:  "anthropic",
+		APIType: "anthropic",
+		APIKey:  "sk-ant-test",
+		BaseURL: "https://api.anthropic.com",
+	}
+	models, err := DiscoverAnthropicModels(cfg)
+	if err != nil {
+		t.Fatalf("DiscoverAnthropicModels returned error: %v", err)
+	}
+	if len(models) != 2 {
+		t.Fatalf("expected 2 models, got %d", len(models))
+	}
+	if models[0].Name != "claude-3-opus-20240229" || models[0].APIType != "anthropic" {
+		t.Errorf("unexpected model[0]: %+v", models[0])
+	}
+}
+
+func TestDiscoverAnthropicModels_HTTPError(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Get("/v1/models").
+		Reply(400).
+		JSON(map[string]any{"error": map[string]any{"message": "bad request"}})
+
+	cfg := Config{APIKey: "bad-key", BaseURL: "https://api.anthropic.com"}
+	_, err := DiscoverAnthropicModels(cfg)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestDiscoverModels_openaiFallback(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{"data": []map[string]any{{"id": "gpt-4"}}})
+
+	cfg := Config{
+		Vendor:  "",
+		APIType: "openai",
+		APIKey:  "sk-test",
+		BaseURL: "https://api.openai.com",
+	}
+	models, err := DiscoverModels(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+	if len(models) != 1 || models[0].Name != "gpt-4" {
+		t.Errorf("unexpected models: %+v", models)
+	}
+}
+
+func TestDiscoverModels_anthropicFallback(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{"data": []map[string]any{{"id": "claude-3"}}})
+
+	cfg := Config{
+		Vendor:  "",
+		APIType: "anthropic",
+		APIKey:  "ant-key",
+		BaseURL: "https://api.anthropic.com",
+	}
+	models, err := DiscoverModels(cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("DiscoverModels error: %v", err)
+	}
+	if len(models) != 1 || models[0].Name != "claude-3" {
+		t.Errorf("unexpected models: %+v", models)
 	}
 }

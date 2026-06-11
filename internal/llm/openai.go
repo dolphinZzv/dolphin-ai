@@ -296,3 +296,63 @@ func defaultSchema(schema json.RawMessage) json.RawMessage {
 	}
 	return schema
 }
+
+// OpenAIModelsURL constructs the models list URL from a base URL.
+func OpenAIModelsURL(baseURL string) string {
+	if baseURL == "" {
+		baseURL = "https://api.openai.com"
+	}
+	trimmed := strings.TrimRight(baseURL, "/")
+	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v2") || strings.HasSuffix(trimmed, "/v3") {
+		return trimmed + "/models"
+	}
+	return trimmed + "/v1/models"
+}
+
+// modelsListResponse is the response from OpenAI's GET /v1/models endpoint.
+type modelsListResponse struct {
+	Data []struct {
+		ID string `json:"id"`
+	} `json:"data"`
+}
+
+// DiscoverOpenAIModels calls the OpenAI-compatible /v1/models endpoint and returns the model list.
+func DiscoverOpenAIModels(cfg Config) ([]ModelConfig, error) {
+	url := OpenAIModelsURL(cfg.BaseURL)
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("llm: discover models: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+cfg.APIKey)
+	for k, v := range cfg.Headers {
+		req.Header.Set(k, v)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("llm: discover models: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("llm: discover models: %s (status %d)", strings.TrimSpace(string(body)), resp.StatusCode)
+	}
+
+	var result modelsListResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("llm: discover models: decode: %w", err)
+	}
+
+	models := make([]ModelConfig, 0, len(result.Data))
+	for _, m := range result.Data {
+		models = append(models, ModelConfig{
+			Name:    m.ID,
+			Model:   m.ID,
+			Vendor:  cfg.Vendor,
+			APIType: cfg.APIType,
+		})
+	}
+	return models, nil
+}

@@ -188,6 +188,7 @@
         "api_type": { "type": "string", "description": "API protocol type, e.g. openai, anthropic" },
         "api_key": { "type": "string", "description": "API key for the provider" },
         "base_url": { "type": "string", "format": "uri", "description": "API base URL" },
+        "model_discover": { "type": "boolean", "default": false, "description": "Auto-fetch model list from the vendor API. When enabled, the models list is populated automatically, but manually defined models still take precedence." },
         "models": {
           "type": "array",
           "description": "List of models available from this provider",
