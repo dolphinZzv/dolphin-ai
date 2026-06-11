@@ -89,6 +89,9 @@ type Panda struct {
 	// track from incoming MsgPush for reply routing
 	lastSenderID string
 	lastConvID   string
+
+	connectedAt   int64  // unix millis; filters out messages older than this after reconnect
+	firstConnect  bool
 }
 
 // NewPanda creates a new panda transport.
@@ -117,6 +120,7 @@ func NewPanda(cfg PandaConfig, logger *zap.Logger, agentName string) *Panda {
 		msgChan:       make(chan string, 100),
 		closeCh:       make(chan struct{}),
 		allowUsers:    allowUsers,
+		firstConnect:  true,
 	}
 }
 
@@ -134,6 +138,7 @@ func (p *Panda) Tools() []common.ToolDesc {
 				p.cfg.Server,
 				p.Token,
 				p.Write,
+				p.WriteContent,
 				p.logger,
 			),
 		},
@@ -207,6 +212,39 @@ func (p *Panda) writeFrame(f frame) error {
 
 	conn.SetWriteDeadline(time.Now().Add(pandaWriteTimeout))
 	return conn.WriteJSON(f)
+}
+
+// WriteContent sends a message with the given content type.
+// contentType 0 = text, 1 = image, 2 = audio, 3 = video.
+func (p *Panda) WriteContent(ctx context.Context, text string, contentType int) error {
+	convID := p.cfg.ConvID
+
+	p.mu.Lock()
+	if convID == "" {
+		convID = p.lastConvID
+	}
+	lastConvID := convID
+	p.mu.Unlock()
+
+	if lastConvID == "" {
+		return fmt.Errorf("panda: no conv_id configured and no incoming conversation to reply to")
+	}
+
+	payload := msgSendPayload{
+		ConvID:      lastConvID,
+		ContentType: contentType,
+		Body:        text,
+		ClientSeq:   time.Now().UnixMilli(),
+	}
+	payloadData, _ := json.Marshal(payload)
+
+	frame := frame{
+		Type:    msgTypeSend,
+		ID:      xid.New().String(),
+		Payload: payloadData,
+	}
+
+	return p.writeFrame(frame)
 }
 
 func (p *Panda) Flush() error { return nil }
@@ -397,19 +435,39 @@ func (p *Panda) run() {
 		}
 		p.connMu.Unlock()
 
-		// Check if we should stop reconnecting
 		select {
 		case <-p.closeCh:
 			return
 		default:
 		}
 
-		// Reconnect with backoff
-		p.logger.Info("panda: reconnecting in 5s...")
+		if !p.reconnect() {
+			return
+		}
+	}
+}
+
+// reconnect performs re-login and exponential-backoff reconnection.
+// Returns true on successful reconnect, false if closed.
+func (p *Panda) reconnect() bool {
+	if err := p.login(context.Background()); err != nil {
+		p.logger.Warn("panda: re-login failed", zap.Error(err))
+	}
+
+	backoff := pandaReconnectBase
+	for {
+		p.logger.Info("panda: reconnecting", zap.Duration("backoff", backoff))
 		select {
 		case <-p.closeCh:
-			return
-		case <-time.After(5 * time.Second):
+			return false
+		case <-time.After(backoff):
+		}
+		backoff *= 2
+		if backoff > pandaReconnectMax {
+			backoff = pandaReconnectMax
+		}
+		if p.connect() {
+			return true
 		}
 	}
 }
@@ -431,6 +489,12 @@ func (p *Panda) connect() bool {
 	p.connMu.Lock()
 	p.conn = conn
 	p.connMu.Unlock()
+
+	if p.firstConnect {
+		p.firstConnect = false
+	} else {
+		p.connectedAt = time.Now().UnixMilli()
+	}
 
 	p.logger.Info("panda: connected", zap.String("user_id", p.userID))
 	return true
@@ -526,6 +590,11 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 	// Sender allowlist check
 	if !p.isSenderAllowed(push.SenderID) {
 		p.logger.Debug("panda: sender not allowed", zap.String("sender_id", push.SenderID))
+		return nil
+	}
+
+	// Skip historical messages pushed after reconnect
+	if p.connectedAt > 0 && push.Timestamp > 0 && push.Timestamp < p.connectedAt {
 		return nil
 	}
 

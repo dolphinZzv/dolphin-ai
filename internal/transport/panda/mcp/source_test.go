@@ -16,21 +16,24 @@ import (
 )
 
 func TestPandaSource_List_WithPandaContext(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	tools, err := s.List(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(tools) != 2 {
-		t.Fatalf("expected 2 tools, got %d", len(tools))
+	if len(tools) != 3 {
+		t.Fatalf("expected 3 tools, got %d", len(tools))
 	}
 	if tools[0].Name != "FILE_UPLOAD" {
 		t.Fatalf("expected first tool to be FILE_UPLOAD, got %s", tools[0].Name)
 	}
 	if tools[1].Name != "MESSAGE" {
 		t.Fatalf("expected second tool to be MESSAGE, got %s", tools[1].Name)
+	}
+	if tools[2].Name != "SEND_IMAGE" {
+		t.Fatalf("expected third tool to be SEND_IMAGE, got %s", tools[2].Name)
 	}
 	if tools[0].Schema == nil {
 		t.Fatal("expected FILE_UPLOAD schema")
@@ -41,7 +44,7 @@ func TestPandaSource_List_WithPandaContext(t *testing.T) {
 }
 
 func TestPandaSource_List_WithoutPandaContext(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	// No transport info
 	tools, err := s.List(context.Background())
@@ -54,7 +57,7 @@ func TestPandaSource_List_WithoutPandaContext(t *testing.T) {
 }
 
 func TestPandaSource_List_WrongTransport(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "dingtalk"})
 	tools, err := s.List(ctx)
@@ -67,7 +70,7 @@ func TestPandaSource_List_WrongTransport(t *testing.T) {
 }
 
 func TestPandaSource_Execute_NoContext(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	_, err := s.Execute(context.Background(), types.ToolCall{Name: "FILE_UPLOAD"})
 	if err == nil {
@@ -76,7 +79,7 @@ func TestPandaSource_Execute_NoContext(t *testing.T) {
 }
 
 func TestPandaSource_Execute_WrongContext(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "dingtalk"})
 	_, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD"})
@@ -86,7 +89,7 @@ func TestPandaSource_Execute_WrongContext(t *testing.T) {
 }
 
 func TestPandaSource_Execute_UnknownTool(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	_, err := s.Execute(ctx, types.ToolCall{Name: "UNKNOWN"})
@@ -96,7 +99,7 @@ func TestPandaSource_Execute_UnknownTool(t *testing.T) {
 }
 
 func TestPandaSource_NilLogger(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, nil)
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, nil)
 	if s == nil {
 		t.Fatal("expected non-nil source")
 	}
@@ -105,7 +108,7 @@ func TestPandaSource_NilLogger(t *testing.T) {
 // --- FILE_UPLOAD tests ---
 
 func TestFileUpload_InvalidArgs(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: `{invalid}`})
@@ -118,7 +121,7 @@ func TestFileUpload_InvalidArgs(t *testing.T) {
 }
 
 func TestFileUpload_NoToken(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: `{"file_path":"/tmp/test.txt"}`})
@@ -134,7 +137,7 @@ func TestFileUpload_NoToken(t *testing.T) {
 }
 
 func TestFileUpload_FileNotFound(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: `{"file_path":"/tmp/nonexistent_xyz.txt"}`})
@@ -176,7 +179,7 @@ func TestFileUpload_Success_Image(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := NewFileUploadSource(srv.URL, func() string { return "tok123" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource(srv.URL, func() string { return "tok123" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
@@ -220,7 +223,7 @@ func TestFileUpload_Success_NonImage(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
@@ -245,7 +248,7 @@ func TestFileUpload_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
@@ -268,7 +271,7 @@ func TestFileUpload_ApiError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
@@ -291,7 +294,7 @@ func TestFileUpload_InvalidResponseData(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource(srv.URL, func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "FILE_UPLOAD", Arguments: fmt.Sprintf(`{"file_path":"%s"}`, tmpFile)})
@@ -326,7 +329,7 @@ func TestFileTypeForExt(t *testing.T) {
 // --- MESSAGE tests ---
 
 func TestMessage_InvalidArgs(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "MESSAGE", Arguments: `{invalid}`})
@@ -339,7 +342,7 @@ func TestMessage_InvalidArgs(t *testing.T) {
 }
 
 func TestMessage_EmptyContent(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "MESSAGE", Arguments: `{"content":""}`})
@@ -356,7 +359,7 @@ func TestMessage_Success(t *testing.T) {
 	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error {
 		got = text
 		return nil
-	}, zap.NewNop())
+	}, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "MESSAGE", Arguments: `{"content":"hello from mcp"}`})
@@ -374,7 +377,7 @@ func TestMessage_Success(t *testing.T) {
 func TestMessage_WriteError(t *testing.T) {
 	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error {
 		return fmt.Errorf("write failed")
-	}, zap.NewNop())
+	}, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 
 	ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "panda"})
 	result, err := s.Execute(ctx, types.ToolCall{Name: "MESSAGE", Arguments: `{"content":"hello"}`})
@@ -429,7 +432,7 @@ func containsStr(s, substr string) bool {
 
 // TestNewFileUploadSource_Source tests that the returned source implements tool.Executor.
 func TestNewFileUploadSource_Source(t *testing.T) {
-	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, zap.NewNop())
+	s := NewFileUploadSource("http://localhost:8080", func() string { return "tok" }, func(ctx context.Context, text string) error { return nil }, func(ctx context.Context, text string, contentType int) error { return nil }, zap.NewNop())
 	if _, ok := s.(interface {
 		List(ctx context.Context) ([]types.ToolDef, error)
 		Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error)

@@ -14,23 +14,25 @@ import (
 
 // NewFileUploadSource returns a tool source that provides FILE_UPLOAD and MESSAGE
 // when the active transport is Panda (checked via context).
-func NewFileUploadSource(serverURL string, tokenGetter func() string, writeFn func(ctx context.Context, text string) error, logger *zap.Logger) tool.Executor {
+func NewFileUploadSource(serverURL string, tokenGetter func() string, writeFn func(ctx context.Context, text string) error, writeContentFn func(ctx context.Context, text string, contentType int) error, logger *zap.Logger) tool.Executor {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	return &pandaSource{
-		serverURL: serverURL,
-		token:     tokenGetter,
-		writeFn:   writeFn,
-		logger:    logger,
+		serverURL:       serverURL,
+		token:           tokenGetter,
+		writeFn:         writeFn,
+		writeContentFn:  writeContentFn,
+		logger:          logger,
 	}
 }
 
 type pandaSource struct {
-	serverURL string
-	token     func() string
-	writeFn   func(ctx context.Context, text string) error
-	logger    *zap.Logger
+	serverURL       string
+	token           func() string
+	writeFn         func(ctx context.Context, text string) error
+	writeContentFn  func(ctx context.Context, text string, contentType int) error
+	logger          *zap.Logger
 }
 
 func (s *pandaSource) List(ctx context.Context) ([]types.ToolDef, error) {
@@ -64,6 +66,18 @@ func (s *pandaSource) List(ctx context.Context) ([]types.ToolDef, error) {
 				"required": ["content"]
 			}`),
 		},
+		{
+			Name: "SEND_IMAGE",
+			Description: "Upload an image file to the panda-ai server and send it directly as a native image message to the current conversation. " +
+				"Use this to send screenshots, photos, or any image to the user in one step.",
+			Schema: json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"file_path": {"type": "string", "description": "Absolute path to the image file to upload and send"}
+				},
+				"required": ["file_path"]
+			}`),
+		},
 	}, nil
 }
 
@@ -78,6 +92,8 @@ func (s *pandaSource) Execute(ctx context.Context, call types.ToolCall) (*types.
 		return s.executeFileUpload(ctx, call)
 	case "MESSAGE":
 		return s.executeMessage(ctx, call)
+	case "SEND_IMAGE":
+		return s.executeSendImage(ctx, call)
 	default:
 		return nil, fmt.Errorf("unknown tool: %s", call.Name)
 	}

@@ -68,6 +68,42 @@ func (s *pandaSource) executeFileUpload(ctx context.Context, call types.ToolCall
 	}, nil
 }
 
+func (s *pandaSource) executeSendImage(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
+	var args struct {
+		FilePath string `json:"file_path"`
+	}
+	if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		return &types.ToolResult{Content: "invalid arguments: " + err.Error(), IsError: true}, nil
+	}
+
+	s.logger.Info("SEND_IMAGE tool called", zap.String("file_path", args.FilePath))
+
+	token := s.token()
+	if token == "" {
+		return &types.ToolResult{Content: "not authenticated", IsError: true}, nil
+	}
+
+	resp, err := s.uploadFile(ctx, token, args.FilePath)
+	if err != nil {
+		return &types.ToolResult{Content: "failed to upload image: " + err.Error(), IsError: true}, nil
+	}
+
+	if resp.Width <= 0 || resp.Height <= 0 {
+		return &types.ToolResult{Content: "file is not a valid image (no dimensions detected)", IsError: true}, nil
+	}
+
+	// Send as native image message (ContentType: 1)
+	imageBody := resp.URL
+	if err := s.writeContentFn(ctx, imageBody, 1); err != nil {
+		return &types.ToolResult{Content: "failed to send image: " + err.Error(), IsError: true}, nil
+	}
+
+	fileName := filepath.Base(args.FilePath)
+	return &types.ToolResult{
+		Content: fmt.Sprintf("Image sent successfully.\n- file: %s\n- url: %s\n- dimensions: %dx%d", fileName, resp.URL, resp.Width, resp.Height),
+	}, nil
+}
+
 func (s *pandaSource) uploadFile(ctx context.Context, token, filePath string) (*uploadResp, error) {
 	f, err := os.Open(filePath)
 	if err != nil {
