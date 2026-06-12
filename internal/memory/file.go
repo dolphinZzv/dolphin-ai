@@ -60,7 +60,7 @@ func (m *FileMemory) Write(ctx context.Context, sessionID string, msg types.Mess
 	var msgs []types.Message
 	data, err := os.ReadFile(path)
 	if err == nil && len(data) > 0 {
-		json.Unmarshal(data, &msgs)
+		_ = json.Unmarshal(data, &msgs)
 	}
 	msgs = append(msgs, msg)
 

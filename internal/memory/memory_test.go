@@ -181,7 +181,7 @@ func TestFileMemoryUsesJSONFile(t *testing.T) {
 	m := NewFileMemory(dir, 0)
 	ctx := context.Background()
 
-	m.Write(ctx, "s1", types.Message{
+	_ = m.Write(ctx, "s1", types.Message{
 		Role: types.RoleUser, Content: "test", Timestamp: time.Now(),
 	})
 
