@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -42,6 +43,13 @@ func TestManagerCreate(t *testing.T) {
 			So(mgr.Active().ID, ShouldNotEqual, s1.ID)
 			So(s1.Active, ShouldBeFalse)
 		})
+
+		Convey("persists session as JSON file on create", func() {
+			s := mgr.Create(ctx)
+			jsonPath := filepath.Join(mgr.dir, s.ID+".json")
+			_, err := os.Stat(jsonPath)
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
@@ -67,20 +75,21 @@ func TestManagerList(t *testing.T) {
 		mgr := NewManager(dir)
 		ctx := context.Background()
 
-		Convey("returns sessions from .md files on disk", func() {
+		Convey("returns sessions from .json files on disk", func() {
 			s1 := mgr.Create(ctx)
 			mgr.Create(ctx)
 
-			// Create .md files on disk (simulating first message write).
-			for _, id := range []string{s1.ID, mgr.Active().ID} {
-				f, _ := os.Create(filepath.Join(dir, id+".md"))
-				_ = f.Close()
-			}
-
-			sessions, err := mgr.List(ctx)
+			mgr2 := NewManager(dir)
+			sessions, err := mgr2.List(ctx)
 			So(err, ShouldBeNil)
 			So(len(sessions), ShouldEqual, 2)
+			ids := make(map[string]bool)
+			for _, s := range sessions {
+				ids[s.ID] = true
+			}
+			So(ids[s1.ID], ShouldBeTrue)
 		})
+
 	})
 }
 
@@ -92,6 +101,7 @@ func TestManagerSwitchTo(t *testing.T) {
 
 		Convey("switches to an existing session", func() {
 			s1 := mgr.Create(ctx)
+			s1.Set("rounds", 3)
 			mgr.Create(ctx)
 
 			switched, err := mgr.SwitchTo(ctx, s1.ID)
@@ -104,6 +114,24 @@ func TestManagerSwitchTo(t *testing.T) {
 		Convey("returns error for nonexistent session", func() {
 			_, err := mgr.SwitchTo(ctx, "nonexistent")
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("saves current session before switching", func() {
+			s1 := mgr.Create(ctx)
+			s1.Set("rounds", 5)
+			mgr.Create(ctx)
+
+			// Load from disk to verify s1 was saved with its data.
+			mgr2 := NewManager(dir)
+			sess := mgr2.Get(s1.ID)
+			// If Get returns nil, try loading from json.
+			if sess == nil {
+				raw, err := os.ReadFile(filepath.Join(dir, s1.ID+".json"))
+				So(err, ShouldBeNil)
+				err = json.Unmarshal(raw, &sess)
+				So(err, ShouldBeNil)
+			}
+			So(sess.Get("rounds"), ShouldEqual, 5)
 		})
 	})
 }
@@ -166,27 +194,32 @@ func TestManagerNewSession(t *testing.T) {
 			So(s.Active, ShouldBeFalse)
 			So(s.CreatedAt.IsZero(), ShouldBeFalse)
 		})
+
+		Convey("persists session as JSON file", func() {
+			s := mgr.NewSession(context.Background())
+			jsonPath := filepath.Join(mgr.dir, s.ID+".json")
+			_, err := os.Stat(jsonPath)
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
 func TestManagerLoadActive(t *testing.T) {
 	Convey("Manager.LoadActive", t, func() {
-		Convey("loads session from disk", func() {
+		Convey("loads session from .json file on disk", func() {
 			dir := t.TempDir()
 			mgr := NewManager(dir)
 			s := mgr.Create(context.Background())
 			s.Set("version", 2)
 
-			f, _ := os.Create(filepath.Join(dir, s.ID+".md"))
-			_ = f.Close()
-
 			mgr2 := NewManager(dir)
 			mgr2.LoadActive(context.Background())
 			So(mgr2.Active(), ShouldNotBeNil)
 			So(mgr2.Active().ID, ShouldEqual, s.ID)
+			So(mgr2.Active().Get("version"), ShouldEqual, 2)
 		})
 
-		Convey("does nothing when no .md files exist", func() {
+		Convey("does nothing when no files exist", func() {
 			mgr := NewManager(t.TempDir())
 			mgr.LoadActive(context.Background())
 			So(mgr.Active(), ShouldBeNil)
@@ -217,16 +250,16 @@ func TestManagerGet(t *testing.T) {
 
 func TestManagerDelete(t *testing.T) {
 	Convey("Manager.Delete", t, func() {
-		Convey("deletes session", func() {
+		Convey("deletes session and removes .json file", func() {
 			mgr := NewManager(t.TempDir())
 			s := mgr.Create(context.Background())
-
-			f, _ := os.Create(filepath.Join(mgr.dir, s.ID+".md"))
-			_ = f.Close()
 
 			err := mgr.Delete(context.Background(), s.ID)
 			So(err, ShouldBeNil)
 			So(mgr.Get(s.ID), ShouldBeNil)
+
+			_, err = os.Stat(filepath.Join(mgr.dir, s.ID+".json"))
+			So(os.IsNotExist(err), ShouldBeTrue)
 		})
 
 		Convey("returns error for nonexistent session", func() {
@@ -243,14 +276,64 @@ func TestManagerSwitchTo_DiskSession(t *testing.T) {
 		mgr := NewManager(dir)
 		s := mgr.Create(context.Background())
 
-		f, _ := os.Create(filepath.Join(dir, s.ID+".md"))
-		_ = f.Close()
-
 		mgr2 := NewManager(dir)
 		switched, err := mgr2.SwitchTo(context.Background(), s.ID)
 		So(err, ShouldBeNil)
 		So(switched.ID, ShouldEqual, s.ID)
 		So(switched.Active, ShouldBeTrue)
 		So(mgr2.Active().ID, ShouldEqual, s.ID)
+	})
+}
+
+func TestSessionJSONPersistence(t *testing.T) {
+	Convey("Session JSON persistence", t, func() {
+		Convey("data survives Manager restart via JSON files", func() {
+			dir := t.TempDir()
+			mgr1 := NewManager(dir)
+			s1 := mgr1.Create(context.Background())
+			s1.Set("rounds", 10)
+			s1.Set("input_tokens", 500)
+			s1.Set("output_tokens", 300)
+
+			// Simulate restart: new Manager with same dir.
+			mgr2 := NewManager(dir)
+			mgr2.LoadActive(context.Background())
+			active := mgr2.Active()
+			So(active, ShouldNotBeNil)
+			So(active.ID, ShouldEqual, s1.ID)
+			So(active.Get("rounds"), ShouldEqual, 10)
+			So(active.Get("input_tokens"), ShouldEqual, 500)
+			So(active.Get("output_tokens"), ShouldEqual, 300)
+		})
+
+		Convey("Set triggers JSON file update", func() {
+			dir := t.TempDir()
+			mgr := NewManager(dir)
+			s := mgr.Create(context.Background())
+			s.Set("rounds", 1)
+
+			raw, err := os.ReadFile(filepath.Join(dir, s.ID+".json"))
+			So(err, ShouldBeNil)
+			var loaded Session
+			err = json.Unmarshal(raw, &loaded)
+			So(err, ShouldBeNil)
+			So(loaded.Get("rounds"), ShouldEqual, 1)
+		})
+
+		Convey("SaveActive persists current session", func() {
+			dir := t.TempDir()
+			mgr := NewManager(dir)
+			s := mgr.Create(context.Background())
+			s.Set("status", "active")
+
+			mgr.SaveActive()
+
+			raw, err := os.ReadFile(filepath.Join(dir, s.ID+".json"))
+			So(err, ShouldBeNil)
+			var loaded Session
+			err = json.Unmarshal(raw, &loaded)
+			So(err, ShouldBeNil)
+			So(loaded.Get("status"), ShouldEqual, "active")
+		})
 	})
 }

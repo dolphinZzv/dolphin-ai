@@ -127,6 +127,14 @@ func (b *Builder) StepObservability() *Builder {
 	return b
 }
 
+func (b *Builder) StepPprof() *Builder {
+	if b.ctx.PprofShutdown != nil {
+		return b
+	}
+	(&setup.PprofBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	return b
+}
+
 func (b *Builder) StepTransports() *Builder {
 	if b.ctx.Transports != nil {
 		return b
@@ -160,6 +168,7 @@ func (b *Builder) Assemble() *Builder {
 		eventBus:            b.ctx.EventBus,
 		logger:              b.ctx.Logger,
 		otelShutdown:        b.ctx.OtelShutdown,
+		pprofShutdown:       b.ctx.PprofShutdown,
 		watchers:            b.ctx.Watchers,
 		subscriptionEngine:  b.ctx.SubscriptionEngine,
 		limitResetScheduler: b.ctx.LimitResetScheduler,

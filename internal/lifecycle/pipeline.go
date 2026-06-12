@@ -34,6 +34,7 @@ type Pipeline struct {
 	logger              *zap.Logger
 	cancel              context.CancelFunc
 	otelShutdown        func()
+	pprofShutdown       func()
 	watchers            []*watcher.Watcher
 	subscriptionEngine  *brain.SubscriptionEngine
 	limitResetScheduler *limit.ResetScheduler
@@ -53,6 +54,7 @@ func New(cfg *config.Config) *Pipeline {
 		StepAgentIO().
 		StepUserIO().
 		StepObservability().
+		StepPprof().
 		StepTransports().
 		Assemble().
 		Build()
@@ -236,6 +238,10 @@ func (p *Pipeline) Shutdown() {
 
 	if p.otelShutdown != nil {
 		p.otelShutdown()
+	}
+
+	if p.pprofShutdown != nil {
+		p.pprofShutdown()
 	}
 
 	if p.logger != nil {

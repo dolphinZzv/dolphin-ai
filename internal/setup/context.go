@@ -46,6 +46,7 @@ type Context struct {
 	UserIO              *userio.UserIO
 	Transports          []transport.IO
 	OtelShutdown        func()
+	PprofShutdown       func()
 	Limit               *limit.Limiter
 	LimitResetScheduler *limit.ResetScheduler
 }

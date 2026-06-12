@@ -600,10 +600,11 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 	return nil
 }
 
-// MemoryWriteStage writes the completed turn to memory.
+// MemoryWriteStage writes the completed turn to memory and session store.
 type MemoryWriteStage struct {
-	Memory   memory.Memory
-	EventBus *event.Bus
+	Memory     memory.Memory
+	EventBus   *event.Bus
+	OnMessages func(msgs []types.Message)
 }
 
 func (s *MemoryWriteStage) Name() string { return "memory_write" }
@@ -620,10 +621,8 @@ func (s *MemoryWriteStage) Process(ctx context.Context, state *State) error {
 		SessionID: state.SessionID,
 	})
 
+	var newMsgs []types.Message
 	for _, msg := range state.Messages[len(state.History):] {
-		// Skip tool-related messages from completed turns — they add token
-		// overhead on multi-turn without benefitting the model (the final
-		// assistant text already captures the result).
 		if msg.Role == types.RoleTool {
 			continue
 		}
@@ -633,7 +632,13 @@ func (s *MemoryWriteStage) Process(ctx context.Context, state *State) error {
 		if err := s.Memory.Write(ctx, state.SessionID, msg); err != nil {
 			return err
 		}
+		newMsgs = append(newMsgs, msg)
 	}
+
+	if s.OnMessages != nil {
+		s.OnMessages(newMsgs)
+	}
+
 	state.Done = true
 
 	s.EventBus.Publish(ctx, event.Event{
