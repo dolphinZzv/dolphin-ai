@@ -49,7 +49,7 @@ func RegisterQueue(r *Registry) {
 					if len(input) > 80 {
 						input = input[:77] + "..."
 					}
-					fmt.Fprintf(cmd.OutOrStdout(), "  %d. [%s] %s — %s\n", i+1, t.TransportID, input, wait)
+					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  %d. [%s] %s — %s\n", i+1, t.TransportID, input, wait)
 				}
 			}
 			return nil

@@ -52,7 +52,7 @@ type AgentIO struct {
 	lastTransportID string // most recent transport that sent a turn
 
 	pendingMu    sync.Mutex
-	pending      []*Turn        // mirror of chan queue for introspection
+	pending      []*Turn         // mirror of chan queue for introspection
 	cancelled    map[string]bool // turn IDs popped before dequeue
 	processing   bool
 	processingMu sync.RWMutex
