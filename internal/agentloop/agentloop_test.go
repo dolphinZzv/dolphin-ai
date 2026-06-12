@@ -1027,6 +1027,45 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 	})
 }
 
+func TestAgentLoopNonCanceledTurn(t *testing.T) {
+	Convey("AgentLoop processes non-cancelled turns with agentIO set", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
+		mem := memory.NewFileMemory(t.TempDir(), 10)
+		compositor := NewCompositor(
+			[]Stage{&MemoryReadStage{Memory: mem}},
+			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
+			1,
+		)
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio)
+
+		var resultCalls int
+		a.SetOnResult(func(result agentio.TurnResult) {
+			resultCalls++
+		})
+
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID:      "t2",
+			SessionID:   "test-session",
+			Input:       "hello",
+			TransportID: "test-transport",
+		})
+		// NOT popping — turn should be processed normally
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go a.Run(ctx)
+
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+
+		So(resultCalls, ShouldBeGreaterThan, 0)
+	})
+}
+
 func TestAgentLoopRunContextDone(t *testing.T) {
 	Convey("AgentLoop.Run exits on context done", t, func() {
 		q := make(chan *agentio.Turn)
