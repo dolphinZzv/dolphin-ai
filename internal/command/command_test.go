@@ -524,6 +524,100 @@ func TestRegisterModels(t *testing.T) {
 			output := r.Execute(context.Background(), "models use model-a", "")
 			So(output, ShouldContainSubstring, "switched to model-a")
 		})
+
+		Convey("models list in markdown shows table with status", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "active-model", Vendor: "TestCo", APIType: "openai", Model: "gpt-4"},
+					{Name: "enabled-model", Vendor: "TestCo", APIType: "anthropic", Model: "claude"},
+					{Name: "disabled-model", Vendor: "TestCo", APIType: "openai", Model: "gpt-3", Disabled: true},
+				},
+				activeModel: "active-model",
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models list", "markdown")
+			So(output, ShouldContainSubstring, "**Available models:**")
+			So(output, ShouldContainSubstring, "| Name |")
+			So(output, ShouldContainSubstring, "active")
+			So(output, ShouldContainSubstring, "disabled")
+			So(output, ShouldContainSubstring, "enabled")
+		})
+
+		Convey("models list text with disabled and active status", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "active-model", Vendor: "TestCo", APIType: "openai", Model: "gpt-4"},
+					{Name: "disabled-model", Vendor: "TestCo", APIType: "openai", Model: "gpt-3", Disabled: true},
+				},
+				activeModel: "active-model",
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models list", "")
+			So(output, ShouldContainSubstring, "(active)")
+			So(output, ShouldContainSubstring, "(disabled)")
+		})
+
+		Convey("models text with active and disabled marks", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "active-model", Vendor: "TestCo", APIType: "openai", Model: "gpt-4"},
+					{Name: "disabled-model", Vendor: "TestCo", APIType: "openai", Model: "gpt-3", Disabled: true},
+				},
+				activeModel: "active-model",
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models", "")
+			So(output, ShouldContainSubstring, "(active)")
+			So(output, ShouldContainSubstring, "(disabled)")
+		})
+
+		Convey("models list returns error", func() {
+			mockProv := &mockLister{
+				errModels: fmt.Errorf("api unavailable"),
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models list", "")
+			So(output, ShouldContainSubstring, "api unavailable")
+		})
+
+		Convey("models returns error", func() {
+			mockProv := &mockLister{
+				errModels: fmt.Errorf("api unavailable"),
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models", "")
+			So(output, ShouldContainSubstring, "api unavailable")
+		})
+
+		Convey("models list empty returns message", func() {
+			mockProv := &mockLister{}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models list", "")
+			So(output, ShouldContainSubstring, "No models available")
+		})
+
+		Convey("models use unsupported with non-modelsManager provider", func() {
+			mockProv := &mockProviderOnly{
+				models: []llm.ModelConfig{
+					{Name: "model-a", Vendor: "test", APIType: "openai", Model: "gpt-4"},
+				},
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models use model-a", "")
+			So(output, ShouldContainSubstring, "not supported")
+		})
+
+		Convey("models use with SetActiveModel error", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "model-a", Vendor: "test", APIType: "openai", Model: "gpt-4"},
+				},
+				setActiveErr: fmt.Errorf("model not found"),
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models use model-x", "")
+			So(output, ShouldContainSubstring, "model not found")
+		})
 	})
 }
 
@@ -789,15 +883,41 @@ func (m *mockMCPSource) EnableSource(name string) error {
 
 type mockLister struct {
 	models       []llm.ModelConfig
+	errModels    error
+	activeModel  string
 	setActiveErr error
 }
 
-func (m *mockLister) Models(_ context.Context) ([]llm.ModelConfig, error) { return m.models, nil }
-func (m *mockLister) ActiveModel() string                                 { return "" }
-func (m *mockLister) SetActiveModel(_ string) error                       { return m.setActiveErr }
-func (m *mockLister) Name() string                                        { return "mock" }
+func (m *mockLister) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	if m.errModels != nil {
+		return nil, m.errModels
+	}
+	return m.models, nil
+}
+func (m *mockLister) ActiveModel() string           { return m.activeModel }
+func (m *mockLister) SetActiveModel(_ string) error { return m.setActiveErr }
+func (m *mockLister) Name() string                  { return "mock" }
 
 func (m *mockLister) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk)
+	close(ch)
+	return ch, nil
+}
+
+// mockProviderOnly implements llm.Provider but NOT modelsManager — used to test mgr==nil path.
+type mockProviderOnly struct {
+	models    []llm.ModelConfig
+	errModels error
+}
+
+func (m *mockProviderOnly) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	if m.errModels != nil {
+		return nil, m.errModels
+	}
+	return m.models, nil
+}
+func (m *mockProviderOnly) Name() string { return "mock-only" }
+func (m *mockProviderOnly) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	ch := make(chan llm.LLMChunk)
 	close(ch)
 	return ch, nil
