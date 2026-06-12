@@ -11,6 +11,7 @@ import (
 	"dolphin/internal/brain"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
+	"dolphin/internal/event"
 	"dolphin/internal/limit"
 	"dolphin/internal/llm"
 	"dolphin/internal/scheduler"
@@ -1667,5 +1668,90 @@ func TestDiscoverProviderModels_default(t *testing.T) {
 	}
 	if len(models) != 1 {
 		t.Fatalf("expected 1 model, got %d", len(models))
+	}
+}
+
+func TestAgentIOBootstrapperBootstrap_full(t *testing.T) {
+	b := &AgentIOBootstrapper{}
+	dir := t.TempDir()
+	sessMgr := session.NewManager(dir)
+	sigBus := signal.NewBus()
+	evBus := event.NewBus()
+	toolReg := tool.NewRegistry()
+	cmdReg := command.NewRegistry(sessMgr, sigBus)
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"agent": map[string]any{
+			"buffer_size":  0,
+			"max_rounds":   0,
+			"turn_timeout": "30s",
+			"name":         "test-agent",
+			"workmode":     "yolo",
+			"workspace":    dir,
+		},
+		"permission": map[string]any{
+			"file": "",
+		},
+		"llm": map[string]any{
+			"max_tokens":  4096,
+			"max_retries": 3,
+		},
+		"tool": map[string]any{
+			"timeout": "10s",
+		},
+	})
+	c := &Context{
+		Config:      cfg,
+		Logger:      zap.NewNop(),
+		SessionMgr:  sessMgr,
+		SignalBus:   sigBus,
+		EventBus:    evBus,
+		ToolReg:     toolReg,
+		CmdReg:      cmdReg,
+		LLMProvider: &llmProviderMock{},
+		Mem:         nil, // MemoryReadStage and MemoryWriteStage will just have nil Memory
+		SkillStore:  nil,
+		Brain:       &brain.Brain{},
+		HookReg:     nil,
+	}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.AgentIO == nil {
+		t.Fatal("AgentIO should be set")
+	}
+	if c.AgentLoop == nil {
+		t.Fatal("AgentLoop should be set")
+	}
+}
+
+func TestToolsBootstrapperBootstrap_full(t *testing.T) {
+	b := &ToolsBootstrapper{}
+	dir := t.TempDir()
+	sessMgr := session.NewManager(dir)
+	sigBus := signal.NewBus()
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"brain.dir": dir,
+	})
+	c := &Context{
+		Config:      cfg,
+		Logger:      zap.NewNop(),
+		SessionMgr:  sessMgr,
+		SignalBus:   sigBus,
+		LLMProvider: &llmProviderMock{},
+		// ToolReg is nil — this forces the full Bootstrap path
+	}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if c.ToolReg == nil {
+		t.Fatal("ToolReg should be set")
+	}
+	if c.CmdReg == nil {
+		t.Fatal("CmdReg should be set")
+	}
+	if c.CmdReg != nil && !c.CmdReg.HasCommand("queue") {
+		t.Fatal("queue command should be registered")
 	}
 }
