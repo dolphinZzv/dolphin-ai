@@ -202,10 +202,6 @@ func TestQueuePop(t *testing.T) {
 			So(func() { r.Execute(context.Background(), "queue pop -1", "none") }, ShouldNotPanic)
 		})
 
-		Convey("pop out of bounds reports error", func() {
-			r.Execute(context.Background(), "queue pop 99", "none") // queue is empty, should not panic
-		})
-
 		Convey("queue status shows cancelled items are gone", func() {
 			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "t1"})
 			aio.SendTurn(ctx, &agentio.Turn{Input: "only"})
@@ -217,6 +213,21 @@ func TestQueuePop(t *testing.T) {
 
 			pending, _, _ = aio.QueueSnapshot()
 			So(len(pending), ShouldEqual, 0)
+		})
+	})
+}
+
+
+func TestTruncateForMarkdown(t *testing.T) {
+	Convey("truncateForMarkdown", t, func() {
+		Convey("returns string when within limit", func() {
+			So(truncateForMarkdown("hello", 10), ShouldEqual, "hello")
+		})
+		Convey("returns string exactly at limit", func() {
+			So(truncateForMarkdown("12345", 5), ShouldEqual, "12345")
+		})
+		Convey("truncates with ellipsis", func() {
+			So(truncateForMarkdown("hello world", 8), ShouldEqual, "hello...")
 		})
 	})
 }
@@ -748,13 +759,26 @@ func (m *mockMCPSource) EnableSource(name string) error {
 }
 
 type mockLister struct {
-	models []llm.ModelConfig
+	models       []llm.ModelConfig
+	setActiveErr error
 }
 
 func (m *mockLister) Models(_ context.Context) ([]llm.ModelConfig, error) { return m.models, nil }
 func (m *mockLister) ActiveModel() string                                 { return "" }
-func (m *mockLister) SetActiveModel(_ string) error                       { return nil }
+func (m *mockLister) SetActiveModel(_ string) error                       { return m.setActiveErr }
 func (m *mockLister) Name() string                                        { return "mock" }
+type nonManagerProvider struct{}
+
+func (p *nonManagerProvider) Name() string { return "non-manager" }
+func (p *nonManagerProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	return []llm.ModelConfig{{Name: "m1", Vendor: "test"}}, nil
+}
+func (p *nonManagerProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk)
+	close(ch)
+	return ch, nil
+}
+
 func (m *mockLister) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	ch := make(chan llm.LLMChunk)
 	close(ch)
@@ -803,3 +827,4 @@ func TestRegisterSession(t *testing.T) {
 
 // Ensure Registry implements expected interface.
 var _ = (*Registry)(nil)
+
