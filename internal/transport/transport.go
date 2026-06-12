@@ -8,6 +8,7 @@ import (
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
+	"dolphin/internal/types"
 )
 
 // IO is the transport interface — all transports must implement it.
@@ -24,6 +25,21 @@ type IO interface {
 	NewSession(ctx context.Context) *session.Session
 	Session() *session.Session
 	RequestPermission(ctx context.Context, prompt string) (PermissionResult, error)
+}
+
+// ThinkingWriter is an optional interface for transports that render thinking content.
+type ThinkingWriter interface {
+	WriteThinking(ctx context.Context, text string) error
+}
+
+// ToolCallWriter is an optional interface for transports that render tool call events.
+type ToolCallWriter interface {
+	WriteToolCall(ctx context.Context, call types.ToolCall) error
+}
+
+// ToolResultWriter is an optional interface for transports that render tool result events.
+type ToolResultWriter interface {
+	WriteToolResult(ctx context.Context, result types.ToolResult) error
 }
 
 // PermissionResult represents the outcome of a permission request.

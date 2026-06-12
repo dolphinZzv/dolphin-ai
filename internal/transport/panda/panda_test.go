@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"dolphin/internal/transport"
+	"dolphin/internal/types"
 
 	"github.com/gorilla/websocket"
 )
@@ -629,7 +630,7 @@ func TestPanda_Write_Connected(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	p.connMu.Lock()
 	p.conn = conn
@@ -654,11 +655,11 @@ func TestPanda_Write_Connected(t *testing.T) {
 		if payload.ConvID != "conv_42" {
 			t.Fatalf("expected 'conv_42', got '%s'", payload.ConvID)
 		}
+		if payload.ContentType != 0 {
+			t.Fatalf("expected ContentType=0 (plain text for command), got %d", payload.ContentType)
+		}
 		if payload.Body != "test message" {
 			t.Fatalf("expected 'test message', got '%s'", payload.Body)
-		}
-		if payload.ContentType != 0 {
-			t.Fatalf("expected ContentType=0, got %d", payload.ContentType)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for server to receive frame")
@@ -735,7 +736,7 @@ func TestPanda_connect_Success(t *testing.T) {
 	if conn == nil {
 		t.Fatal("expected non-nil connection after connect")
 	}
-	conn.Close()
+	_ = conn.Close()
 	p.connMu.Lock()
 	p.conn = nil
 	p.connMu.Unlock()
@@ -762,7 +763,7 @@ func TestPanda_readLoop_ProcessesFrame(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		conn.WriteMessage(websocket.TextMessage, frameData)
 		conn.ReadMessage() // block until client closes
@@ -835,7 +836,7 @@ func TestPanda_WriteContent_Image(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	p.connMu.Lock()
 	p.conn = conn
@@ -924,35 +925,6 @@ func TestPanda_HandleMsgPush_HistoricalZeroTimestamp(t *testing.T) {
 	}
 	if len(p.msgChan) != 1 {
 		t.Fatal("expected message with zero timestamp to pass")
-	}
-}
-
-// --- isImageExt ---
-
-func TestIsImageExt(t *testing.T) {
-	tests := []struct {
-		ext      string
-		expected bool
-	}{
-		{".png", true},
-		{".jpg", true},
-		{".jpeg", true},
-		{".gif", true},
-		{".webp", true},
-		{".bmp", true},
-		{".PNG", true},
-		{".JPG", true},
-		{".pdf", false},
-		{".txt", false},
-		{".mp4", false},
-		{".exe", false},
-		{"", false},
-	}
-	for _, tt := range tests {
-		got := isImageExt(tt.ext)
-		if got != tt.expected {
-			t.Errorf("isImageExt(%q) = %v, want %v", tt.ext, got, tt.expected)
-		}
 	}
 }
 
@@ -1081,7 +1053,7 @@ func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	p.connMu.Lock()
 	p.conn = conn
@@ -1124,7 +1096,7 @@ func newTestWSServer(t *testing.T, handler func([]byte) []byte) *httptest.Server
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		for {
 			_, msg, err := conn.ReadMessage()
@@ -1139,4 +1111,421 @@ func newTestWSServer(t *testing.T, handler func([]byte) []byte) *httptest.Server
 	}))
 
 	return srv
+}
+
+// --- AgentTimeline ---
+
+func TestPanda_AgentTimeline_WriteThinking_Appends(t *testing.T) {
+	p := NewPanda(PandaConfig{ConvID: "c1"}, nil, "Dolphin")
+
+	// WriteThinking only accumulates locally — no frames are sent.
+	_ = p.WriteThinking(context.Background(), "嗯，")
+	_ = p.WriteThinking(context.Background(), "用户想知道...")
+
+	p.timelineMu.Lock()
+	defer p.timelineMu.Unlock()
+
+	if len(p.timelineEntries) != 1 {
+		t.Fatalf("expected 1 thinking entry, got %d", len(p.timelineEntries))
+	}
+	e := p.timelineEntries[0]
+	if e.Type != TimelineEntryThinking {
+		t.Fatalf("expected thinking, got %s", e.Type)
+	}
+	if e.Content != "嗯，用户想知道..." {
+		t.Fatalf("expected appended content, got '%s'", e.Content)
+	}
+	// Thinking not yet sent (no toolCall or Write has been called).
+	if p.thinkingSent {
+		t.Fatal("expected thinkingSent=false (only accumulated, not sent)")
+	}
+}
+
+func TestPanda_AgentTimeline_ProgressiveSend_WithParentMsgID(t *testing.T) {
+	got := make(chan frame, 3)
+	srv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+			// Respond with an ack for the first send so parentMsgID can be captured.
+			var payload msgSendPayload
+			_ = json.Unmarshal(f.Payload, &payload)
+			ack, _ := json.Marshal(msgSendAckPayload{
+				MsgID:     999,
+				ClientSeq: payload.ClientSeq,
+				Status:    1,
+			})
+			resp, _ := json.Marshal(frame{Type: msgTypeSendAck, Payload: ack})
+			return resp
+		}
+		return nil
+	})
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:  "http://" + srv.Listener.Addr().String(),
+		ConvID:  "conv_timeline",
+		Account: "test",
+	}, nil, "Dolphin")
+	p.token = "fake"
+	p.userID = "test"
+
+	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	// Start a read goroutine to process incoming acks.
+	go func() {
+		for {
+			var f frame
+			if err := conn.ReadJSON(&f); err != nil {
+				return
+			}
+			_ = p.handleFrame(f)
+		}
+	}()
+
+	// WriteThinking only accumulates locally — no frame is sent.
+	_ = p.WriteThinking(context.Background(), "Let me think...")
+
+	// WriteToolCall bundles thinking + toolCall in one frame (parentMsgID=0, creates bubble).
+	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "tc1", Name: "search", Arguments: `{"q":"test"}`})
+	time.Sleep(50 * time.Millisecond) // let ack arrive
+
+	// WriteToolResult sends toolResult as an appended entry.
+	_ = p.WriteToolResult(context.Background(), types.ToolResult{ToolCallID: "tc1", Content: "found 3 results"})
+
+	// Write sends response + completed.
+	_ = p.Write(context.Background(), "Here is the answer.")
+
+	var frames []frame
+	for i := 0; i < 3; i++ {
+		select {
+		case f := <-got:
+			frames = append(frames, f)
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for frame %d", i+1)
+		}
+	}
+
+	if len(frames) != 3 {
+		t.Fatalf("expected 3 frames, got %d", len(frames))
+	}
+
+	// Frame 1: thinking + toolCall bundled, parentMsgID=0
+	var p1 msgSendPayload
+	_ = json.Unmarshal(frames[0].Payload, &p1)
+	if p1.ContentType != 9 {
+		t.Fatalf("frame 1: expected ContentType=9, got %d", p1.ContentType)
+	}
+	var t1 AgentTimelineBody
+	_ = json.Unmarshal([]byte(p1.Body), &t1)
+	if t1.ParentMsgID != 0 {
+		t.Fatalf("frame 1: expected ParentMsgID=0, got %d", t1.ParentMsgID)
+	}
+	if t1.Status != "running" {
+		t.Fatalf("frame 1: expected status 'running', got '%s'", t1.Status)
+	}
+	if len(t1.Entries) != 2 {
+		t.Fatalf("frame 1: expected 2 entries (thinking + toolCall), got %d", len(t1.Entries))
+	}
+	if t1.Entries[0].Type != TimelineEntryThinking {
+		t.Fatalf("frame 1: expected thinking entry, got '%s'", t1.Entries[0].Type)
+	}
+	if t1.Entries[0].Content != "Let me think..." {
+		t.Fatalf("frame 1: expected thinking content 'Let me think...', got '%s'", t1.Entries[0].Content)
+	}
+	if t1.Entries[1].ToolName != "search" {
+		t.Fatalf("frame 1: expected toolName 'search', got '%s'", t1.Entries[1].ToolName)
+	}
+
+	// Frame 2: tool result, parentMsgID=999 (from ack)
+	var p2 msgSendPayload
+	_ = json.Unmarshal(frames[1].Payload, &p2)
+	var t2 AgentTimelineBody
+	_ = json.Unmarshal([]byte(p2.Body), &t2)
+	if t2.ParentMsgID != 999 {
+		t.Fatalf("frame 2: expected ParentMsgID=999, got %d", t2.ParentMsgID)
+	}
+	if len(t2.Entries) != 1 {
+		t.Fatalf("frame 2: expected 1 entry (toolResult), got %d", len(t2.Entries))
+	}
+	if t2.Entries[0].Content != "found 3 results" {
+		t.Fatalf("frame 2: expected 'found 3 results', got '%s'", t2.Entries[0].Content)
+	}
+
+	// Frame 3: final response, status completed
+	var p3 msgSendPayload
+	_ = json.Unmarshal(frames[2].Payload, &p3)
+	var t3 AgentTimelineBody
+	_ = json.Unmarshal([]byte(p3.Body), &t3)
+	if t3.Status != "completed" {
+		t.Fatalf("frame 3: expected status 'completed', got '%s'", t3.Status)
+	}
+	if len(t3.Entries) != 1 {
+		t.Fatalf("frame 3: expected 1 entry (response), got %d", len(t3.Entries))
+	}
+	if t3.Entries[0].Content != "Here is the answer." {
+		t.Fatalf("frame 3: expected response content, got '%s'", t3.Entries[0].Content)
+	}
+}
+
+func TestPanda_AgentTimeline_Write_ResetsState(t *testing.T) {
+	got := make(chan frame, 1)
+	srv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+		}
+		return nil
+	})
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:  "http://" + srv.Listener.Addr().String(),
+		ConvID:  "conv_reset",
+		Account: "test",
+	}, nil, "Dolphin")
+	p.token = "fake"
+	p.userID = "test"
+
+	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	defer func() { _ = conn.Close() }()
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	// Write should clear timelineEntries and reset rootMsgID/ackCh
+	p.timelineRootMsgID = 999
+	_ = p.Write(context.Background(), "done")
+
+	p.timelineMu.Lock()
+	if len(p.timelineEntries) != 0 {
+		t.Fatalf("expected empty entries after Write, got %d", len(p.timelineEntries))
+	}
+	p.timelineMu.Unlock()
+
+	p.mu.Lock()
+	if p.timelineRootMsgID != 0 {
+		t.Fatalf("expected timelineRootMsgID=0 after Write, got %d", p.timelineRootMsgID)
+	}
+
+	p.mu.Unlock()
+}
+
+func TestPanda_AgentTimeline_WriteThinking_CreatesNewEntryAfterToolCall(t *testing.T) {
+	p := NewPanda(PandaConfig{ConvID: "c1"}, nil, "Dolphin")
+
+	// WriteThinking only accumulates locally.
+	_ = p.WriteThinking(context.Background(), "thinking...")
+	// WriteToolCall flushes thinking and adds toolCall.
+	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "tc1", Name: "search", Arguments: "{}"})
+	// New thinking after tool call starts a fresh thinking entry.
+	_ = p.WriteThinking(context.Background(), "more thinking...")
+
+	p.timelineMu.Lock()
+	defer p.timelineMu.Unlock()
+
+	// Entries: thinking (sent), toolCall, new thinking (unsent, accumulated)
+	if len(p.timelineEntries) != 3 {
+		t.Fatalf("expected 3 entries (thinking, toolCall, new-thinking), got %d", len(p.timelineEntries))
+	}
+	if p.timelineEntries[2].Type != TimelineEntryThinking {
+		t.Fatalf("expected 3rd entry thinking, got %s", p.timelineEntries[2].Type)
+	}
+	if p.timelineEntries[2].Content != "more thinking..." {
+		t.Fatalf("expected new thinking content, got '%s'", p.timelineEntries[2].Content)
+	}
+	// New thinking phase started, thinkingSent resets to false so the
+	// next tool call will bundle this new thinking.
+	if p.thinkingSent {
+		t.Fatal("expected thinkingSent=false after new thinking phase")
+	}
+}
+
+func TestPanda_AgentTimeline_BufferBeforeAck(t *testing.T) {
+	// Verify that entries sent before the first ack arrives are buffered,
+	// not sent with parentMsgID=0 (which would create a second bubble).
+	got := make(chan frame, 3)
+	srv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+			// Deliberately do NOT return an ack; verify buffering prevents split bubbles.
+		}
+		return nil
+	})
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:  "http://" + srv.Listener.Addr().String(),
+		ConvID:  "conv_buf",
+		Account: "test",
+	}, nil, "Dolphin")
+	p.token = "fake"
+	p.userID = "test"
+
+	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	defer func() { _ = conn.Close() }()
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	_ = p.WriteThinking(context.Background(), "thinking...")
+
+	// First send creates the bubble (parentMsgID=0).
+	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "tc1", Name: "search", Arguments: "{}"})
+
+	// No ack yet — this should be buffered, not sent.
+	_ = p.WriteToolResult(context.Background(), types.ToolResult{ToolCallID: "tc1", Content: "result"})
+
+	// Only 1 frame should have been sent.
+	select {
+	case f := <-got:
+		var p1 msgSendPayload
+		_ = json.Unmarshal(f.Payload, &p1)
+		var t1 AgentTimelineBody
+		_ = json.Unmarshal([]byte(p1.Body), &t1)
+		if len(t1.Entries) != 2 {
+			t.Fatalf("expected 2 entries (thinking + toolCall), got %d", len(t1.Entries))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for first frame")
+	}
+
+	// No second frame should arrive.
+	select {
+	case <-got:
+		t.Fatal("unexpected second frame — WriteToolResult should have been buffered")
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	// Buffered entry should be pending.
+	p.mu.Lock()
+	buffered := len(p.pendingEntries)
+	p.mu.Unlock()
+	if buffered != 1 {
+		t.Fatalf("expected 1 buffered entry, got %d", buffered)
+	}
+}
+
+func TestPanda_AgentTimeline_StaleAckIgnored(t *testing.T) {
+	// After Flush resets state, a late ack from the previous turn must not
+	// leak its MsgID into the next turn.
+	got := make(chan frame, 3)
+	srv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+			// Return ack so timelineRootMsgID gets set during turn 1.
+			var payload msgSendPayload
+			_ = json.Unmarshal(f.Payload, &payload)
+			ack, _ := json.Marshal(msgSendAckPayload{
+				MsgID:     100,
+				ClientSeq: payload.ClientSeq,
+				Status:    1,
+			})
+			resp, _ := json.Marshal(frame{Type: msgTypeSendAck, Payload: ack})
+			return resp
+		}
+		return nil
+	})
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:  "http://" + srv.Listener.Addr().String(),
+		ConvID:  "conv_stale",
+		Account: "test",
+	}, nil, "Dolphin")
+	p.token = "fake"
+	p.userID = "test"
+
+	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	defer func() { _ = conn.Close() }()
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	// Start reader so acks are processed via handleFrame.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			var f frame
+			if err := conn.ReadJSON(&f); err != nil {
+				return
+			}
+			_ = p.handleFrame(f)
+		}
+	}()
+
+	// ── Turn 1: normal agent turn ──
+	_ = p.WriteThinking(context.Background(), "t1")
+	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "t1", Name: "s", Arguments: "{}"})
+	time.Sleep(100 * time.Millisecond) // let ack arrive
+	_ = p.WriteToolResult(context.Background(), types.ToolResult{ToolCallID: "t1", Content: "r1"})
+	_ = p.Write(context.Background(), "done1")
+
+	// Flush completes the turn.
+	_ = p.Flush()
+
+	// Drain turn 1 frames.
+	drainFrames(t, got)
+
+	// ── Inject stale ack AFTER Flush ──
+	stalePayload, _ := json.Marshal(msgSendAckPayload{
+		MsgID:     99999,
+		ClientSeq: 999,
+		Status:    1,
+	})
+	_ = p.handleFrame(frame{Type: msgTypeSendAck, Payload: stalePayload})
+
+	// Stale ack must be ignored (firstSendDone was reset by Flush).
+	p.mu.Lock()
+	root := p.timelineRootMsgID
+	p.mu.Unlock()
+	if root != 0 {
+		t.Fatalf("stale ack should not set timelineRootMsgID after Flush, got %d", root)
+	}
+
+	// ── Turn 2: must use parentMsgID=0 (new bubble) ──
+	_ = p.WriteThinking(context.Background(), "t2")
+	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "t2", Name: "c", Arguments: "{}"})
+
+	select {
+	case f := <-got:
+		var payload msgSendPayload
+		_ = json.Unmarshal(f.Payload, &payload)
+		var body AgentTimelineBody
+		_ = json.Unmarshal([]byte(payload.Body), &body)
+		if body.ParentMsgID != 0 {
+			t.Fatalf("turn 2 must use parentMsgID=0, got %d", body.ParentMsgID)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for turn 2 frame")
+	}
+
+	// Cleanup: close connection so reader goroutine exits.
+	_ = conn.Close()
+	<-done
+}
+
+func drainFrames(t *testing.T, ch chan frame) {
+	t.Helper()
+	for {
+		select {
+		case <-ch:
+		case <-time.After(50 * time.Millisecond):
+			return
+		}
+	}
 }

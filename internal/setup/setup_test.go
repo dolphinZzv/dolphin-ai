@@ -868,6 +868,93 @@ func TestLoadTransportConfigs_wework(t *testing.T) {
 	}
 }
 
+func TestLoadTransportConfigs_panda(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"panda.enabled":  true,
+		"panda.server":   "http://localhost:8080",
+		"panda.account":  "bot",
+		"panda.password": "secret",
+		"panda.conv_id":  "conv1",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "panda" {
+			found = true
+			if tc.Config["conv_id"] != "conv1" {
+				t.Errorf("expected conv_id=conv1, got %v", tc.Config["conv_id"])
+			}
+			if v, ok := tc.Config["allow_convs"].(string); ok && v != "" {
+				t.Errorf("expected empty allow_convs when not set, got %q", v)
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected panda transport, got %v", tcs)
+	}
+}
+
+func TestLoadTransportConfigs_panda_allowConvs(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"panda.enabled":     true,
+		"panda.server":      "http://localhost:8080",
+		"panda.account":     "bot",
+		"panda.password":    "secret",
+		"panda.allow_convs": "conv1,conv2",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "panda" {
+			found = true
+			ac, ok := tc.Config["allow_convs"].(string)
+			if !ok || ac != "conv1,conv2" {
+				t.Errorf("expected allow_convs='conv1,conv2', got %v", tc.Config["allow_convs"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected panda transport, got %v", tcs)
+	}
+}
+
+func TestLoadTransportConfigs_weworkEnvFallback(t *testing.T) {
+	// When bot_id/bot_secret are not in config, fall back to env vars.
+	t.Setenv("WEWORK", "env-bot-id")
+	t.Setenv("WESecret", "env-bot-secret")
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"wework.enabled": true,
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "wework" {
+			found = true
+			if tc.Config["bot_id"] != "env-bot-id" {
+				t.Errorf("expected bot_id='env-bot-id', got %v", tc.Config["bot_id"])
+			}
+			if tc.Config["bot_secret"] != "env-bot-secret" {
+				t.Errorf("expected bot_secret='env-bot-secret', got %v", tc.Config["bot_secret"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected wework transport, got %v", tcs)
+	}
+}
+
 func TestLoadTransportConfigs_skipsEmailWithoutPassword(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
 		"email.enabled": true,
@@ -1131,6 +1218,29 @@ func TestTransportsBootstrapperBootstrap_noop(t *testing.T) {
 	err := b.Bootstrap(context.Background(), c)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestTransportsBootstrapperBootstrap_stdioFallback(t *testing.T) {
+	b := &TransportsBootstrapper{}
+	cfg := config.LoadConfigFromMap(map[string]any{"agent.name": "dolphin"})
+	logger := zap.NewNop()
+	mgr := session.NewManager(t.TempDir())
+	bus := signal.NewBus()
+	io := agentio.NewAgentIO(100, mgr, bus, logger, "dolphin")
+	c := &Context{
+		Config:     cfg,
+		Logger:     logger,
+		SessionMgr: mgr,
+		AgentIO:    io,
+		ToolReg:    tool.NewRegistry(),
+	}
+	err := b.Bootstrap(context.Background(), c)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(c.Transports) == 0 {
+		t.Fatal("expected at least one transport (stdio fallback)")
 	}
 }
 

@@ -8,10 +8,14 @@ import (
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/transport"
+	"dolphin/internal/types"
+
+	"github.com/rs/xid"
 	"go.uber.org/zap"
 )
 
 type Turn struct {
+	TurnID      string
 	TransportID string
 	SessionID   string
 	Input       string
@@ -19,9 +23,13 @@ type Turn struct {
 }
 
 type TurnResult struct {
+	TurnID      string
 	TransportID string
 	SessionID   string
 	Text        string
+	Thinking    string
+	ToolCall    *types.ToolCall
+	ToolResult  *types.ToolResult
 	Done        bool
 	Error       error
 }
@@ -83,6 +91,10 @@ func (a *AgentIO) GetTransport(id string) transport.IO {
 }
 
 func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
+	if turn.TurnID == "" {
+		turn.TurnID = xid.New().String()
+	}
+
 	if turn.TransportID == "" {
 		if info := transport.GetInfo(ctx); info != nil {
 			turn.TransportID = info.ID
@@ -137,6 +149,37 @@ func (a *AgentIO) writeResult(result *TurnResult, transportID string) {
 	}
 
 	cap := tio.Capability()
+
+	if result.Thinking != "" {
+		if tw, ok := tio.(transport.ThinkingWriter); ok {
+			if err := tw.WriteThinking(context.Background(), result.Thinking); err != nil {
+				a.logger.Error("OnResult WriteThinking failed",
+					zap.Error(err),
+					zap.String("transport_id", transportID),
+				)
+			}
+		}
+	}
+	if result.ToolCall != nil {
+		if tcw, ok := tio.(transport.ToolCallWriter); ok {
+			if err := tcw.WriteToolCall(context.Background(), *result.ToolCall); err != nil {
+				a.logger.Error("OnResult WriteToolCall failed",
+					zap.Error(err),
+					zap.String("transport_id", transportID),
+				)
+			}
+		}
+	}
+	if result.ToolResult != nil {
+		if trw, ok := tio.(transport.ToolResultWriter); ok {
+			if err := trw.WriteToolResult(context.Background(), *result.ToolResult); err != nil {
+				a.logger.Error("OnResult WriteToolResult failed",
+					zap.Error(err),
+					zap.String("transport_id", transportID),
+				)
+			}
+		}
+	}
 
 	if result.Text != "" {
 		if cap.Streamable {

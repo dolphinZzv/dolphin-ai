@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -20,6 +21,7 @@ import (
 	"dolphin/internal/i18n"
 	"dolphin/internal/transport"
 	pandamcp "dolphin/internal/transport/panda/mcp"
+	"dolphin/internal/types"
 
 	"github.com/gorilla/websocket"
 	"github.com/rs/xid"
@@ -30,6 +32,8 @@ const (
 	pandaReconnectBase = 1 * time.Second
 	pandaReconnectMax  = 30 * time.Second
 	pandaWriteTimeout  = 10 * time.Second
+	pandaPingInterval  = 30 * time.Second
+	pandaReadTimeout   = 90 * time.Second
 )
 
 func init() {
@@ -42,6 +46,7 @@ func init() {
 			Password:   valOr(cfg, "password", ""),
 			ConvID:     valOr(cfg, "conv_id", ""),
 			AllowUsers: valOr(cfg, "allow_users", ""),
+			AllowConvs: valOr(cfg, "allow_convs", ""),
 		}, logger, agentName), nil
 	})
 }
@@ -62,6 +67,7 @@ type PandaConfig struct {
 	Password   string // login password
 	ConvID     string // optional: fixed conversation to send/receive; empty = auto-reply to incoming conv
 	AllowUsers string // comma-separated allowed sender user IDs; empty = deny all
+	AllowConvs string // comma-separated allowed conversation IDs; empty = allow all
 }
 
 // Panda is a transport that connects to a panda-ai IM server via WebSocket.
@@ -88,13 +94,26 @@ type Panda struct {
 	mu         sync.Mutex
 	closed     bool
 	allowUsers []string // user ID glob patterns; nil = deny all
+	allowConvs []string // conversation ID glob patterns; nil = allow all
 
 	// track from incoming MsgPush for reply routing
 	lastSenderID string
 	lastConvID   string
+	// AgentTimeline root message tracking
+	timelineRootMsgID int64
 
+	clientSeq    int64 // incrementing sequence for agent timeline sends
 	connectedAt  int64 // unix millis; filters out messages older than this after reconnect
 	firstConnect bool
+
+	timelineEntries []AgentTimelineEntry
+	timelineMu      sync.Mutex
+	thinkingSent    bool
+
+	// Buffering between first send and ack arrival, to avoid split bubbles.
+	firstSendDone  bool
+	pendingEntries []AgentTimelineEntry
+	pendingStatus  string
 }
 
 // NewPanda creates a new panda transport.
@@ -113,6 +132,16 @@ func NewPanda(cfg PandaConfig, logger *zap.Logger, agentName string) *Panda {
 		}
 	}
 
+	var allowConvs []string
+	if cfg.AllowConvs != "" {
+		for c := range strings.SplitSeq(cfg.AllowConvs, ",") {
+			c = strings.TrimSpace(c)
+			if c != "" {
+				allowConvs = append(allowConvs, c)
+			}
+		}
+	}
+
 	return &Panda{
 		SessionHolder: transport.NewSessionHolder(nil),
 		id:            "panda",
@@ -123,6 +152,7 @@ func NewPanda(cfg PandaConfig, logger *zap.Logger, agentName string) *Panda {
 		msgChan:       make(chan string, 100),
 		closeCh:       make(chan struct{}),
 		allowUsers:    allowUsers,
+		allowConvs:    allowConvs,
 		firstConnect:  true,
 	}
 }
@@ -131,7 +161,12 @@ func (p *Panda) ID() string { return p.id }
 
 func (p *Panda) Token() string { return p.token }
 
-func (p *Panda) Context() string { return i18n.T("panda.context") }
+func (p *Panda) Context() string {
+	return "Current message is from panda-ai IM. " +
+		"To share an image, write the local file path on its own line, or use markdown syntax: ![desc](path.png) or [desc](path.png). " +
+		"The server uploads and replaces the path automatically — the user never sees it. " +
+		"Use MESSAGE tool to send text/markdown messages proactively."
+}
 
 func (p *Panda) Tools() []common.ToolDesc {
 	return []common.ToolDesc{
@@ -167,14 +202,67 @@ func (p *Panda) Read(ctx context.Context) (string, error) {
 	}
 }
 
-// Write sends a text message. If conv_id is configured, uses that;
-// otherwise replies to the conversation the last incoming message came from.
-// Automatically uploads local image paths found in the text.
+// Write sends the final response.
+// If the turn involved agent features (thinking, tool calls), it sends an
+// AgentTimeline (contentType=9) with status "completed".
+// For simple commands with no agent activity, it sends a plain text message
+// (contentType=0) using WriteContent.
 func (p *Panda) Write(ctx context.Context, text string) error {
 	if p.token != "" {
 		text = p.autoUploadImages(ctx, text)
+	} else {
+		p.logger.Warn("panda: Write skipping autoUploadImages — no token")
 	}
 
+	// Determine whether this turn had agent activity (thinking, tool calls).
+	p.mu.Lock()
+	firstDone := p.firstSendDone
+	p.mu.Unlock()
+	p.timelineMu.Lock()
+	hasAgentActivity := firstDone || len(p.timelineEntries) > 0
+	var thinkEntry *AgentTimelineEntry
+	if !p.thinkingSent && len(p.timelineEntries) > 0 && p.timelineEntries[len(p.timelineEntries)-1].Type == TimelineEntryThinking {
+		e := p.timelineEntries[len(p.timelineEntries)-1]
+		thinkEntry = &e
+	}
+	p.timelineEntries = nil
+	p.thinkingSent = false
+	p.timelineMu.Unlock()
+
+	defer func() {
+		p.mu.Lock()
+		p.timelineRootMsgID = 0
+		p.firstSendDone = false
+		p.pendingEntries = nil
+		p.pendingStatus = ""
+		p.mu.Unlock()
+	}()
+
+	if !hasAgentActivity {
+		// Simple command: no thinking, no tool calls — send as plain text.
+		return p.WriteContent(ctx, text, 0)
+	}
+
+	// Agent interaction: send as AgentTimeline.
+	var entries []AgentTimelineEntry
+	if thinkEntry != nil {
+		entries = append(entries, *thinkEntry)
+	}
+	entries = append(entries, AgentTimelineEntry{
+		ID:        xid.New().String(),
+		Type:      TimelineEntryResponse,
+		Content:   text,
+		Timestamp: time.Now().UnixMilli(),
+	})
+
+	return p.sendTimelineNoBuffer(ctx, entries, "completed")
+}
+
+// sendTimeline serializes and sends an AgentTimelineBody message.
+// The first send of a turn uses parentMsgID=0 to create a new bubble.
+// Subsequent sends use the msgID from the server's MsgSendAck as parentMsgID
+// to append to the existing bubble.
+func (p *Panda) sendTimeline(ctx context.Context, entries []AgentTimelineEntry, status string) error {
 	convID := p.cfg.ConvID
 
 	p.mu.Lock()
@@ -182,17 +270,115 @@ func (p *Panda) Write(ctx context.Context, text string) error {
 		convID = p.lastConvID
 	}
 	lastConvID := convID
+	parentMsgID := p.timelineRootMsgID
+	firstDone := p.firstSendDone
+	// If we've already sent the first frame but ack hasn't arrived yet,
+	// buffer these entries to avoid creating a second bubble.
+	if parentMsgID == 0 && firstDone {
+		p.pendingEntries = append(p.pendingEntries, entries...)
+		p.pendingStatus = status
+		p.mu.Unlock()
+		p.logger.Info("panda: buffering entries waiting for ack",
+			zap.Int("pending", len(p.pendingEntries)),
+		)
+		return nil
+	}
+	p.mu.Unlock()
+
+	p.logger.Info("panda: sendTimeline",
+		zap.String("conv_id", lastConvID),
+		zap.Int64("parent_msg_id", parentMsgID),
+		zap.String("status", status),
+		zap.Int("entries", len(entries)),
+	)
+
+	if lastConvID == "" {
+		return fmt.Errorf("panda: no conv_id configured and no incoming conversation to reply to")
+	}
+
+	body := AgentTimelineBody{
+		Entries:     entries,
+		Status:      status,
+		ParentMsgID: parentMsgID,
+	}
+	bodyJSON, _ := json.Marshal(body)
+
+	p.mu.Lock()
+	clientSeq := p.clientSeq
+	p.clientSeq++
+	p.mu.Unlock()
+
+	payload := msgSendPayload{
+		ConvID:      lastConvID,
+		ContentType: 9,
+		Body:        string(bodyJSON),
+		ReplyTo:     0,
+		ClientSeq:   clientSeq,
+		Mention:     []string{},
+	}
+	payloadData, _ := json.Marshal(payload)
+
+	frame := frame{
+		Type:    msgTypeSend,
+		ID:      xid.New().String(),
+		Payload: payloadData,
+	}
+
+	if err := p.writeFrame(frame); err != nil {
+		return err
+	}
+	// Track that the first send has gone out, so subsequent sends before
+	// the ack arrives are buffered instead of creating a second bubble.
+	if parentMsgID == 0 {
+		p.mu.Lock()
+		p.firstSendDone = true
+		p.mu.Unlock()
+	}
+	return nil
+}
+
+// sendTimelineNoBuffer is like sendTimeline but never buffers entries.
+// It sends directly — if ack hasn't arrived, parentMsgID will be 0 which
+// creates a standalone bubble. Used for the final "completed" send to
+// avoid racing with the deferred cleanup in Write().
+func (p *Panda) sendTimelineNoBuffer(ctx context.Context, entries []AgentTimelineEntry, status string) error {
+	convID := p.cfg.ConvID
+
+	p.mu.Lock()
+	if convID == "" {
+		convID = p.lastConvID
+	}
+	lastConvID := convID
+	parentMsgID := p.timelineRootMsgID
+	clientSeq := p.clientSeq
+	p.clientSeq++
 	p.mu.Unlock()
 
 	if lastConvID == "" {
 		return fmt.Errorf("panda: no conv_id configured and no incoming conversation to reply to")
 	}
 
+	p.logger.Info("panda: sendTimeline (final)",
+		zap.String("conv_id", lastConvID),
+		zap.Int64("parent_msg_id", parentMsgID),
+		zap.String("status", status),
+		zap.Int("entries", len(entries)),
+	)
+
+	body := AgentTimelineBody{
+		Entries:     entries,
+		Status:      status,
+		ParentMsgID: parentMsgID,
+	}
+	bodyJSON, _ := json.Marshal(body)
+
 	payload := msgSendPayload{
 		ConvID:      lastConvID,
-		ContentType: 0,
-		Body:        text,
-		ClientSeq:   time.Now().UnixMilli(),
+		ContentType: 9,
+		Body:        string(bodyJSON),
+		ReplyTo:     0,
+		ClientSeq:   clientSeq,
+		Mention:     []string{},
 	}
 	payloadData, _ := json.Marshal(payload)
 
@@ -203,6 +389,72 @@ func (p *Panda) Write(ctx context.Context, text string) error {
 	}
 
 	return p.writeFrame(frame)
+}
+
+// WriteThinking accumulates thinking text and sends a running timeline update.
+func (p *Panda) WriteThinking(ctx context.Context, text string) error {
+	p.timelineMu.Lock()
+	defer p.timelineMu.Unlock()
+	// Append to the last entry if it's a thinking entry, otherwise create new.
+	// We only accumulate locally — thinking is flushed once when the next event
+	// (tool call or response) arrives, avoiding duplicate entries in the client.
+	if n := len(p.timelineEntries); n > 0 && p.timelineEntries[n-1].Type == TimelineEntryThinking {
+		p.timelineEntries[n-1].Content += text
+	} else {
+		p.timelineEntries = append(p.timelineEntries, AgentTimelineEntry{
+			ID:        xid.New().String(),
+			Type:      TimelineEntryThinking,
+			Content:   text,
+			Timestamp: time.Now().UnixMilli(),
+		})
+		// New thinking phase starts — will be flushed with the next event.
+		p.thinkingSent = false
+	}
+	return nil
+}
+
+// WriteToolCall records a tool call and sends a running timeline update.
+func (p *Panda) WriteToolCall(ctx context.Context, call types.ToolCall) error {
+	p.timelineMu.Lock()
+	// Build entries to send: flush accumulated thinking, then the tool call.
+	var entries []AgentTimelineEntry
+	if !p.thinkingSent && len(p.timelineEntries) > 0 && p.timelineEntries[len(p.timelineEntries)-1].Type == TimelineEntryThinking {
+		entries = append(entries, p.timelineEntries[len(p.timelineEntries)-1])
+		p.thinkingSent = true
+	}
+	tc := AgentTimelineEntry{
+		ID:        xid.New().String(),
+		Type:      TimelineEntryToolCall,
+		Content:   call.Name,
+		ToolName:  call.Name,
+		ToolInput: call.Arguments,
+		Timestamp: time.Now().UnixMilli(),
+	}
+	p.timelineEntries = append(p.timelineEntries, tc)
+	entries = append(entries, tc)
+	p.timelineMu.Unlock()
+
+	return p.sendTimeline(ctx, entries, "running")
+}
+
+// WriteToolResult records a tool result and sends a running timeline update.
+func (p *Panda) WriteToolResult(ctx context.Context, result types.ToolResult) error {
+	p.timelineMu.Lock()
+	status := "success"
+	if result.IsError {
+		status = "error"
+	}
+	p.timelineEntries = append(p.timelineEntries, AgentTimelineEntry{
+		ID:        xid.New().String(),
+		Type:      TimelineEntryToolResult,
+		Content:   result.Content,
+		Status:    status,
+		Timestamp: time.Now().UnixMilli(),
+	})
+	entry := p.timelineEntries[len(p.timelineEntries)-1]
+	p.timelineMu.Unlock()
+
+	return p.sendTimeline(ctx, []AgentTimelineEntry{entry}, "running")
 }
 
 // writeFrame sends a frame over WebSocket with mutex protection.
@@ -255,42 +507,113 @@ func (p *Panda) WriteContent(ctx context.Context, text string, contentType int) 
 	return p.writeFrame(frame)
 }
 
-// isImageExt returns true if the file extension is a common image format.
-func isImageExt(ext string) bool {
-	ext = strings.ToLower(ext)
-	switch ext {
-	case ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp":
-		return true
-	}
-	return false
-}
+// mdLinkRe matches markdown links/image references with a local image path.
+// e.g. [alt](path.png) or ![alt](path.png)
+var mdLinkRe = regexp.MustCompile(`(!?)\[([^\]]*)\]\(([^)]+\.(?:png|jpg|jpeg|gif|webp|bmp))\)`)
+
+// bareImgRe matches a path that starts with . / or \ and ends with an image extension.
+var bareImgRe = regexp.MustCompile(`([./\\]\S+\.(?:png|jpg|jpeg|gif|webp|bmp))`)
 
 // autoUploadImages scans text for local image file paths, uploads them to the
 // panda-ai server, and replaces each path with a markdown image link.
 func (p *Panda) autoUploadImages(ctx context.Context, text string) string {
-	// Quick check for common path patterns — avoids scanning when unnecessary
+	if !strings.ContainsAny(text, "/\\.") {
+		return text
+	}
+
+	// Pass 1: handle markdown link/image syntax [alt](path.png) or ![alt](path.png)
+	text = p.replaceMarkdownLinks(ctx, text)
+	// Pass 2: handle bare paths like /tmp/img.png or ./img.png
+	text = p.replaceBarePaths(ctx, text)
+
+	return text
+}
+
+func (p *Panda) replaceMarkdownLinks(ctx context.Context, text string) string {
+	matches := mdLinkRe.FindAllStringSubmatchIndex(text, -1)
+	if len(matches) == 0 {
+		return text
+	}
+
+	var buf strings.Builder
+	lastEnd := 0
+	for _, m := range matches {
+		fullStart, fullEnd := m[0], m[1] // entire match: [alt](path.png) or ![alt](path.png)
+		altStart, altEnd := m[4], m[5]   // alt text
+		pathStart, pathEnd := m[6], m[7] // file path
+
+		filePath := text[pathStart:pathEnd]
+		if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+			continue
+		}
+
+		p.logger.Info("panda: autoUploadImages found md link", zap.String("path", filePath))
+
+		info, err := os.Stat(filePath)
+		if err != nil || info.IsDir() || info.Size() == 0 {
+			p.logger.Warn("panda: autoUploadImages stat failed", zap.String("path", filePath), zap.Error(err))
+			continue
+		}
+
+		uploaded, err := p.uploadImage(ctx, filePath)
+		if err != nil || uploaded == "" {
+			p.logger.Error("panda: autoUploadImages upload failed", zap.String("path", filePath), zap.Error(err))
+			continue
+		}
+
+		p.logger.Info("panda: autoUploadImages replaced md link", zap.String("path", filePath), zap.String("url", uploaded))
+		buf.WriteString(text[lastEnd:fullStart])
+		alt := text[altStart:altEnd]
+		fmt.Fprintf(&buf, "![%s](%s)", alt, uploaded)
+		lastEnd = fullEnd
+	}
+	buf.WriteString(text[lastEnd:])
+	return buf.String()
+}
+
+func (p *Panda) replaceBarePaths(ctx context.Context, text string) string {
 	if !strings.ContainsAny(text, "/\\") {
 		return text
 	}
 
-	// Check each whitespace-separated token
-	var result []string
-	for _, token := range strings.Fields(text) {
-		trimmed := strings.Trim(token, "'\"(),.;!?")
-		if isImageExt(filepath.Ext(trimmed)) {
-			if info, err := os.Stat(trimmed); err == nil && !info.IsDir() && info.Size() > 0 {
-				uploaded, err := p.uploadImage(ctx, trimmed)
-				if err == nil && uploaded != "" {
-					fileName := filepath.Base(trimmed)
-					result = append(result, fmt.Sprintf("![%s](%s)", fileName, uploaded))
-					continue
-				}
-			}
-		}
-		result = append(result, token)
+	matches := bareImgRe.FindAllStringSubmatchIndex(text, -1)
+	if len(matches) == 0 {
+		return text
 	}
 
-	return strings.Join(result, " ")
+	var buf strings.Builder
+	lastEnd := 0
+	for _, m := range matches {
+		start, end := m[2], m[3] // submatch 1
+		filePath := text[start:end]
+
+		if strings.HasPrefix(filePath, "http://") || strings.HasPrefix(filePath, "https://") {
+			continue
+		}
+		filePath = strings.TrimRight(filePath, "'\"(),.;!?[]")
+
+		p.logger.Info("panda: autoUploadImages found bare path", zap.String("path", filePath))
+
+		info, err := os.Stat(filePath)
+		if err != nil || info.IsDir() || info.Size() == 0 {
+			p.logger.Warn("panda: autoUploadImages stat failed", zap.String("path", filePath), zap.Error(err))
+			continue
+		}
+
+		uploaded, err := p.uploadImage(ctx, filePath)
+		if err != nil || uploaded == "" {
+			p.logger.Error("panda: autoUploadImages upload failed", zap.String("path", filePath), zap.Error(err))
+			continue
+		}
+
+		p.logger.Info("panda: autoUploadImages replaced bare path", zap.String("path", filePath), zap.String("url", uploaded))
+		buf.WriteString(text[lastEnd:start])
+		fileName := filepath.Base(filePath)
+		fmt.Fprintf(&buf, "![%s](%s)", fileName, uploaded)
+		lastEnd = end
+	}
+	buf.WriteString(text[lastEnd:])
+	return buf.String()
 }
 
 // uploadImage uploads a local image file to the panda-ai server and returns the URL.
@@ -366,7 +689,37 @@ func (p *Panda) uploadImage(ctx context.Context, filePath string) (string, error
 	return result.URL, nil
 }
 
-func (p *Panda) Flush() error { return nil }
+func (p *Panda) Flush() error {
+	p.mu.Lock()
+	hasTimeline := p.timelineRootMsgID != 0
+	p.mu.Unlock()
+
+	var err error
+	if hasTimeline {
+		entry := AgentTimelineEntry{
+			ID:        xid.New().String(),
+			Type:      TimelineEntryResponse,
+			Content:   "",
+			Timestamp: time.Now().UnixMilli(),
+		}
+		err = p.sendTimeline(context.Background(), []AgentTimelineEntry{entry}, "completed")
+	}
+
+	// Always reset timeline state between turns, even when no frames were
+	// sent (e.g. thinking accumulated but no tool calls reached sendTimeline).
+	// Otherwise thinking entries leak into the next turn and get appended.
+	p.timelineMu.Lock()
+	p.timelineEntries = nil
+	p.thinkingSent = false
+	p.timelineMu.Unlock()
+	p.mu.Lock()
+	p.timelineRootMsgID = 0
+	p.firstSendDone = false
+	p.pendingEntries = nil
+	p.pendingStatus = ""
+	p.mu.Unlock()
+	return err
+}
 
 func (p *Panda) Close() error {
 	p.mu.Lock()
@@ -512,7 +865,7 @@ type msgPushPayload struct {
 	ContentType int      `json:"content_type"`
 	Body        string   `json:"body"`
 	ReplyTo     int64    `json:"reply_to"`
-	Mention     []string `json:"mention,omitempty"`
+	Mention     []string `json:"mention"`
 	Timestamp   int64    `json:"timestamp"`
 	ConvSeq     int64    `json:"conv_seq"`
 }
@@ -523,7 +876,14 @@ type msgSendPayload struct {
 	Body        string   `json:"body"`
 	ReplyTo     int64    `json:"reply_to"`
 	ClientSeq   int64    `json:"client_seq"`
-	Mention     []string `json:"mention,omitempty"`
+	Mention     []string `json:"mention"`
+}
+
+type msgSendAckPayload struct {
+	MsgID     int64 `json:"msg_id"`
+	Timestamp int64 `json:"timestamp"`
+	ClientSeq int64 `json:"client_seq"`
+	Status    int   `json:"status"`
 }
 
 type errorPayload struct {
@@ -545,7 +905,33 @@ func (p *Panda) run() {
 			return
 		}
 
+		// Send both protocol-level and application-level pings for keepalive.
+		// Protocol-level ping (opcode 9) keeps TCP alive at the WebSocket
+		// layer; the server's library auto-responds with pong.
+		// Application-level ping (type 61) is part of the panda protocol.
+		pingTicker := time.NewTicker(pandaPingInterval)
+		pingDone := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-pingTicker.C:
+					p.connMu.Lock()
+					conn := p.conn
+					p.connMu.Unlock()
+					if conn != nil {
+						_ = conn.WriteControl(websocket.PingMessage, nil, time.Now().Add(pandaWriteTimeout))
+					}
+					_ = p.writeFrame(frame{Type: msgTypePing})
+				case <-pingDone:
+					pingTicker.Stop()
+					return
+				}
+			}
+		}()
+
 		p.readLoop()
+
+		close(pingDone)
 
 		p.connMu.Lock()
 		if p.conn != nil {
@@ -596,7 +982,10 @@ func (p *Panda) connect() bool {
 	wsURL := p.makeWSURL()
 	p.logger.Info("panda: connecting", zap.String("url", wsURL))
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	dialer := &websocket.Dialer{
+		HandshakeTimeout: 10 * time.Second,
+	}
+	conn, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		if p.isClosed() {
 			return false
@@ -604,6 +993,17 @@ func (p *Panda) connect() bool {
 		p.logger.Warn("panda: ws dial failed", zap.Error(err))
 		return false
 	}
+
+	// Set initial read deadline; ping/pong handlers extend it.
+	_ = conn.SetReadDeadline(time.Now().Add(pandaReadTimeout))
+	conn.SetPingHandler(func(data string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(pandaReadTimeout))
+		return conn.WriteControl(websocket.PongMessage, []byte(data), time.Now().Add(pandaWriteTimeout))
+	})
+	conn.SetPongHandler(func(data string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(pandaReadTimeout))
+		return nil
+	})
 
 	p.connMu.Lock()
 	p.conn = conn
@@ -649,6 +1049,8 @@ func (p *Panda) readLoop() {
 			p.logger.Warn("panda: read error", zap.Error(err))
 			return
 		}
+		// Extend read deadline after each successful read.
+		_ = p.conn.SetReadDeadline(time.Now().Add(pandaReadTimeout))
 
 		var f frame
 		if err := json.Unmarshal(message, &f); err != nil {
@@ -673,6 +1075,31 @@ func (p *Panda) handleFrame(f frame) error {
 
 	case msgTypePush:
 		return p.handleMsgPush(f.Payload)
+
+	case msgTypeSendAck:
+		var ack msgSendAckPayload
+		if err := json.Unmarshal(f.Payload, &ack); err == nil {
+			p.mu.Lock()
+			// Only accept ack when we expect one (firstSendDone means a first send is in flight).
+			// If firstSendDone is false, the ack belongs to a previous turn whose state has
+			// already been reset — using it would leak a stale parentMsgID into the next turn.
+			if p.timelineRootMsgID == 0 && p.firstSendDone {
+				p.timelineRootMsgID = ack.MsgID
+				// Flush any entries buffered while waiting for the first ack.
+				if len(p.pendingEntries) > 0 {
+					pending := p.pendingEntries
+					p.pendingEntries = nil
+					status := p.pendingStatus
+					p.mu.Unlock()
+					// Send buffered entries outside the lock to avoid deadlock.
+					for _, e := range pending {
+						_ = p.sendTimeline(context.Background(), []AgentTimelineEntry{e}, status)
+					}
+					return nil
+				}
+			}
+			p.mu.Unlock()
+		}
 
 	case msgTypeError:
 		var errPayload errorPayload
@@ -712,6 +1139,12 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 		return nil
 	}
 
+	// Conversation allowlist check
+	if !p.isConvAllowed(push.ConvID) {
+		p.logger.Debug("panda: conv not allowed", zap.String("conv_id", push.ConvID))
+		return nil
+	}
+
 	// Skip historical messages pushed after reconnect
 	if p.connectedAt > 0 && push.Timestamp > 0 && push.Timestamp < p.connectedAt {
 		return nil
@@ -726,6 +1159,12 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 	p.lastSenderID = push.SenderID
 	p.lastConvID = push.ConvID
 	p.mu.Unlock()
+
+	p.logger.Info("panda: received message",
+		zap.String("conv_id", push.ConvID),
+		zap.Int64("msg_id", push.MsgID),
+		zap.String("sender", push.SenderID),
+	)
 
 	msg := push.Body
 	select {
@@ -745,6 +1184,20 @@ func (p *Panda) isSenderAllowed(userID string) bool {
 	}
 	for _, pattern := range p.allowUsers {
 		if ok, _ := path.Match(pattern, userID); ok {
+			return true
+		}
+	}
+	return false
+}
+
+// isConvAllowed checks if a conversation ID matches the conv allowlist.
+// Empty allowConvs means allow all conversations.
+func (p *Panda) isConvAllowed(convID string) bool {
+	if len(p.allowConvs) == 0 {
+		return true
+	}
+	for _, pattern := range p.allowConvs {
+		if ok, _ := path.Match(pattern, convID); ok {
 			return true
 		}
 	}

@@ -129,7 +129,8 @@
         "server": { "type": "string", "format": "uri" },
         "account": { "type": "string" },
         "password": { "type": "string" },
-        "allow_users": { "type": "array", "items": { "type": "string" } }
+        "allow_users": { "type": "array", "items": { "type": "string" } },
+        "allow_convs": { "type": "array", "items": { "type": "string" } }
       }
     },
     "email": {

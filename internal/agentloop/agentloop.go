@@ -9,6 +9,7 @@ import (
 	"dolphin/internal/agentio"
 	"dolphin/internal/event"
 	"dolphin/internal/transport"
+	"dolphin/internal/types"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -51,6 +52,7 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 	// Create a root span — the span context propagates through ctx to stages,
 	// so LLM and tool spans become children of this turn span.
 	ctx, span := otel.Tracer("dolphin").Start(ctx, "turn."+turn.SessionID)
+	span.SetAttributes(attribute.String("turnid", turn.TurnID))
 	sid := validSessionID(turn.SessionID)
 	if sid != "" {
 		span.SetAttributes(attribute.String("sessionid", sid))
@@ -59,7 +61,7 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 	start := time.Now()
 	defer span.End()
 
-	a.publishTurnEvent(ctx, event.EventTurnStart, turn.SessionID, start, nil)
+	a.publishTurnEvent(ctx, event.EventTurnStart, turn.TurnID, turn.SessionID, start, nil)
 
 	var output strings.Builder
 
@@ -74,9 +76,43 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 		output.WriteString(text)
 		if a.onResult != nil {
 			a.onResult(agentio.TurnResult{
+				TurnID:      turn.TurnID,
 				TransportID: turn.TransportID,
 				SessionID:   turn.SessionID,
 				Text:        text,
+			})
+		}
+	}
+
+	state.OnThinking = func(text string) {
+		if a.onResult != nil {
+			a.onResult(agentio.TurnResult{
+				TurnID:      turn.TurnID,
+				TransportID: turn.TransportID,
+				SessionID:   turn.SessionID,
+				Thinking:    text,
+			})
+		}
+	}
+
+	state.OnToolCall = func(tc types.ToolCall) {
+		if a.onResult != nil {
+			a.onResult(agentio.TurnResult{
+				TurnID:      turn.TurnID,
+				TransportID: turn.TransportID,
+				SessionID:   turn.SessionID,
+				ToolCall:    &tc,
+			})
+		}
+	}
+
+	state.OnToolResult = func(tr types.ToolResult) {
+		if a.onResult != nil {
+			a.onResult(agentio.TurnResult{
+				TurnID:      turn.TurnID,
+				TransportID: turn.TransportID,
+				SessionID:   turn.SessionID,
+				ToolResult:  &tr,
 			})
 		}
 	}
@@ -90,13 +126,14 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 		span.SetAttributes(attribute.String("output", output.String()))
 		if a.onResult != nil {
 			a.onResult(agentio.TurnResult{
+				TurnID:      turn.TurnID,
 				TransportID: turn.TransportID,
 				SessionID:   turn.SessionID,
 				Text:        "Error: " + err.Error(),
 				Done:        true,
 			})
 		}
-		a.publishTurnEvent(ctx, event.EventTurnError, turn.SessionID, start, err)
+		a.publishTurnEvent(ctx, event.EventTurnError, turn.TurnID, turn.SessionID, start, err)
 		return
 	}
 
@@ -104,19 +141,21 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 
 	if a.onResult != nil {
 		a.onResult(agentio.TurnResult{
+			TurnID:      turn.TurnID,
 			TransportID: turn.TransportID,
 			SessionID:   turn.SessionID,
 			Done:        true,
 		})
 	}
-	a.publishTurnEvent(ctx, event.EventTurnComplete, turn.SessionID, start, nil)
+	a.publishTurnEvent(ctx, event.EventTurnComplete, turn.TurnID, turn.SessionID, start, nil)
 }
 
-func (a *AgentLoop) publishTurnEvent(ctx context.Context, et event.Type, sid string, start time.Time, err error) {
+func (a *AgentLoop) publishTurnEvent(ctx context.Context, et event.Type, turnID, sid string, start time.Time, err error) {
 	if a.eventBus == nil {
 		return
 	}
 	payload := map[string]any{
+		"turn_id":     turnID,
 		"duration_ms": float64(time.Since(start).Milliseconds()),
 	}
 	if err != nil {

@@ -43,7 +43,10 @@ type State struct {
 	Done             bool
 	ToolsCalled      bool
 
-	OnChunk func(text string)
+	OnChunk      func(text string)
+	OnThinking   func(text string)
+	OnToolCall   func(tc types.ToolCall)
+	OnToolResult func(tr types.ToolResult)
 }
 
 type Compositor struct {
@@ -338,12 +341,20 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 		}
 
 		thinking.WriteString(chunk.Thinking)
+		if chunk.Thinking != "" && state.OnThinking != nil {
+			state.OnThinking(chunk.Thinking)
+		}
 		if chunk.ThinkingSignature != "" {
 			thinkingSignature = chunk.ThinkingSignature
 		}
 		content.WriteString(chunk.Content)
 		if len(chunk.ToolCalls) > 0 {
 			toolCalls = chunk.ToolCalls
+			if state.OnToolCall != nil {
+				for _, tc := range chunk.ToolCalls {
+					state.OnToolCall(tc)
+				}
+			}
 		}
 
 		if chunk.InputTokens > 0 {
@@ -525,6 +536,9 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			Content:    result.Content,
 		})
 		state.ToolResults = append(state.ToolResults, *result)
+		if state.OnToolResult != nil {
+			state.OnToolResult(*result)
+		}
 	}
 	return nil
 }

@@ -909,7 +909,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			a := NewAgentLoop(q, c, logger, nil)
 
 			So(func() {
-				a.publishTurnEvent(context.Background(), event.EventTurnStart, "sid", time.Now(), nil)
+				a.publishTurnEvent(context.Background(), event.EventTurnStart, "tid", "sid", time.Now(), nil)
 			}, ShouldNotPanic)
 		})
 
@@ -925,7 +925,7 @@ func TestPublishTurnEvent(t *testing.T) {
 				receivedType = e.Type
 			})
 
-			a.publishTurnEvent(context.Background(), event.EventTurnComplete, "sid", time.Now(), nil)
+			a.publishTurnEvent(context.Background(), event.EventTurnComplete, "tid", "sid", time.Now(), nil)
 			So(receivedType, ShouldEqual, event.EventTurnComplete)
 		})
 
@@ -941,7 +941,7 @@ func TestPublishTurnEvent(t *testing.T) {
 				payload = e.Payload
 			})
 
-			a.publishTurnEvent(context.Background(), event.EventTurnError, "sid", time.Now(), fmt.Errorf("oops"))
+			a.publishTurnEvent(context.Background(), event.EventTurnError, "tid", "sid", time.Now(), fmt.Errorf("oops"))
 			So(payload, ShouldNotBeNil)
 			So(payload["error"], ShouldEqual, "oops")
 			So(payload["duration_ms"], ShouldNotBeNil)
