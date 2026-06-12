@@ -10,7 +10,7 @@ import (
 )
 
 func TestBuiltinMCPHandlers(t *testing.T) {
-	handlers := BuiltinMCPHandlers()
+	handlers := BuiltinMCPHandlers(nil)
 	if len(handlers) == 0 {
 		t.Fatal("expected at least 1 builtin handler")
 	}
@@ -36,7 +36,7 @@ func TestBuiltinMCPSchemas(t *testing.T) {
 }
 
 func TestHandleShell_Success(t *testing.T) {
-	h := BuiltinMCPHandlers()["shell"]
+	h := BuiltinMCPHandlers(nil)["shell"]
 	result, err := h(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +50,7 @@ func TestHandleShell_Success(t *testing.T) {
 }
 
 func TestHandleShell_InvalidArgs(t *testing.T) {
-	h := BuiltinMCPHandlers()["shell"]
+	h := BuiltinMCPHandlers(nil)["shell"]
 	result, err := h(context.Background(), json.RawMessage(`not json`))
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestHandleShell_InvalidArgs(t *testing.T) {
 }
 
 func TestHandleShell_EmptyCommand(t *testing.T) {
-	h := BuiltinMCPHandlers()["shell"]
+	h := BuiltinMCPHandlers(nil)["shell"]
 	result, err := h(context.Background(), json.RawMessage(`{"command":""}`))
 	if err != nil {
 		t.Fatal(err)
@@ -76,7 +76,7 @@ func TestHandleShell_EmptyCommand(t *testing.T) {
 
 func TestBuiltinMCPHandlers_Consistency(t *testing.T) {
 	// Ensure handler, description, and schema counts match.
-	handlers := BuiltinMCPHandlers()
+	handlers := BuiltinMCPHandlers(nil)
 	descs := BuiltinMCPDescriptions()
 	schemas := BuiltinMCPSchemas()
 

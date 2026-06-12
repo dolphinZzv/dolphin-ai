@@ -50,16 +50,21 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	}
 	tool.RegisterEmitEventTool(c.ToolReg, c.EventBus)
 
+	ctxBuilder := &agentloop.ContextBuilderStage{
+		SkillStore: c.SkillStore,
+		Brain:      c.Brain,
+		Workspace:  c.Config.GetString("agent.workspace"),
+		Workmode:   c.Config.GetString("agent.workmode"),
+		EventBus:   c.EventBus,
+	}
+	for _, sec := range c.ContextSections {
+		ctxBuilder.RegisterSection(sec)
+	}
+
 	compositor := agentloop.NewCompositor(
 		[]agentloop.Stage{
 			&agentloop.MemoryReadStage{Memory: c.Mem},
-			&agentloop.ContextBuilderStage{
-				SkillStore: c.SkillStore,
-				Brain:      c.Brain,
-				Workspace:  c.Config.GetString("agent.workspace"),
-				Workmode:   c.Config.GetString("agent.workmode"),
-				EventBus:   c.EventBus,
-			},
+			ctxBuilder,
 		},
 		[]agentloop.Stage{
 			&agentloop.LLMStage{

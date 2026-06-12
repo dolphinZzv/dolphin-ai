@@ -6,6 +6,7 @@ import (
 	"dolphin/internal/brain"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
+	appctx "dolphin/internal/context"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 	"dolphin/internal/limit"
@@ -47,6 +48,7 @@ type Context struct {
 	Transports          []transport.IO
 	OtelShutdown        func()
 	PprofShutdown       func()
+	ContextSections     []appctx.Section
 	Limit               *limit.Limiter
 	LimitResetScheduler *limit.ResetScheduler
 }

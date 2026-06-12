@@ -49,6 +49,7 @@ func New(cfg *config.Config) *Pipeline {
 		StepMemory().
 		StepLLM().
 		StepTools().
+		StepCli().
 		StepBrain().
 		StepScheduler().
 		StepAgentIO().

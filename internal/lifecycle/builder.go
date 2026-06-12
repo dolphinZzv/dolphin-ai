@@ -87,6 +87,11 @@ func (b *Builder) StepTools() *Builder {
 	return b
 }
 
+func (b *Builder) StepCli() *Builder {
+	_ = (&setup.CLIBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	return b
+}
+
 func (b *Builder) StepBrain() *Builder {
 	if b.ctx.Brain != nil {
 		return b

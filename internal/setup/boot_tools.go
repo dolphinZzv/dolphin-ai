@@ -78,7 +78,7 @@ type mcpServerConfig struct {
 }
 
 func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) {
-	builtinHandlers := tool.BuiltinMCPHandlers()
+	builtinHandlers := tool.BuiltinMCPHandlers(nil)
 	builtinDescs := tool.BuiltinMCPDescriptions()
 	builtinSchemas := tool.BuiltinMCPSchemas()
 
