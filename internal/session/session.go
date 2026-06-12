@@ -215,7 +215,7 @@ func (m *Manager) saveSessionLocked(sess *Session) {
 	if err != nil {
 		return
 	}
-	os.MkdirAll(m.dir, 0755)
+	_ = os.MkdirAll(m.dir, 0755)
 	_ = os.WriteFile(m.jsonPath(sess.ID), data, 0644)
 }
 

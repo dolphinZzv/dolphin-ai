@@ -131,7 +131,7 @@ func (b *Builder) StepPprof() *Builder {
 	if b.ctx.PprofShutdown != nil {
 		return b
 	}
-	(&setup.PprofBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	_ = (&setup.PprofBootstrapper{}).Bootstrap(context.Background(), b.ctx)
 	return b
 }
 
