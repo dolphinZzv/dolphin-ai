@@ -79,8 +79,8 @@ func TestScan_laterDirOverrides(t *testing.T) {
 	dir1 := t.TempDir()
 	dir2 := t.TempDir()
 
-	os.WriteFile(filepath.Join(dir1, "tool"), []byte("#!/bin/sh\necho v1"), 0o755)
-	os.WriteFile(filepath.Join(dir2, "tool"), []byte("#!/bin/sh\necho v2"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir1, "tool"), []byte("#!/bin/sh\necho v1"), 0o755)
+	_ = os.WriteFile(filepath.Join(dir2, "tool"), []byte("#!/bin/sh\necho v2"), 0o755)
 
 	clis := Scan([]string{dir1, dir2}, zap.NewNop())
 	if len(clis) != 1 {
@@ -98,7 +98,7 @@ func TestFetchHelp_caches(t *testing.T) {
 
 	dir := t.TempDir()
 	script := filepath.Join(dir, "demo")
-	os.WriteFile(script, []byte("#!/bin/sh\necho Usage: demo '<args>'"), 0o755)
+	_ = os.WriteFile(script, []byte("#!/bin/sh\necho Usage: demo '<args>'"), 0o755)
 
 	c := CLI{Name: "demo", Path: script}
 	FetchHelp(&c, zap.NewNop())
@@ -126,7 +126,7 @@ func TestFetchHelp_noHelpFlag(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "bad")
 	// A script that doesn't support --help, -h, or help — just exits 0.
-	os.WriteFile(script, []byte("#!/bin/sh\ntrue"), 0o755)
+	_ = os.WriteFile(script, []byte("#!/bin/sh\ntrue"), 0o755)
 
 	c := CLI{Name: "bad", Path: script}
 	FetchHelp(&c, zap.NewNop())
