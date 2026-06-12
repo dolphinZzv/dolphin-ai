@@ -1066,6 +1066,46 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 	})
 }
 
+func TestAgentLoopProcessTurnError(t *testing.T) {
+	Convey("AgentLoop processTurn handles error", t, func() {
+		q := make(chan *agentio.Turn, 1)
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		// Compositor with an init stage that errors
+		compositor := NewCompositor(
+			[]Stage{&errorStage{}},
+			nil,
+			1,
+		)
+
+		a := NewAgentLoop(q, compositor, logger, eb, nil)
+
+		var lastResult agentio.TurnResult
+		a.SetOnResult(func(result agentio.TurnResult) {
+			if result.Done {
+				lastResult = result
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go a.Run(ctx)
+
+		q <- &agentio.Turn{
+			SessionID:   "test-session",
+			Input:       "trigger error",
+			TransportID: "test-transport",
+		}
+
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+
+		So(lastResult.Text, ShouldContainSubstring, "Error")
+		So(lastResult.Done, ShouldBeTrue)
+	})
+}
+
 func TestAgentLoopRunContextDone(t *testing.T) {
 	Convey("AgentLoop.Run exits on context done", t, func() {
 		q := make(chan *agentio.Turn)
@@ -1078,4 +1118,11 @@ func TestAgentLoopRunContextDone(t *testing.T) {
 
 		So(func() { a.Run(ctx) }, ShouldNotPanic)
 	})
+}
+
+type errorStage struct{}
+
+func (s *errorStage) Name() string { return "error" }
+func (s *errorStage) Process(_ context.Context, _ *State) error {
+	return fmt.Errorf("injected error")
 }
