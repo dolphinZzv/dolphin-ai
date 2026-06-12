@@ -7,7 +7,6 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
-	"dolphin/internal/watcher"
 	"dolphin/internal/hook"
 	"dolphin/internal/limit"
 	"dolphin/internal/llm"
@@ -19,6 +18,7 @@ import (
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/userio"
+	"dolphin/internal/watcher"
 
 	"go.uber.org/zap"
 )
