@@ -1725,6 +1725,86 @@ func TestAgentIOBootstrapperBootstrap_full(t *testing.T) {
 	}
 }
 
+func TestPprofBootstrapper(t *testing.T) {
+	b := &PprofBootstrapper{}
+	if b.Name() != "pprof" {
+		t.Errorf("Name() = %q", b.Name())
+	}
+	if b.Index() != 111 {
+		t.Errorf("Index() = %d", b.Index())
+	}
+}
+
+func TestPprofBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("no-op when PprofShutdown already set", func(t *testing.T) {
+		c := &Context{PprofShutdown: func() {}}
+		b := &PprofBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("no-op when pprof.enabled is false", func(t *testing.T) {
+		c := &Context{Config: config.LoadConfigFromMap(map[string]any{
+			"pprof.enabled": false,
+		}), Logger: zap.NewNop()}
+		b := &PprofBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.PprofShutdown != nil {
+			t.Error("PprofShutdown should remain nil when disabled")
+		}
+	})
+
+	t.Run("no-op when pprof.enabled is missing", func(t *testing.T) {
+		c := &Context{Config: config.LoadConfigFromMap(nil), Logger: zap.NewNop()}
+		b := &PprofBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.PprofShutdown != nil {
+			t.Error("PprofShutdown should remain nil when not enabled")
+		}
+	})
+
+	t.Run("starts pprof server when enabled", func(t *testing.T) {
+		c := &Context{Config: config.LoadConfigFromMap(map[string]any{
+			"pprof.enabled": true,
+			"pprof.addr":    "127.0.0.1:0", // port 0 = random available port
+		}), Logger: zap.NewNop()}
+		b := &PprofBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.PprofShutdown == nil {
+			t.Fatal("PprofShutdown should be set when enabled")
+		}
+		c.PprofShutdown()
+	})
+
+	t.Run("uses default addr when pprof.addr is empty", func(t *testing.T) {
+		c := &Context{Config: config.LoadConfigFromMap(map[string]any{
+			"pprof.enabled": true,
+		}), Logger: zap.NewNop()}
+		b := &PprofBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if c.PprofShutdown == nil {
+			t.Fatal("PprofShutdown should be set with default addr")
+		}
+		c.PprofShutdown()
+	})
+}
+
 func TestToolsBootstrapperBootstrap_full(t *testing.T) {
 	b := &ToolsBootstrapper{}
 	dir := t.TempDir()
