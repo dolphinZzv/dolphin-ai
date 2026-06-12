@@ -20,6 +20,7 @@ type ModelConfig struct {
 	TopP            float64       `json:"top_p"`
 	Stop            []string      `json:"stop"`
 	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
+	Disabled        bool          `json:"disabled,omitempty"`
 }
 
 type LLMRequest struct {

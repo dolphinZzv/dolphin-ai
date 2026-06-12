@@ -21,14 +21,16 @@ type AgentLoop struct {
 	compositor *Compositor
 	logger     *zap.Logger
 	eventBus   *event.Bus
+	agentIO    *agentio.AgentIO
 }
 
-func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.Logger, eventBus *event.Bus) *AgentLoop {
+func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.Logger, eventBus *event.Bus, agentIO *agentio.AgentIO) *AgentLoop {
 	return &AgentLoop{
 		queue:      queue,
 		compositor: compositor,
 		logger:     logger,
 		eventBus:   eventBus,
+		agentIO:    agentIO,
 	}
 }
 
@@ -43,12 +45,24 @@ func (a *AgentLoop) Run(ctx context.Context) {
 			a.logger.Info("agent loop stopped")
 			return
 		case turn := <-a.queue:
+			if a.agentIO != nil {
+				cancelled := a.agentIO.IsCancelled(turn.TurnID)
+				a.agentIO.OnTurnDequeued(turn)
+				if cancelled {
+					continue
+				}
+			}
 			a.processTurn(ctx, turn)
 		}
 	}
 }
 
 func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
+	if a.agentIO != nil {
+		a.agentIO.SetProcessing(true)
+		defer a.agentIO.SetProcessing(false)
+	}
+
 	// Create a root span — the span context propagates through ctx to stages,
 	// so LLM and tool spans become children of this turn span.
 	ctx, span := otel.Tracer("dolphin").Start(ctx, "turn."+turn.SessionID)

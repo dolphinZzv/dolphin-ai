@@ -46,6 +46,10 @@ func init() {
 			"skills_disable_cmd":  "Disable a skill",
 			"skills_disabled_msg": "skill %q disabled\n",
 
+			// queue
+			"queue":     "Show agent turn queue",
+			"queue_pop": "Pop a turn from the queue by index",
+
 			// version
 			"version_desc":   "Print the version number",
 			"version_output": "dolphin %s",
@@ -161,6 +165,10 @@ func init() {
 			"skills_enabled_msg":  "技能 %q 已启用\n",
 			"skills_disable_cmd":  "禁用一个技能",
 			"skills_disabled_msg": "技能 %q 已禁用\n",
+
+			// queue
+			"queue":     "查看 agent 消息队列",
+			"queue_pop": "按序号弹出队列中的消息",
 
 			// version
 			"version_desc":   "打印版本号",

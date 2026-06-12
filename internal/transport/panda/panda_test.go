@@ -1081,6 +1081,292 @@ func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 	}
 }
 
+// --- replaceMarkdownLinks (via autoUploadImages) ---
+
+func TestReplaceMarkdownLinks_AltTextLink(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "photo.png")
+	if err := os.WriteFile(tmpFile, []byte("png-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	uploaded := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/files/upload" {
+			uploaded <- "ok"
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"code":0,"msg":"ok","data":{"url":"http://example.com/remote.png"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	input := "Look at [my photo](" + tmpFile + ")"
+	result := p.autoUploadImages(context.Background(), input)
+
+	if !strings.Contains(result, "![my photo](http://example.com/remote.png)") {
+		t.Fatalf("expected markdown image with alt text, got: %s", result)
+	}
+	select {
+	case <-uploaded:
+	default:
+		t.Fatal("upload was not triggered")
+	}
+}
+
+func TestReplaceMarkdownLinks_ImageSyntax(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "img.jpg")
+	if err := os.WriteFile(tmpFile, []byte("jpg-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/files/upload" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"code":0,"msg":"ok","data":{"url":"http://example.com/up.jpg"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	input := "See ![]( " + tmpFile + " ) and ![desc](" + tmpFile + ")"
+	result := p.autoUploadImages(context.Background(), input)
+
+	if !strings.Contains(result, "![](") {
+		t.Fatalf("expected image syntax preserved, got: %s", result)
+	}
+	if !strings.Contains(result, "![desc](") {
+		t.Fatalf("expected image syntax with desc preserved, got: %s", result)
+	}
+	if !strings.Contains(result, "http://example.com/up.jpg") {
+		t.Fatalf("expected uploaded URL, got: %s", result)
+	}
+}
+
+func TestReplaceMarkdownLinks_NonExistentPath(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.token = "test-token"
+
+	input := "Check [screenshot](/nonexistent/path.png) here"
+	result := p.autoUploadImages(context.Background(), input)
+
+	if !strings.Contains(result, "[screenshot](/nonexistent/path.png)") {
+		t.Fatalf("expected original text preserved for non-existent path, got: %s", result)
+	}
+}
+
+func TestReplaceMarkdownLinks_HTTPPathSkipped(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.token = "test-token"
+
+	input := "Image: [remote](https://example.com/remote.png)"
+	result := p.autoUploadImages(context.Background(), input)
+
+	if !strings.Contains(result, "[remote](https://example.com/remote.png)") {
+		t.Fatalf("expected HTTP URL to be preserved, got: %s", result)
+	}
+}
+
+func TestReplaceMarkdownLinks_UploadFails(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "fail.png")
+	if err := os.WriteFile(tmpFile, []byte("data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	input := "[bad](" + tmpFile + ")"
+	result := p.autoUploadImages(context.Background(), input)
+
+	if !strings.Contains(result, "[bad]") {
+		t.Fatalf("expected original text preserved on upload failure, got: %s", result)
+	}
+}
+
+func TestReplaceMarkdownLinks_MixedContent(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "chart.png")
+	if err := os.WriteFile(tmpFile, []byte("chart-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/files/upload" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"code":0,"msg":"ok","data":{"url":"http://example.com/chart_remote.png"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	input := "Here is [the chart](" + tmpFile + ") and some text after."
+	result := p.autoUploadImages(context.Background(), input)
+
+	if !strings.Contains(result, "![the chart](http://example.com/chart_remote.png)") {
+		t.Fatalf("expected replaced markdown link, got: %s", result)
+	}
+	if !strings.Contains(result, "and some text after.") {
+		t.Fatalf("expected trailing text preserved, got: %s", result)
+	}
+	if !strings.HasPrefix(result, "Here is ") {
+		t.Fatalf("expected leading text preserved, got: %s", result)
+	}
+}
+
+// --- replaceBarePaths edge cases ---
+
+func TestReplaceBarePaths_NonExistentBarePath(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	p.token = "test-token"
+
+	result := p.autoUploadImages(context.Background(), "See /fake/dir/img.png")
+	if !strings.Contains(result, "/fake/dir/img.png") {
+		t.Fatalf("expected non-existent bare path to remain, got: %s", result)
+	}
+}
+
+func TestReplaceBarePaths_RelativePath(t *testing.T) {
+	tmpFile := filepath.Join(t.TempDir(), "rel_img.png")
+	if err := os.WriteFile(tmpFile, []byte("rel-data"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/files/upload" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"code":0,"msg":"ok","data":{"url":"http://example.com/rel_remote.png"}}`))
+		}
+	}))
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{Server: srv.URL}, nil, "test")
+	p.token = "test-token"
+
+	result := p.autoUploadImages(context.Background(), "Image: "+tmpFile+" end")
+	if !strings.Contains(result, "![rel_img.png](http://example.com/rel_remote.png)") {
+		t.Fatalf("expected replaced bare path, got: %s", result)
+	}
+}
+
+// --- isConvAllowed ---
+
+func TestPanda_IsConvAllowed_EmptyList(t *testing.T) {
+	p := NewPanda(PandaConfig{}, nil, "test")
+	if !p.isConvAllowed("any_conv") {
+		t.Fatal("expected true for empty conv allowlist (allow all)")
+	}
+}
+
+func TestPanda_IsConvAllowed_Match(t *testing.T) {
+	p := NewPanda(PandaConfig{AllowConvs: "conv_abc,conv_*"}, nil, "test")
+	if !p.isConvAllowed("conv_xyz") {
+		t.Fatal("expected match for conv_* pattern")
+	}
+}
+
+func TestPanda_IsConvAllowed_NoMatch(t *testing.T) {
+	p := NewPanda(PandaConfig{AllowConvs: "conv_specific"}, nil, "test")
+	if p.isConvAllowed("other_conv") {
+		t.Fatal("expected no match")
+	}
+}
+
+// --- handleMsgPush conv filter ---
+
+func TestPanda_HandleMsgPush_ConvAllowedFilter(t *testing.T) {
+	p := NewPanda(PandaConfig{AllowConvs: "conv_target"}, nil, "test")
+	p.userID = "bot"
+	p.allowUsers = []string{"*"}
+
+	push := msgPushPayload{SenderID: "other", ConvID: "conv_wrong", ContentType: 0, Body: "hello"}
+	data, _ := json.Marshal(push)
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 0 {
+		t.Fatal("expected message from unallowed conv to be filtered")
+	}
+}
+
+// --- handleFrame sendAck buffer flush ---
+
+func TestPanda_HandleFrame_SendAck_FlushesPending(t *testing.T) {
+	got := make(chan frame, 3)
+	srv := newTestWSServer(t, func(msg []byte) []byte {
+		var f frame
+		if err := json.Unmarshal(msg, &f); err == nil && f.Type == msgTypeSend {
+			got <- f
+			var payload msgSendPayload
+			_ = json.Unmarshal(f.Payload, &payload)
+			if payload.ClientSeq == 0 {
+				ack, _ := json.Marshal(msgSendAckPayload{
+					MsgID:     42,
+					ClientSeq: payload.ClientSeq,
+					Status:    1,
+				})
+				resp, _ := json.Marshal(frame{Type: msgTypeSendAck, Payload: ack})
+				return resp
+			}
+		}
+		return nil
+	})
+	defer srv.Close()
+
+	p := NewPanda(PandaConfig{
+		Server:  "http://" + srv.Listener.Addr().String(),
+		ConvID:  "conv_flush",
+		Account: "test",
+	}, nil, "Dolphin")
+	p.token = "fake"
+	p.userID = "test"
+
+	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
+	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	defer func() { _ = conn.Close() }()
+	p.connMu.Lock()
+	p.conn = conn
+	p.connMu.Unlock()
+
+	go func() {
+		for {
+			var f frame
+			if err := conn.ReadJSON(&f); err != nil {
+				return
+			}
+			_ = p.handleFrame(f)
+		}
+	}()
+
+	_ = p.WriteThinking(context.Background(), "think")
+	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "a", Name: "t1", Arguments: "{}"})
+	time.Sleep(100 * time.Millisecond)
+
+	_ = p.WriteToolResult(context.Background(), types.ToolResult{ToolCallID: "a", Content: "ok"})
+	drainFrames(t, got)
+
+	p.mu.Lock()
+	pending := len(p.pendingEntries)
+	p.mu.Unlock()
+	if pending != 0 {
+		t.Fatalf("expected pending entries flushed after ack, got %d", pending)
+	}
+}
+
 // --- helpers ---
 
 // newTestWSServer creates a WebSocket test server that echoes or handles messages.

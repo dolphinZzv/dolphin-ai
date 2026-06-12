@@ -73,6 +73,7 @@ type configMapFull struct {
 	ints      map[string]int
 	floats    map[string]float64
 	durations map[string]time.Duration
+	bools     map[string]bool
 }
 
 func (m configMapFull) GetInt(key string) int {
@@ -94,6 +95,13 @@ func (m configMapFull) GetDuration(key string) time.Duration {
 		return 0
 	}
 	return m.durations[key]
+}
+
+func (m configMapFull) GetBool(key string) bool {
+	if m.bools == nil {
+		return false
+	}
+	return m.bools[key]
 }
 
 // ---------------------------------------------------------------------------

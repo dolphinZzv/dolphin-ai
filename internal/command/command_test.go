@@ -19,6 +19,8 @@ import (
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
 	transport "dolphin/internal/transport"
+
+	"dolphin/internal/agentio"
 	"dolphin/internal/types"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -164,6 +166,58 @@ func TestRegistrySetAgentIO(t *testing.T) {
 
 		r.SetAgentIO(nil)
 		So(r.agentIO, ShouldBeNil)
+	})
+}
+
+func TestQueuePop(t *testing.T) {
+	Convey("/queue pop", t, func() {
+		mgr := session.NewManager(t.TempDir())
+		sb := signal.NewBus()
+		r := NewRegistry(mgr, sb)
+
+		logger, _ := zap.NewDevelopment()
+		aio := agentio.NewAgentIO(10, mgr, sb, logger, "test")
+		r.SetAgentIO(aio)
+		RegisterQueue(r)
+
+		Convey("pops a turn by index", func() {
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "t1"})
+			aio.SendTurn(ctx, &agentio.Turn{Input: "first"})
+			aio.SendTurn(ctx, &agentio.Turn{Input: "second"})
+
+			pending, _, _ := aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 2)
+
+			// Pop index 1 (first item)
+			r.Execute(context.Background(), "queue pop 1", "none")
+
+			pending, _, _ = aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 1)
+			So(pending[0].Input, ShouldEqual, "second")
+		})
+
+		Convey("pop with invalid index is rejected", func() {
+			So(func() { r.Execute(context.Background(), "queue pop abc", "none") }, ShouldNotPanic)
+			So(func() { r.Execute(context.Background(), "queue pop 0", "none") }, ShouldNotPanic)
+			So(func() { r.Execute(context.Background(), "queue pop -1", "none") }, ShouldNotPanic)
+		})
+
+		Convey("pop out of bounds reports error", func() {
+			r.Execute(context.Background(), "queue pop 99", "none") // queue is empty, should not panic
+		})
+
+		Convey("queue status shows cancelled items are gone", func() {
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "t1"})
+			aio.SendTurn(ctx, &agentio.Turn{Input: "only"})
+
+			pending, _, _ := aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 1)
+
+			r.Execute(context.Background(), "queue pop 1", "none")
+
+			pending, _, _ = aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 0)
+		})
 	})
 }
 

@@ -17,6 +17,7 @@ import (
 	"dolphin/internal/permission"
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
+	"dolphin/internal/session"
 	"dolphin/internal/testhelper"
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
@@ -845,7 +846,7 @@ func TestNewAgentLoop(t *testing.T) {
 		logger, _ := zap.NewDevelopment()
 		eb := event.NewBus()
 
-		a := NewAgentLoop(q, c, logger, eb)
+		a := NewAgentLoop(q, c, logger, eb, nil)
 		So(a, ShouldNotBeNil)
 		So(a.queue, ShouldEqual, q)
 		So(a.compositor, ShouldEqual, c)
@@ -859,7 +860,7 @@ func TestSetOnResult(t *testing.T) {
 		q := make(chan *agentio.Turn)
 		c := NewCompositor(nil, nil, 10)
 		logger, _ := zap.NewDevelopment()
-		a := NewAgentLoop(q, c, logger, nil)
+		a := NewAgentLoop(q, c, logger, nil, nil)
 
 		called := false
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -906,7 +907,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			q := make(chan *agentio.Turn)
 			c := NewCompositor(nil, nil, 10)
 			logger, _ := zap.NewDevelopment()
-			a := NewAgentLoop(q, c, logger, nil)
+			a := NewAgentLoop(q, c, logger, nil, nil)
 
 			So(func() {
 				a.publishTurnEvent(context.Background(), event.EventTurnStart, "tid", "sid", time.Now(), nil)
@@ -918,7 +919,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			q := make(chan *agentio.Turn)
 			c := NewCompositor(nil, nil, 10)
 			logger, _ := zap.NewDevelopment()
-			a := NewAgentLoop(q, c, logger, eb)
+			a := NewAgentLoop(q, c, logger, eb, nil)
 
 			var receivedType event.Type
 			eb.Subscribe(func(ctx context.Context, e event.Event) {
@@ -934,7 +935,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			q := make(chan *agentio.Turn)
 			c := NewCompositor(nil, nil, 10)
 			logger, _ := zap.NewDevelopment()
-			a := NewAgentLoop(q, c, logger, eb)
+			a := NewAgentLoop(q, c, logger, eb, nil)
 
 			var payload map[string]any
 			eb.Subscribe(func(ctx context.Context, e event.Event) {
@@ -962,7 +963,7 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 			1,
 		)
 
-		a := NewAgentLoop(q, compositor, logger, eb)
+		a := NewAgentLoop(q, compositor, logger, eb, nil)
 
 		var resultCallCount int
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -987,12 +988,51 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 	})
 }
 
+func TestAgentLoopCanceledTurn(t *testing.T) {
+	Convey("AgentLoop skips cancelled turns", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
+		mem := memory.NewFileMemory(t.TempDir(), 10)
+		compositor := NewCompositor(
+			[]Stage{&MemoryReadStage{Memory: mem}},
+			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
+			1,
+		)
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio)
+
+		var resultCalls int
+		a.SetOnResult(func(result agentio.TurnResult) {
+			resultCalls++
+		})
+
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID:      "t1",
+			SessionID:   "test-session",
+			Input:       "hello",
+			TransportID: "test-transport",
+		})
+		aio.PopIndex(0) // mark cancelled
+
+		ctx, cancel := context.WithCancel(context.Background())
+		go a.Run(ctx)
+
+		time.Sleep(100 * time.Millisecond)
+		cancel()
+		time.Sleep(50 * time.Millisecond)
+
+		So(resultCalls, ShouldEqual, 0)
+	})
+}
+
 func TestAgentLoopRunContextDone(t *testing.T) {
 	Convey("AgentLoop.Run exits on context done", t, func() {
 		q := make(chan *agentio.Turn)
 		c := NewCompositor(nil, nil, 10)
 		logger, _ := zap.NewDevelopment()
-		a := NewAgentLoop(q, c, logger, nil)
+		a := NewAgentLoop(q, c, logger, nil, nil)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()

@@ -198,6 +198,7 @@
             "additionalProperties": false,
             "properties": {
               "name": { "type": "string", "description": "Model name" },
+              "disabled": { "type": "boolean", "default": false, "description": "When true, the model is excluded from the available models list" },
               "reasoning_effort": { "type": "string", "enum": ["high", "max"], "description": "DeepSeek reasoning effort level" },
               "max_tokens": { "type": "integer", "minimum": 1 },
               "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },

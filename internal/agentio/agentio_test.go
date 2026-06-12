@@ -197,6 +197,62 @@ func TestAgentIO(t *testing.T) {
 			So(w1[0], ShouldContainSubstring, s1.ID)
 			So(w2[0], ShouldContainSubstring, s1.ID)
 		})
+
+		Convey("PopIndex removes turn from pending and marks cancelled", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test-1"})
+
+			aio.SendTurn(ctx, &Turn{Input: "first"})
+			aio.SendTurn(ctx, &Turn{Input: "second"})
+
+			pending, _, _ := aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 2)
+
+			popped := aio.PopIndex(0)
+			So(popped, ShouldNotBeNil)
+			So(popped.Input, ShouldEqual, "first")
+			So(aio.IsCancelled(popped.TurnID), ShouldBeTrue)
+
+			pending2, _, _ := aio.QueueSnapshot()
+			So(len(pending2), ShouldEqual, 1)
+			So(pending2[0].Input, ShouldEqual, "second")
+		})
+
+		Convey("PopIndex out of bounds returns nil", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			So(aio.PopIndex(-1), ShouldBeNil)
+			So(aio.PopIndex(0), ShouldBeNil)
+			So(aio.PopIndex(100), ShouldBeNil)
+		})
+
+		Convey("IsCancelled returns false for unknown turn", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			So(aio.IsCancelled("nonexistent"), ShouldBeFalse)
+		})
+
+		Convey("OnTurnDequeued cleans cancelled state", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test-1"})
+
+			aio.SendTurn(ctx, &Turn{Input: "hello"})
+			pending, _, _ := aio.QueueSnapshot()
+			turn := pending[0]
+			aio.cancelled[turn.TurnID] = true
+
+			aio.OnTurnDequeued(turn)
+			So(aio.IsCancelled(turn.TurnID), ShouldBeFalse)
+		})
+
+		Convey("QueueSnapshot returns capacity and processing state", func() {
+			aio := NewAgentIO(42, mgr, sb, logger, "Dolphin")
+			_, cap, proc := aio.QueueSnapshot()
+			So(cap, ShouldEqual, 42)
+			So(proc, ShouldBeFalse)
+
+			aio.SetProcessing(true)
+			_, _, proc = aio.QueueSnapshot()
+			So(proc, ShouldBeTrue)
+		})
 	})
 }
 

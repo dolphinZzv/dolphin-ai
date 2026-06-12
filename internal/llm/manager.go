@@ -94,6 +94,9 @@ func (m *Manager) SetActiveModel(name string) error {
 	qualified := providerName + "/" + name
 	for _, mc := range m.models {
 		if mc.Name == qualified {
+			if mc.Disabled {
+				return fmt.Errorf("llm: model %q is disabled", name)
+			}
 			m.active = qualified
 			return nil
 		}
@@ -123,6 +126,9 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 	apiModel := modelName
 	for _, mc := range m.models {
 		if mc.Name == modelName {
+			if mc.Disabled {
+				return nil, fmt.Errorf("llm: model %q is disabled", modelName)
+			}
 			apiModel = mc.Model
 			if mc.Temperature != 0 {
 				req.Temperature = mc.Temperature

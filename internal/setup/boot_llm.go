@@ -87,6 +87,7 @@ func parseProviderModels(cfg interface {
 	GetInt(string) int
 	GetFloat(string) float64
 	GetDuration(string) time.Duration
+	GetBool(string) bool
 }, provider string) []llm.ModelConfig {
 	var models []llm.ModelConfig
 	for i := 0; ; i++ {
@@ -124,6 +125,7 @@ func parseProviderModels(cfg interface {
 			MaxRetries:      maxRetries,
 			Timeout:         timeout,
 			ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
+			Disabled:        cfg.GetBool(prefix + ".disabled"),
 		})
 	}
 	return models

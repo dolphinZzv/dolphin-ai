@@ -3,6 +3,7 @@ package agentio
 import (
 	"context"
 	"sync"
+	"time"
 
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
@@ -19,7 +20,8 @@ type Turn struct {
 	TransportID string
 	SessionID   string
 	Input       string
-	Context     string // transport-specific context string
+	Context     string    // transport-specific context string
+	EnqueuedAt  time.Time // when the turn was placed into the queue
 }
 
 type TurnResult struct {
@@ -48,6 +50,12 @@ type AgentIO struct {
 
 	lastTransportMu sync.RWMutex
 	lastTransportID string // most recent transport that sent a turn
+
+	pendingMu    sync.Mutex
+	pending      []*Turn        // mirror of chan queue for introspection
+	cancelled    map[string]bool // turn IDs popped before dequeue
+	processing   bool
+	processingMu sync.RWMutex
 }
 
 func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *zap.Logger, agentName string) *AgentIO {
@@ -60,6 +68,7 @@ func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *za
 		agentName:  agentName,
 		replied:    make(map[string]bool),
 		buffers:    make(map[string]string),
+		cancelled:  make(map[string]bool),
 	}
 
 	// Listen for session flips to broadcast to all transports
@@ -121,11 +130,76 @@ func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
 		turn.SessionID = sess.ID
 	}
 
+	turn.EnqueuedAt = time.Now()
+
+	a.pendingMu.Lock()
+	a.pending = append(a.pending, turn)
+	a.pendingMu.Unlock()
+
 	a.queue <- turn
 }
 
 func (a *AgentIO) Queue() chan *Turn {
 	return a.queue
+}
+
+// QueueSnapshot returns a snapshot of the pending turns, the queue capacity,
+// and whether the agent loop is currently processing a turn.
+func (a *AgentIO) QueueSnapshot() (pending []*Turn, capacity int, processing bool) {
+	a.pendingMu.Lock()
+	pending = make([]*Turn, len(a.pending))
+	copy(pending, a.pending)
+	a.pendingMu.Unlock()
+	return pending, cap(a.queue), a.Processing()
+}
+
+// PopIndex removes the turn at the given 0-based pending index.
+// It marks the turn as cancelled so AgentLoop skips it on dequeue.
+// Returns the popped turn, or nil if out of bounds.
+func (a *AgentIO) PopIndex(index int) *Turn {
+	a.pendingMu.Lock()
+	defer a.pendingMu.Unlock()
+	if index < 0 || index >= len(a.pending) {
+		return nil
+	}
+	t := a.pending[index]
+	a.pending = append(a.pending[:index], a.pending[index+1:]...)
+	a.cancelled[t.TurnID] = true
+	return t
+}
+
+// IsCancelled reports whether the turn was popped before dequeue.
+func (a *AgentIO) IsCancelled(turnID string) bool {
+	a.pendingMu.Lock()
+	defer a.pendingMu.Unlock()
+	return a.cancelled[turnID]
+}
+
+// OnTurnDequeued removes a turn from the pending slice and cleans up cancelled state.
+func (a *AgentIO) OnTurnDequeued(turn *Turn) {
+	a.pendingMu.Lock()
+	for i, t := range a.pending {
+		if t.TurnID == turn.TurnID {
+			a.pending = append(a.pending[:i], a.pending[i+1:]...)
+			break
+		}
+	}
+	delete(a.cancelled, turn.TurnID)
+	a.pendingMu.Unlock()
+}
+
+// SetProcessing marks whether the agent loop is currently processing a turn.
+func (a *AgentIO) SetProcessing(v bool) {
+	a.processingMu.Lock()
+	a.processing = v
+	a.processingMu.Unlock()
+}
+
+// Processing returns whether the agent loop is currently processing a turn.
+func (a *AgentIO) Processing() bool {
+	a.processingMu.RLock()
+	defer a.processingMu.RUnlock()
+	return a.processing
 }
 
 func (a *AgentIO) OnResult(result *TurnResult) {

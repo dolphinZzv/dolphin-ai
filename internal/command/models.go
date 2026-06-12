@@ -47,26 +47,31 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 
 			if RenderModeFrom(cmd) == "markdown" {
 				cmd.Print("**Available models:**\n\n")
-				cmd.Println("| Name | Vendor | API Type | Model |")
-				cmd.Println("|------|--------|----------|-------|")
+				cmd.Println("| Name | Vendor | API Type | Model | Status |")
+				cmd.Println("|------|--------|----------|-------|--------|")
 				for _, mc := range models {
-					suffix := ""
-					if mc.Name == active {
-						suffix = " 🟢"
+					status := "🟢 active"
+					if mc.Disabled {
+						status = "⚫ disabled"
+					} else if mc.Name != active {
+						status = "✅ enabled"
 					}
-					cmd.Printf("| %s | %s | %s | %s%s |\n", mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+					cmd.Printf("| %s | %s | %s | %s | %s |\n", mc.Name, mc.Vendor, mc.APIType, mc.Model, status)
 				}
 			} else {
 				cmd.Println("Available models:")
-				cmd.Printf("   %-30s %-12s %-10s %s\n", "Name", "Vendor", "API Type", "Model")
+				cmd.Printf("   %-30s %-12s %-10s %-10s %s\n", "Name", "Vendor", "API Type", "Model", "Status")
 				for _, mc := range models {
 					mark := "  "
-					suffix := ""
-					if mc.Name == active {
+					status := ""
+					if mc.Disabled {
+						mark = " x"
+						status = " (disabled)"
+					} else if mc.Name == active {
 						mark = ">>"
-						suffix = " (active)"
+						status = " (active)"
 					}
-					cmd.Printf("%s %-30s %-12s %-10s %s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+					cmd.Printf("%s %-30s %-12s %-10s %-10s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, status)
 				}
 			}
 			cmd.Printf("  (total: %d models)\n", len(models))
@@ -111,26 +116,31 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 
 		if RenderModeFrom(cmd) == "markdown" {
 			cmd.Print("**Available models:**\n\n")
-			cmd.Println("| Name | Vendor | API Type | Model |")
-			cmd.Println("|------|--------|----------|-------|")
+			cmd.Println("| Name | Vendor | API Type | Model | Status |")
+			cmd.Println("|------|--------|----------|-------|--------|")
 			for _, mc := range models {
-				suffix := ""
-				if mc.Name == active {
-					suffix = " 🟢"
+				status := "🟢 active"
+				if mc.Disabled {
+					status = "⚫ disabled"
+				} else if mc.Name != active {
+					status = "✅ enabled"
 				}
-				cmd.Printf("| %s | %s | %s | %s%s |\n", mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+				cmd.Printf("| %s | %s | %s | %s | %s |\n", mc.Name, mc.Vendor, mc.APIType, mc.Model, status)
 			}
 		} else {
 			cmd.Println("Available models:")
-			cmd.Printf("   %-30s %-12s %-10s %s\n", "Name", "Vendor", "API Type", "Model")
+			cmd.Printf("   %-30s %-12s %-10s %-10s %s\n", "Name", "Vendor", "API Type", "Model", "Status")
 			for _, mc := range models {
 				mark := "  "
-				suffix := ""
-				if mc.Name == active {
+				status := ""
+				if mc.Disabled {
+					mark = " x"
+					status = " (disabled)"
+				} else if mc.Name == active {
 					mark = ">>"
-					suffix = " (active)"
+					status = " (active)"
 				}
-				cmd.Printf("%s %-30s %-12s %-10s %s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, suffix)
+				cmd.Printf("%s %-30s %-12s %-10s %-10s%s\n", mark, mc.Name, mc.Vendor, mc.APIType, mc.Model, status)
 			}
 		}
 		cmd.Printf("  (total: %d models)\n", len(models))
