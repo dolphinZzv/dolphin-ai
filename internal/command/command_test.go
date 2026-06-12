@@ -787,18 +787,6 @@ func (m *mockMCPSource) EnableSource(name string) error {
 	return fmt.Errorf("not found")
 }
 
-type errorModelsProvider struct{}
-
-func (p *errorModelsProvider) Name() string { return "error-prov" }
-func (p *errorModelsProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
-	ch := make(chan llm.LLMChunk)
-	close(ch)
-	return ch, nil
-}
-func (p *errorModelsProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
-	return nil, fmt.Errorf("api unavailable")
-}
-
 type mockLister struct {
 	models       []llm.ModelConfig
 	setActiveErr error
