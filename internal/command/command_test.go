@@ -196,6 +196,24 @@ func TestQueuePop(t *testing.T) {
 			So(pending[0].Input, ShouldEqual, "second")
 		})
 
+		Convey("queue display in markdown mode", func() {
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "t1"})
+			aio.SendTurn(ctx, &agentio.Turn{Input: "markdown test"})
+			output := r.Execute(context.Background(), "queue", "markdown")
+			So(output, ShouldContainSubstring, "**Agent Queue**")
+		})
+
+		Convey("queue display shows pending turns", func() {
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "t1"})
+			aio.SendTurn(ctx, &agentio.Turn{Input: "hello"})
+			output := r.Execute(context.Background(), "queue", "none")
+			So(output, ShouldContainSubstring, "pending")
+		})
+
+		Convey("queue pop out of bounds returns nil", func() {
+			So(func() { r.Execute(context.Background(), "queue pop 99", "none") }, ShouldNotPanic)
+		})
+
 		Convey("pop with invalid index is rejected", func() {
 			So(func() { r.Execute(context.Background(), "queue pop abc", "none") }, ShouldNotPanic)
 			So(func() { r.Execute(context.Background(), "queue pop 0", "none") }, ShouldNotPanic)
@@ -216,7 +234,6 @@ func TestQueuePop(t *testing.T) {
 		})
 	})
 }
-
 
 func TestTruncateForMarkdown(t *testing.T) {
 	Convey("truncateForMarkdown", t, func() {
@@ -483,6 +500,18 @@ func TestRegisterModels(t *testing.T) {
 			RegisterModels(r, mockProv)
 			output := r.Execute(context.Background(), "models list", "")
 			So(output, ShouldContainSubstring, "model-a")
+		})
+
+		Convey("models list in markdown shows table", func() {
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "gpt-4", Vendor: "OpenAI", APIType: "openai", Model: "gpt-4"},
+				},
+			}
+			RegisterModels(r, mockProv)
+			output := r.Execute(context.Background(), "models", "markdown")
+			So(output, ShouldContainSubstring, "**Available models:**")
+			So(output, ShouldContainSubstring, "| Name |")
 		})
 
 		Convey("models use switches active model", func() {
@@ -767,17 +796,6 @@ func (m *mockLister) Models(_ context.Context) ([]llm.ModelConfig, error) { retu
 func (m *mockLister) ActiveModel() string                                 { return "" }
 func (m *mockLister) SetActiveModel(_ string) error                       { return m.setActiveErr }
 func (m *mockLister) Name() string                                        { return "mock" }
-type nonManagerProvider struct{}
-
-func (p *nonManagerProvider) Name() string { return "non-manager" }
-func (p *nonManagerProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
-	return []llm.ModelConfig{{Name: "m1", Vendor: "test"}}, nil
-}
-func (p *nonManagerProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
-	ch := make(chan llm.LLMChunk)
-	close(ch)
-	return ch, nil
-}
 
 func (m *mockLister) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	ch := make(chan llm.LLMChunk)
@@ -827,4 +845,3 @@ func TestRegisterSession(t *testing.T) {
 
 // Ensure Registry implements expected interface.
 var _ = (*Registry)(nil)
-
