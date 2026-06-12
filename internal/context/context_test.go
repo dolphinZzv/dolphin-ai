@@ -4,10 +4,13 @@ import (
 	stdctx "context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
+	"dolphin/internal/cli"
 	"dolphin/internal/skill"
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
 )
 
 func TestRegistry(t *testing.T) {
@@ -404,6 +407,101 @@ func TestWorkspaceSection(t *testing.T) {
 	})
 }
 
+func TestCliSection(t *testing.T) {
+	Convey("CliSection", t, func() {
+		Convey("Name returns 'cli'", func() {
+			s := &CliSection{}
+			So(s.Name(), ShouldEqual, "cli")
+		})
+
+		Convey("Index returns 15", func() {
+			s := &CliSection{}
+			So(s.Index(), ShouldEqual, 15)
+		})
+
+		Convey("BuildContent returns empty when CLIs is nil", func() {
+			s := &CliSection{}
+			content, err := s.BuildContent(stdctx.Background())
+			So(err, ShouldBeNil)
+			So(content, ShouldEqual, "")
+		})
+
+		Convey("BuildContent returns empty when CLIs is empty slice", func() {
+			s := &CliSection{CLIs: []cli.CLI{}}
+			content, err := s.BuildContent(stdctx.Background())
+			So(err, ShouldBeNil)
+			So(content, ShouldEqual, "")
+		})
+
+		Convey("BuildContent lists CLI with help fetched", func() {
+			if runtime.GOOS == "windows" {
+				t.Skip("skipping on windows")
+			}
+			dir := t.TempDir()
+			script := filepath.Join(dir, "demo")
+			_ = os.WriteFile(script, []byte("#!/bin/sh\necho Usage: demo '<args>'"), 0o755)
+
+			s := &CliSection{
+				CLIs:   []cli.CLI{{Name: "demo", Path: script}},
+				Logger: zap.NewNop(),
+			}
+			content, err := s.BuildContent(stdctx.Background())
+			So(err, ShouldBeNil)
+			So(content, ShouldContainSubstring, "demo")
+			So(content, ShouldContainSubstring, "Usage: demo <args>")
+			So(content, ShouldContainSubstring, "shell")
+		})
+
+		Convey("BuildContent shows no-help placeholder when help fetch fails", func() {
+			if runtime.GOOS == "windows" {
+				t.Skip("skipping on windows")
+			}
+			dir := t.TempDir()
+			script := filepath.Join(dir, "bad")
+			_ = os.WriteFile(script, []byte("#!/bin/sh\ntrue"), 0o755)
+
+			s := &CliSection{
+				CLIs:   []cli.CLI{{Name: "bad", Path: script}},
+				Logger: zap.NewNop(),
+			}
+			content, err := s.BuildContent(stdctx.Background())
+			So(err, ShouldBeNil)
+			So(content, ShouldContainSubstring, "bad")
+			So(content, ShouldContainSubstring, "no help available")
+		})
+	})
+}
+
+func TestFirstLine(t *testing.T) {
+	Convey("firstLine", t, func() {
+		Convey("returns full string when short with no newline", func() {
+			So(firstLine("hello"), ShouldEqual, "hello")
+		})
+
+		Convey("truncates at newline", func() {
+			So(firstLine("hello\nworld"), ShouldEqual, "hello")
+		})
+
+		Convey("truncates at carriage return", func() {
+			So(firstLine("hello\rworld"), ShouldEqual, "hello")
+		})
+
+		Convey("trims surrounding whitespace", func() {
+			So(firstLine("  hello  "), ShouldEqual, "hello")
+		})
+
+		Convey("truncates long lines at 200 chars", func() {
+			long := make([]byte, 300)
+			for i := range long {
+				long[i] = 'x'
+			}
+			result := firstLine(string(long))
+			So(len(result), ShouldEqual, 203) // 200 + "..."
+			So(result[len(result)-3:], ShouldEqual, "...")
+		})
+	})
+}
+
 // --- test helpers ---
 
 type testSection struct {
@@ -412,15 +510,17 @@ type testSection struct {
 	content string
 }
 
-func (s *testSection) Name() string                          { return s.name }
-func (s *testSection) Index() int                             { return s.index }
+func (s *testSection) Name() string                                  { return s.name }
+func (s *testSection) Index() int                                    { return s.index }
 func (s *testSection) BuildContent(_ stdctx.Context) (string, error) { return s.content, nil }
 
 type errSection struct{}
 
-func (s *errSection) Name() string                                { return "err" }
-func (s *errSection) Index() int                                   { return 0 }
-func (s *errSection) BuildContent(_ stdctx.Context) (string, error) { return "", stdctx.DeadlineExceeded }
+func (s *errSection) Name() string { return "err" }
+func (s *errSection) Index() int   { return 0 }
+func (s *errSection) BuildContent(_ stdctx.Context) (string, error) {
+	return "", stdctx.DeadlineExceeded
+}
 
 type mockReader struct {
 	index string
