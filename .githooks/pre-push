@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 
+echo "=== Checking config.yaml against schema ==="
+go test dolphin/internal/config -run TestConfigAgainstSchema -count=1
+
 echo "=== Building ==="
 go build -race ./...
 
