@@ -1639,7 +1639,7 @@ func TestEngineContinueWithPausedFile(t *testing.T) {
 			},
 		}
 		data, _ := yaml.Marshal(paused)
-		_ = os.WriteFile(resumeFile, data, 0644)
+		_ = os.WriteFile(resumeFile, data, 0600)
 		result, err := engine.Continue(context.Background(), spec, "")
 		So(err, ShouldBeNil)
 		So(result.Status, ShouldEqual, "completed")
