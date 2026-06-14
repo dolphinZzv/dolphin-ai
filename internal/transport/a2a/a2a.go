@@ -70,9 +70,9 @@ type A2A struct {
 
 // a2aRequest carries an incoming A2A message and a channel for the response.
 type a2aRequest struct {
-	content  string
-	taskID   string
-	respond  chan string
+	content string
+	taskID  string
+	respond chan string
 }
 
 func NewA2A(cfg A2AConfig, logger *zap.Logger) *A2A {
@@ -221,7 +221,7 @@ type AgentCard struct {
 	Description string `json:"description,omitempty"`
 	URL         string `json:"url"`
 	Version     string `json:"version,omitempty"`
-	Protocol   string `json:"protocol,omitempty"`
+	Protocol    string `json:"protocol,omitempty"`
 }
 
 func (a *A2A) handleAgentCard(w http.ResponseWriter, r *http.Request) {
@@ -230,7 +230,7 @@ func (a *A2A) handleAgentCard(w http.ResponseWriter, r *http.Request) {
 		Description: a.cfg.Description,
 		URL:         a.cfg.URL,
 		Version:     a.cfg.Version,
-		Protocol:   "a2a/1.0",
+		Protocol:    "a2a/1.0",
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(card)
@@ -246,15 +246,15 @@ type a2aRequestMsg struct {
 
 // taskSendParams are the parameters for tasks/send.
 type taskSendParams struct {
-	ID        string        `json:"id"`
-	SessionID string        `json:"sessionId,omitempty"`
-	Message   a2aMessage    `json:"message"`
-	ContextID string        `json:"contextId,omitempty"`
+	ID        string     `json:"id"`
+	SessionID string     `json:"sessionId,omitempty"`
+	Message   a2aMessage `json:"message"`
+	ContextID string     `json:"contextId,omitempty"`
 }
 
 // a2aMessage is a message within a task.
 type a2aMessage struct {
-	Role  string   `json:"role"`
+	Role  string    `json:"role"`
 	Parts []a2aPart `json:"parts"`
 }
 
@@ -265,9 +265,9 @@ type a2aPart struct {
 
 // a2aResponse is a JSON-RPC response.
 type a2aResponse struct {
-	JSONRPC string `json:"jsonrpc"`
-	ID      any    `json:"id"`
-	Result  any    `json:"result,omitempty"`
+	JSONRPC string    `json:"jsonrpc"`
+	ID      any       `json:"id"`
+	Result  any       `json:"result,omitempty"`
 	Error   *a2aError `json:"error,omitempty"`
 }
 
@@ -278,17 +278,17 @@ type a2aError struct {
 
 // a2aTaskResult is the result returned by tasks/send or tasks/get.
 type a2aTaskResult struct {
-	ID        string      `json:"id"`
-	SessionID string      `json:"sessionId,omitempty"`
-	ContextID string      `json:"contextId,omitempty"`
-	Status    string      `json:"status"`
+	ID        string        `json:"id"`
+	SessionID string        `json:"sessionId,omitempty"`
+	ContextID string        `json:"contextId,omitempty"`
+	Status    string        `json:"status"`
 	Artifacts []a2aArtifact `json:"artifacts,omitempty"`
 }
 
 type a2aArtifact struct {
-	Name        string     `json:"name,omitempty"`
-	Description string     `json:"description,omitempty"`
-	Parts       []a2aPart  `json:"parts"`
+	Name        string    `json:"name,omitempty"`
+	Description string    `json:"description,omitempty"`
+	Parts       []a2aPart `json:"parts"`
 }
 
 func (a *A2A) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
