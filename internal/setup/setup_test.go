@@ -815,6 +815,63 @@ func TestLoadTransportConfigs_explicitDisabled(t *testing.T) {
 	}
 }
 
+func TestLoadTransportConfigs_a2a(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"a2a.enabled":     true,
+		"a2a.addr":        ":8100",
+		"a2a.name":        "test-agent",
+		"a2a.description": "A test agent",
+		"a2a.url":         "http://localhost:8100",
+		"a2a.version":     "1.0.0",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "a2a" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a2a transport, got %v", tcs)
+	}
+}
+
+func TestLoadTransportConfigs_a2a_disabled(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"a2a.enabled": false,
+		"a2a.addr":    ":8100",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, tc := range tcs {
+		if tc.Type == "a2a" {
+			t.Errorf("expected a2a transport to be skipped when disabled")
+		}
+	}
+}
+
+func TestLoadTransportConfigs_a2a_skipsWithoutAddr(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"a2a.enabled": true,
+		"a2a.addr":    "",
+	})
+	tcs, err := loadTransportConfigs(cfg, "dolphin")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, tc := range tcs {
+		if tc.Type == "a2a" {
+			t.Errorf("expected a2a transport to be skipped without addr")
+		}
+	}
+}
+
 func TestLoadTransportConfigs_dingtalk(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
 		"dingtalk.enabled":       true,
