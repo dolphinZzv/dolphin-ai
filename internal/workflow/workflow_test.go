@@ -304,6 +304,31 @@ func TestGenerateID(t *testing.T) {
 // Template
 // ---------------------------------------------------------------------------
 
+func FuzzCompileTemplate(f *testing.F) {
+	f.Add("hello $step.field world")
+	f.Add("$")
+	f.Add("$step")
+	f.Add("$step.field")
+	f.Add("$step[*].result")
+	f.Add("$audit[0].finding")
+	f.Add("")
+	f.Add("$$")
+	f.Add("$.")
+	f.Add("$[0]")
+	f.Add("$step.field $other.field with text $and_after")
+	f.Add("{{already compiled}}")
+
+	f.Fuzz(func(t *testing.T, prompt string) {
+		tmpl, err := compile(prompt)
+		if err != nil {
+			return
+		}
+		if tmpl == nil {
+			t.Errorf("compile returned nil template without error for input: %q", prompt)
+		}
+	})
+}
+
 func TestCompile(t *testing.T) {
 	Convey("compile", t, func() {
 		Convey("plain text pass-through", func() {

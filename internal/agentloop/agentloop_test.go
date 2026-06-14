@@ -1638,3 +1638,70 @@ func (s *panicStage) Clone() Stage { return &panicStage{} }
 func (s *panicStage) Process(_ context.Context, _ *State) error {
 	panic("chaos test: injected compositor panic")
 }
+
+// ---------------------------------------------------------------------------
+// Fuzz tests
+// ---------------------------------------------------------------------------
+
+func FuzzValidSessionID(f *testing.F) {
+	f.Add("session-123")
+	f.Add("")
+	f.Add("会话")
+	f.Add(strings.Repeat("a", 201))
+	f.Add("abc\x00def")
+	f.Add("\x00")
+	f.Add("normal-session-🆗")
+
+	f.Fuzz(func(t *testing.T, s string) {
+		result := validSessionID(s)
+		// Invariant: if result is non-empty, it must be the same as input.
+		if result != "" && result != s {
+			t.Errorf("validSessionID returned %q, expected empty or %q", result, s)
+		}
+		// Invariant: empty input must return empty.
+		if s == "" && result != "" {
+			t.Errorf("validSessionID returned %q for empty input", result)
+		}
+		// Invariant: result must never panic regardless of input.
+	})
+}
+
+func FuzzSessionLock(f *testing.F) {
+	f.Add(int64(1), int64(2), int64(3))
+
+	f.Fuzz(func(t *testing.T, seed1, seed2, seed3 int64) {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+		a := NewAgentLoop(q, c, logger, nil, nil, 2)
+
+		workers := 4
+		opsPerWorker := 10
+
+		var wg sync.WaitGroup
+		for w := 0; w < workers; w++ {
+			wg.Add(1)
+			go func(workerID int) {
+				defer wg.Done()
+				for i := 0; i < opsPerWorker; i++ {
+					sid := fmt.Sprintf("session-%d-%d", workerID, i%3)
+					mu := a.sessionLock(sid)
+					mu.Lock()
+					// Hold briefly to simulate work.
+					time.Sleep(time.Microsecond)
+					mu.Unlock()
+				}
+			}(w)
+		}
+		wg.Wait()
+
+		// All sessions should still be in the map.
+		a.sessionMu.Lock()
+		count := len(a.sessionLocks)
+		a.sessionMu.Unlock()
+		// At least one session should have been created.
+		if count == 0 {
+			t.Errorf("expected at least one session lock, got 0")
+		}
+	})
+}
