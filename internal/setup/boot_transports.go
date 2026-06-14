@@ -165,6 +165,23 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 			})
 		}
 	}
+	if cfg.GetBool("a2a.enabled") {
+		a2aAddr := cfg.GetString("a2a.addr")
+		if !hasTransportType(tcs, "a2a") && a2aAddr != "" {
+			tcs = append(tcs, transportConfig{
+				Type: "a2a",
+				Config: map[string]any{
+					"type":        "a2a",
+					"agent_name":  agentName,
+					"addr":        a2aAddr,
+					"name":        cfg.GetString("a2a.name"),
+					"description": cfg.GetString("a2a.description"),
+					"url":         cfg.GetString("a2a.url"),
+					"version":     cfg.GetString("a2a.version"),
+				},
+			})
+		}
+	}
 	if cfg.GetBool("wework.enabled") {
 		botID := cfg.GetString("wework.bot_id")
 		botSecret := cfg.GetString("wework.bot_secret")
