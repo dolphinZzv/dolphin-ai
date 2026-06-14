@@ -1419,3 +1419,222 @@ func TestAgentLoopMultiWorkerE2E(t *testing.T) {
 		So(bResults[1], ShouldEqual, "b2")
 	})
 }
+
+// ---------------------------------------------------------------------------
+// Chaos tests — concurrent stress, panic recovery, cancellation under lock
+// ---------------------------------------------------------------------------
+
+func TestChaosContextCancelDuringSessionLock(t *testing.T) {
+	Convey("Context cancel while worker holds session lock", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
+
+		blockStarted := make(chan struct{})
+		blockUntilCancel := make(chan struct{})
+
+		// A stage that blocks until the context is cancelled.
+		compositor := NewCompositor(
+			[]Stage{
+				&blockingStage{
+					blockStarted:     blockStarted,
+					blockUntilCancel: blockUntilCancel,
+				},
+			},
+			[]Stage{},
+			1,
+		)
+
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
+
+		a.SetOnResult(func(r agentio.TurnResult) {})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		runDone := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(runDone)
+		}()
+
+		// Send a turn that will block.
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "block-1", SessionID: "chaos-session", Input: "block", TransportID: "t-chaos",
+		})
+
+		// Wait for the blocking stage to start (worker now holds session lock).
+		<-blockStarted
+
+		// Cancel context while the lock is held.
+		cancel()
+
+		// Unblock the stage so the worker can proceed to exit.
+		close(blockUntilCancel)
+
+		<-runDone
+
+		// The system should not deadlock — Run() returns cleanly.
+		// After Run exits, verify a new AgentLoop can acquire the same session lock.
+		q2 := make(chan *agentio.Turn)
+		a2 := NewAgentLoop(q2, compositor, logger, eb, nil, 1)
+		mu := a2.sessionLock("chaos-session")
+		mu.Lock()
+		mu.Unlock()
+		// If we got here without deadlock, the test passes.
+	})
+}
+
+func TestChaosCompositorPanic(t *testing.T) {
+	Convey("Compositor.Execute panic recovery", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		// Collect panic events.
+		var panicEvents []event.Event
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			if e.Type == event.EventWorkerPanic {
+				panicEvents = append(panicEvents, e)
+			}
+		})
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
+
+		// A stage that panics.
+		compositor := NewCompositor(
+			[]Stage{&panicStage{}},
+			[]Stage{},
+			1,
+		)
+
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
+
+		results := make(chan agentio.TurnResult, 10)
+		a.SetOnResult(func(r agentio.TurnResult) {
+			results <- r
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		runDone := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(runDone)
+		}()
+
+		// Send a turn that will panic the compositor.
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "panic-1", SessionID: "chaos-panic", Input: "panic now", TransportID: "t-panic",
+		})
+
+		// Give worker time to panic and restart.
+		time.Sleep(500 * time.Millisecond)
+
+		// The worker restarts with the same compositor clone. Since the panicStage
+		// panics every time, the worker will panic-restart repeatedly. This is the
+		// chaos — verify the system handles repeated panics without crashing.
+		time.Sleep(2 * time.Second)
+
+		// Cancel and verify Run exits cleanly (no deadlock).
+		cancel()
+		<-runDone
+
+		// The worker should have published at least one panic event.
+		So(len(panicEvents), ShouldBeGreaterThanOrEqualTo, 1)
+	})
+}
+
+func TestChaosConcurrentSameSession(t *testing.T) {
+	Convey("100 concurrent turns to same session", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(100, mgr, signal.NewBus(), logger, "test")
+
+		mem := memory.NewFileMemory(&testSessionStore{})
+		compositor := NewCompositor(
+			[]Stage{&MemoryReadStage{Memory: mem}},
+			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
+			1,
+		)
+
+		// 4 workers processing 100 concurrent turns for the same session.
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 4)
+
+		var mu sync.Mutex
+		var completed []string
+		a.SetOnResult(func(r agentio.TurnResult) {
+			if r.Done {
+				mu.Lock()
+				completed = append(completed, r.TurnID)
+				mu.Unlock()
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		runDone := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(runDone)
+		}()
+
+		// Fire 100 turns concurrently to the same session.
+		var wg sync.WaitGroup
+		for i := 0; i < 100; i++ {
+			wg.Add(1)
+			go func(idx int) {
+				defer wg.Done()
+				aio.SendTurn(context.Background(), &agentio.Turn{
+					TurnID:      fmt.Sprintf("turn-%d", idx),
+					SessionID:   "same-session",
+					Input:       fmt.Sprintf("input-%d", idx),
+					TransportID: "t-same",
+				})
+			}(i)
+		}
+		wg.Wait()
+
+		// Wait for all turns to complete.
+		time.Sleep(2 * time.Second)
+		cancel()
+		<-runDone
+
+		// All 100 turns should have completed.
+		mu.Lock()
+		count := len(completed)
+		mu.Unlock()
+		So(count, ShouldEqual, 100)
+	})
+}
+
+// blockingStage blocks until blockUntilCancel is closed, then returns ctx error.
+type blockingStage struct {
+	blockStarted     chan struct{}
+	blockUntilCancel chan struct{}
+}
+
+func (s *blockingStage) Name() string { return "blocking" }
+func (s *blockingStage) Clone() Stage {
+	return &blockingStage{
+		blockStarted:     s.blockStarted,
+		blockUntilCancel: s.blockUntilCancel,
+	}
+}
+func (s *blockingStage) Process(ctx context.Context, _ *State) error {
+	close(s.blockStarted)
+	select {
+	case <-s.blockUntilCancel:
+	case <-ctx.Done():
+	}
+	return nil
+}
+
+// panicStage always panics.
+type panicStage struct{}
+
+func (s *panicStage) Name() string { return "panic" }
+func (s *panicStage) Clone() Stage { return &panicStage{} }
+func (s *panicStage) Process(_ context.Context, _ *State) error {
+	panic("chaos test: injected compositor panic")
+}

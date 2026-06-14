@@ -22,7 +22,7 @@ func init() {
 			"workflow.foreach_not_array": "foreach step %q: %s is not an array",
 			"workflow.schema_mismatch":   "step %q output does not match schema: %s",
 			"workflow.step_timeout":     "step %q timed out after %s",
-			"workflow.max_steps":        "workflow exceeds max steps limit (%d)",
+
 			"tool.run_workflow":         "Execute a workflow YAML file",
 			"tool.run_workflow_path":    "Path to the .workflow.yaml file",
 			"tool.continue_workflow":    "Continue a paused workflow from checkpoint",
@@ -46,7 +46,7 @@ func init() {
 			"workflow.foreach_not_array": "foreach 步骤 %q: %s 不是数组",
 			"workflow.schema_mismatch":   "步骤 %q 输出与 schema 不匹配: %s",
 			"workflow.step_timeout":     "步骤 %q 超时 (%s)",
-			"workflow.max_steps":        "workflow 超过最大步骤数限制 (%d)",
+
 			"tool.run_workflow":         "执行工作流 YAML 文件",
 			"tool.run_workflow_path":    ".workflow.yaml 文件路径",
 			"tool.continue_workflow":    "从检查点继续暂停的工作流",

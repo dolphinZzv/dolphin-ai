@@ -72,7 +72,7 @@ func defaultConfig() *Config {
 			"agent.turn_timeout":     "120s",
 				"agent.session_gc_interval": "300s",
 			"workflow.step_timeout":  "300s",
-			"workflow.max_steps":     50,
+	
 		},
 	}
 }

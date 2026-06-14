@@ -230,8 +230,6 @@ func (a *AgentIO) ActiveSnapshot() map[string]*TurnInfo {
 	return snap
 }
 
-// SetProcessing is a no-op kept for backward compatibility.
-func (a *AgentIO) SetProcessing(v bool) {}
 
 // Processing returns whether any worker is currently processing a turn.
 func (a *AgentIO) Processing() bool {

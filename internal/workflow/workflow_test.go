@@ -36,7 +36,7 @@ func testConfig() *config.Config {
 	return config.LoadConfigFromMap(map[string]any{
 		"agent.pool_size":       2,
 		"workflow.step_timeout": "30s",
-		"workflow.max_steps":    50,
+
 	})
 }
 
@@ -908,7 +908,7 @@ func TestEngineRunLinear(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "linear",
@@ -951,7 +951,7 @@ func TestEngineRunParallelFanOut(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "fanout",
@@ -988,7 +988,7 @@ func TestEngineRunFailureCascade(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "fail_cascade",
@@ -1031,7 +1031,7 @@ func TestEngineRunCheckpoint(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "checkpoint_test",
@@ -1061,7 +1061,7 @@ func TestEngineContinue(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		Convey("errors without prior result file", func() {
 			spec := &WorkflowSpec{
@@ -1105,7 +1105,7 @@ func TestEngineParseAndRun(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		Convey("parses and runs valid YAML", func() {
 			data := []byte(`
@@ -1140,7 +1140,7 @@ func TestEngineProgress(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		var progressMsgs []string
 		engine.SetOnProgress(func(tr agentio.TurnResult) {
@@ -1174,7 +1174,7 @@ func TestEnginePublishEvent(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		var events []event.Event
 		eventBus.Subscribe(func(ctx context.Context, e event.Event) {
@@ -1220,7 +1220,7 @@ func TestRunWorkflowHandler(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 		handler := runWorkflowHandler(engine, logger)
 
 		Convey("errors on missing path", func() {
@@ -1251,7 +1251,7 @@ func TestContinueWorkflowHandler(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 		handler := continueWorkflowHandler(engine, logger)
 
 		Convey("errors on missing path", func() {
@@ -1277,7 +1277,7 @@ func TestRegisterTools(t *testing.T) {
 		eventBus := event.NewBus()
 
 		mock := &mockLLMProvider{}
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		RegisterTools(toolReg, engine, nil, logger)
 
@@ -1330,7 +1330,7 @@ func TestEngineToolLoop(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		inst := stepInstance{
 			StepID: "test",
@@ -1364,7 +1364,7 @@ func TestEngineForeachExpansion(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "foreach_test",
@@ -1392,7 +1392,7 @@ func TestEngineForeachWithEachKey(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "each_key_test",
@@ -1442,7 +1442,7 @@ steps:
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "resume_test",
@@ -1469,7 +1469,7 @@ func TestEngineNoSteps(t *testing.T) {
 		eventBus := event.NewBus()
 		mock := &mockLLMProvider{}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		// This is a degenerate case; the spec validation should reject 0 steps
 		// but if someone bypasses validation, allDone should return true immediately.
@@ -1497,7 +1497,7 @@ func TestEngineContextCancellation(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "cancel_test",
@@ -1522,7 +1522,7 @@ func TestEngineDeadlockDetection(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "deadlock",
@@ -1562,7 +1562,7 @@ func TestExpandForeachErrors(t *testing.T) {
 	Convey("expandForeach errors", t, func() {
 		logger := testLogger()
 		cfg := testConfig()
-		engine := NewEngine(nil, nil, nil, logger, nil, nil, cfg)
+		engine := NewEngine(nil, nil, nil, logger, nil, cfg)
 
 		Convey("non-foreach step returns single instance", func() {
 			step := StepSpec{ID: "s", Prompt: "p"}
@@ -1594,7 +1594,7 @@ func TestEngineContinueWithPausedFile(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "paused_continue",
@@ -1640,7 +1640,7 @@ func TestRunWorkflowHandlerWithFile(t *testing.T) {
 			},
 		}
 
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 		handler := runWorkflowHandler(engine, logger)
 
 		Convey("reads and runs valid workflow file", func() {
@@ -1684,7 +1684,7 @@ func TestContinueWorkflowHandlerWithFile(t *testing.T) {
 		eventBus := event.NewBus()
 
 		mock := &mockLLMProvider{}
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 		handler := continueWorkflowHandler(engine, logger)
 
 		Convey("errors on invalid args JSON", func() {
@@ -1742,7 +1742,7 @@ func TestContinueWorkflowHandlerFullPaths(t *testing.T) {
 				return []llm.LLMChunk{textChunk("ok")}
 			},
 		}
-		engine := NewEngine(toolReg, mock, eventBus, logger, nil, nil, cfg)
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
 		handler := continueWorkflowHandler(engine, logger)
 
 		Convey("success: completes workflow from paused result", func() {

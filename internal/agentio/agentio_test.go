@@ -279,12 +279,6 @@ func TestAgentIO(t *testing.T) {
 			_, _, proc := aio.QueueSnapshot()
 			So(proc, ShouldBeTrue) // still only 2 active
 		})
-
-		Convey("SetProcessing is a no-op (backward compat)", func() {
-			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
-			So(func() { aio.SetProcessing(true) }, ShouldNotPanic)
-			So(func() { aio.SetProcessing(false) }, ShouldNotPanic)
-		})
 	})
 }
 

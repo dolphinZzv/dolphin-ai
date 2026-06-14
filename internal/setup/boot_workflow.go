@@ -17,7 +17,7 @@ func (b *WorkflowBootstrapper) Bootstrap(ctx context.Context, c *Context) error 
 		c.LLMProvider,
 		c.EventBus,
 		c.Logger,
-		c.Brain,
+
 		c.AgentIO,
 		c.Config,
 	)

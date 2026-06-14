@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"dolphin/internal/agentio"
-	"dolphin/internal/brain"
+
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/i18n"
@@ -23,7 +23,7 @@ type Engine struct {
 	llmProvider llm.Provider
 	eventBus    *event.Bus
 	logger      *zap.Logger
-	brain       *brain.Brain
+
 	agentIO     *agentio.AgentIO
 	config      *config.Config
 	onProgress  func(agentio.TurnResult)
@@ -35,7 +35,7 @@ func NewEngine(
 	llmProvider llm.Provider,
 	eventBus *event.Bus,
 	logger *zap.Logger,
-	brain *brain.Brain,
+
 	agentIO *agentio.AgentIO,
 	cfg *config.Config,
 ) *Engine {
@@ -44,7 +44,7 @@ func NewEngine(
 		llmProvider: llmProvider,
 		eventBus:    eventBus,
 		logger:      logger,
-		brain:       brain,
+
 		agentIO:     agentIO,
 		config:      cfg,
 	}
