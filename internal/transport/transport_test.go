@@ -86,6 +86,9 @@ func TestStdio_Flush(t *testing.T) {
 }
 
 func TestStdio_Close(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
 	s := NewStdio("test")
 	err := s.Close()
 	if err != nil {

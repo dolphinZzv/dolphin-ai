@@ -318,6 +318,16 @@ func ExecuteWithTimeout(ctx context.Context, reg *Registry, call types.ToolCall,
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// If the context is already expired, don't bother launching a goroutine —
+	// the select below would race between done and ctx.Done().
+	if ctx.Err() != nil {
+		return &types.ToolResult{
+			ToolCallID: call.ID,
+			Content:    "tool execution timed out",
+			IsError:    true,
+		}, nil
+	}
+
 	done := make(chan struct {
 		result *types.ToolResult
 		err    error

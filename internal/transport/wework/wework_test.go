@@ -824,7 +824,9 @@ func TestWeWorkSendAndWait(t *testing.T) {
 
 		go func() {
 			time.Sleep(5 * time.Millisecond)
+			w.pendingMu.Lock()
 			ch := w.pendingResp[reqID]
+			w.pendingMu.Unlock()
 			if ch != nil {
 				ch <- respData
 			}

@@ -97,7 +97,8 @@ func (r *Registry) resolveI18nAnnotations() {
 // Execute parses and runs a slash command line (without the leading "/").
 // Returns the command output as a string.
 func (r *Registry) Execute(ctx context.Context, line string, renderMode string) string {
-	r.resolveI18nAnnotations()
+	r.execMu.Lock()
+	defer r.execMu.Unlock()
 
 	orig := r.root.OutOrStdout()
 	defer r.root.SetOut(orig)
@@ -113,7 +114,7 @@ func (r *Registry) Execute(ctx context.Context, line string, renderMode string) 
 	r.root.SetOut(&buf)
 	fields := strings.Fields(line)
 	r.root.SetArgs(fields)
-	r.execMu.Lock()
+	r.resolveI18nAnnotations()
 	renderCtx := context.WithValue(ctx, renderModeKey{}, renderMode)
 	r.root.SetContext(renderCtx)
 	// Cobra only propagates root.ctx to subcommands when cmd.ctx is nil
@@ -121,7 +122,6 @@ func (r *Registry) Execute(ctx context.Context, line string, renderMode string) 
 	// calls also get the correct transport info.
 	walkSetContext(r.root, renderCtx)
 	_, _ = r.root.ExecuteC()
-	r.execMu.Unlock()
 	return strings.TrimRight(buf.String(), "\n")
 }
 

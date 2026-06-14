@@ -108,6 +108,9 @@ func TestStdioClose_WithoutReadline(t *testing.T) {
 }
 
 func TestStdioClose_WithReadline(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
 	Convey("Close with readline returns no error", t, func() {
 		s := NewStdio("testuser")
 		So(s.rl, ShouldNotBeNil)

@@ -195,9 +195,12 @@ func TestWatcherMultipleChanges(t *testing.T) {
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
 
+	var mu sync.Mutex
 	var events []event.Event
 	bus.Subscribe(func(ctx context.Context, e event.Event) {
+		mu.Lock()
 		events = append(events, e)
+		mu.Unlock()
 	})
 
 	w.Start(context.Background())
@@ -211,12 +214,14 @@ func TestWatcherMultipleChanges(t *testing.T) {
 
 	time.Sleep(50 * time.Millisecond)
 
+	mu.Lock()
 	createCount := 0
 	for _, e := range events {
 		if e.Type == event.EventFileCreate {
 			createCount++
 		}
 	}
+	mu.Unlock()
 	if createCount != 2 {
 		t.Errorf("expected 2 create events, got %d", createCount)
 	}
