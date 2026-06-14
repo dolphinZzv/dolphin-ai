@@ -7,7 +7,6 @@ import (
 	"dolphin/internal/agentloop"
 	"dolphin/internal/permission"
 	"dolphin/internal/tool"
-	"dolphin/internal/types"
 
 	"go.uber.org/zap"
 )
@@ -90,11 +89,6 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 			&agentloop.MemoryWriteStage{
 				Memory:   c.Mem,
 				EventBus: c.EventBus,
-				OnMessages: func(msgs []types.Message) {
-					if sess := c.SessionMgr.Active(); sess != nil {
-						sess.AppendMessages(msgs)
-					}
-				},
 			},
 		},
 		maxRounds,

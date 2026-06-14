@@ -617,11 +617,11 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 	return nil
 }
 
-// MemoryWriteStage writes the completed turn to memory and session store.
+// MemoryWriteStage writes the completed turn to memory.
 type MemoryWriteStage struct {
-	Memory     memory.Memory
-	EventBus   *event.Bus
-	OnMessages func(msgs []types.Message)
+	Memory   memory.Memory
+	EventBus *event.Bus
+	writeIdx int // tracks position in state.Messages already persisted, avoids re-writing across rounds
 }
 
 func (s *MemoryWriteStage) Name() string { return "memory_write" }
@@ -633,20 +633,18 @@ func (s *MemoryWriteStage) Process(ctx context.Context, state *State) error {
 		SessionID: state.SessionID,
 	})
 
-	// Write all new messages to memory — including tool calls and tool results.
-	// DeepSeek and other providers require the full conversation history with
-	// tool call/result pairs to be preserved.
-	var newMsgs []types.Message
-	for _, msg := range state.Messages[len(state.History):] {
+	// On the first round, seed writeIdx from the history boundary.
+	// On subsequent rounds (tool call loops), only write messages that
+	// were added since the last round, avoiding duplicates in data.memory.
+	if s.writeIdx == 0 {
+		s.writeIdx = len(state.History)
+	}
+	for _, msg := range state.Messages[s.writeIdx:] {
 		if err := s.Memory.Write(ctx, state.SessionID, msg); err != nil {
 			return err
 		}
-		newMsgs = append(newMsgs, msg)
 	}
-
-	if s.OnMessages != nil && !state.ToolsCalled {
-		s.OnMessages(newMsgs)
-	}
+	s.writeIdx = len(state.Messages)
 
 	if state.ToolsCalled {
 		state.ToolsCalled = false
@@ -654,6 +652,7 @@ func (s *MemoryWriteStage) Process(ctx context.Context, state *State) error {
 	}
 
 	state.Done = true
+	s.writeIdx = 0
 
 	s.EventBus.Publish(ctx, event.Event{
 		Type:      event.EventMemoryWriteComplete,

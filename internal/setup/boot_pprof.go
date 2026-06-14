@@ -27,7 +27,18 @@ func (b *PprofBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		addr = "127.0.0.1:6060"
 	}
 
-	c.PprofShutdown = pprof.Start(addr)
+	shutdown, errc := pprof.Start(addr)
+	c.PprofShutdown = shutdown
+
+	// Watch for startup failures asynchronously (e.g. port already in use).
+	go func() {
+		for err := range errc {
+			if err != nil {
+				c.Logger.Error("pprof server error", zap.Error(err))
+			}
+		}
+	}()
+
 	c.Logger.Info("pprof server started", zap.String("addr", addr))
 	return nil
 }

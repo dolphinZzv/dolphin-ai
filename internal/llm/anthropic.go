@@ -233,9 +233,20 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 	go func() {
 		defer close(ch)
 
+		// send sends a chunk to ch or aborts if ctx is done, preventing
+		// goroutine leaks when the consumer stops reading.
+		send := func(chunk LLMChunk) (ok bool) {
+			select {
+			case ch <- chunk:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 		if err != nil {
-			ch <- LLMChunk{Error: fmt.Errorf("llm: create request: %w", err)}
+			send(LLMChunk{Error: fmt.Errorf("llm: create request: %w", err)})
 			return
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
@@ -254,7 +265,7 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 		cl := &http.Client{Timeout: timeout}
 		resp, err := cl.Do(httpReq)
 		if err != nil {
-			ch <- LLMChunk{Error: fmt.Errorf("llm: request failed: %w", err)}
+			send(LLMChunk{Error: fmt.Errorf("llm: request failed: %w", err)})
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
@@ -270,9 +281,9 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 				if len(bodyPreview) > 2000 {
 					bodyPreview = bodyPreview[:2000] + "..."
 				}
-				ch <- LLMChunk{Error: fmt.Errorf("llm: %s (status %d)\nrequest: %s", apiErr.Error.Message, resp.StatusCode, bodyPreview)}
+				send(LLMChunk{Error: fmt.Errorf("llm: %s (status %d)\nrequest: %s", apiErr.Error.Message, resp.StatusCode, bodyPreview)})
 			} else {
-				ch <- LLMChunk{Error: fmt.Errorf("llm: status %d", resp.StatusCode)}
+				send(LLMChunk{Error: fmt.Errorf("llm: status %d", resp.StatusCode)})
 			}
 			return
 		}
@@ -281,14 +292,16 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 		for {
 			chunk, err := dec.Decode()
 			if err == io.EOF {
-				ch <- LLMChunk{Done: true}
+				send(LLMChunk{Done: true})
 				return
 			}
 			if err != nil {
-				ch <- LLMChunk{Error: fmt.Errorf("llm: decode: %w", err)}
+				send(LLMChunk{Error: fmt.Errorf("llm: decode: %w", err)})
 				return
 			}
-			ch <- chunk
+			if !send(chunk) {
+				return
+			}
 		}
 	}()
 

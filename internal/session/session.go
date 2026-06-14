@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"dolphin/internal/types"
-
 	"github.com/rs/xid"
 )
 
@@ -20,11 +18,10 @@ type SessionID = string
 
 // Session represents a single conversation session.
 type Session struct {
-	ID        string          `json:"id"`
-	Active    bool            `json:"active"`
-	CreatedAt time.Time       `json:"created_at"`
-	Data      map[string]any  `json:"data,omitempty"`
-	Messages  []types.Message `json:"messages,omitempty"`
+	ID        string         `json:"id"`
+	Active    bool           `json:"active"`
+	CreatedAt time.Time      `json:"created_at"`
+	Data      map[string]any `json:"data,omitempty"`
 
 	saveFn func(*Session) // set by Manager for auto-save
 }
@@ -44,14 +41,6 @@ func (s *Session) Get(key string) any {
 		return nil
 	}
 	return s.Data[key]
-}
-
-// AppendMessages appends messages to the session and auto-saves.
-func (s *Session) AppendMessages(msgs []types.Message) {
-	s.Messages = append(s.Messages, msgs...)
-	if s.saveFn != nil {
-		s.saveFn(s)
-	}
 }
 
 // Manager manages session lifecycle.
