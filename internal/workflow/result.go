@@ -3,6 +3,7 @@ package workflow
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -23,7 +24,7 @@ func loadResult(path string) (*WorkflowResult, error) {
 }
 
 // writeResult writes the workflow result to the .result.yaml file.
-func writeResult(spec *WorkflowSpec, rs *runState, status string, startedAt time.Time) error {
+func writeResult(spec *WorkflowSpec, rs *runState, status string, startedAt time.Time, brainDir string) error {
 	wr := WorkflowResult{
 		Workflow: spec.Name,
 		Status:   status,
@@ -36,9 +37,8 @@ func writeResult(spec *WorkflowSpec, rs *runState, status string, startedAt time
 		return fmt.Errorf("workflow: marshal result: %w", err)
 	}
 
-	// Result file writes alongside the workflow file.
-	// For brain-based workflows, the path is derived from the brain directory.
-	path := spec.Name + ".result.yaml"
+	// Result file writes alongside the workflow file in the brain directory.
+	path := filepath.Join(brainDir, spec.Name+".result.yaml")
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("workflow: write result: %w", err)
 	}

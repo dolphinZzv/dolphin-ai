@@ -728,7 +728,7 @@ func TestResultWriteAndLoad(t *testing.T) {
 			rs.markDone("a", nil, time.Second, map[string]any{"ok": true})
 			rs.markRunning("b")
 
-			err := writeResult(spec, rs, "running", time.Now())
+			err := writeResult(spec, rs, "running", time.Now(), "")
 			So(err, ShouldBeNil)
 
 			loaded, err := loadResult(path)

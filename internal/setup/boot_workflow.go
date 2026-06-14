@@ -25,6 +25,10 @@ func (b *WorkflowBootstrapper) Bootstrap(ctx context.Context, c *Context) error 
 	// Register tools.
 	workflow.RegisterTools(c.ToolReg, engine, c.AgentIO, c.Logger)
 
+	if c.Brain != nil {
+		engine.SetBrainDir(c.Brain.Dir())
+	}
+
 	c.WorkflowEngine = engine
 	return nil
 }

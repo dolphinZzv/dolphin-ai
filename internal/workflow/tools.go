@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path/filepath"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/i18n"
@@ -54,7 +55,8 @@ func runWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHandler 
 			return &types.ToolResult{Content: "path is required", IsError: true}, nil
 		}
 
-		data, err := os.ReadFile(params.Path)
+		workflowPath := resolvePath(engine.brainDir, params.Path)
+		data, err := os.ReadFile(workflowPath)
 		if err != nil {
 			return &types.ToolResult{Content: "Failed to read workflow file: " + err.Error(), IsError: true}, nil
 		}
@@ -91,7 +93,8 @@ func continueWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHan
 			return &types.ToolResult{Content: "path is required", IsError: true}, nil
 		}
 
-		data, err := os.ReadFile(params.Path)
+		workflowPath := resolvePath(engine.brainDir, params.Path)
+		data, err := os.ReadFile(workflowPath)
 		if err != nil {
 			return &types.ToolResult{Content: "Failed to read workflow file: " + err.Error(), IsError: true}, nil
 		}
@@ -114,4 +117,11 @@ func continueWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHan
 		summary, _ := json.MarshalIndent(result, "", "  ")
 		return &types.ToolResult{Content: "Workflow " + spec.Name + " completed:\n" + string(summary)}, nil
 	}
+}
+
+func resolvePath(brainDir, relPath string) string {
+	if brainDir != "" {
+		return filepath.Join(brainDir, relPath)
+	}
+	return relPath
 }

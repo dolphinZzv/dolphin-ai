@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type Engine struct {
 	agentIO    *agentio.AgentIO
 	config     *config.Config
 	onProgress func(agentio.TurnResult)
+	brainDir   string
 }
 
 // NewEngine creates a new workflow Engine.
@@ -55,6 +57,11 @@ func (e *Engine) SetOnProgress(fn func(agentio.TurnResult)) {
 	e.onProgress = fn
 }
 
+// SetBrainDir sets the brain directory for resolving workflow and result file paths.
+func (e *Engine) SetBrainDir(dir string) {
+	e.brainDir = dir
+}
+
 func (e *Engine) progress(transportID, text string) {
 	if e.onProgress != nil {
 		e.onProgress(agentio.TurnResult{
@@ -73,7 +80,8 @@ func (e *Engine) Run(ctx context.Context, spec *WorkflowSpec, transportID string
 	rs := newRunState(spec)
 
 	// Check for existing result file (crash recovery or checkpoint resume).
-	if prev, err := loadResult(spec.Name + ".result.yaml"); err == nil && (prev.Status == "running" || prev.Status == "paused") {
+	resultPath := filepath.Join(e.brainDir, spec.Name+".result.yaml")
+	if prev, err := loadResult(resultPath); err == nil && (prev.Status == "running" || prev.Status == "paused") {
 		restoreState(spec, prev, rs)
 		e.logger.Info("workflow resumed from partial result",
 			zap.String("name", spec.Name),
@@ -194,7 +202,7 @@ func (e *Engine) Run(ctx context.Context, spec *WorkflowSpec, transportID string
 				}
 
 				// Write incremental result.
-				if err := writeResult(spec, rs, "running", startedAt); err != nil {
+				if err := writeResult(spec, rs, "running", startedAt, e.brainDir); err != nil {
 					e.logger.Warn("workflow: write incremental result", zap.Error(err))
 				}
 
@@ -210,7 +218,7 @@ func (e *Engine) Run(ctx context.Context, spec *WorkflowSpec, transportID string
 		if checkpointReached {
 			e.progress(transportID, i18n.T("workflow.checkpoint_pause", spec.Name))
 			e.publishEvent(ctx, event.EventWorkflowPaused, spec.Name, nil)
-			writeResult(spec, rs, "paused", startedAt)
+			writeResult(spec, rs, "paused", startedAt, e.brainDir)
 			return nil, ErrCheckpointReached
 		}
 	}
@@ -236,7 +244,8 @@ func (e *Engine) Run(ctx context.Context, spec *WorkflowSpec, transportID string
 // Continue resumes a workflow from its last checkpoint.
 func (e *Engine) Continue(ctx context.Context, spec *WorkflowSpec, transportID string) (*WorkflowResult, error) {
 	// Load previous result.
-	prev, err := loadResult(spec.Name + ".result.yaml")
+	resultPath := filepath.Join(e.brainDir, spec.Name+".result.yaml")
+	prev, err := loadResult(resultPath)
 	if err != nil {
 		return nil, fmt.Errorf("workflow: cannot continue: %w", err)
 	}
@@ -260,7 +269,7 @@ func (e *Engine) ParseAndRun(ctx context.Context, data []byte, transportID strin
 }
 
 func (e *Engine) finish(spec *WorkflowSpec, rs *runState, status string, startedAt time.Time) *WorkflowResult {
-	writeResult(spec, rs, status, startedAt)
+	writeResult(spec, rs, status, startedAt, e.brainDir)
 	wr := &WorkflowResult{
 		Workflow: spec.Name,
 		Status:   status,
