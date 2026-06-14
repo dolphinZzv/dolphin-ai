@@ -74,6 +74,7 @@
       "properties": {
         "name": { "type": "string", "default": "Dolphin" },
         "max_rounds": { "type": "integer", "minimum": 1, "default": 100 },
+        "pool_size": { "type": "integer", "minimum": 1, "default": 1 },
         "buffer_size": { "type": "integer", "default": 1024 },
         "turn_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "120s" },
         "workspace": { "type": "string", "default": "." },
