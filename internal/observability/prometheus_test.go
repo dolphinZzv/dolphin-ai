@@ -15,6 +15,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
+	"go.uber.org/zap"
 )
 
 var testHookOnce sync.Once
@@ -605,7 +606,6 @@ func TestBuildPrometheus_EmptyConfig(t *testing.T) {
 // --- Tests using newPrometheusHook with custom registries ---
 
 func TestNewPrometheusHook_CustomRegistry(t *testing.T) {
-	// Using a custom registry avoids MustRegister panicking on duplicates.
 	reg := prometheus.NewRegistry()
 	h := newPrometheusHook(reg, "http://example.com:9090")
 	if h == nil {
@@ -615,11 +615,19 @@ func TestNewPrometheusHook_CustomRegistry(t *testing.T) {
 		t.Fatalf("expected 'http://example.com:9090', got '%s'", h.remoteWriteURL)
 	}
 
-	// Should be able to create another hook with a different registry.
 	reg2 := prometheus.NewRegistry()
 	h2 := newPrometheusHook(reg2, "")
 	if h2 == nil {
 		t.Fatal("expected non-nil hook for second registry")
+	}
+}
+
+func TestNewPrometheusHook_WithLogger(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	logger := zap.NewNop()
+	h := newPrometheusHook(reg, "", logger)
+	if h.log == nil {
+		t.Fatal("expected non-nil log when logger passed")
 	}
 }
 
@@ -692,12 +700,10 @@ func TestPushMetrics_WithMockServer(t *testing.T) {
 	addr, cleanup := startMockServer(t, mux)
 	defer cleanup()
 
-	// Create a hook with a custom registry (pushMetrics gathers from DefaultGatherer,
-	// so we register to DefaultGatherer for this test).
 	reg := prometheus.NewRegistry()
-	h := newPrometheusHook(reg, addr)
+	logger := zap.NewNop()
+	h := newPrometheusHook(reg, addr, logger)
 
-	// Register a counter in the default gatherer so pushMetrics has something to push.
 	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "push_test_counter_ok"})
 	counter.Add(1)
 	prometheus.MustRegister(counter)
@@ -707,7 +713,7 @@ func TestPushMetrics_WithMockServer(t *testing.T) {
 
 	select {
 	case <-received:
-		// Push succeeded.
+		// Push succeeded — covers defer Body.Close, io.Copy, and Debug log path.
 	case <-time.After(2 * time.Second):
 		t.Fatal("pushMetrics did not complete within timeout")
 	}
@@ -729,8 +735,8 @@ func TestPushMetrics_HTTPError(t *testing.T) {
 	prometheus.MustRegister(counter)
 	defer prometheus.Unregister(counter)
 
-	h := newPrometheusHook(reg, addr)
-	// Should not panic on 500 — error is logged.
+	logger := zap.NewNop()
+	h := newPrometheusHook(reg, addr, logger)
 	h.pushMetrics()
 }
 
@@ -821,8 +827,8 @@ func TestPushMetrics_ConnectionRefused(t *testing.T) {
 	prometheus.MustRegister(counter)
 	defer prometheus.Unregister(counter)
 
-	h := newPrometheusHook(reg, "http://127.0.0.1:19999")
-	// Should not panic on connection refused.
+	logger := zap.NewNop()
+	h := newPrometheusHook(reg, "http://127.0.0.1:19999", logger)
 	h.pushMetrics()
 }
 
