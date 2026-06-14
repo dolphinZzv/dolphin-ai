@@ -105,6 +105,18 @@
         "headers": { "type": "object", "additionalProperties": { "type": "string" } }
       }
     },
+    "a2a": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "addr": { "type": "string", "default": ":8100", "description": "Listen address for A2A HTTP server" },
+        "name": { "type": "string", "description": "Agent name (defaults to agent.name)" },
+        "description": { "type": "string", "description": "Agent description for the agent card" },
+        "url": { "type": "string", "description": "Agent URL for the agent card" },
+        "version": { "type": "string", "description": "Agent version" }
+      }
+    },
     "dingtalk": {
       "type": "object",
       "additionalProperties": false,
