@@ -117,13 +117,15 @@ func BuildAnthropicMessages(req LLMRequest, logger *zap.Logger) []AnthropicMessa
 	for _, m := range req.Messages {
 		switch m.Role {
 		case types.RoleTool:
-			blocks := []map[string]any{
-				{
-					"type":        "tool_result",
-					"tool_use_id": m.ToolCallID,
-					"content":     m.Content,
-				},
+			block := map[string]any{
+				"type":        "tool_result",
+				"tool_use_id": m.ToolCallID,
+				"content":     m.Content,
 			}
+			if m.IsError {
+				block["is_error"] = true
+			}
+			blocks := []map[string]any{block}
 			data, _ := json.Marshal(blocks)
 			msgs = append(msgs, AnthropicMessage{Role: "user", Content: data})
 

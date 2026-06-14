@@ -64,10 +64,11 @@ func (p *openAIProvider) CompleteStream(ctx context.Context, req LLMRequest) (<-
 // ---------------------------------------------------------------------------
 
 type OpenAIMessage struct {
-	Role       string           `json:"role"`
-	Content    any              `json:"content"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
-	ToolCalls  []OpenAIToolCall `json:"tool_calls,omitempty"`
+	Role             string           `json:"role"`
+	Content          any              `json:"content"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
+	ToolCalls        []OpenAIToolCall `json:"tool_calls,omitempty"`
 }
 
 type OpenAIToolCall struct {
@@ -150,12 +151,17 @@ func BuildOpenAIMessages(req LLMRequest, logger *zap.Logger) []OpenAIMessage {
 					}
 				}
 				msgs = append(msgs, OpenAIMessage{
-					Role:      "assistant",
-					Content:   nil,
-					ToolCalls: tcs,
+					Role:             "assistant",
+					Content:          nil,
+					ReasoningContent: m.Thinking,
+					ToolCalls:        tcs,
 				})
 			} else {
-				msgs = append(msgs, OpenAIMessage{Role: "assistant", Content: m.Content})
+				msgs = append(msgs, OpenAIMessage{
+					Role:             "assistant",
+					Content:          m.Content,
+					ReasoningContent: m.Thinking,
+				})
 			}
 		default:
 			msgs = append(msgs, OpenAIMessage{Role: string(m.Role), Content: m.Content})

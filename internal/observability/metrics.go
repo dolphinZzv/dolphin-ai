@@ -13,6 +13,8 @@ type MetricsHook struct {
 	toolCalls       metric.Int64Counter
 	turnTotal       metric.Int64Counter
 	cacheReadTokens metric.Int64Counter // cache read input tokens (prompt cached)
+	cacheHitTokens  metric.Int64Counter // DeepSeek prompt_cache_hit_tokens
+	cacheMissTokens metric.Int64Counter // DeepSeek prompt_cache_miss_tokens
 }
 
 func (h *MetricsHook) Name() string { return "metrics" }

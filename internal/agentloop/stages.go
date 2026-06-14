@@ -334,6 +334,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 	var toolCalls []types.ToolCall
 	var inputTokens, outputTokens int
 	var cacheCreationInputTokens, cacheReadInputTokens, promptCachedTokens int
+	var promptCacheHitTokens, promptCacheMissTokens int
 
 	for chunk := range ch {
 		if chunk.Error != nil {
@@ -355,7 +356,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 		}
 		content.WriteString(chunk.Content)
 		if len(chunk.ToolCalls) > 0 {
-			toolCalls = chunk.ToolCalls
+			toolCalls = append(toolCalls, chunk.ToolCalls...)
 			if state.OnToolCall != nil {
 				for _, tc := range chunk.ToolCalls {
 					state.OnToolCall(tc)
@@ -377,6 +378,12 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 		}
 		if chunk.PromptCachedTokens > 0 {
 			promptCachedTokens = chunk.PromptCachedTokens
+		}
+		if chunk.PromptCacheHitTokens > 0 {
+			promptCacheHitTokens = chunk.PromptCacheHitTokens
+		}
+		if chunk.PromptCacheMissTokens > 0 {
+			promptCacheMissTokens = chunk.PromptCacheMissTokens
 		}
 
 		if chunk.Content != "" && state.OnChunk != nil {
@@ -418,6 +425,8 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 			"cache_creation_input_tokens": cacheCreationInputTokens,
 			"cache_read_input_tokens":     cacheReadInputTokens,
 			"prompt_cached_tokens":        promptCachedTokens,
+			"prompt_cache_hit_tokens":     promptCacheHitTokens,
+			"prompt_cache_miss_tokens":    promptCacheMissTokens,
 		},
 	})
 
@@ -491,6 +500,7 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 				Role:       types.RoleTool,
 				ToolCallID: call.ID,
 				Content:    fmt.Sprintf(i18n.T("agentloop.denied_message"), err.Error()),
+				IsError:    true,
 			})
 			state.ToolResults = append(state.ToolResults, types.ToolResult{
 				ToolCallID: call.ID,
@@ -540,6 +550,7 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			Role:       types.RoleTool,
 			ToolCallID: call.ID,
 			Content:    result.Content,
+			IsError:    result.IsError,
 		})
 		state.ToolResults = append(state.ToolResults, *result)
 		if state.OnToolResult != nil {
@@ -616,33 +627,30 @@ type MemoryWriteStage struct {
 func (s *MemoryWriteStage) Name() string { return "memory_write" }
 
 func (s *MemoryWriteStage) Process(ctx context.Context, state *State) error {
-	if state.ToolsCalled {
-		state.ToolsCalled = false
-		return nil
-	}
-
 	s.EventBus.Publish(ctx, event.Event{
 		Type:      event.EventMemoryWriteStart,
 		Timestamp: time.Now(),
 		SessionID: state.SessionID,
 	})
 
+	// Write all new messages to memory — including tool calls and tool results.
+	// DeepSeek and other providers require the full conversation history with
+	// tool call/result pairs to be preserved.
 	var newMsgs []types.Message
 	for _, msg := range state.Messages[len(state.History):] {
-		if msg.Role == types.RoleTool {
-			continue
-		}
-		if msg.Role == types.RoleAssistant && len(msg.ToolCalls) > 0 {
-			continue
-		}
 		if err := s.Memory.Write(ctx, state.SessionID, msg); err != nil {
 			return err
 		}
 		newMsgs = append(newMsgs, msg)
 	}
 
-	if s.OnMessages != nil {
+	if s.OnMessages != nil && !state.ToolsCalled {
 		s.OnMessages(newMsgs)
+	}
+
+	if state.ToolsCalled {
+		state.ToolsCalled = false
+		return nil
 	}
 
 	state.Done = true

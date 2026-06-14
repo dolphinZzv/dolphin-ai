@@ -76,10 +76,12 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 				FinishReason string `json:"finish_reason"`
 			} `json:"choices"`
 			Usage *struct {
-				PromptTokens        int `json:"prompt_tokens"`
-				CompletionTokens    int `json:"completion_tokens"`
-				TotalTokens         int `json:"total_tokens"`
-				PromptTokensDetails *struct {
+				PromptTokens          int `json:"prompt_tokens"`
+				CompletionTokens      int `json:"completion_tokens"`
+				TotalTokens           int `json:"total_tokens"`
+				PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
+				PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
+				PromptTokensDetails   *struct {
 					CachedTokens int `json:"cached_tokens"`
 				} `json:"prompt_tokens_details"`
 			} `json:"usage,omitempty"`
@@ -93,10 +95,12 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 		if len(payload.Choices) == 0 {
 			if payload.Usage != nil {
 				return LLMChunk{
-					Done:         true,
-					InputTokens:  payload.Usage.PromptTokens,
-					OutputTokens: payload.Usage.CompletionTokens,
-					TotalTokens:  payload.Usage.TotalTokens,
+					Done:                  true,
+					InputTokens:           payload.Usage.PromptTokens,
+					OutputTokens:          payload.Usage.CompletionTokens,
+					TotalTokens:           payload.Usage.TotalTokens,
+					PromptCacheHitTokens:  payload.Usage.PromptCacheHitTokens,
+					PromptCacheMissTokens: payload.Usage.PromptCacheMissTokens,
 					PromptCachedTokens: func() int {
 						if payload.Usage.PromptTokensDetails != nil {
 							return payload.Usage.PromptTokensDetails.CachedTokens
@@ -151,6 +155,8 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 				chunk.InputTokens = payload.Usage.PromptTokens
 				chunk.OutputTokens = payload.Usage.CompletionTokens
 				chunk.TotalTokens = payload.Usage.TotalTokens
+				chunk.PromptCacheHitTokens = payload.Usage.PromptCacheHitTokens
+				chunk.PromptCacheMissTokens = payload.Usage.PromptCacheMissTokens
 				if payload.Usage.PromptTokensDetails != nil {
 					chunk.PromptCachedTokens = payload.Usage.PromptTokensDetails.CachedTokens
 				}
@@ -160,10 +166,12 @@ func (d *StreamDecoder) Decode() (LLMChunk, error) {
 
 		if payload.Usage != nil {
 			return LLMChunk{
-				Done:         true,
-				InputTokens:  payload.Usage.PromptTokens,
-				OutputTokens: payload.Usage.CompletionTokens,
-				TotalTokens:  payload.Usage.TotalTokens,
+				Done:                  true,
+				InputTokens:           payload.Usage.PromptTokens,
+				OutputTokens:          payload.Usage.CompletionTokens,
+				TotalTokens:           payload.Usage.TotalTokens,
+				PromptCacheHitTokens:  payload.Usage.PromptCacheHitTokens,
+				PromptCacheMissTokens: payload.Usage.PromptCacheMissTokens,
 				PromptCachedTokens: func() int {
 					if payload.Usage.PromptTokensDetails != nil {
 						return payload.Usage.PromptTokensDetails.CachedTokens

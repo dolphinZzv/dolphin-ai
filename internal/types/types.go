@@ -21,6 +21,7 @@ type Message struct {
 	ThinkingSignature string     `json:"thinking_signature,omitempty"`
 	ToolCallID        string     `json:"tool_call_id,omitempty"`
 	ToolCalls         []ToolCall `json:"tool_calls,omitempty"`
+	IsError           bool       `json:"is_error,omitempty"`
 	Timestamp         time.Time  `json:"timestamp"`
 }
 

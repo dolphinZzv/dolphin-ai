@@ -15,7 +15,12 @@ func (b *ObservabilityBootstrapper) Bootstrap(ctx context.Context, c *Context) e
 	if c.OtelShutdown != nil {
 		return nil
 	}
-	c.OtelShutdown = observability.BuildObservability(c.Config, c.HookReg, c.Logger)
+	otelShutdown := observability.BuildObservability(c.Config, c.HookReg, c.Logger)
+	promShutdown := observability.BuildPrometheus(c.Config, c.HookReg, c.Logger)
+	c.OtelShutdown = func() {
+		otelShutdown()
+		promShutdown()
+	}
 
 	c.EventBus.Subscribe(event.NewLogHandler(c.Logger))
 	c.EventBus.Subscribe(func(ctx context.Context, e event.Event) {

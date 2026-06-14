@@ -49,9 +49,12 @@ type LLMChunk struct {
 	// Cache statistics:
 	//   Anthropic: cache_creation_input_tokens from message_start usage
 	//   OpenAI:    prompt_tokens_details.cached_tokens from the final usage chunk
+	//   DeepSeek:  prompt_cache_hit_tokens / prompt_cache_miss_tokens from usage
 	CacheCreationInputTokens int
 	CacheReadInputTokens     int
 	PromptCachedTokens       int
+	PromptCacheHitTokens     int
+	PromptCacheMissTokens    int
 	TotalTokens              int
 }
 

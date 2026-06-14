@@ -161,10 +161,13 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 			Done:        true,
 		})
 	}
-	a.publishTurnEvent(ctx, event.EventTurnComplete, turn.TurnID, turn.SessionID, start, nil)
+	a.publishTurnEvent(ctx, event.EventTurnComplete, turn.TurnID, turn.SessionID, start, nil,
+		"system_context_length", len(state.SystemPrompt),
+		"tool_call_count", len(state.ToolResults),
+	)
 }
 
-func (a *AgentLoop) publishTurnEvent(ctx context.Context, et event.Type, turnID, sid string, start time.Time, err error) {
+func (a *AgentLoop) publishTurnEvent(ctx context.Context, et event.Type, turnID, sid string, start time.Time, err error, extraKV ...any) {
 	if a.eventBus == nil {
 		return
 	}
@@ -174,6 +177,11 @@ func (a *AgentLoop) publishTurnEvent(ctx context.Context, et event.Type, turnID,
 	}
 	if err != nil {
 		payload["error"] = err.Error()
+	}
+	for i := 0; i+1 < len(extraKV); i += 2 {
+		if k, ok := extraKV[i].(string); ok {
+			payload[k] = extraKV[i+1]
+		}
 	}
 	a.eventBus.Publish(ctx, event.Event{
 		Type:      et,

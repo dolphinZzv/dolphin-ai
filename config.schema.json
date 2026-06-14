@@ -140,6 +140,17 @@
         "allow_convs": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "prometheus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "mode": { "type": "string", "enum": ["pull", "push", "both"], "default": "pull", "description": "pull = /metrics endpoint, push = Remote Write, both = both modes" },
+        "addr": { "type": "string", "default": ":9090", "description": "Listen address for /metrics endpoint (pull mode)" },
+        "remote_url": { "type": "string", "description": "Prometheus Remote Write URL (push mode)" },
+        "push_job": { "type": "string", "default": "dolphin", "description": "Job name for Pushgateway" }
+      }
+    },
     "pprof": {
       "type": "object",
       "additionalProperties": false,

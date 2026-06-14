@@ -110,6 +110,46 @@ func NewMetricsHook(mp metric.MeterProvider) (*MetricsHook, error) {
 	return newMetricsHookFromMeter(meter)
 }
 
+// BuildPrometheus creates a PrometheusHook based on config and optionally starts
+// a pull-mode HTTP server. Returns a shutdown function.
+func BuildPrometheus(cfg *config.Config, hr *hook.Registry, log ...*zap.Logger) (shutdown func()) {
+	if !cfg.GetBool("prometheus.enabled") {
+		return func() {}
+	}
+
+	mode := cfg.GetString("prometheus.mode")
+	if mode == "" {
+		mode = "pull"
+	}
+
+	var remoteWriteURL string
+	if mode == "push" || mode == "both" {
+		remoteWriteURL = cfg.GetString("prometheus.remote_url")
+	}
+
+	hook := NewPrometheusHook(remoteWriteURL, log...)
+	hr.Register(hook)
+
+	var pullShutdown func()
+	if mode == "pull" || mode == "both" {
+		addr := cfg.GetString("prometheus.addr")
+		if addr == "" {
+			addr = ":9090"
+		}
+		var err error
+		pullShutdown, err = StartPrometheusServer(addr)
+		if err != nil {
+			return func() {}
+		}
+	}
+
+	return func() {
+		if pullShutdown != nil {
+			pullShutdown()
+		}
+	}
+}
+
 func newMetricsHookFromMeter(meter metric.Meter) (*MetricsHook, error) {
 	turnDuration, err := meter.Float64Histogram("dolphin.turn.duration")
 	if err != nil {
@@ -131,6 +171,14 @@ func newMetricsHookFromMeter(meter metric.Meter) (*MetricsHook, error) {
 	if err != nil {
 		return nil, err
 	}
+	cacheHitTokens, err := meter.Int64Counter("dolphin.llm.cache_hit_tokens")
+	if err != nil {
+		return nil, err
+	}
+	cacheMissTokens, err := meter.Int64Counter("dolphin.llm.cache_miss_tokens")
+	if err != nil {
+		return nil, err
+	}
 
 	return &MetricsHook{
 		turnDuration:    turnDuration,
@@ -138,5 +186,7 @@ func newMetricsHookFromMeter(meter metric.Meter) (*MetricsHook, error) {
 		toolCalls:       toolCalls,
 		turnTotal:       turnTotal,
 		cacheReadTokens: cacheReadTokens,
+		cacheHitTokens:  cacheHitTokens,
+		cacheMissTokens: cacheMissTokens,
 	}, nil
 }
