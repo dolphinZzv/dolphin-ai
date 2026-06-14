@@ -57,6 +57,13 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "dir": { "type": "string", "default": ".dolphin/memory" }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
         "dir": { "type": "string", "default": ".dolphin/sessions" },
         "window": { "type": "integer", "minimum": 1, "default": 40 }
       }

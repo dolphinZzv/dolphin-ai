@@ -3,10 +3,13 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/santhosh-tekuri/jsonschema/v5"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/yaml.v3"
 )
 
 func TestDefaultConfig(t *testing.T) {
@@ -280,4 +283,66 @@ func TestGetStringMap(t *testing.T) {
 			So(len(m), ShouldEqual, 0)
 		})
 	})
+}
+
+func TestConfigAgainstSchema(t *testing.T) {
+	Convey("config.yaml validates against config.schema.json", t, func() {
+		schemaPath := filepath.Join("..", "..", "config.schema.json")
+		configPath := filepath.Join("..", "..", "config.yaml")
+
+		schemaData, err := os.ReadFile(schemaPath)
+		if err != nil {
+			t.Skipf("schema file not found: %v", err)
+		}
+
+		compiler := jsonschema.NewCompiler()
+		if err := compiler.AddResource("schema.json", strings.NewReader(string(schemaData))); err != nil {
+			t.Fatal(err)
+		}
+		schema, err := compiler.Compile("schema.json")
+		if err != nil {
+			t.Fatalf("invalid schema: %v", err)
+		}
+
+		yamlData, err := os.ReadFile(configPath)
+		if err != nil {
+			t.Skipf("config file not found: %v", err)
+		}
+
+		var raw any
+		if err := yaml.Unmarshal(yamlData, &raw); err != nil {
+			t.Fatalf("invalid yaml: %v", err)
+		}
+
+		normalized := normalizeForJSON(raw)
+
+		if err := schema.Validate(normalized); err != nil {
+			t.Fatalf("config.yaml does not match schema: %v", err)
+		}
+	})
+}
+
+func normalizeForJSON(v any) any {
+	switch val := v.(type) {
+	case map[string]any:
+		out := make(map[string]any, len(val))
+		for k, vv := range val {
+			out[k] = normalizeForJSON(vv)
+		}
+		return out
+	case map[any]any:
+		out := make(map[string]any, len(val))
+		for k, vv := range val {
+			out[k.(string)] = normalizeForJSON(vv)
+		}
+		return out
+	case []any:
+		out := make([]any, len(val))
+		for i, vv := range val {
+			out[i] = normalizeForJSON(vv)
+		}
+		return out
+	default:
+		return v
+	}
 }
