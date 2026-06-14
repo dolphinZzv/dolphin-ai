@@ -31,6 +31,6 @@ All notable changes to Dolphin will be documented in this file.
 
 ### Fixed
 
-- Worker panic now publishes `EventWorkerPanic` event and sleeps 1s before restart.
+- Worker panic recovery: exponential backoff (1s, 2s, 4s...) capped at 30s, worker exits after 5 consecutive panics. Publishes `EventWorkerPanic` event on every panic including the final one.
 - `truncateInput`/`truncateForMarkdown` duplicate functions merged.
 - `sortedWorkerIDs` replaced bubble sort with `sort.Strings`.

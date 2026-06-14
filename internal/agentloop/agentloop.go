@@ -30,7 +30,9 @@ type AgentLoop struct {
 	sessionMu    sync.Mutex
 	sessionLocks map[string]*sync.Mutex
 
-	gcInterval time.Duration
+	gcInterval           time.Duration
+	maxPanicBackoff      time.Duration
+	maxConsecutivePanics int
 }
 
 func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.Logger, eventBus *event.Bus, agentIO *agentio.AgentIO, poolSize int) *AgentLoop {
@@ -38,13 +40,15 @@ func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.
 		poolSize = 1
 	}
 	return &AgentLoop{
-		queue:        queue,
-		compositor:   compositor,
-		logger:       logger,
-		eventBus:     eventBus,
-		agentIO:      agentIO,
-		poolSize:     poolSize,
-		sessionLocks: make(map[string]*sync.Mutex),
+		queue:                queue,
+		compositor:           compositor,
+		logger:               logger,
+		eventBus:             eventBus,
+		agentIO:              agentIO,
+		poolSize:             poolSize,
+		sessionLocks:         make(map[string]*sync.Mutex),
+		maxPanicBackoff:      30 * time.Second,
+		maxConsecutivePanics: 5,
 	}
 }
 
@@ -68,22 +72,48 @@ func (a *AgentLoop) Run(ctx context.Context) {
 		go func(id int) {
 			defer wg.Done()
 			workerID := fmt.Sprintf("worker-%d", id+1)
+			consecutivePanics := 0
+
 			for {
 				a.runWorker(ctx, workerID)
 				select {
 				case <-ctx.Done():
 					return
 				default:
-					a.logger.Warn("worker panicked, restarting", zap.String("worker_id", workerID))
-					if a.eventBus != nil {
-						a.eventBus.Publish(context.Background(), event.Event{
-							Type:      event.EventWorkerPanic,
-							Timestamp: time.Now(),
-							Payload:   map[string]any{"worker_id": workerID},
-						})
-					}
-					time.Sleep(time.Second)
 				}
+
+				consecutivePanics++
+				backoff := time.Duration(1<<(consecutivePanics-1)) * time.Second
+				if backoff > a.maxPanicBackoff {
+					backoff = a.maxPanicBackoff
+				}
+
+				if a.eventBus != nil {
+					a.eventBus.Publish(context.Background(), event.Event{
+						Type:      event.EventWorkerPanic,
+						Timestamp: time.Now(),
+						Payload: map[string]any{
+							"worker_id":           workerID,
+							"consecutive_panics":  consecutivePanics,
+							"backoff_ms":          backoff.Milliseconds(),
+						},
+					})
+				}
+
+				if consecutivePanics >= a.maxConsecutivePanics {
+					a.logger.Error("worker exceeded max consecutive panics, exiting",
+						zap.String("worker_id", workerID),
+						zap.Int("consecutive_panics", consecutivePanics),
+					)
+					return
+				}
+
+				a.logger.Warn("worker panicked, restarting",
+					zap.String("worker_id", workerID),
+					zap.Int("consecutive_panics", consecutivePanics),
+					zap.Duration("backoff", backoff),
+				)
+				time.Sleep(backoff)
 			}
 		}(i)
 	}
@@ -245,6 +275,11 @@ func (a *AgentLoop) sessionLock(sessionID string) *sync.Mutex {
 	return mu
 }
 
+// startSessionLockGC periodically removes session locks that are no longer
+// contended. There is a theoretical window where GC runs between two turns for
+// the same session: TryLock succeeds because no turn currently holds it, the
+// entry is deleted, and the next turn's sessionLock() allocates a new Mutex.
+// This is harmless — no correctness impact, just an extra allocation.
 func (a *AgentLoop) startSessionLockGC(ctx context.Context) {
 	interval := a.gcInterval
 	if interval <= 0 {

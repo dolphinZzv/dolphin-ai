@@ -5,8 +5,12 @@ linters:
   default: none
   enable:
     - errcheck
+    - exhaustive
+    - gocritic
+    - gosec
     - govet
     - ineffassign
+    - misspell
     - staticcheck
     - unused
 formatters:

@@ -69,6 +69,9 @@ func (c *Compositor) SetTurnTimeout(d time.Duration) {
 	c.turnTimeout = d
 }
 
+// Clone creates a per-worker copy. Shared resources (providers, registries,
+// event bus) are copied by pointer — these are concurrency-safe by design.
+// Per-turn state (writeIdx, transportCtx) resets to zero values via Clone().
 func (c *Compositor) Clone() *Compositor {
 	initCopy := make([]Stage, len(c.initStages))
 	for i, s := range c.initStages {
@@ -117,6 +120,7 @@ type MemoryReadStage struct {
 
 func (s *MemoryReadStage) Name() string { return "memory_read" }
 
+// Clone shares the Memory reference (concurrency-safe). No per-turn state.
 func (s *MemoryReadStage) Clone() Stage {
 	return &MemoryReadStage{Memory: s.Memory}
 }
@@ -184,6 +188,8 @@ func (s *ContextBuilderStage) initRegistry() {
 
 func (s *ContextBuilderStage) Name() string { return "context_builder" }
 
+// Clone shares registries and stores (concurrency-safe).
+// Per-turn state intentionally not cloned: transportCtx.
 func (s *ContextBuilderStage) Clone() Stage {
 	return &ContextBuilderStage{
 		BaseSystemPrompt: s.BaseSystemPrompt,
@@ -268,6 +274,7 @@ type LLMStage struct {
 }
 
 func (s *LLMStage) Clone() Stage {
+	// All fields are shared resources (providers, registries, bus). No per-turn state.
 	return &LLMStage{
 		Provider:     s.Provider,
 		Model:        s.Model,
@@ -496,6 +503,7 @@ type ToolStage struct {
 var errPermissionDenied = fmt.Errorf("permission denied")
 
 func (s *ToolStage) Clone() Stage {
+	// All fields are shared resources. No per-turn state.
 	return &ToolStage{
 		ToolRegistry:    s.ToolRegistry,
 		SignalBus:       s.SignalBus,
@@ -685,6 +693,8 @@ type MemoryWriteStage struct {
 }
 
 func (s *MemoryWriteStage) Clone() Stage {
+	// Memory and EventBus are shared (concurrency-safe).
+	// Per-turn state intentionally not cloned: writeIdx (resets to 0).
 	return &MemoryWriteStage{
 		Memory:   s.Memory,
 		EventBus: s.EventBus,

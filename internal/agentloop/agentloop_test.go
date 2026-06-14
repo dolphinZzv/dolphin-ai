@@ -1420,7 +1420,74 @@ func TestAgentLoopMultiWorkerE2E(t *testing.T) {
 	})
 }
 
-// ---------------------------------------------------------------------------
+func TestAgentLoopWorkerPanicBackoff(t *testing.T) {
+	Convey("Worker panic exponential backoff", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		var panicEvents []event.Event
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			if e.Type == event.EventWorkerPanic {
+				panicEvents = append(panicEvents, e)
+			}
+		})
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
+
+		compositor := NewCompositor(
+			[]Stage{&panicStage{}},
+			[]Stage{},
+			1,
+		)
+
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
+		a.maxPanicBackoff = 10 * time.Millisecond
+		a.maxConsecutivePanics = 3
+
+		ctx, cancel := context.WithCancel(context.Background())
+		runDone := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(runDone)
+		}()
+
+		// Send 3 turns — each will panic the worker, triggering restart with backoff.
+		for i := 0; i < 3; i++ {
+			aio.SendTurn(context.Background(), &agentio.Turn{
+				TurnID:    fmt.Sprintf("backoff-%d", i),
+				SessionID: "backoff-session", Input: "panic", TransportID: "t-backoff",
+			})
+			// Brief pause so the turn is enqueued before worker restarts.
+			time.Sleep(10 * time.Millisecond)
+		}
+
+		// Wait for worker to hit max consecutive panics and exit.
+		select {
+		case <-runDone:
+		case <-time.After(5 * time.Second):
+			cancel()
+			<-runDone
+		}
+
+		So(len(panicEvents), ShouldEqual, 3)
+
+		// Verify consecutive_panics increases.
+		for i := 1; i < len(panicEvents); i++ {
+			prev := panicEvents[i-1].Payload["consecutive_panics"].(int)
+			curr := panicEvents[i].Payload["consecutive_panics"].(int)
+			So(curr, ShouldBeGreaterThan, prev)
+		}
+
+		// All backoffs should be capped at maxPanicBackoff (10ms).
+		for _, e := range panicEvents {
+			ms := e.Payload["backoff_ms"].(int64)
+			So(ms, ShouldBeLessThanOrEqualTo, int64(10))
+		}
+
+		})
+	}
+
 // Chaos tests — concurrent stress, panic recovery, cancellation under lock
 // ---------------------------------------------------------------------------
 
