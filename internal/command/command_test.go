@@ -21,6 +21,7 @@ import (
 	transport "dolphin/internal/transport"
 
 	"dolphin/internal/agentio"
+	appctx "dolphin/internal/context"
 	"dolphin/internal/types"
 
 	. "github.com/smartystreets/goconvey/convey"
@@ -290,26 +291,22 @@ func TestRegisterContext(t *testing.T) {
 		sb := signal.NewBus()
 		r := NewRegistry(mgr, sb)
 
-		RegisterContext(r, func(ctx context.Context) (string, error) {
-			return "custom context", nil
-		})
+		reg := appctx.NewRegistry()
+		RegisterContext(r, func() *appctx.Registry { return reg })
 
 		output := r.Execute(context.Background(), "context", "")
-		So(output, ShouldEqual, "custom context")
+		So(output, ShouldContainSubstring, "(no sections)")
 	})
 
-	Convey("RegisterContext error path", t, func() {
+	Convey("RegisterContext nil registry", t, func() {
 		mgr := session.NewManager(t.TempDir())
 		sb := signal.NewBus()
 		r := NewRegistry(mgr, sb)
 
-		RegisterContext(r, func(ctx context.Context) (string, error) {
-			return "", fmt.Errorf("build failed")
-		})
+		RegisterContext(r, func() *appctx.Registry { return nil })
 
-		// Error is returned via RunE, output goes to stderr not stdout buffer.
 		output := r.Execute(context.Background(), "context", "")
-		So(output, ShouldBeBlank)
+		So(output, ShouldContainSubstring, "not yet initialized")
 	})
 }
 
@@ -830,7 +827,7 @@ func TestAllRegistrationCommandsNoPanic(t *testing.T) {
 
 		mgr.Create(context.Background())
 
-		RegisterContext(r, func(ctx context.Context) (string, error) { return "ctx", nil })
+		RegisterContext(r, func() *appctx.Registry { return appctx.NewRegistry() })
 		RegisterLimit(r, nil)
 		RegisterScheduler(r, &mockSchedLister{})
 		RegisterSkills(r, skill.NewFileStore(t.TempDir()))
@@ -959,6 +956,79 @@ func TestRegisterSession(t *testing.T) {
 		Convey("/clear alias creates session", func() {
 			output := r.Execute(context.Background(), "clear", "")
 			So(output, ShouldContainSubstring, "created session")
+		})
+	})
+}
+
+// testContextSection implements appctx.Section for context command tests.
+type testContextSection struct {
+	name    string
+	index   int
+	content string
+}
+
+func (s *testContextSection) Name() string                                   { return s.name }
+func (s *testContextSection) Index() int                                     { return s.index }
+func (s *testContextSection) BuildContent(_ context.Context) (string, error) { return s.content, nil }
+
+func TestContextListAndDetail(t *testing.T) {
+	Convey("Context list and detail", t, func() {
+		Convey("/context lists sections", func() {
+			mgr := session.NewManager(t.TempDir())
+			sb := signal.NewBus()
+			r := NewRegistry(mgr, sb)
+
+			reg := appctx.NewRegistry()
+			reg.Register(&testContextSection{name: "base", index: 0, content: "base"})
+			reg.Register(&testContextSection{name: "soul", index: 1, content: "soul"})
+			RegisterContext(r, func() *appctx.Registry { return reg })
+
+			output := r.Execute(context.Background(), "context", "")
+			So(output, ShouldContainSubstring, "base")
+			So(output, ShouldContainSubstring, "soul")
+			So(output, ShouldContainSubstring, "index=0")
+			So(output, ShouldContainSubstring, "index=1")
+		})
+
+		Convey("/context all builds full prompt", func() {
+			mgr := session.NewManager(t.TempDir())
+			sb := signal.NewBus()
+			r := NewRegistry(mgr, sb)
+
+			reg := appctx.NewRegistry()
+			reg.Register(&testContextSection{name: "a", index: 1, content: "first"})
+			reg.Register(&testContextSection{name: "b", index: 2, content: "second"})
+			RegisterContext(r, func() *appctx.Registry { return reg })
+
+			output := r.Execute(context.Background(), "context all", "")
+			So(output, ShouldEqual, "first\n---\nsecond")
+		})
+
+		Convey("/context <name> shows section content", func() {
+			mgr := session.NewManager(t.TempDir())
+			sb := signal.NewBus()
+			r := NewRegistry(mgr, sb)
+
+			reg := appctx.NewRegistry()
+			reg.Register(&testContextSection{name: "soul", index: 1, content: "soul data"})
+			RegisterContext(r, func() *appctx.Registry { return reg })
+
+			output := r.Execute(context.Background(), "context soul", "")
+			So(output, ShouldEqual, "soul data")
+		})
+
+		Convey("/context <name> unknown section", func() {
+			mgr := session.NewManager(t.TempDir())
+			sb := signal.NewBus()
+			r := NewRegistry(mgr, sb)
+
+			reg := appctx.NewRegistry()
+			reg.Register(&testContextSection{name: "base", index: 0, content: "base"})
+			RegisterContext(r, func() *appctx.Registry { return reg })
+
+			output := r.Execute(context.Background(), "context unknown", "")
+			So(output, ShouldContainSubstring, "Unknown section")
+			So(output, ShouldContainSubstring, "base")
 		})
 	})
 }

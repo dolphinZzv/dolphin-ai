@@ -3,6 +3,9 @@ package setup
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1834,4 +1837,77 @@ func TestToolsBootstrapperBootstrap_full(t *testing.T) {
 	if c.CmdReg != nil && !c.CmdReg.HasCommand("queue") {
 		t.Fatal("queue command should be registered")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// CLIBootstrapper
+// ---------------------------------------------------------------------------
+
+func TestCLIBootstrapper(t *testing.T) {
+	b := &CLIBootstrapper{}
+	if b.Name() != "cli" {
+		t.Errorf("Name() = %q", b.Name())
+	}
+	if b.Index() != 85 {
+		t.Errorf("Index() = %d", b.Index())
+	}
+}
+
+func TestCLIBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("no-op when agent.bin not configured", func(t *testing.T) {
+		c := &Context{Config: config.LoadConfigFromMap(nil)}
+		b := &CLIBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(c.ContextSections) != 0 {
+			t.Error("ContextSections should be empty")
+		}
+	})
+
+	t.Run("no-op when agent.bin dirs have no executables", func(t *testing.T) {
+		dir := t.TempDir()
+		c := &Context{
+			Config: config.LoadConfigFromMap(map[string]any{
+				"agent.bin": dir,
+			}),
+			Logger: zap.NewNop(),
+		}
+		b := &CLIBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(c.ContextSections) != 0 {
+			t.Error("ContextSections should be empty when no executables found")
+		}
+	})
+
+	t.Run("registers CLI section and re-registers shell when executables found", func(t *testing.T) {
+		if runtime.GOOS == "windows" {
+			t.Skip("skipping on windows")
+		}
+		dir := t.TempDir()
+		script := filepath.Join(dir, "demo")
+		_ = os.WriteFile(script, []byte("#!/bin/sh\necho Usage: demo '<args>'"), 0o755)
+
+		c := &Context{
+			Config: config.LoadConfigFromMap(map[string]any{
+				"agent.bin": dir,
+			}),
+			Logger:  zap.NewNop(),
+			ToolReg: tool.NewRegistry(),
+		}
+		b := &CLIBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(c.ContextSections) != 1 {
+			t.Fatalf("expected 1 context section, got %d", len(c.ContextSections))
+		}
+	})
 }

@@ -49,6 +49,7 @@ type Context struct {
 	OtelShutdown        func()
 	PprofShutdown       func()
 	ContextSections     []appctx.Section
+	ContextReg          *appctx.Registry
 	Limit               *limit.Limiter
 	LimitResetScheduler *limit.ResetScheduler
 }

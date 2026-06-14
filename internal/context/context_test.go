@@ -65,6 +65,51 @@ func TestRegistry(t *testing.T) {
 	})
 }
 
+func TestRegistrySections(t *testing.T) {
+	Convey("Registry Sections", t, func() {
+		Convey("Sections returns sorted by Index", func() {
+			r := NewRegistry()
+			r.Register(&testSection{name: "c", index: 3, content: "c"})
+			r.Register(&testSection{name: "a", index: 1, content: "a"})
+			r.Register(&testSection{name: "b", index: 2, content: "b"})
+
+			s := r.Sections()
+			So(len(s), ShouldEqual, 3)
+			So(s[0].Name(), ShouldEqual, "a")
+			So(s[1].Name(), ShouldEqual, "b")
+			So(s[2].Name(), ShouldEqual, "c")
+		})
+
+		Convey("Sections returns empty for empty registry", func() {
+			r := NewRegistry()
+			So(r.Sections(), ShouldBeEmpty)
+		})
+
+		Convey("ByName finds section", func() {
+			r := NewRegistry()
+			r.Register(&testSection{name: "target", index: 1, content: "found"})
+
+			s, ok := r.ByName("target")
+			So(ok, ShouldBeTrue)
+			So(s.Name(), ShouldEqual, "target")
+		})
+
+		Convey("ByName returns false when not found", func() {
+			r := NewRegistry()
+			r.Register(&testSection{name: "a", index: 1, content: "a"})
+
+			_, ok := r.ByName("nonexistent")
+			So(ok, ShouldBeFalse)
+		})
+
+		Convey("ByName returns false for empty registry", func() {
+			r := NewRegistry()
+			_, ok := r.ByName("anything")
+			So(ok, ShouldBeFalse)
+		})
+	})
+}
+
 func TestBaseSection(t *testing.T) {
 	Convey("Base section", t, func() {
 		Convey("Name returns 'base'", func() {

@@ -128,6 +128,12 @@ type ContextBuilderStage struct {
 	transportCtx     string // set per-call in Process
 }
 
+// Registry returns the internal section registry, initializing it if needed.
+func (s *ContextBuilderStage) Registry() *appctx.Registry {
+	s.initRegistry()
+	return s.reg
+}
+
 // RegisterSection adds a prompt section to the registry.
 func (s *ContextBuilderStage) RegisterSection(section appctx.Section) {
 	s.initRegistry()

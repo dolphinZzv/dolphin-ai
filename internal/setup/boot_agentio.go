@@ -60,6 +60,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	for _, sec := range c.ContextSections {
 		ctxBuilder.RegisterSection(sec)
 	}
+	c.ContextReg = ctxBuilder.Registry()
 
 	compositor := agentloop.NewCompositor(
 		[]agentloop.Stage{

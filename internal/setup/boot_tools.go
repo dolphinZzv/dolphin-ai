@@ -4,9 +4,9 @@ import (
 	"context"
 	"strconv"
 
-	"dolphin/internal/agentloop"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
+	appctx "dolphin/internal/context"
 	"dolphin/internal/mcp"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
@@ -52,13 +52,8 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	command.RegisterQueue(c.CmdReg)
 	command.RegisterLimit(c.CmdReg, c.Limit)
 	command.RegisterSessionStatus(c.CmdReg, c.SessionMgr, c.Mem, c.Config.GetString("session.mode"), c.LLMProvider)
-	command.RegisterContext(c.CmdReg, func(ctx context.Context) (string, error) {
-		cbs := &agentloop.ContextBuilderStage{
-			SkillStore: c.SkillStore,
-			Brain:      c.Brain,
-			Workspace:  c.Config.GetString("agent.workspace"),
-		}
-		return cbs.BuildSystemPrompt(ctx)
+	command.RegisterContext(c.CmdReg, func() *appctx.Registry {
+		return c.ContextReg
 	})
 
 	return nil
