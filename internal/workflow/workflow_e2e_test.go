@@ -38,26 +38,26 @@ func loadConfig() (*config.Config, error) {
 // createVolcengineProvider creates a Manager with the volcengine_agent provider.
 func createVolcengineProvider(cfg *config.Config, logger *zap.Logger) llm.Provider {
 	provider := llm.NewProvider(llm.Config{
-		Provider:      "volcengine_agent",
-		Vendor:        cfg.GetString("llm.volcengine_agent.provider"),
-		APIType:       cfg.GetString("llm.volcengine_agent.api_type"),
-		APIKey:        cfg.GetString("llm.volcengine_agent.api_key"),
-		BaseURL:       cfg.GetString("llm.volcengine_agent.base_url"),
-		MaxTokens:     cfg.GetInt("llm.max_tokens"),
-		MaxRetries:    cfg.GetInt("llm.max_retries"),
-		Timeout:       cfg.GetDuration("llm.timeout"),
-		Headers:       cfg.GetStringMap("llm.volcengine_agent.headers"),
+		Provider:   "volcengine_agent",
+		Vendor:     cfg.GetString("llm.volcengine_agent.provider"),
+		APIType:    cfg.GetString("llm.volcengine_agent.api_type"),
+		APIKey:     cfg.GetString("llm.volcengine_agent.api_key"),
+		BaseURL:    cfg.GetString("llm.volcengine_agent.base_url"),
+		MaxTokens:  cfg.GetInt("llm.max_tokens"),
+		MaxRetries: cfg.GetInt("llm.max_retries"),
+		Timeout:    cfg.GetDuration("llm.timeout"),
+		Headers:    cfg.GetStringMap("llm.volcengine_agent.headers"),
 		Models: []llm.ModelConfig{
 			{
-				Name:            "deepseek-v4-flash",
-				Provider:        "volcengine_agent",
-				Vendor:          "volcengine",
-				Model:           "deepseek-v4-flash",
-				APIType:         "openai",
-				MaxTokens:       4096,
-				MaxRetries:      3,
-				Timeout:         60 * time.Second,
-				Temperature:     0,
+				Name:        "deepseek-v4-flash",
+				Provider:    "volcengine_agent",
+				Vendor:      "volcengine",
+				Model:       "deepseek-v4-flash",
+				APIType:     "openai",
+				MaxTokens:   4096,
+				MaxRetries:  3,
+				Timeout:     60 * time.Second,
+				Temperature: 0,
 			},
 		},
 	}, logger)
@@ -278,9 +278,9 @@ func TestE2ECheckpoint(t *testing.T) {
 					DependsOn:  []string{"prepare"},
 				},
 				{
-					ID:        "deploy",
-					Prompt:    "请严格输出以下 JSON，不要修改任何字段的值：{\"deployed\": true}",
-					DependsOn:  []string{"review"},
+					ID:           "deploy",
+					Prompt:       "请严格输出以下 JSON，不要修改任何字段的值：{\"deployed\": true}",
+					DependsOn:    []string{"review"},
 					OutputSchema: map[string]any{"deployed": "boolean"},
 				},
 			},
@@ -396,18 +396,18 @@ func TestE2EParallelFanOut(t *testing.T) {
 			Name:    "e2e_parallel",
 			Steps: []StepSpec{
 				{
-					ID:     "task_a",
-					Prompt: "输出 JSON：{\"name\": \"A\", \"value\": 1}。只输出 JSON。",
+					ID:           "task_a",
+					Prompt:       "输出 JSON：{\"name\": \"A\", \"value\": 1}。只输出 JSON。",
 					OutputSchema: map[string]any{"name": "string", "value": "number"},
 				},
 				{
-					ID:     "task_b",
-					Prompt: "输出 JSON：{\"name\": \"B\", \"value\": 2}。只输出 JSON。",
+					ID:           "task_b",
+					Prompt:       "输出 JSON：{\"name\": \"B\", \"value\": 2}。只输出 JSON。",
 					OutputSchema: map[string]any{"name": "string", "value": "number"},
 				},
 				{
-					ID:     "task_c",
-					Prompt: "输出 JSON：{\"name\": \"C\", \"value\": 3}。只输出 JSON。",
+					ID:           "task_c",
+					Prompt:       "输出 JSON：{\"name\": \"C\", \"value\": 3}。只输出 JSON。",
 					OutputSchema: map[string]any{"name": "string", "value": "number"},
 				},
 				{
@@ -472,8 +472,8 @@ func TestE2EExecutionError(t *testing.T) {
 			Name:    "e2e_error",
 			Steps: []StepSpec{
 				{
-					ID:     "try_broken",
-					Prompt: "请调用 broken_tool 工具，然后无论如何，输出 JSON：{\"handled\": true}。只输出 JSON。",
+					ID:           "try_broken",
+					Prompt:       "请调用 broken_tool 工具，然后无论如何，输出 JSON：{\"handled\": true}。只输出 JSON。",
 					OutputSchema: map[string]any{"handled": "boolean"},
 				},
 			},
@@ -514,8 +514,8 @@ func TestE2EProgressCallback(t *testing.T) {
 			Name:    "e2e_progress",
 			Steps: []StepSpec{
 				{
-					ID:     "hello",
-					Prompt: "输出 JSON：{\"msg\": \"hello world\"}。只输出 JSON。",
+					ID:           "hello",
+					Prompt:       "输出 JSON：{\"msg\": \"hello world\"}。只输出 JSON。",
 					OutputSchema: map[string]any{"msg": "string"},
 				},
 			},

@@ -84,7 +84,8 @@ func restoreState(spec *WorkflowSpec, prev *WorkflowResult, rs *runState) {
 		if len(sr.Instances) > 0 {
 			rs.instance[sr.ID] = make(map[string]*InstanceResult)
 			for i := range sr.Instances {
-				inst := sr.Instances[i]; cp := inst
+				inst := sr.Instances[i]
+				cp := inst
 				rs.instance[sr.ID][inst.Key] = &cp
 			}
 		}

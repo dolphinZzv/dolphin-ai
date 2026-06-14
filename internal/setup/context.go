@@ -14,13 +14,13 @@ import (
 	"dolphin/internal/memory"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
-	"dolphin/internal/workflow"
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/userio"
 	"dolphin/internal/watcher"
+	"dolphin/internal/workflow"
 
 	"go.uber.org/zap"
 )

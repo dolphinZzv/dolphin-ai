@@ -24,9 +24,9 @@ type Engine struct {
 	eventBus    *event.Bus
 	logger      *zap.Logger
 
-	agentIO     *agentio.AgentIO
-	config      *config.Config
-	onProgress  func(agentio.TurnResult)
+	agentIO    *agentio.AgentIO
+	config     *config.Config
+	onProgress func(agentio.TurnResult)
 }
 
 // NewEngine creates a new workflow Engine.
@@ -45,8 +45,8 @@ func NewEngine(
 		eventBus:    eventBus,
 		logger:      logger,
 
-		agentIO:     agentIO,
-		config:      cfg,
+		agentIO: agentIO,
+		config:  cfg,
 	}
 }
 

@@ -64,13 +64,13 @@ type WorkflowResult struct {
 
 // stepInstance is an internal type representing one execution unit.
 type stepInstance struct {
-	StepID   string
-	Key      string // foreach key, or stepID for non-foreach
-	Prompt   string
-	Timeout  string
+	StepID    string
+	Key       string // foreach key, or stepID for non-foreach
+	Prompt    string
+	Timeout   string
 	MaxTokens int
-	Spec     StepSpec
-	Each     any // the current foreach element value
+	Spec      StepSpec
+	Each      any // the current foreach element value
 }
 
 // ErrCheckpointReached is returned by Engine.Run when a checkpoint step completes.
@@ -79,8 +79,8 @@ var ErrCheckpointReached = fmt.Errorf("checkpoint reached")
 // runState holds the mutable execution state for a single workflow run.
 type runState struct {
 	spec     *WorkflowSpec
-	statuses map[string]StepStatus           // stepID → status
-	results  map[string]*StepResult           // stepID → result (accumulated)
+	statuses map[string]StepStatus                 // stepID → status
+	results  map[string]*StepResult                // stepID → result (accumulated)
 	instance map[string]map[string]*InstanceResult // stepID → key → result
-	order    []string                         // step execution order (for foreach expansion)
+	order    []string                              // step execution order (for foreach expansion)
 }

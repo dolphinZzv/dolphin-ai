@@ -59,9 +59,9 @@ type AgentIO struct {
 	lastTransportMu sync.RWMutex
 	lastTransportID string // most recent transport that sent a turn
 
-	pendingMu    sync.Mutex
-	pending      []*Turn         // mirror of chan queue for introspection
-	cancelled    map[string]bool // turn IDs popped before dequeue
+	pendingMu sync.Mutex
+	pending   []*Turn         // mirror of chan queue for introspection
+	cancelled map[string]bool // turn IDs popped before dequeue
 
 	activeTurns map[string]*TurnInfo // worker_id → currently processing turn
 	activeMu    sync.RWMutex
@@ -69,14 +69,14 @@ type AgentIO struct {
 
 func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *zap.Logger, agentName string) *AgentIO {
 	a := &AgentIO{
-		queue:      make(chan *Turn, bufferSize),
-		routes:     make(map[string]transport.IO),
-		sessionMgr: mgr,
-		signalBus:  sb,
-		logger:     logger,
-		agentName:  agentName,
-		replied:    make(map[string]bool),
-		buffers:    make(map[string]string),
+		queue:       make(chan *Turn, bufferSize),
+		routes:      make(map[string]transport.IO),
+		sessionMgr:  mgr,
+		signalBus:   sb,
+		logger:      logger,
+		agentName:   agentName,
+		replied:     make(map[string]bool),
+		buffers:     make(map[string]string),
 		cancelled:   make(map[string]bool),
 		activeTurns: make(map[string]*TurnInfo),
 	}
@@ -229,7 +229,6 @@ func (a *AgentIO) ActiveSnapshot() map[string]*TurnInfo {
 	}
 	return snap
 }
-
 
 // Processing returns whether any worker is currently processing a turn.
 func (a *AgentIO) Processing() bool {

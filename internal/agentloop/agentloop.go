@@ -93,9 +93,9 @@ func (a *AgentLoop) Run(ctx context.Context) {
 						Type:      event.EventWorkerPanic,
 						Timestamp: time.Now(),
 						Payload: map[string]any{
-							"worker_id":           workerID,
-							"consecutive_panics":  consecutivePanics,
-							"backoff_ms":          backoff.Milliseconds(),
+							"worker_id":          workerID,
+							"consecutive_panics": consecutivePanics,
+							"backoff_ms":         backoff.Milliseconds(),
 						},
 					})
 				}

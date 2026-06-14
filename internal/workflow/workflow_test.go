@@ -36,7 +36,6 @@ func testConfig() *config.Config {
 	return config.LoadConfigFromMap(map[string]any{
 		"agent.pool_size":       2,
 		"workflow.step_timeout": "30s",
-
 	})
 }
 
@@ -622,23 +621,23 @@ func TestRunState(t *testing.T) {
 			So(rs.statuses["c"], ShouldEqual, StatusSkipped)
 		})
 
-			Convey("skipDependents skips step whose dep was already skipped independently", func() {
-				spec2 := &WorkflowSpec{
-					Version: "1", Name: "test",
-					Steps: []StepSpec{
-						{ID: "x", Prompt: "x"},
-						{ID: "a", Prompt: "a"},
-						{ID: "b", Prompt: "b", DependsOn: []string{"a"}},
-						{ID: "c", Prompt: "c", DependsOn: []string{"x", "b"}},
-					},
-				}
-				rs := newRunState(spec2)
-				rs.markSkipped("x")
-				rs.markFailed("a", "fail")
-				rs.skipDependents("a")
-				So(rs.statuses["b"], ShouldEqual, StatusSkipped)
-				So(rs.statuses["c"], ShouldEqual, StatusSkipped)
-			})
+		Convey("skipDependents skips step whose dep was already skipped independently", func() {
+			spec2 := &WorkflowSpec{
+				Version: "1", Name: "test",
+				Steps: []StepSpec{
+					{ID: "x", Prompt: "x"},
+					{ID: "a", Prompt: "a"},
+					{ID: "b", Prompt: "b", DependsOn: []string{"a"}},
+					{ID: "c", Prompt: "c", DependsOn: []string{"x", "b"}},
+				},
+			}
+			rs := newRunState(spec2)
+			rs.markSkipped("x")
+			rs.markFailed("a", "fail")
+			rs.skipDependents("a")
+			So(rs.statuses["b"], ShouldEqual, StatusSkipped)
+			So(rs.statuses["c"], ShouldEqual, StatusSkipped)
+		})
 
 		Convey("hasFailures and failReason", func() {
 			rs := newRunState(spec)
@@ -649,7 +648,6 @@ func TestRunState(t *testing.T) {
 		})
 	})
 }
-
 
 func TestValidateContinue(t *testing.T) {
 	Convey("validateContinue", t, func() {
@@ -1091,7 +1089,7 @@ func TestEngineContinue(t *testing.T) {
 		Convey("errors without prior result file", func() {
 			spec := &WorkflowSpec{
 				Version: "1", Name: "no_result",
-				Steps:    []StepSpec{{ID: "a", Prompt: "a"}},
+				Steps: []StepSpec{{ID: "a", Prompt: "a"}},
 			}
 			_, err := engine.Continue(context.Background(), spec, "")
 			So(err, ShouldNotBeNil)
@@ -1108,7 +1106,7 @@ steps: []
 
 			spec := &WorkflowSpec{
 				Version: "1", Name: "not_paused",
-				Steps:    []StepSpec{{ID: "a", Prompt: "a"}},
+				Steps: []StepSpec{{ID: "a", Prompt: "a"}},
 			}
 			_, err := engine.Continue(context.Background(), spec, "")
 			So(err, ShouldNotBeNil)
@@ -1174,7 +1172,7 @@ func TestEngineProgress(t *testing.T) {
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "progress_test",
-			Steps:    []StepSpec{{ID: "a", Prompt: "a"}},
+			Steps: []StepSpec{{ID: "a", Prompt: "a"}},
 		}
 		_, err := engine.Run(context.Background(), spec, "transport-1")
 		So(err, ShouldBeNil)
@@ -1208,7 +1206,7 @@ func TestEnginePublishEvent(t *testing.T) {
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "event_test",
-			Steps:    []StepSpec{{ID: "a", Prompt: "a"}},
+			Steps: []StepSpec{{ID: "a", Prompt: "a"}},
 		}
 		engine.Run(context.Background(), spec, "")
 
@@ -1526,7 +1524,7 @@ func TestEngineContextCancellation(t *testing.T) {
 
 		spec := &WorkflowSpec{
 			Version: "1", Name: "cancel_test",
-			Steps:    []StepSpec{{ID: "a", Prompt: "a"}},
+			Steps: []StepSpec{{ID: "a", Prompt: "a"}},
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -1629,19 +1627,19 @@ func TestEngineContinueWithPausedFile(t *testing.T) {
 			},
 		}
 
-			// Create a paused result file to resume from.
-			resumeFile := spec.Name + ".result.yaml"
-			defer os.Remove(resumeFile)
-			paused := &WorkflowResult{
-				Workflow: spec.Name,
-				Status:   "paused",
-				Steps: []StepResult{
-					{ID: "a", Status: StatusDone, Result: map[string]any{"x": 1}},
-					{ID: "b", Status: StatusPending},
-				},
-			}
-			data, _ := yaml.Marshal(paused)
-			os.WriteFile(resumeFile, data, 0644)
+		// Create a paused result file to resume from.
+		resumeFile := spec.Name + ".result.yaml"
+		defer os.Remove(resumeFile)
+		paused := &WorkflowResult{
+			Workflow: spec.Name,
+			Status:   "paused",
+			Steps: []StepResult{
+				{ID: "a", Status: StatusDone, Result: map[string]any{"x": 1}},
+				{ID: "b", Status: StatusPending},
+			},
+		}
+		data, _ := yaml.Marshal(paused)
+		os.WriteFile(resumeFile, data, 0644)
 		result, err := engine.Continue(context.Background(), spec, "")
 		So(err, ShouldBeNil)
 		So(result.Status, ShouldEqual, "completed")

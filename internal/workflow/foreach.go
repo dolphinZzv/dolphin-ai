@@ -14,12 +14,12 @@ func (e *Engine) expandForeach(step StepSpec, rs *runState) ([]stepInstance, err
 			return nil, fmt.Errorf("workflow: step %q template error: %w", step.ID, err)
 		}
 		return []stepInstance{{
-			StepID:   step.ID,
-			Key:      step.ID,
-			Prompt:   prompt,
-			Timeout:  step.Timeout,
+			StepID:    step.ID,
+			Key:       step.ID,
+			Prompt:    prompt,
+			Timeout:   step.Timeout,
 			MaxTokens: step.MaxTokens,
-			Spec:     step,
+			Spec:      step,
 		}}, nil
 	}
 
@@ -74,13 +74,13 @@ func (e *Engine) expandForeach(step StepSpec, rs *runState) ([]stepInstance, err
 		}
 
 		instances = append(instances, stepInstance{
-			StepID:   step.ID,
-			Key:      key,
-			Prompt:   prompt,
-			Timeout:  step.Timeout,
+			StepID:    step.ID,
+			Key:       key,
+			Prompt:    prompt,
+			Timeout:   step.Timeout,
 			MaxTokens: step.MaxTokens,
-			Spec:     step,
-			Each:     elem,
+			Spec:      step,
+			Each:      elem,
 		})
 	}
 

@@ -853,7 +853,7 @@ type incrementStage struct {
 }
 
 func (s *incrementStage) Name() string { return "increment" }
-func (s *incrementStage) Clone() Stage  { return &incrementStage{count: s.count} }
+func (s *incrementStage) Clone() Stage { return &incrementStage{count: s.count} }
 func (s *incrementStage) Process(ctx context.Context, state *State) error {
 	*s.count++
 	return nil
@@ -1261,7 +1261,7 @@ func TestContextBuilderStageClone(t *testing.T) {
 type errorStage struct{}
 
 func (s *errorStage) Name() string { return "error" }
-func (s *errorStage) Clone() Stage                  { return &errorStage{} }
+func (s *errorStage) Clone() Stage { return &errorStage{} }
 func (s *errorStage) Process(_ context.Context, _ *State) error {
 	return fmt.Errorf("injected error")
 }
@@ -1515,8 +1515,8 @@ func TestAgentLoopWorkerPanicBackoff(t *testing.T) {
 			So(ms, ShouldBeLessThanOrEqualTo, int64(10))
 		}
 
-		})
-	}
+	})
+}
 
 // Chaos tests — concurrent stress, panic recovery, cancellation under lock
 // ---------------------------------------------------------------------------

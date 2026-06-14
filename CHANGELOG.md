@@ -22,6 +22,7 @@ All notable changes to Dolphin will be documented in this file.
 
 - Session lock GC interval is now configurable via `agent.session_gc_interval` (default 300s).
 - `SetActive`/`ClearActive` moved after session lock acquisition — elapsed time in `/queue` no longer includes lock wait.
+- Agentloop tests replace `time.Sleep` with channel/waitgroup synchronization — test suite runtime reduced ~40%.
 
 ### Removed
 
