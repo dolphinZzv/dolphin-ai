@@ -986,8 +986,12 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 		a := NewAgentLoop(q, compositor, logger, eb, nil, 1)
 
 		var resultCallCount int
+		turnDone := make(chan struct{})
 		a.SetOnResult(func(result agentio.TurnResult) {
 			resultCallCount++
+			if result.Done {
+				close(turnDone)
+			}
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
@@ -1004,7 +1008,7 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 			TransportID: "test-transport",
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		<-turnDone
 		cancel()
 		<-done
 
@@ -1028,9 +1032,7 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
 
 		var resultCalls int
-		a.SetOnResult(func(result agentio.TurnResult) {
-			resultCalls++
-		})
+		turnDone := make(chan struct{})
 
 		aio.SendTurn(context.Background(), &agentio.Turn{
 			TurnID:      "t1",
@@ -1040,6 +1042,21 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 		})
 		aio.PopIndex(0) // mark cancelled
 
+		// Send a sentinel turn that will complete — proves the
+		// cancelled turn was dequeued and skipped before it.
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "sentinel", SessionID: "test-session", Input: "x", TransportID: "test-transport",
+		})
+
+		a.SetOnResult(func(result agentio.TurnResult) {
+			if result.TurnID == "t1" {
+				resultCalls++
+			}
+			if result.TurnID == "sentinel" && result.Done {
+				close(turnDone)
+			}
+		})
+
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() {
@@ -1047,7 +1064,7 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 			close(done)
 		}()
 
-		time.Sleep(100 * time.Millisecond)
+		<-turnDone
 		cancel()
 		<-done
 
@@ -1071,9 +1088,7 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
 
 		var resultCalls int
-		a.SetOnResult(func(result agentio.TurnResult) {
-			resultCalls++
-		})
+		turnDone := make(chan struct{})
 
 		aio.SendTurn(context.Background(), &agentio.Turn{
 			TurnID:      "t2",
@@ -1083,6 +1098,13 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 		})
 		// NOT popping — turn should be processed normally
 
+		a.SetOnResult(func(result agentio.TurnResult) {
+			resultCalls++
+			if result.Done {
+				close(turnDone)
+			}
+		})
+
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() {
@@ -1090,7 +1112,7 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 			close(done)
 		}()
 
-		time.Sleep(100 * time.Millisecond)
+		<-turnDone
 		cancel()
 		<-done
 
@@ -1114,9 +1136,11 @@ func TestAgentLoopProcessTurnError(t *testing.T) {
 		a := NewAgentLoop(q, compositor, logger, eb, nil, 1)
 
 		var lastResult agentio.TurnResult
+		turnDone := make(chan struct{})
 		a.SetOnResult(func(result agentio.TurnResult) {
 			if result.Done {
 				lastResult = result
+				close(turnDone)
 			}
 		})
 
@@ -1133,7 +1157,7 @@ func TestAgentLoopProcessTurnError(t *testing.T) {
 			TransportID: "test-transport",
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		<-turnDone
 		cancel()
 		<-done
 
@@ -1370,14 +1394,6 @@ func TestAgentLoopMultiWorkerE2E(t *testing.T) {
 		var mu sync.Mutex
 		resultsBySession := make(map[string][]string)
 
-		a.SetOnResult(func(r agentio.TurnResult) {
-			if r.Done {
-				mu.Lock()
-				resultsBySession[r.SessionID] = append(resultsBySession[r.SessionID], r.TurnID)
-				mu.Unlock()
-			}
-		})
-
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
 		go func() {
@@ -1386,6 +1402,20 @@ func TestAgentLoopMultiWorkerE2E(t *testing.T) {
 		}()
 
 		// Send 2 turns for session-A, 2 turns for session-B.
+		allDone := make(chan struct{})
+		var completedCount int
+		a.SetOnResult(func(r agentio.TurnResult) {
+			if r.Done {
+				mu.Lock()
+				resultsBySession[r.SessionID] = append(resultsBySession[r.SessionID], r.TurnID)
+				completedCount++
+				if completedCount == 4 {
+					close(allDone)
+				}
+				mu.Unlock()
+			}
+		})
+
 		aio.SendTurn(context.Background(), &agentio.Turn{
 			TurnID: "a1", SessionID: "session-A", Input: "hello-A1", TransportID: "t-a",
 		})
@@ -1399,7 +1429,7 @@ func TestAgentLoopMultiWorkerE2E(t *testing.T) {
 			TurnID: "b2", SessionID: "session-B", Input: "hello-B2", TransportID: "t-b",
 		})
 
-		time.Sleep(500 * time.Millisecond)
+		<-allDone
 		cancel()
 		<-done
 
@@ -1558,10 +1588,13 @@ func TestChaosCompositorPanic(t *testing.T) {
 		eb := event.NewBus()
 
 		// Collect panic events.
+		var panicMu sync.Mutex
 		var panicEvents []event.Event
 		eb.Subscribe(func(_ context.Context, e event.Event) {
 			if e.Type == event.EventWorkerPanic {
+				panicMu.Lock()
 				panicEvents = append(panicEvents, e)
+				panicMu.Unlock()
 			}
 		})
 
@@ -1594,13 +1627,25 @@ func TestChaosCompositorPanic(t *testing.T) {
 			TurnID: "panic-1", SessionID: "chaos-panic", Input: "panic now", TransportID: "t-panic",
 		})
 
-		// Give worker time to panic and restart.
-		time.Sleep(500 * time.Millisecond)
-
-		// The worker restarts with the same compositor clone. Since the panicStage
-		// panics every time, the worker will panic-restart repeatedly. This is the
-		// chaos — verify the system handles repeated panics without crashing.
-		time.Sleep(2 * time.Second)
+		// Wait for the first panic event, then give the worker time to restart.
+		deadline := time.After(5 * time.Second)
+	waitLoop:
+		for {
+			panicMu.Lock()
+			n := len(panicEvents)
+			panicMu.Unlock()
+			if n >= 1 {
+				break waitLoop
+			}
+			select {
+			case <-deadline:
+				break waitLoop
+			default:
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		// Let the worker restart at least once more to verify continued operation.
+		time.Sleep(100 * time.Millisecond)
 
 		// Cancel and verify Run exits cleanly (no deadlock).
 		cancel()
@@ -1631,10 +1676,14 @@ func TestChaosConcurrentSameSession(t *testing.T) {
 
 		var mu sync.Mutex
 		var completed []string
+		allDone := make(chan struct{})
 		a.SetOnResult(func(r agentio.TurnResult) {
 			if r.Done {
 				mu.Lock()
 				completed = append(completed, r.TurnID)
+				if len(completed) == 100 {
+					close(allDone)
+				}
 				mu.Unlock()
 			}
 		})
@@ -1663,7 +1712,7 @@ func TestChaosConcurrentSameSession(t *testing.T) {
 		wg.Wait()
 
 		// Wait for all turns to complete.
-		time.Sleep(2 * time.Second)
+		<-allDone
 		cancel()
 		<-runDone
 
