@@ -74,6 +74,20 @@ func TestHandleShell_EmptyCommand(t *testing.T) {
 	}
 }
 
+func TestShellHandler_WithBinDirs(t *testing.T) {
+	h := BuiltinMCPHandlers([]string{"/nonexistent/path"})["shell"]
+	result, err := h(context.Background(), json.RawMessage(`{"command":"echo hello"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatal("unexpected error")
+	}
+	if !strings.Contains(result.Content, "hello") {
+		t.Fatalf("expected 'hello' in output, got: %s", result.Content)
+	}
+}
+
 func TestBuiltinMCPHandlers_Consistency(t *testing.T) {
 	// Ensure handler, description, and schema counts match.
 	handlers := BuiltinMCPHandlers(nil)
