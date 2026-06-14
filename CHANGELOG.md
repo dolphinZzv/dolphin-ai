@@ -35,3 +35,4 @@ All notable changes to Dolphin will be documented in this file.
 - Worker panic recovery: exponential backoff (1s, 2s, 4s...) capped at 30s, worker exits after 5 consecutive panics. Publishes `EventWorkerPanic` event on every panic including the final one.
 - `truncateInput`/`truncateForMarkdown` duplicate functions merged.
 - `sortedWorkerIDs` replaced bubble sort with `sort.Strings`.
+- Error wrapping: all `fmt.Errorf` calls that pass an error use `%w`, enabling `errors.Is`/`errors.As` throughout the codebase.

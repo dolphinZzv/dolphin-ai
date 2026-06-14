@@ -92,7 +92,7 @@ func sendMessage(ctx context.Context, token, chatID, content, msgType string) er
 		ErrMsg  string `json:"errmsg"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("decode response: %s (raw: %s)", err, string(respBody))
+		return fmt.Errorf("decode response: %w (raw: %s)", err, string(respBody))
 	}
 	if result.ErrCode != 0 {
 		return fmt.Errorf("api error: %s (code %d)", result.ErrMsg, result.ErrCode)
@@ -136,7 +136,7 @@ func sendFileMessage(ctx context.Context, token, chatID, mediaID, _ string) erro
 		MessageID string `json:"messageId"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return fmt.Errorf("decode response: %s (raw: %s)", err, string(respBody))
+		return fmt.Errorf("decode response: %w (raw: %s)", err, string(respBody))
 	}
 	if result.ErrCode != 0 {
 		return fmt.Errorf("api error: %s (code %d, chatid=%s)", result.ErrMsg, result.ErrCode, chatID)
