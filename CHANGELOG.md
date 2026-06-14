@@ -17,6 +17,7 @@ All notable changes to Dolphin will be documented in this file.
 - Fuzz tests: `FuzzValidSessionID`, `FuzzSessionLock`, `FuzzCompileTemplate`.
 - Benchmarks: `BenchmarkAgentLoopSingleTurn`, `BenchmarkAgentLoopMultiWorker`, `BenchmarkCompileTemplate`, `BenchmarkRenderPrompt`.
 - Architecture Decision Records: `docs/adr/001-per-session-lock.md`, `docs/adr/002-compositor-clone.md`, `docs/adr/003-workflow-no-session-memory.md`.
+- Workflow context section expanded with complete YAML format reference, template syntax, foreach, checkpoint, and file lifecycle instructions for the LLM.
 
 ### Changed
 
