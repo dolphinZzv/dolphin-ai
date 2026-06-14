@@ -74,3 +74,50 @@
 | resultPath() 未使用 | 已修正 — 已删除该函数 |
 | findCheckpointIndex() 未使用 | 已修正 — 已删除该函数 |
 | 19 个 .result.yaml 检入源码树 | 已修正 — `.gitignore` 已添加 `internal/workflow/*.result.yaml` |
+| crash recovery: "running" step 永不重新执行 | 已修正 — restoreState 将 StatusRunning 重置为 StatusPending |
+| restoreState 循环变量 &inst 取地址 | 已修正 — 改为 cp := inst; &cp |
+| foreach key 碰撞 (truncateKey 相同前缀) | 已修正 — key 格式改为 `stepID[index-value]` |
+| 空 foreach 数组被标记为 "partial failure" | 已修正 — allInstDone 空切片返回 true |
+
+---
+
+## 二次审计回应 (2026-06-14)
+
+### 1. [严重] transportID 传播 → 拒绝修复
+**不是 bug**。`SetOnProgress` 在生产环境从未被调用（全代码库无调用方），`onProgress` 始终为 nil，`progress()` 是空操作。空 transportID 不会造成广播。如果未来需要从 tool handler 推送进度，需先决定 transportID 传递机制（ctx 注入或 Engine 字段）。
+
+### 2. [中] SetProcessing 空操作 → 非 workflow 模块
+属于 agentio 公开 API 设计问题，应在其重构时一并处理（添加 deprecation notice 或删除）。
+
+### 3. [中] writeResult 输出路径 → 确认存在
+`result.yaml` 写入当前工作目录而非 spec 源目录。当前所有 workflow 运行均在 CWD，多项目场景下确实可能冲突。修复方案：在 WorkflowSpec 中记录 sourceDir，writeResult 时使用该路径。
+
+### 4. [低] workflow.max_steps 死配置 → 确认存在
+未被任何代码读取。应在 Run() 中加载并校验 len(spec.Steps) ≤ max_steps。
+
+### 5. [低] Engine.brain 未使用 → 确认存在
+存储了但从未引用。目前 workflow 不需要 brain（不走 session memory），如未来不需要可移除字段。
+
+### 6. [中] buildTemplateData 单实例格式不一致 → 设计权衡
+`len(sr.Instances) > 1` 才暴露列表格式，单实例暴露裸值。这是为了让 `$step.field` 直接可用（不需要 `$step[0].field`）。模板作者需了解哪些步骤是 foreach。
+
+### 7. [低] allInstDone 空切片返回 true → 有意的
+空 foreach（上游返回空数组）应视为完成而非失败。这是 intentional design，已在 engine.go 添加注释说明 vacuous truth。
+
+### 8. [低] specLookup O(n²) → 暂不修复
+Steps 数量通常 ≤ 50，线性扫描开销可忽略。若未来支持百级以上 step，再改为 map 索引。
+
+### 9. [严重] cobra 竞态 → 非 workflow 模块
+上游库问题，应在 command 包单独处理（加锁或限制并发执行）。
+
+### 10-11. 冒泡排序 / Session lock GC → 非 workflow 模块
+分别属于 command 和 agentloop 包。
+
+### 12. 每次 LLM 调用发送全部 tool → 设计决策
+当前 workflow 的 tool 针对具体任务注册，不会很多。按 step 筛选 tool 需要 ToolRegistry 支持分类筛选，属于未来优化。
+
+### 13. Template 缺少 FuncMap → 功能请求
+不是 bug。可在不破坏现有模板的前提下增量添加。
+
+### 14. ForEach 缺少 per-instance 事件 → 功能请求
+当前只需 step 级别事件即可追踪进度。instance 结果已存储在 StepResult.Instances 中。
