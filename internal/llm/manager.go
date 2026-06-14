@@ -17,6 +17,9 @@ type Manager struct {
 	modelIndex map[string]string   // model name → provider name
 	active     string              // current active model name
 	models     []ModelConfig       // cached aggregated model list
+
+	semMu      sync.Mutex
+	semaphores map[string]chan struct{} // model name → concurrency semaphore
 }
 
 // NewManager creates an empty Manager.
@@ -106,6 +109,7 @@ func (m *Manager) SetActiveModel(name string) error {
 }
 
 // CompleteStream routes to the provider that serves the requested model.
+// When the model has MaxConcurrency > 0, a semaphore caps concurrent streams.
 func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LLMChunk, error) {
 	modelName := req.Model
 	if modelName == "" {
@@ -124,6 +128,7 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 
 	// Use the original API model name, not the qualified routing name.
 	apiModel := modelName
+	maxConcurrency := 0
 	for _, mc := range m.models {
 		if mc.Name == modelName {
 			if mc.Disabled {
@@ -142,11 +147,56 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 			if mc.ReasoningEffort != "" {
 				req.ReasoningEffort = mc.ReasoningEffort
 			}
+			maxConcurrency = mc.MaxConcurrency
 			break
 		}
 	}
 	req.Model = apiModel
-	return provider.CompleteStream(ctx, req)
+
+	if maxConcurrency <= 0 {
+		return provider.CompleteStream(ctx, req)
+	}
+
+	sem := m.getSemaphore(modelName, maxConcurrency)
+	select {
+	case sem <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+
+	inner, err := provider.CompleteStream(ctx, req)
+	if err != nil {
+		<-sem
+		return nil, err
+	}
+
+	out := make(chan LLMChunk)
+	go func() {
+		defer close(out)
+		defer func() { <-sem }()
+		for chunk := range inner {
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
+func (m *Manager) getSemaphore(modelName string, limit int) chan struct{} {
+	m.semMu.Lock()
+	defer m.semMu.Unlock()
+	if m.semaphores == nil {
+		m.semaphores = make(map[string]chan struct{})
+	}
+	if sem, ok := m.semaphores[modelName]; ok {
+		return sem
+	}
+	sem := make(chan struct{}, limit)
+	m.semaphores[modelName] = sem
+	return sem
 }
 
 // Models returns all available models across all providers.

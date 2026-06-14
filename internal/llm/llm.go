@@ -17,6 +17,7 @@ type ModelConfig struct {
 	Temperature     float64       `json:"temperature"`
 	MaxRetries      int           `json:"max_retries"`
 	Timeout         time.Duration `json:"timeout"`
+	MaxConcurrency  int           `json:"max_concurrency,omitempty"`
 	TopP            float64       `json:"top_p"`
 	Stop            []string      `json:"stop"`
 	ReasoningEffort string        `json:"reasoning_effort,omitempty"`

@@ -38,3 +38,4 @@ All notable changes to Dolphin will be documented in this file.
 - `sortedWorkerIDs` replaced bubble sort with `sort.Strings`.
 - Error wrapping: all `fmt.Errorf` calls that pass an error use `%w`, enabling `errors.Is`/`errors.As` throughout the codebase.
 - Data races in `-race` CI: fixed races in `command.Execute` (lock entire body), `ExecuteWithTimeout` (pre-check ctx.Err), `weWork.sendAndWait` test, `watcher` test. Skipped readline-based stdio tests under `-race` (third-party race in `github.com/chzyer/readline`).
+- golangci-lint: fixed gofmt, exhaustive, gosec, and staticcheck issues in transport, workflow, limit, and llm packages.

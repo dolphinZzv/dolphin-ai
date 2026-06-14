@@ -31,10 +31,11 @@ func (l *Limiter) ClearAlerted() {
 
 // PerModelLimit stores the per-model limit overrides.
 type PerModelLimit struct {
-	HardRequests int64
-	HardTokens   int64
-	SoftRequests int64
-	SoftTokens   int64
+	HardRequests   int64
+	HardTokens     int64
+	SoftRequests   int64
+	SoftTokens     int64
+	MaxConcurrency int
 }
 
 // NewLimiter creates a Limiter.
@@ -77,13 +78,15 @@ func (l *Limiter) scanModelLimits() {
 			hardTokens := ReadHardLimit(l.cfg, limitPrefix+".max_total_tokens")
 			softRequests := ReadSoftLimit(l.cfg, limitPrefix+".max_requests")
 			softTokens := ReadSoftLimit(l.cfg, limitPrefix+".max_total_tokens")
-			if hardRequests > 0 || hardTokens > 0 || softRequests > 0 || softTokens > 0 {
+			maxConcurrency := l.cfg.GetInt(limitPrefix + ".max_concurrency")
+			if hardRequests > 0 || hardTokens > 0 || softRequests > 0 || softTokens > 0 || maxConcurrency > 0 {
 				qualified := section + "/" + name
 				l.modelLimits[qualified] = PerModelLimit{
-					HardRequests: hardRequests,
-					HardTokens:   hardTokens,
-					SoftRequests: softRequests,
-					SoftTokens:   softTokens,
+					HardRequests:   hardRequests,
+					HardTokens:     hardTokens,
+					SoftRequests:   softRequests,
+					SoftTokens:     softTokens,
+					MaxConcurrency: maxConcurrency,
 				}
 				l.logger.Info("limit: loaded per-model limit",
 					zap.String("model", qualified),
@@ -91,6 +94,7 @@ func (l *Limiter) scanModelLimits() {
 					zap.Int64("hard_tokens", hardTokens),
 					zap.Int64("soft_requests", softRequests),
 					zap.Int64("soft_tokens", softTokens),
+					zap.Int("max_concurrency", maxConcurrency),
 				)
 			}
 		}
@@ -152,8 +156,8 @@ func (l *Limiter) checkLLM(ctx context.Context, e event.Event) error {
 	limits := l.gatherLimits(modelStr)
 
 	var (
-		anySoft   bool
-		hardErrs  []string
+		anySoft  bool
+		hardErrs []string
 	)
 	for _, lm := range limits {
 		current, err := l.store.Get(lm.key)
