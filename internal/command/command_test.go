@@ -250,6 +250,29 @@ func TestTruncateInput(t *testing.T) {
 	})
 }
 
+func TestSortedWorkerIDs(t *testing.T) {
+	Convey("sortedWorkerIDs", t, func() {
+		Convey("returns sorted keys", func() {
+			active := map[string]*agentio.TurnInfo{
+				"worker-3": {},
+				"worker-1": {},
+				"worker-2": {},
+			}
+			ids := sortedWorkerIDs(active)
+			So(ids, ShouldResemble, []string{"worker-1", "worker-2", "worker-3"})
+		})
+		Convey("returns empty for empty map", func() {
+			ids := sortedWorkerIDs(map[string]*agentio.TurnInfo{})
+			So(len(ids), ShouldEqual, 0)
+		})
+		Convey("returns single item for single entry", func() {
+			active := map[string]*agentio.TurnInfo{"worker-1": {}}
+			ids := sortedWorkerIDs(active)
+			So(ids, ShouldResemble, []string{"worker-1"})
+		})
+	})
+}
+
 func TestTokenVal(t *testing.T) {
 	Convey("tokenVal", t, func() {
 		Convey("returns 0 for nil", func() {
