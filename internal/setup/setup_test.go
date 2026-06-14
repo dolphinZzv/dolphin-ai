@@ -395,6 +395,8 @@ func TestObservabilityBootstrapperBootstrap(t *testing.T) {
 		if c.OtelShutdown == nil {
 			t.Error("OtelShutdown should be set")
 		}
+		// Call the shutdown to cover the closure body.
+		c.OtelShutdown()
 	})
 
 	t.Run("no-op when OtelShutdown already set", func(t *testing.T) {
