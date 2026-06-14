@@ -29,6 +29,8 @@ type AgentLoop struct {
 
 	sessionMu    sync.Mutex
 	sessionLocks map[string]*sync.Mutex
+
+	gcInterval time.Duration
 }
 
 func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.Logger, eventBus *event.Bus, agentIO *agentio.AgentIO, poolSize int) *AgentLoop {
@@ -50,6 +52,11 @@ func (a *AgentLoop) SetOnResult(fn func(agentio.TurnResult)) {
 	a.onResult = fn
 }
 
+// SetSessionGcInterval sets the session lock GC interval.
+func (a *AgentLoop) SetSessionGcInterval(d time.Duration) {
+	a.gcInterval = d
+}
+
 func (a *AgentLoop) Run(ctx context.Context) {
 	if a.poolSize > 1 {
 		go a.startSessionLockGC(ctx)
@@ -68,6 +75,14 @@ func (a *AgentLoop) Run(ctx context.Context) {
 					return
 				default:
 					a.logger.Warn("worker panicked, restarting", zap.String("worker_id", workerID))
+					if a.eventBus != nil {
+						a.eventBus.Publish(context.Background(), event.Event{
+							Type:      event.EventWorkerPanic,
+							Timestamp: time.Now(),
+							Payload:   map[string]any{"worker_id": workerID},
+						})
+					}
+					time.Sleep(time.Second)
 				}
 			}
 		}(i)
@@ -105,14 +120,14 @@ func (a *AgentLoop) runWorker(ctx context.Context, id string) {
 }
 
 func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, compositor *Compositor, workerID string, wLogger *zap.Logger) {
+	mu := a.sessionLock(turn.SessionID)
+	mu.Lock()
+	defer mu.Unlock()
+
 	if a.agentIO != nil {
 		a.agentIO.SetActive(workerID, turn)
 		defer a.agentIO.ClearActive(workerID)
 	}
-
-	mu := a.sessionLock(turn.SessionID)
-	mu.Lock()
-	defer mu.Unlock()
 
 	// Create a root span — the span context propagates through ctx to stages,
 	// so LLM and tool spans become children of this turn span.
@@ -231,7 +246,11 @@ func (a *AgentLoop) sessionLock(sessionID string) *sync.Mutex {
 }
 
 func (a *AgentLoop) startSessionLockGC(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Minute)
+	interval := a.gcInterval
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		select {

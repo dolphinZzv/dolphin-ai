@@ -42,6 +42,9 @@ const (
 	EventLimitSoftWarn  Type = "limit.soft_warn"
 	EventLimitHardBlock Type = "limit.hard_block"
 
+
+	// Worker events
+	EventWorkerPanic Type = "worker.panic"
 	// Workflow events
 	EventWorkflowStart      Type = "workflow.start"
 	EventWorkflowStepChange Type = "workflow.step_change"

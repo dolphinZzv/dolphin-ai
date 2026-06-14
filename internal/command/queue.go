@@ -2,6 +2,7 @@ package command
 
 import (
 	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -96,9 +97,9 @@ func renderQueueMarkdown(cmd *cobra.Command, active map[string]*agentio.TurnInfo
 		for _, id := range sortedWorkerIDs(active) {
 			t := active[id]
 			elapsed := time.Since(t.StartedAt).Round(time.Second)
-			input := truncateForMarkdown(t.Input, 60)
+			input := truncateInput(t.Input, 60)
 			cmd.Printf("| %s | %s | %s | %s | %s |\n",
-				id, t.TransportID, truncateForMarkdown(t.SessionID, 8), input, elapsed)
+				id, t.TransportID, truncateInput(t.SessionID, 8), input, elapsed)
 		}
 		cmd.Println()
 	}
@@ -108,9 +109,9 @@ func renderQueueMarkdown(cmd *cobra.Command, active map[string]*agentio.TurnInfo
 		cmd.Println("|---|-----------|---------|-------|---------|")
 		for i, t := range pending {
 			wait := time.Since(t.EnqueuedAt).Round(time.Second)
-			input := truncateForMarkdown(t.Input, 60)
+			input := truncateInput(t.Input, 60)
 			cmd.Printf("| %d | %s | %s | %s | %s |\n",
-				i+1, t.TransportID, truncateForMarkdown(t.SessionID, 8), input, wait)
+				i+1, t.TransportID, truncateInput(t.SessionID, 8), input, wait)
 		}
 	}
 }
@@ -120,14 +121,7 @@ func sortedWorkerIDs(active map[string]*agentio.TurnInfo) []string {
 	for id := range active {
 		ids = append(ids, id)
 	}
-	// Sort by worker number for stable output.
-	for i := 0; i < len(ids); i++ {
-		for j := i + 1; j < len(ids); j++ {
-			if ids[i] > ids[j] {
-				ids[i], ids[j] = ids[j], ids[i]
-			}
-		}
-	}
+	sort.Strings(ids)
 	return ids
 }
 
@@ -136,13 +130,6 @@ func truncateInput(s string, n int) string {
 		return s[:n-3] + "..."
 	}
 	return s
-}
-
-func truncateForMarkdown(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n-3] + "..."
 }
 
 // Ensure agentio import is used (satisfies compiler when Turn is referenced indirectly).

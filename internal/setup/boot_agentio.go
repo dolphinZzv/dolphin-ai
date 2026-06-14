@@ -96,6 +96,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	compositor.SetTurnTimeout(turnTimeout)
 
 	c.AgentLoop = agentloop.NewAgentLoop(c.AgentIO.Queue(), compositor, c.Logger, c.EventBus, c.AgentIO, c.Config.GetInt("agent.pool_size"))
+	c.AgentLoop.SetSessionGcInterval(c.Config.GetDuration("agent.session_gc_interval"))
 
 	c.CmdReg.SetAgentIO(c.AgentIO)
 

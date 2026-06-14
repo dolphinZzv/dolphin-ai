@@ -236,16 +236,16 @@ func TestQueuePop(t *testing.T) {
 	})
 }
 
-func TestTruncateForMarkdown(t *testing.T) {
-	Convey("truncateForMarkdown", t, func() {
+func TestTruncateInput(t *testing.T) {
+	Convey("truncateInput", t, func() {
 		Convey("returns string when within limit", func() {
-			So(truncateForMarkdown("hello", 10), ShouldEqual, "hello")
+			So(truncateInput("hello", 10), ShouldEqual, "hello")
 		})
 		Convey("returns string exactly at limit", func() {
-			So(truncateForMarkdown("12345", 5), ShouldEqual, "12345")
+			So(truncateInput("12345", 5), ShouldEqual, "12345")
 		})
 		Convey("truncates with ellipsis", func() {
-			So(truncateForMarkdown("hello world", 8), ShouldEqual, "hello...")
+			So(truncateInput("hello world", 8), ShouldEqual, "hello...")
 		})
 	})
 }
