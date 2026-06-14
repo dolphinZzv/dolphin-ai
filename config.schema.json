@@ -140,6 +140,14 @@
         "allow_convs": { "type": "array", "items": { "type": "string" } }
       }
     },
+    "pprof": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "addr": { "type": "string", "description": "Listen address for pprof HTTP server, e.g. :6060" }
+      }
+    },
     "email": {
       "type": "object",
       "additionalProperties": false,
