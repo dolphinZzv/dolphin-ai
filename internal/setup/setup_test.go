@@ -25,6 +25,7 @@ import (
 	"dolphin/internal/userio"
 
 	"github.com/h2non/gock"
+	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
 )
 
@@ -1968,5 +1969,38 @@ func TestCLIBootstrapperBootstrap(t *testing.T) {
 		if len(c.ContextSections) != 1 {
 			t.Fatalf("expected 1 context section, got %d", len(c.ContextSections))
 		}
+	})
+}
+
+func TestWorkflowBootstrapper(t *testing.T) {
+	Convey("WorkflowBootstrapper", t, func() {
+		b := &WorkflowBootstrapper{}
+		Convey("Name returns workflow", func() {
+			So(b.Name(), ShouldEqual, "workflow")
+		})
+		Convey("Index returns 91", func() {
+			So(b.Index(), ShouldEqual, 91)
+		})
+		Convey("Bootstrap sets WorkflowEngine", func() {
+			logger, _ := zap.NewDevelopment()
+			cfg := config.LoadConfigFromMap(map[string]any{"llm.use": "openai", "llm.openai.api_key": "sk-test"})
+			provider := llm.NewProvider(llm.Config{
+				Provider: "openai",
+				Model:    "gpt-4o",
+				APIKey:   "sk-test",
+				BaseURL:  "http://127.0.0.1:1",
+			}, logger)
+			c := &Context{
+				ToolReg:     tool.NewRegistry(),
+				LLMProvider: provider,
+				EventBus:    event.NewBus(),
+				Logger:      logger,
+				AgentIO:     agentio.NewAgentIO(10, session.NewManager(t.TempDir()), signal.NewBus(), logger, "test"),
+				Config:      cfg,
+			}
+			err := b.Bootstrap(context.Background(), c)
+			So(err, ShouldBeNil)
+			So(c.WorkflowEngine, ShouldNotBeNil)
+		})
 	})
 }
