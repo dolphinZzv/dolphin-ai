@@ -117,6 +117,14 @@ func (b *Builder) StepAgentIO() *Builder {
 	return b
 }
 
+func (b *Builder) StepWorkflow() *Builder {
+	if b.ctx.WorkflowEngine != nil {
+		return b
+	}
+	_ = (&setup.WorkflowBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	return b
+}
+
 func (b *Builder) StepUserIO() *Builder {
 	if b.ctx.UserIO != nil {
 		return b

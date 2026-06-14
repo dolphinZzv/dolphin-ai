@@ -41,6 +41,12 @@ const (
 	EventCheckLLM       Type = "limit.check.llm"
 	EventLimitSoftWarn  Type = "limit.soft_warn"
 	EventLimitHardBlock Type = "limit.hard_block"
+
+	// Workflow events
+	EventWorkflowStart      Type = "workflow.start"
+	EventWorkflowStepChange Type = "workflow.step_change"
+	EventWorkflowPaused     Type = "workflow.paused"
+	EventWorkflowComplete   Type = "workflow.complete"
 )
 
 // Event is the universal event structure.

@@ -2,7 +2,9 @@ package agentloop
 
 import (
 	"context"
+	"fmt"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 
@@ -10,6 +12,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
+
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
@@ -22,15 +25,24 @@ type AgentLoop struct {
 	logger     *zap.Logger
 	eventBus   *event.Bus
 	agentIO    *agentio.AgentIO
+	poolSize   int
+
+	sessionMu    sync.Mutex
+	sessionLocks map[string]*sync.Mutex
 }
 
-func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.Logger, eventBus *event.Bus, agentIO *agentio.AgentIO) *AgentLoop {
+func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.Logger, eventBus *event.Bus, agentIO *agentio.AgentIO, poolSize int) *AgentLoop {
+	if poolSize <= 0 {
+		poolSize = 1
+	}
 	return &AgentLoop{
-		queue:      queue,
-		compositor: compositor,
-		logger:     logger,
-		eventBus:   eventBus,
-		agentIO:    agentIO,
+		queue:        queue,
+		compositor:   compositor,
+		logger:       logger,
+		eventBus:     eventBus,
+		agentIO:      agentIO,
+		poolSize:     poolSize,
+		sessionLocks: make(map[string]*sync.Mutex),
 	}
 }
 
@@ -39,10 +51,45 @@ func (a *AgentLoop) SetOnResult(fn func(agentio.TurnResult)) {
 }
 
 func (a *AgentLoop) Run(ctx context.Context) {
+	if a.poolSize > 1 {
+		go a.startSessionLockGC(ctx)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < a.poolSize; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			workerID := fmt.Sprintf("worker-%d", id+1)
+			for {
+				a.runWorker(ctx, workerID)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					a.logger.Warn("worker panicked, restarting", zap.String("worker_id", workerID))
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
+	a.logger.Info("agent loop stopped")
+}
+
+func (a *AgentLoop) runWorker(ctx context.Context, id string) {
+	wLogger := a.logger.With(zap.String("worker_id", id))
+	compositor := a.compositor.Clone()
+
+	defer func() {
+		if r := recover(); r != nil {
+			wLogger.Error("worker panic recovered", zap.Any("panic", r))
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
-			a.logger.Info("agent loop stopped")
+			wLogger.Info("worker stopped")
 			return
 		case turn := <-a.queue:
 			if a.agentIO != nil {
@@ -52,16 +99,20 @@ func (a *AgentLoop) Run(ctx context.Context) {
 					continue
 				}
 			}
-			a.processTurn(ctx, turn)
+			a.processTurn(ctx, turn, compositor, id, wLogger)
 		}
 	}
 }
 
-func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
+func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, compositor *Compositor, workerID string, wLogger *zap.Logger) {
 	if a.agentIO != nil {
-		a.agentIO.SetProcessing(true)
-		defer a.agentIO.SetProcessing(false)
+		a.agentIO.SetActive(workerID, turn)
+		defer a.agentIO.ClearActive(workerID)
 	}
+
+	mu := a.sessionLock(turn.SessionID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	// Create a root span — the span context propagates through ctx to stages,
 	// so LLM and tool spans become children of this turn span.
@@ -72,6 +123,7 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 		span.SetAttributes(attribute.String("sessionid", sid))
 	}
 	span.SetAttributes(attribute.String("input", turn.Input))
+	span.SetAttributes(attribute.String("worker_id", workerID))
 	start := time.Now()
 	defer span.End()
 
@@ -135,7 +187,7 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 		ctx = transport.WithInfo(ctx, &transport.Info{ID: turn.TransportID})
 	}
 
-	if err := a.compositor.Execute(ctx, state); err != nil {
+	if err := compositor.Execute(ctx, state); err != nil {
 		span.SetAttributes(attribute.Bool("error", true))
 		span.SetAttributes(attribute.String("output", output.String()))
 		if a.onResult != nil {
@@ -165,6 +217,37 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn) {
 		"system_context_length", len(state.SystemPrompt),
 		"tool_call_count", len(state.ToolResults),
 	)
+}
+
+func (a *AgentLoop) sessionLock(sessionID string) *sync.Mutex {
+	a.sessionMu.Lock()
+	defer a.sessionMu.Unlock()
+	if mu, ok := a.sessionLocks[sessionID]; ok {
+		return mu
+	}
+	mu := &sync.Mutex{}
+	a.sessionLocks[sessionID] = mu
+	return mu
+}
+
+func (a *AgentLoop) startSessionLockGC(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			a.sessionMu.Lock()
+			for id, mu := range a.sessionLocks {
+				if mu.TryLock() {
+					mu.Unlock()
+					delete(a.sessionLocks, id)
+				}
+			}
+			a.sessionMu.Unlock()
+		}
+	}
 }
 
 func (a *AgentLoop) publishTurnEvent(ctx context.Context, et event.Type, turnID, sid string, start time.Time, err error, extraKV ...any) {

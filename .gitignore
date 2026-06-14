@@ -48,3 +48,6 @@ app
 # Development artifacts
 improvement.md
 e2e/
+
+# Workflow test artifacts
+internal/workflow/*.result.yaml

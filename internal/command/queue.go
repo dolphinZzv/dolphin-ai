@@ -20,37 +20,13 @@ func RegisterQueue(r *Registry) {
 				return nil
 			}
 
-			pending, capacity, processing := r.agentIO.QueueSnapshot()
+			pending, capacity, _ := r.agentIO.QueueSnapshot()
+			active := r.agentIO.ActiveSnapshot()
 
 			if RenderModeFrom(cmd) == "markdown" {
-				cmd.Print("**Agent Queue**\n\n")
-				if processing {
-					cmd.Println("- Processing: 🔄")
-				}
-				cmd.Printf("- Pending: %d / %d capacity\n\n", len(pending), capacity)
-				if len(pending) > 0 {
-					cmd.Println("| # | Transport | Session | Input | Waiting |")
-					cmd.Println("|---|-----------|---------|-------|---------|")
-					for i, t := range pending {
-						wait := time.Since(t.EnqueuedAt).Round(time.Second)
-						input := truncateForMarkdown(t.Input, 60)
-						cmd.Printf("| %d | %s | %s | %s | %s |\n",
-							i+1, t.TransportID, truncateForMarkdown(t.SessionID, 8), input, wait)
-					}
-				}
+				renderQueueMarkdown(cmd, active, pending, capacity)
 			} else {
-				if processing {
-					cmd.Println("Agent Queue: (processing)")
-				}
-				cmd.Printf("Agent Queue: %d pending / %d capacity\n", len(pending), capacity)
-				for i, t := range pending {
-					wait := time.Since(t.EnqueuedAt).Round(time.Second)
-					input := t.Input
-					if len(input) > 80 {
-						input = input[:77] + "..."
-					}
-					_, _ = fmt.Fprintf(cmd.OutOrStdout(), "  %d. [%s] %s — %s\n", i+1, t.TransportID, input, wait)
-				}
+				renderQueuePlain(cmd, active, pending, capacity)
 			}
 			return nil
 		},
@@ -82,6 +58,84 @@ func RegisterQueue(r *Registry) {
 	}, "command.queue_pop"))
 
 	r.Register(cmd)
+}
+
+func renderQueuePlain(cmd *cobra.Command, active map[string]*agentio.TurnInfo, pending []*agentio.Turn, capacity int) {
+	fmt.Fprintf(cmd.OutOrStdout(), "Agent Queue: %d worker(s) active, %d pending / %d capacity\n",
+		len(active), len(pending), capacity)
+
+	if len(active) > 0 {
+		cmd.Println()
+		for _, id := range sortedWorkerIDs(active) {
+			t := active[id]
+			elapsed := time.Since(t.StartedAt).Round(time.Second)
+			input := truncateInput(t.Input, 80)
+			fmt.Fprintf(cmd.OutOrStdout(), "  %s: [%s] %s — elapsed %s\n",
+				id, t.TransportID, input, elapsed)
+		}
+	}
+
+	if len(pending) > 0 {
+		cmd.Println()
+		for i, t := range pending {
+			wait := time.Since(t.EnqueuedAt).Round(time.Second)
+			input := truncateInput(t.Input, 80)
+			fmt.Fprintf(cmd.OutOrStdout(), "  %d. [%s] %s — waiting %s\n",
+				i+1, t.TransportID, input, wait)
+		}
+	}
+}
+
+func renderQueueMarkdown(cmd *cobra.Command, active map[string]*agentio.TurnInfo, pending []*agentio.Turn, capacity int) {
+	fmt.Fprintf(cmd.OutOrStdout(), "**Agent Queue** — %d active, %d pending / %d capacity\n\n",
+		len(active), len(pending), capacity)
+
+	if len(active) > 0 {
+		cmd.Println("| Worker | Transport | Session | Input | Elapsed |")
+		cmd.Println("|--------|-----------|---------|-------|---------|")
+		for _, id := range sortedWorkerIDs(active) {
+			t := active[id]
+			elapsed := time.Since(t.StartedAt).Round(time.Second)
+			input := truncateForMarkdown(t.Input, 60)
+			cmd.Printf("| %s | %s | %s | %s | %s |\n",
+				id, t.TransportID, truncateForMarkdown(t.SessionID, 8), input, elapsed)
+		}
+		cmd.Println()
+	}
+
+	if len(pending) > 0 {
+		cmd.Println("| # | Transport | Session | Input | Waiting |")
+		cmd.Println("|---|-----------|---------|-------|---------|")
+		for i, t := range pending {
+			wait := time.Since(t.EnqueuedAt).Round(time.Second)
+			input := truncateForMarkdown(t.Input, 60)
+			cmd.Printf("| %d | %s | %s | %s | %s |\n",
+				i+1, t.TransportID, truncateForMarkdown(t.SessionID, 8), input, wait)
+		}
+	}
+}
+
+func sortedWorkerIDs(active map[string]*agentio.TurnInfo) []string {
+	ids := make([]string, 0, len(active))
+	for id := range active {
+		ids = append(ids, id)
+	}
+	// Sort by worker number for stable output.
+	for i := 0; i < len(ids); i++ {
+		for j := i + 1; j < len(ids); j++ {
+			if ids[i] > ids[j] {
+				ids[i], ids[j] = ids[j], ids[i]
+			}
+		}
+	}
+	return ids
+}
+
+func truncateInput(s string, n int) string {
+	if len(s) > n {
+		return s[:n-3] + "..."
+	}
+	return s
 }
 
 func truncateForMarkdown(s string, n int) string {

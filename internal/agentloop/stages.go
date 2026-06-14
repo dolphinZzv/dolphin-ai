@@ -26,6 +26,7 @@ import (
 type Stage interface {
 	Name() string
 	Process(ctx context.Context, state *State) error
+	Clone() Stage
 }
 
 type State struct {
@@ -68,6 +69,23 @@ func (c *Compositor) SetTurnTimeout(d time.Duration) {
 	c.turnTimeout = d
 }
 
+func (c *Compositor) Clone() *Compositor {
+	initCopy := make([]Stage, len(c.initStages))
+	for i, s := range c.initStages {
+		initCopy[i] = s.Clone()
+	}
+	loopCopy := make([]Stage, len(c.loopStages))
+	for i, s := range c.loopStages {
+		loopCopy[i] = s.Clone()
+	}
+	return &Compositor{
+		initStages:  initCopy,
+		loopStages:  loopCopy,
+		maxRounds:   c.maxRounds,
+		turnTimeout: c.turnTimeout,
+	}
+}
+
 func (c *Compositor) Execute(ctx context.Context, state *State) error {
 	if c.turnTimeout > 0 {
 		var cancel func()
@@ -98,6 +116,10 @@ type MemoryReadStage struct {
 }
 
 func (s *MemoryReadStage) Name() string { return "memory_read" }
+
+func (s *MemoryReadStage) Clone() Stage {
+	return &MemoryReadStage{Memory: s.Memory}
+}
 
 func (s *MemoryReadStage) Process(ctx context.Context, state *State) error {
 	history, err := s.Memory.Read(ctx, state.SessionID)
@@ -161,6 +183,17 @@ func (s *ContextBuilderStage) initRegistry() {
 }
 
 func (s *ContextBuilderStage) Name() string { return "context_builder" }
+
+func (s *ContextBuilderStage) Clone() Stage {
+	return &ContextBuilderStage{
+		BaseSystemPrompt: s.BaseSystemPrompt,
+		SkillStore:       s.SkillStore,
+		Brain:            s.Brain,
+		Workspace:        s.Workspace,
+		Workmode:         s.Workmode,
+		EventBus:         s.EventBus,
+	}
+}
 
 func (s *ContextBuilderStage) Process(ctx context.Context, state *State) error {
 	s.transportCtx = state.TransportContext
@@ -232,6 +265,19 @@ type LLMStage struct {
 	EventBus     *event.Bus
 	Logger       *zap.Logger
 	HookReg      *hook.Registry
+}
+
+func (s *LLMStage) Clone() Stage {
+	return &LLMStage{
+		Provider:     s.Provider,
+		Model:        s.Model,
+		MaxTokens:    s.MaxTokens,
+		MaxRetries:   s.MaxRetries,
+		ToolRegistry: s.ToolRegistry,
+		EventBus:     s.EventBus,
+		Logger:       s.Logger,
+		HookReg:      s.HookReg,
+	}
 }
 
 func (s *LLMStage) Name() string { return "llm" }
@@ -449,6 +495,20 @@ type ToolStage struct {
 // errPermissionDenied is a sentinel error for permission-denied tool calls.
 var errPermissionDenied = fmt.Errorf("permission denied")
 
+func (s *ToolStage) Clone() Stage {
+	return &ToolStage{
+		ToolRegistry:    s.ToolRegistry,
+		SignalBus:       s.SignalBus,
+		Timeout:         s.Timeout,
+		Logger:          s.Logger,
+		HookReg:         s.HookReg,
+		EventBus:        s.EventBus,
+		PermissionStore: s.PermissionStore,
+		GetTransport:    s.GetTransport,
+		Workmode:        s.Workmode,
+	}
+}
+
 func (s *ToolStage) Name() string { return "tool" }
 
 func (s *ToolStage) Process(ctx context.Context, state *State) error {
@@ -622,6 +682,13 @@ type MemoryWriteStage struct {
 	Memory   memory.Memory
 	EventBus *event.Bus
 	writeIdx int // tracks position in state.Messages already persisted, avoids re-writing across rounds
+}
+
+func (s *MemoryWriteStage) Clone() Stage {
+	return &MemoryWriteStage{
+		Memory:   s.Memory,
+		EventBus: s.EventBus,
+	}
 }
 
 func (s *MemoryWriteStage) Name() string { return "memory_write" }

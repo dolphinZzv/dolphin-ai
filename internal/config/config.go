@@ -68,6 +68,10 @@ func defaultConfig() *Config {
 			"brain.dir":           ".dolphin/brain",
 			"session.dir":         ".dolphin/sessions",
 			"session.mode":        "per_transport",
+			"agent.pool_size":        1,
+			"agent.turn_timeout":     "120s",
+			"workflow.step_timeout":  "300s",
+			"workflow.max_steps":     50,
 		},
 	}
 }

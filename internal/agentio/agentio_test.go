@@ -249,9 +249,41 @@ func TestAgentIO(t *testing.T) {
 			So(cap, ShouldEqual, 42)
 			So(proc, ShouldBeFalse)
 
-			aio.SetProcessing(true)
+			aio.SetActive("worker-1", &Turn{TurnID: "t1", SessionID: "s1", Input: "hi"})
 			_, _, proc = aio.QueueSnapshot()
 			So(proc, ShouldBeTrue)
+		})
+
+		Convey("ClearActive removes worker from active turns", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetActive("worker-1", &Turn{TurnID: "t1", SessionID: "s1", Input: "hi"})
+			So(aio.Processing(), ShouldBeTrue)
+
+			aio.ClearActive("worker-1")
+			So(aio.Processing(), ShouldBeFalse)
+		})
+
+		Convey("ActiveSnapshot returns a copy of active turns", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetActive("worker-1", &Turn{TurnID: "t1", SessionID: "s1", Input: "hello"})
+			aio.SetActive("worker-2", &Turn{TurnID: "t2", SessionID: "s2", Input: "world"})
+
+			snap := aio.ActiveSnapshot()
+			So(len(snap), ShouldEqual, 2)
+			So(snap["worker-1"].TurnID, ShouldEqual, "t1")
+			So(snap["worker-1"].Input, ShouldEqual, "hello")
+			So(snap["worker-2"].TurnID, ShouldEqual, "t2")
+
+			// Verify it's a copy, not the original map
+			snap["worker-3"] = &TurnInfo{TurnID: "t3"}
+			_, _, proc := aio.QueueSnapshot()
+			So(proc, ShouldBeTrue) // still only 2 active
+		})
+
+		Convey("SetProcessing is a no-op (backward compat)", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			So(func() { aio.SetProcessing(true) }, ShouldNotPanic)
+			So(func() { aio.SetProcessing(false) }, ShouldNotPanic)
 		})
 	})
 }

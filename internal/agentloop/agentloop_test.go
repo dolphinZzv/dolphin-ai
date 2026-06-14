@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/event"
+	"dolphin/internal/hook"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/permission"
@@ -851,6 +853,7 @@ type incrementStage struct {
 }
 
 func (s *incrementStage) Name() string { return "increment" }
+func (s *incrementStage) Clone() Stage  { return &incrementStage{count: s.count} }
 func (s *incrementStage) Process(ctx context.Context, state *State) error {
 	*s.count++
 	return nil
@@ -863,7 +866,7 @@ func TestNewAgentLoop(t *testing.T) {
 		logger, _ := zap.NewDevelopment()
 		eb := event.NewBus()
 
-		a := NewAgentLoop(q, c, logger, eb, nil)
+		a := NewAgentLoop(q, c, logger, eb, nil, 1)
 		So(a, ShouldNotBeNil)
 		So(a.queue, ShouldEqual, q)
 		So(a.compositor, ShouldEqual, c)
@@ -877,7 +880,7 @@ func TestSetOnResult(t *testing.T) {
 		q := make(chan *agentio.Turn)
 		c := NewCompositor(nil, nil, 10)
 		logger, _ := zap.NewDevelopment()
-		a := NewAgentLoop(q, c, logger, nil, nil)
+		a := NewAgentLoop(q, c, logger, nil, nil, 1)
 
 		called := false
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -924,7 +927,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			q := make(chan *agentio.Turn)
 			c := NewCompositor(nil, nil, 10)
 			logger, _ := zap.NewDevelopment()
-			a := NewAgentLoop(q, c, logger, nil, nil)
+			a := NewAgentLoop(q, c, logger, nil, nil, 1)
 
 			So(func() {
 				a.publishTurnEvent(context.Background(), event.EventTurnStart, "tid", "sid", time.Now(), nil)
@@ -936,7 +939,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			q := make(chan *agentio.Turn)
 			c := NewCompositor(nil, nil, 10)
 			logger, _ := zap.NewDevelopment()
-			a := NewAgentLoop(q, c, logger, eb, nil)
+			a := NewAgentLoop(q, c, logger, eb, nil, 1)
 
 			var receivedType event.Type
 			eb.Subscribe(func(ctx context.Context, e event.Event) {
@@ -952,7 +955,7 @@ func TestPublishTurnEvent(t *testing.T) {
 			q := make(chan *agentio.Turn)
 			c := NewCompositor(nil, nil, 10)
 			logger, _ := zap.NewDevelopment()
-			a := NewAgentLoop(q, c, logger, eb, nil)
+			a := NewAgentLoop(q, c, logger, eb, nil, 1)
 
 			var payload map[string]any
 			eb.Subscribe(func(ctx context.Context, e event.Event) {
@@ -980,7 +983,7 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 			1,
 		)
 
-		a := NewAgentLoop(q, compositor, logger, eb, nil)
+		a := NewAgentLoop(q, compositor, logger, eb, nil, 1)
 
 		var resultCallCount int
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -988,7 +991,11 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		go a.Run(ctx)
+		done := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(done)
+		}()
 
 		q <- &agentio.Turn{
 			SessionID:   "test-session",
@@ -999,7 +1006,7 @@ func TestAgentLoopRunAndProcess(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 		cancel()
-		time.Sleep(50 * time.Millisecond)
+		<-done
 
 		So(resultCallCount, ShouldBeGreaterThan, 0)
 	})
@@ -1018,7 +1025,7 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
 			1,
 		)
-		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio)
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
 
 		var resultCalls int
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -1034,11 +1041,15 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 		aio.PopIndex(0) // mark cancelled
 
 		ctx, cancel := context.WithCancel(context.Background())
-		go a.Run(ctx)
+		done := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(done)
+		}()
 
 		time.Sleep(100 * time.Millisecond)
 		cancel()
-		time.Sleep(50 * time.Millisecond)
+		<-done
 
 		So(resultCalls, ShouldEqual, 0)
 	})
@@ -1057,7 +1068,7 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
 			1,
 		)
-		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio)
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 1)
 
 		var resultCalls int
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -1073,11 +1084,15 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 		// NOT popping — turn should be processed normally
 
 		ctx, cancel := context.WithCancel(context.Background())
-		go a.Run(ctx)
+		done := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(done)
+		}()
 
 		time.Sleep(100 * time.Millisecond)
 		cancel()
-		time.Sleep(50 * time.Millisecond)
+		<-done
 
 		So(resultCalls, ShouldBeGreaterThan, 0)
 	})
@@ -1096,7 +1111,7 @@ func TestAgentLoopProcessTurnError(t *testing.T) {
 			1,
 		)
 
-		a := NewAgentLoop(q, compositor, logger, eb, nil)
+		a := NewAgentLoop(q, compositor, logger, eb, nil, 1)
 
 		var lastResult agentio.TurnResult
 		a.SetOnResult(func(result agentio.TurnResult) {
@@ -1106,7 +1121,11 @@ func TestAgentLoopProcessTurnError(t *testing.T) {
 		})
 
 		ctx, cancel := context.WithCancel(context.Background())
-		go a.Run(ctx)
+		done := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(done)
+		}()
 
 		q <- &agentio.Turn{
 			SessionID:   "test-session",
@@ -1116,7 +1135,7 @@ func TestAgentLoopProcessTurnError(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 		cancel()
-		time.Sleep(50 * time.Millisecond)
+		<-done
 
 		So(lastResult.Text, ShouldContainSubstring, "Error")
 		So(lastResult.Done, ShouldBeTrue)
@@ -1128,7 +1147,7 @@ func TestAgentLoopRunContextDone(t *testing.T) {
 		q := make(chan *agentio.Turn)
 		c := NewCompositor(nil, nil, 10)
 		logger, _ := zap.NewDevelopment()
-		a := NewAgentLoop(q, c, logger, nil, nil)
+		a := NewAgentLoop(q, c, logger, nil, nil, 1)
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -1137,9 +1156,266 @@ func TestAgentLoopRunContextDone(t *testing.T) {
 	})
 }
 
+func TestAgentLoopSessionLockGC(t *testing.T) {
+	Convey("sessionLockGC cleans up uncontended locks", t, func() {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+
+		// poolSize > 1 triggers GC goroutine
+		a := NewAgentLoop(q, c, logger, nil, nil, 2)
+
+		// Acquire and release a session lock so it becomes uncontended.
+		mu := a.sessionLock("gc-test-session")
+		mu.Lock()
+		mu.Unlock()
+
+		So(len(a.sessionLocks), ShouldEqual, 1)
+
+		// Manually trigger one GC cycle.
+		a.sessionMu.Lock()
+		for id, m := range a.sessionLocks {
+			if m.TryLock() {
+				m.Unlock()
+				delete(a.sessionLocks, id)
+			}
+		}
+		a.sessionMu.Unlock()
+
+		So(len(a.sessionLocks), ShouldEqual, 0)
+	})
+
+	Convey("sessionLockGC keeps contended locks", t, func() {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+
+		a := NewAgentLoop(q, c, logger, nil, nil, 2)
+
+		mu := a.sessionLock("contended-session")
+		mu.Lock() // held — not released
+
+		So(len(a.sessionLocks), ShouldEqual, 1)
+
+		// Try GC — lock is still held so TryLock fails.
+		a.sessionMu.Lock()
+		for id, m := range a.sessionLocks {
+			if m.TryLock() {
+				m.Unlock()
+				delete(a.sessionLocks, id)
+			}
+		}
+		a.sessionMu.Unlock()
+
+		So(len(a.sessionLocks), ShouldEqual, 1)
+
+		mu.Unlock()
+	})
+}
+
+func TestContextBuilderStageClone(t *testing.T) {
+	Convey("ContextBuilderStage.Clone", t, func() {
+		eb := event.NewBus()
+		s := &ContextBuilderStage{
+			BaseSystemPrompt: "base-prompt",
+			Workspace:        "/tmp/ws",
+			Workmode:         "default",
+			EventBus:         eb,
+		}
+
+		cloned := s.Clone()
+		cs, ok := cloned.(*ContextBuilderStage)
+		So(ok, ShouldBeTrue)
+		So(cs.BaseSystemPrompt, ShouldEqual, "base-prompt")
+		So(cs.Workspace, ShouldEqual, "/tmp/ws")
+		So(cs.Workmode, ShouldEqual, "default")
+		So(cs.EventBus, ShouldEqual, eb)
+		So(cs.transportCtx, ShouldBeEmpty) // per-turn state reset
+	})
+}
+
 type errorStage struct{}
 
 func (s *errorStage) Name() string { return "error" }
+func (s *errorStage) Clone() Stage                  { return &errorStage{} }
 func (s *errorStage) Process(_ context.Context, _ *State) error {
 	return fmt.Errorf("injected error")
+}
+
+// mockLLMProvider satisfies llm.Provider for tests.
+type mockLLMProvider struct{ name string }
+
+func (m *mockLLMProvider) Name() string { return m.name }
+func (m *mockLLMProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (m *mockLLMProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	return nil, nil
+}
+
+func TestLLMStageClone(t *testing.T) {
+	Convey("LLMStage.Clone", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		tr := tool.NewRegistry()
+		hr := hook.NewRegistry()
+		s := &LLMStage{
+			Provider:     &mockLLMProvider{name: "mock"},
+			Model:        "gpt-4",
+			MaxTokens:    4096,
+			MaxRetries:   3,
+			ToolRegistry: tr,
+			EventBus:     eb,
+			Logger:       logger,
+			HookReg:      hr,
+		}
+		cloned := s.Clone()
+		cs, ok := cloned.(*LLMStage)
+		So(ok, ShouldBeTrue)
+		So(cs.Model, ShouldEqual, "gpt-4")
+		So(cs.MaxTokens, ShouldEqual, 4096)
+		So(cs.MaxRetries, ShouldEqual, 3)
+		So(cs.ToolRegistry, ShouldEqual, tr)
+		So(cs.EventBus, ShouldEqual, eb)
+		So(cs.Logger, ShouldEqual, logger)
+		So(cs.HookReg, ShouldEqual, hr)
+	})
+}
+
+func TestToolStageClone(t *testing.T) {
+	Convey("ToolStage.Clone", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		tr := tool.NewRegistry()
+		hr := hook.NewRegistry()
+		sb := signal.NewBus()
+		s := &ToolStage{
+			ToolRegistry:    tr,
+			SignalBus:       sb,
+			Timeout:         30 * time.Second,
+			Logger:          logger,
+			HookReg:         hr,
+			EventBus:        eb,
+			PermissionStore: permission.NewStore("/tmp/perm.json"),
+			Workmode:        "default",
+		}
+		cloned := s.Clone()
+		cs, ok := cloned.(*ToolStage)
+		So(ok, ShouldBeTrue)
+		So(cs.ToolRegistry, ShouldEqual, tr)
+		So(cs.SignalBus, ShouldEqual, sb)
+		So(cs.Timeout, ShouldEqual, 30*time.Second)
+		So(cs.Logger, ShouldEqual, logger)
+		So(cs.EventBus, ShouldEqual, eb)
+		So(cs.Workmode, ShouldEqual, "default")
+	})
+}
+
+func TestContextBuilderStageRegistry(t *testing.T) {
+	Convey("ContextBuilderStage.Registry", t, func() {
+		s := &ContextBuilderStage{}
+		reg := s.Registry()
+		So(reg, ShouldNotBeNil)
+		// Second call returns same instance.
+		So(s.Registry(), ShouldEqual, reg)
+	})
+}
+
+func TestStartSessionLockGC(t *testing.T) {
+	Convey("startSessionLockGC runs and responds to context cancel", t, func() {
+		q := make(chan *agentio.Turn)
+		c := NewCompositor(nil, nil, 10)
+		logger, _ := zap.NewDevelopment()
+		a := NewAgentLoop(q, c, logger, nil, nil, 2)
+
+		// Add a lock that will be uncontended.
+		mu := a.sessionLock("gc-real")
+		mu.Lock()
+		mu.Unlock()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			a.startSessionLockGC(ctx)
+			close(done)
+		}()
+
+		// Give GC one tick — ticker is 5min, so cancel immediately.
+		// The function still exits cleanly via ctx.Done().
+		cancel()
+		<-done
+		// Test passes if no deadlock/panic.
+	})
+}
+
+func TestAgentLoopMultiWorkerE2E(t *testing.T) {
+	Convey("Multi-worker E2E", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		mgr := session.NewManager(t.TempDir())
+		aio := agentio.NewAgentIO(32, mgr, signal.NewBus(), logger, "test")
+
+		mem := memory.NewFileMemory(&testSessionStore{})
+
+		// 3 workers — two sessions each send 2 turns.
+		compositor := NewCompositor(
+			[]Stage{&MemoryReadStage{Memory: mem}},
+			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
+			1,
+		)
+
+		a := NewAgentLoop(aio.Queue(), compositor, logger, eb, aio, 3)
+
+		var mu sync.Mutex
+		resultsBySession := make(map[string][]string)
+
+		a.SetOnResult(func(r agentio.TurnResult) {
+			if r.Done {
+				mu.Lock()
+				resultsBySession[r.SessionID] = append(resultsBySession[r.SessionID], r.TurnID)
+				mu.Unlock()
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan struct{})
+		go func() {
+			a.Run(ctx)
+			close(done)
+		}()
+
+		// Send 2 turns for session-A, 2 turns for session-B.
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "a1", SessionID: "session-A", Input: "hello-A1", TransportID: "t-a",
+		})
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "a2", SessionID: "session-A", Input: "hello-A2", TransportID: "t-a",
+		})
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "b1", SessionID: "session-B", Input: "hello-B1", TransportID: "t-b",
+		})
+		aio.SendTurn(context.Background(), &agentio.Turn{
+			TurnID: "b2", SessionID: "session-B", Input: "hello-B2", TransportID: "t-b",
+		})
+
+		time.Sleep(500 * time.Millisecond)
+		cancel()
+		<-done
+
+		mu.Lock()
+		aResults := resultsBySession["session-A"]
+		bResults := resultsBySession["session-B"]
+		mu.Unlock()
+
+		// Both sessions should have 2 completed turns.
+		So(len(aResults), ShouldEqual, 2)
+		So(len(bResults), ShouldEqual, 2)
+
+		// Within each session, turns complete in FIFO order (per-session lock).
+		So(aResults[0], ShouldEqual, "a1")
+		So(aResults[1], ShouldEqual, "a2")
+		So(bResults[0], ShouldEqual, "b1")
+		So(bResults[1], ShouldEqual, "b2")
+	})
 }

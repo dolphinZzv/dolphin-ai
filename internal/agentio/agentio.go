@@ -36,6 +36,14 @@ type TurnResult struct {
 	Error       error
 }
 
+type TurnInfo struct {
+	TurnID      string
+	SessionID   string
+	TransportID string
+	Input       string
+	StartedAt   time.Time
+}
+
 type AgentIO struct {
 	queue      chan *Turn
 	routes     map[string]transport.IO
@@ -54,8 +62,9 @@ type AgentIO struct {
 	pendingMu    sync.Mutex
 	pending      []*Turn         // mirror of chan queue for introspection
 	cancelled    map[string]bool // turn IDs popped before dequeue
-	processing   bool
-	processingMu sync.RWMutex
+
+	activeTurns map[string]*TurnInfo // worker_id → currently processing turn
+	activeMu    sync.RWMutex
 }
 
 func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *zap.Logger, agentName string) *AgentIO {
@@ -68,7 +77,8 @@ func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *za
 		agentName:  agentName,
 		replied:    make(map[string]bool),
 		buffers:    make(map[string]string),
-		cancelled:  make(map[string]bool),
+		cancelled:   make(map[string]bool),
+		activeTurns: make(map[string]*TurnInfo),
 	}
 
 	// Listen for session flips to broadcast to all transports
@@ -188,18 +198,46 @@ func (a *AgentIO) OnTurnDequeued(turn *Turn) {
 	a.pendingMu.Unlock()
 }
 
-// SetProcessing marks whether the agent loop is currently processing a turn.
-func (a *AgentIO) SetProcessing(v bool) {
-	a.processingMu.Lock()
-	a.processing = v
-	a.processingMu.Unlock()
+// SetActive records that a worker started processing a turn.
+func (a *AgentIO) SetActive(workerID string, turn *Turn) {
+	a.activeMu.Lock()
+	a.activeTurns[workerID] = &TurnInfo{
+		TurnID:      turn.TurnID,
+		SessionID:   turn.SessionID,
+		TransportID: turn.TransportID,
+		Input:       turn.Input,
+		StartedAt:   time.Now(),
+	}
+	a.activeMu.Unlock()
 }
 
-// Processing returns whether the agent loop is currently processing a turn.
+// ClearActive removes a worker's active turn record.
+func (a *AgentIO) ClearActive(workerID string) {
+	a.activeMu.Lock()
+	delete(a.activeTurns, workerID)
+	a.activeMu.Unlock()
+}
+
+// ActiveSnapshot returns a copy of the current active turns map.
+func (a *AgentIO) ActiveSnapshot() map[string]*TurnInfo {
+	a.activeMu.RLock()
+	defer a.activeMu.RUnlock()
+	snap := make(map[string]*TurnInfo, len(a.activeTurns))
+	for k, v := range a.activeTurns {
+		cp := *v
+		snap[k] = &cp
+	}
+	return snap
+}
+
+// SetProcessing is a no-op kept for backward compatibility.
+func (a *AgentIO) SetProcessing(v bool) {}
+
+// Processing returns whether any worker is currently processing a turn.
 func (a *AgentIO) Processing() bool {
-	a.processingMu.RLock()
-	defer a.processingMu.RUnlock()
-	return a.processing
+	a.activeMu.RLock()
+	defer a.activeMu.RUnlock()
+	return len(a.activeTurns) > 0
 }
 
 func (a *AgentIO) OnResult(result *TurnResult) {

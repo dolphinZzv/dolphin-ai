@@ -14,6 +14,7 @@ import (
 	"dolphin/internal/memory"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
+	"dolphin/internal/workflow"
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
@@ -52,6 +53,7 @@ type Context struct {
 	ContextReg          *appctx.Registry
 	Limit               *limit.Limiter
 	LimitResetScheduler *limit.ResetScheduler
+	WorkflowEngine      *workflow.Engine
 }
 
 func NewContext(cfg *config.Config) *Context {
