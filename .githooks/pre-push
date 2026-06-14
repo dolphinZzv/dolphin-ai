@@ -26,7 +26,7 @@ echo "=== Checking coverage for changed source files (≥80% required) ==="
 changed_src=$(git diff --name-only HEAD @{upstream} -- '*.go' 2>/dev/null || git diff --name-only HEAD -- '*.go')
 if [ -n "$changed_src" ]; then
   # Only non-test source files count toward the coverage gate.
-  src_files=$(echo "$changed_src" | grep -v '_test\.go$')
+  src_files=$(echo "$changed_src" | grep -v '_test\.go$' || true)
   if [ -n "$src_files" ]; then
     src_pkgs=$(echo "$src_files" \
       | sed 's|/[^/]*$||' \
@@ -87,7 +87,5 @@ if [ -n "$changed_src" ]; then
     done
   fi
 fi
-
-echo "=== All checks passed ==="
 
 echo "=== All checks passed ==="
