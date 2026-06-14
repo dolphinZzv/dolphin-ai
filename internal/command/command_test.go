@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"sync"
@@ -269,6 +270,66 @@ func TestSortedWorkerIDs(t *testing.T) {
 			active := map[string]*agentio.TurnInfo{"worker-1": {}}
 			ids := sortedWorkerIDs(active)
 			So(ids, ShouldResemble, []string{"worker-1"})
+		})
+	})
+}
+
+func TestRenderQueuePlain(t *testing.T) {
+	Convey("renderQueuePlain", t, func() {
+		Convey("renders with active and pending", func() {
+			now := time.Now()
+			active := map[string]*agentio.TurnInfo{
+				"worker-1": {TransportID: "t1", SessionID: "s1", Input: "hello world", StartedAt: now},
+			}
+			pending := []*agentio.Turn{
+				{TurnID: "t2", TransportID: "t2", SessionID: "s2", Input: "pending input", EnqueuedAt: now},
+			}
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			renderQueuePlain(cmd, active, pending, 10)
+			out := buf.String()
+			So(out, ShouldContainSubstring, "1 worker(s) active")
+			So(out, ShouldContainSubstring, "worker-1")
+		})
+		Convey("renders empty queue", func() {
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			renderQueuePlain(cmd, map[string]*agentio.TurnInfo{}, nil, 10)
+			out := buf.String()
+			So(out, ShouldContainSubstring, "0 worker(s) active")
+		})
+	})
+}
+
+func TestRenderQueueMarkdown(t *testing.T) {
+	Convey("renderQueueMarkdown", t, func() {
+		Convey("renders with active and pending in markdown", func() {
+			now := time.Now()
+			active := map[string]*agentio.TurnInfo{
+				"worker-1": {TransportID: "t1", SessionID: "s1", Input: "hello world", StartedAt: now},
+			}
+			pending := []*agentio.Turn{
+				{TurnID: "t2", TransportID: "t2", SessionID: "s2", Input: "pending", EnqueuedAt: now},
+			}
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			renderQueueMarkdown(cmd, active, pending, 10)
+			out := buf.String()
+			So(out, ShouldContainSubstring, "**Agent Queue**")
+			So(out, ShouldContainSubstring, "| Worker |")
+			So(out, ShouldContainSubstring, "worker-1")
+		})
+		Convey("renders empty queue in markdown", func() {
+			var buf bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetOut(&buf)
+			renderQueueMarkdown(cmd, map[string]*agentio.TurnInfo{}, nil, 10)
+			out := buf.String()
+			So(out, ShouldContainSubstring, "**Agent Queue**")
+			So(out, ShouldContainSubstring, "0 active")
 		})
 	})
 }
