@@ -23,8 +23,9 @@ func TestPipeline(t *testing.T) {
 					"tool.timeout":       "30s",
 					"agent.max_rounds":   10,
 					"agent.buffer_size":  10,
-					"memory.window":      10,
+					"session.window":     10,
 					"memory.dir":         t.TempDir(),
+					"session.dir":        t.TempDir(),
 				})
 			}
 			cfg.Set("brain.dir", t.TempDir())
@@ -47,8 +48,9 @@ func TestPipeline(t *testing.T) {
 				"tool.timeout":       "30s",
 				"agent.max_rounds":   10,
 				"agent.buffer_size":  10,
-				"memory.window":      10,
+				"session.window":     10,
 				"memory.dir":         t.TempDir(),
+				"session.dir":        t.TempDir(),
 				"brain.dir":          t.TempDir(),
 			})
 
@@ -75,8 +77,9 @@ func TestPipelineSharedSession(t *testing.T) {
 			"tool.timeout":       "30s",
 			"agent.max_rounds":   10,
 			"agent.buffer_size":  10,
-			"memory.window":      10,
+			"session.window":     10,
 			"memory.dir":         t.TempDir(),
+			"session.dir":        t.TempDir(),
 			"brain.dir":          t.TempDir(),
 			"session.mode":       "shared",
 		})
@@ -112,8 +115,9 @@ func TestPipelineTokenAccumulation(t *testing.T) {
 		"tool.timeout":       "30s",
 		"agent.max_rounds":   10,
 		"agent.buffer_size":  10,
-		"memory.window":      10,
+		"session.window":     10,
 		"memory.dir":         t.TempDir(),
+		"session.dir":        t.TempDir(),
 		"brain.dir":          t.TempDir(),
 	})
 
@@ -216,8 +220,9 @@ func TestPipelineTokenAccumulationNewSession(t *testing.T) {
 		"tool.timeout":       "30s",
 		"agent.max_rounds":   10,
 		"agent.buffer_size":  10,
-		"memory.window":      10,
+		"session.window":     10,
 		"memory.dir":         t.TempDir(),
+		"session.dir":        t.TempDir(),
 		"brain.dir":          t.TempDir(),
 	})
 

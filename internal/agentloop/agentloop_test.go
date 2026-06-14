@@ -26,12 +26,29 @@ import (
 	"go.uber.org/zap"
 )
 
+// testSessionStore is a lightweight SessionStore for tests.
+type testSessionStore struct {
+	sessions map[string]*session.Session
+}
+
+func (s *testSessionStore) Get(id string) *session.Session {
+	if sess, ok := s.sessions[id]; ok {
+		return sess
+	}
+	sess := &session.Session{ID: id}
+	if s.sessions == nil {
+		s.sessions = make(map[string]*session.Session)
+	}
+	s.sessions[id] = sess
+	return sess
+}
+
 func TestCompositor(t *testing.T) {
 	Convey("Compositor", t, func() {
 		logger, _ := zap.NewDevelopment()
 
 		Convey("Execute runs init then loop stages", func() {
-			mem := memory.NewFileMemory(t.TempDir(), 10)
+			mem := memory.NewFileMemory(&testSessionStore{})
 
 			c := NewCompositor(
 				[]Stage{
@@ -55,7 +72,7 @@ func TestCompositor(t *testing.T) {
 		})
 
 		Convey("Compositor respects max rounds", func() {
-			mem := memory.NewFileMemory(t.TempDir(), 10)
+			mem := memory.NewFileMemory(&testSessionStore{})
 
 			rounds := 0
 			c := NewCompositor(
@@ -75,7 +92,7 @@ func TestCompositor(t *testing.T) {
 		})
 
 		Convey("MemoryReadStage reads history", func() {
-			mem := memory.NewFileMemory(t.TempDir(), 10)
+			mem := memory.NewFileMemory(&testSessionStore{})
 			mem.Write(context.Background(), "sid", types.Message{
 				Role: types.RoleUser, Content: "prev",
 			})
@@ -111,7 +128,7 @@ func TestCompositor(t *testing.T) {
 		})
 
 		Convey("MemoryWriteStage skips when tools were called", func() {
-			mem := memory.NewFileMemory(t.TempDir(), 10)
+			mem := memory.NewFileMemory(&testSessionStore{})
 			stage := &MemoryWriteStage{Memory: mem, EventBus: event.NewBus()}
 			state := &State{
 				SessionID:   "sid",
@@ -125,7 +142,7 @@ func TestCompositor(t *testing.T) {
 		})
 
 		Convey("MemoryWriteStage writes messages", func() {
-			mem := memory.NewFileMemory(t.TempDir(), 10)
+			mem := memory.NewFileMemory(&testSessionStore{})
 			stage := &MemoryWriteStage{Memory: mem, EventBus: event.NewBus()}
 			state := &State{
 				SessionID: "sid",
@@ -953,7 +970,7 @@ func TestPublishTurnEvent(t *testing.T) {
 func TestAgentLoopRunAndProcess(t *testing.T) {
 	Convey("AgentLoop Run and processTurn", t, func() {
 		q := make(chan *agentio.Turn, 1)
-		mem := memory.NewFileMemory(t.TempDir(), 10)
+		mem := memory.NewFileMemory(&testSessionStore{})
 		logger, _ := zap.NewDevelopment()
 		eb := event.NewBus()
 
@@ -995,7 +1012,7 @@ func TestAgentLoopCanceledTurn(t *testing.T) {
 
 		mgr := session.NewManager(t.TempDir())
 		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
-		mem := memory.NewFileMemory(t.TempDir(), 10)
+		mem := memory.NewFileMemory(&testSessionStore{})
 		compositor := NewCompositor(
 			[]Stage{&MemoryReadStage{Memory: mem}},
 			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},
@@ -1034,7 +1051,7 @@ func TestAgentLoopNonCanceledTurn(t *testing.T) {
 
 		mgr := session.NewManager(t.TempDir())
 		aio := agentio.NewAgentIO(10, mgr, signal.NewBus(), logger, "test")
-		mem := memory.NewFileMemory(t.TempDir(), 10)
+		mem := memory.NewFileMemory(&testSessionStore{})
 		compositor := NewCompositor(
 			[]Stage{&MemoryReadStage{Memory: mem}},
 			[]Stage{&MemoryWriteStage{Memory: mem, EventBus: eb}},

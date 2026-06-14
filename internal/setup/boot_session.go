@@ -14,7 +14,7 @@ func (b *SessionBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	if c.SessionMgr != nil {
 		return nil
 	}
-	mgr := session.NewManager(c.Config.GetString("memory.dir"))
+	mgr := session.NewManager(c.Config.GetString("session.dir"))
 	mgr.LoadActive(ctx)
 	c.SessionMgr = mgr
 	return nil

@@ -63,9 +63,10 @@ func defaultConfig() *Config {
 			"agent.max_rounds":    100,
 			"agent.buffer_size":   1024,
 			"permission.file":     "permissions.json",
-			"memory.window":       40,
-			"memory.dir":          ".dolphin/sessions",
+			"session.window":      40,
+			"memory.dir":          ".dolphin/memory",
 			"brain.dir":           ".dolphin/brain",
+			"session.dir":         ".dolphin/sessions",
 			"session.mode":        "per_transport",
 		},
 	}

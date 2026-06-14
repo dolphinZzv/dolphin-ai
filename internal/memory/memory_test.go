@@ -2,31 +2,43 @@ package memory
 
 import (
 	"context"
-	"os"
-	"path/filepath"
+	"encoding/json"
 	"testing"
 	"time"
 
+	"dolphin/internal/session"
 	"dolphin/internal/types"
 )
 
+// testSessionStore is a minimal in-memory store for testing FileMemory.
+type testSessionStore struct {
+	sessions map[string]*session.Session
+}
+
+func (s *testSessionStore) Get(id string) *session.Session {
+	return s.sessions[id]
+}
+
+func newTestStore(id string) *testSessionStore {
+	sess := &session.Session{
+		ID: id,
+	}
+	return &testSessionStore{
+		sessions: map[string]*session.Session{id: sess},
+	}
+}
+
 func TestNewFileMemory(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 10)
+	store := newTestStore("sess1")
+	m := NewFileMemory(store)
 	if m == nil {
 		t.Fatal("NewFileMemory returned nil")
-	}
-	if m.dir != dir {
-		t.Errorf("dir = %q, want %q", m.dir, dir)
-	}
-	if m.window != 10 {
-		t.Errorf("window = %d, want 10", m.window)
 	}
 }
 
 func TestFileMemoryWriteReadRoundTrip(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0)
+	store := newTestStore("sess1")
+	m := NewFileMemory(store)
 
 	now := time.Now().UTC().Truncate(time.Second)
 	ctx := context.Background()
@@ -61,8 +73,8 @@ func TestFileMemoryWriteReadRoundTrip(t *testing.T) {
 }
 
 func TestFileMemoryWriteMultipleMessages(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0)
+	store := newTestStore("sess1")
+	m := NewFileMemory(store)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -87,8 +99,8 @@ func TestFileMemoryWriteMultipleMessages(t *testing.T) {
 }
 
 func TestFileMemoryNonExistentSession(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0)
+	store := &testSessionStore{sessions: map[string]*session.Session{}}
+	m := NewFileMemory(store)
 
 	msgs, err := m.Read(context.Background(), "nonexistent")
 	if err != nil {
@@ -100,8 +112,8 @@ func TestFileMemoryNonExistentSession(t *testing.T) {
 }
 
 func TestFileMemoryWindowTruncation(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 2) // window=2 => max 4 messages
+	store := newTestStore("sess1")
+	m := NewFileMemory(store)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -122,36 +134,19 @@ func TestFileMemoryWindowTruncation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 10 messages written, window=2 => max 4
-	if len(msgs) > 4 {
-		t.Errorf("expected at most 4 messages with window=2, got %d", len(msgs))
-	}
-}
-
-func TestFileMemoryWindowZero(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0) // 0 = no truncation
-	ctx := context.Background()
-	now := time.Now().UTC().Truncate(time.Second)
-
-	for i := 0; i < 10; i++ {
-		m.Write(ctx, "sess1", types.Message{
-			Role: types.RoleUser, Content: "x", Timestamp: now,
-		})
-	}
-
-	msgs, err := m.Read(ctx, "sess1")
-	if err != nil {
-		t.Fatal(err)
-	}
+	// 10 messages written, no window here (DroppingMemory handles that)
 	if len(msgs) != 10 {
-		t.Errorf("expected 10 messages with window=0, got %d", len(msgs))
+		t.Errorf("expected 10 messages, got %d", len(msgs))
 	}
 }
 
 func TestFileMemoryMultipleSessions(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0)
+	s1 := &session.Session{ID: "sessA"}
+	s2 := &session.Session{ID: "sessB"}
+	store := &testSessionStore{
+		sessions: map[string]*session.Session{"sessA": s1, "sessB": s2},
+	}
+	m := NewFileMemory(store)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -177,27 +172,25 @@ func TestFileMemoryMultipleSessions(t *testing.T) {
 }
 
 func TestFileMemoryUsesJSONFile(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0)
+	// FileMemory no longer writes files — it stores in session.Data.
+	// Test that writes go through the session store.
+	sess := &session.Session{ID: "s1"}
+	store := &testSessionStore{sessions: map[string]*session.Session{"s1": sess}}
+	m := NewFileMemory(store)
 	ctx := context.Background()
 
 	_ = m.Write(ctx, "s1", types.Message{
 		Role: types.RoleUser, Content: "test", Timestamp: time.Now(),
 	})
 
-	// File should be .json, not .md
-	_, err := os.Stat(filepath.Join(dir, "s1.json"))
-	if err != nil {
-		t.Fatalf("expected s1.json to exist: %v", err)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "s1.md")); err == nil {
-		t.Error("s1.md should not exist")
+	if sess.Get("memory") == nil {
+		t.Fatal("expected memory key to be set in session data")
 	}
 }
 
 func TestFileMemoryConcurrentWrites(t *testing.T) {
-	dir := t.TempDir()
-	m := NewFileMemory(dir, 0)
+	store := newTestStore("sess1")
+	m := NewFileMemory(store)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
@@ -219,7 +212,7 @@ func TestFileMemoryConcurrentWrites(t *testing.T) {
 }
 
 func TestNewDroppingMemory(t *testing.T) {
-	inner := NewFileMemory(t.TempDir(), 0)
+	inner := NewFileMemory(newTestStore("s1"))
 	dm := NewDroppingMemory(inner, 5)
 	if dm == nil {
 		t.Fatal("NewDroppingMemory returned nil")
@@ -233,48 +226,43 @@ func TestNewDroppingMemory(t *testing.T) {
 }
 
 func TestDroppingMemoryWindowTruncation(t *testing.T) {
-	dir := t.TempDir()
-	inner := NewFileMemory(dir, 0)    // inner has no truncation
+	inner := NewFileMemory(newTestStore("s1"))
 	dm := NewDroppingMemory(inner, 2) // window=2 => max 4 messages
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
 	for i := 0; i < 5; i++ {
-		dm.Write(ctx, "sess1", types.Message{
+		_ = dm.Write(ctx, "s1", types.Message{
 			Role: types.RoleUser, Content: "u", Timestamp: now,
 		})
-		dm.Write(ctx, "sess1", types.Message{
+		_ = dm.Write(ctx, "s1", types.Message{
 			Role: types.RoleAssistant, Content: "a", Timestamp: now,
 		})
 	}
 
-	msgs, err := dm.Read(ctx, "sess1")
+	msgs, err := dm.Read(ctx, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// 10 messages, window=2 => last 4
-	if len(msgs) > 4 {
-		t.Errorf("expected at most 4 messages, got %d", len(msgs))
-	}
 	if len(msgs) != 4 {
 		t.Errorf("expected exactly 4 messages, got %d", len(msgs))
 	}
 }
 
 func TestDroppingMemoryNoTruncation(t *testing.T) {
-	dir := t.TempDir()
-	inner := NewFileMemory(dir, 0)
+	inner := NewFileMemory(newTestStore("s1"))
 	dm := NewDroppingMemory(inner, 0) // 0 = no truncation
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
 	for i := 0; i < 5; i++ {
-		dm.Write(ctx, "sess1", types.Message{
+		_ = dm.Write(ctx, "s1", types.Message{
 			Role: types.RoleUser, Content: "x", Timestamp: now,
 		})
 	}
 
-	msgs, err := dm.Read(ctx, "sess1")
+	msgs, err := dm.Read(ctx, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,19 +272,18 @@ func TestDroppingMemoryNoTruncation(t *testing.T) {
 }
 
 func TestDroppingMemoryWriteDelegation(t *testing.T) {
-	dir := t.TempDir()
-	inner := NewFileMemory(dir, 0)
+	inner := NewFileMemory(newTestStore("s1"))
 	dm := NewDroppingMemory(inner, 5)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
 	msg := types.Message{Role: types.RoleUser, Content: "via dm", Timestamp: now}
-	if err := dm.Write(ctx, "sess1", msg); err != nil {
+	if err := dm.Write(ctx, "s1", msg); err != nil {
 		t.Fatal(err)
 	}
 
 	// Verify via inner directly
-	msgs, err := inner.Read(ctx, "sess1")
+	msgs, err := inner.Read(ctx, "s1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,5 +292,91 @@ func TestDroppingMemoryWriteDelegation(t *testing.T) {
 	}
 	if msgs[0].Content != "via dm" {
 		t.Errorf("Content = %q, want 'via dm'", msgs[0].Content)
+	}
+}
+
+func TestFileMemoryReadAfterJSONRoundTrip(t *testing.T) {
+	sess := &session.Session{ID: "s1"}
+	store := &testSessionStore{sessions: map[string]*session.Session{"s1": sess}}
+	m := NewFileMemory(store)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	if err := m.Write(ctx, "s1", types.Message{
+		Role: types.RoleUser, Content: "original", Timestamp: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	data, _ := json.Marshal(sess.Get("memory"))
+	var raw []interface{}
+	_ = json.Unmarshal(data, &raw)
+	sess.Set("memory", raw)
+
+	msgs, err := m.Read(ctx, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 || msgs[0].Content != "original" {
+		t.Fatalf("expected 1 message with content 'original', got %+v", msgs)
+	}
+
+	if err := m.Write(ctx, "s1", types.Message{
+		Role: types.RoleAssistant, Content: "reply", Timestamp: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msgs, err = m.Read(ctx, "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(msgs))
+	}
+}
+
+func TestFileMemoryReadUnknownType(t *testing.T) {
+	sess := &session.Session{ID: "s1"}
+	sess.Set("memory", "not-a-list")
+	store := &testSessionStore{sessions: map[string]*session.Session{"s1": sess}}
+	m := NewFileMemory(store)
+
+	msgs, err := m.Read(context.Background(), "s1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if msgs != nil {
+		t.Fatal("expected nil for unknown type in Data[memory]")
+	}
+}
+
+func TestDecodeMessages(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	raw := []interface{}{
+		map[string]interface{}{
+			"role":      "user",
+			"content":   "hello",
+			"timestamp": now.Format(time.RFC3339Nano),
+		},
+	}
+
+	msgs, err := decodeMessages(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if msgs[0].Role != types.RoleUser || msgs[0].Content != "hello" {
+		t.Fatalf("unexpected message: %+v", msgs[0])
+	}
+}
+
+func TestDecodeMessagesInvalidJSON(t *testing.T) {
+	raw := []interface{}{map[string]interface{}{"role": make(chan int)}}
+	_, err := decodeMessages(raw)
+	if err == nil {
+		t.Fatal("expected error for non-marshalable value")
 	}
 }

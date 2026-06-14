@@ -58,7 +58,7 @@ func TestRenderMarkdown_SessionStatus(t *testing.T) {
 		sess.Set("tool_calls", 12)
 		sess.Set("system_context", 42)
 
-		mem := memory.NewFileMemory(t.TempDir(), 100)
+		mem := memory.NewFileMemory(mgr)
 		err := mem.Write(context.Background(), sess.ID, types.Message{Role: types.RoleUser, Content: "hello"})
 		So(err, ShouldBeNil)
 

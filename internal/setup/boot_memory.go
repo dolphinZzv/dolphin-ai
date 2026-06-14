@@ -14,10 +14,9 @@ func (b *MemoryBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	if c.Mem != nil {
 		return nil
 	}
-	dir := c.Config.GetString("memory.dir")
-	window := c.Config.GetInt("memory.window")
+	window := c.Config.GetInt("session.window")
 	c.Mem = memory.NewDroppingMemory(
-		memory.NewFileMemory(dir, window),
+		memory.NewFileMemory(c.SessionMgr),
 		window,
 	)
 	return nil

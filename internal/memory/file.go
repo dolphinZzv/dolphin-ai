@@ -3,70 +3,89 @@ package memory
 import (
 	"context"
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"sync"
 
+	"dolphin/internal/session"
 	"dolphin/internal/types"
 )
 
+const memoryKey = "memory"
+
+// SessionStore is the subset of session.Manager used by FileMemory.
+type SessionStore interface {
+	Get(id string) *session.Session
+}
+
 type FileMemory struct {
-	dir    string
-	window int // 0 = all
-	mu     sync.RWMutex
+	sessions SessionStore
+	mu       sync.RWMutex
 }
 
-func NewFileMemory(dir string, window int) *FileMemory {
-	_ = os.MkdirAll(dir, 0755)
-	return &FileMemory{dir: dir, window: window}
-}
-
-func (m *FileMemory) path(sessionID string) string {
-	return filepath.Join(m.dir, sessionID+".json")
+func NewFileMemory(sessions SessionStore) *FileMemory {
+	return &FileMemory{sessions: sessions}
 }
 
 func (m *FileMemory) Read(ctx context.Context, sessionID string) ([]types.Message, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	data, err := os.ReadFile(m.path(sessionID))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	var msgs []types.Message
-	if len(data) == 0 {
+	sess := m.sessions.Get(sessionID)
+	if sess == nil {
 		return nil, nil
 	}
-	if err := json.Unmarshal(data, &msgs); err != nil {
-		return nil, err
+
+	raw := sess.Get(memoryKey)
+	if raw == nil {
+		return nil, nil
 	}
 
-	if m.window > 0 && len(msgs) > m.window*2 {
-		msgs = msgs[len(msgs)-m.window*2:]
+	// session.Data values survive JSON round-trips as []interface{}.
+	switch v := raw.(type) {
+	case []types.Message:
+		return v, nil
+	case []interface{}:
+		return decodeMessages(v)
+	default:
+		return nil, nil
 	}
-	return msgs, nil
 }
 
 func (m *FileMemory) Write(ctx context.Context, sessionID string, msg types.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	path := m.path(sessionID)
+	sess := m.sessions.Get(sessionID)
+	if sess == nil {
+		return nil
+	}
 
 	var msgs []types.Message
-	data, err := os.ReadFile(path)
-	if err == nil && len(data) > 0 {
-		_ = json.Unmarshal(data, &msgs)
+	if raw := sess.Get(memoryKey); raw != nil {
+		switch v := raw.(type) {
+		case []types.Message:
+			msgs = v
+		case []interface{}:
+			decoded, err := decodeMessages(v)
+			if err != nil {
+				return err
+			}
+			msgs = decoded
+		}
 	}
-	msgs = append(msgs, msg)
 
-	out, err := json.MarshalIndent(msgs, "", "  ")
+	msgs = append(msgs, msg)
+	sess.Set(memoryKey, msgs)
+	return nil
+}
+
+func decodeMessages(raw []interface{}) ([]types.Message, error) {
+	data, err := json.Marshal(raw)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return os.WriteFile(path, out, 0644)
+	var msgs []types.Message
+	if err := json.Unmarshal(data, &msgs); err != nil {
+		return nil, err
+	}
+	return msgs, nil
 }
