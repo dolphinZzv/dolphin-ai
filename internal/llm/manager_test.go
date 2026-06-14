@@ -141,3 +141,77 @@ func TestManager_Name(t *testing.T) {
 		t.Errorf("Name = %q", mgr.Name())
 	}
 }
+
+func TestManager_MaxConcurrency(t *testing.T) {
+	mgr := NewManager()
+	mgr.AddProvider("openai", &mockProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", MaxConcurrency: 2},
+		},
+	})
+	mgr.SetActiveModel("gpt-4o")
+
+	// With MaxConcurrency set, CompleteStream should still succeed.
+	ch, err := mgr.CompleteStream(context.Background(), LLMRequest{Model: "gpt-4o"})
+	if err != nil {
+		t.Fatalf("CompleteStream with concurrency failed: %v", err)
+	}
+	<-ch // drain
+
+	// Verify semaphore was created.
+	if _, ok := mgr.semaphores["gpt-4o"]; !ok {
+		t.Error("expected semaphore to be created for model with MaxConcurrency")
+	}
+}
+
+func TestManager_MaxConcurrencyContextCancel(t *testing.T) {
+	mgr := NewManager()
+	mgr.AddProvider("openai", &mockProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", MaxConcurrency: 1},
+		},
+	})
+	mgr.SetActiveModel("gpt-4o")
+
+	// Fill the semaphore.
+	sem := mgr.getSemaphore("gpt-4o", 1)
+	sem <- struct{}{}
+
+	// Now the semaphore is full. A context-canceled request should return ctx.Err().
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := mgr.CompleteStream(ctx, LLMRequest{Model: "gpt-4o"})
+	if err == nil {
+		t.Error("expected error for canceled context with full semaphore")
+	}
+
+	// Drain the semaphore.
+	<-sem
+}
+
+func TestManager_ConcurrentLimitsSequentialAccess(t *testing.T) {
+	mgr := NewManager()
+	mgr.AddProvider("openai", &mockProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", MaxConcurrency: 1},
+		},
+	})
+	mgr.SetActiveModel("gpt-4o")
+
+	// First call acquires the semaphore.
+	ch1, err := mgr.CompleteStream(context.Background(), LLMRequest{Model: "gpt-4o"})
+	if err != nil {
+		t.Fatalf("first call failed: %v", err)
+	}
+	<-ch1
+
+	// After draining, the semaphore should be available again.
+	ch2, err := mgr.CompleteStream(context.Background(), LLMRequest{Model: "gpt-4o"})
+	if err != nil {
+		t.Fatalf("second call failed: %v", err)
+	}
+	<-ch2
+}
