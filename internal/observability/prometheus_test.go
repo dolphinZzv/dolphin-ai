@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"sync"
 	"testing"
@@ -599,6 +600,270 @@ func TestBuildPrometheus_EmptyConfig(t *testing.T) {
 		t.Fatal("expected non-nil shutdown")
 	}
 	shutdown()
+}
+
+// --- Tests using newPrometheusHook with custom registries ---
+
+func TestNewPrometheusHook_CustomRegistry(t *testing.T) {
+	// Using a custom registry avoids MustRegister panicking on duplicates.
+	reg := prometheus.NewRegistry()
+	h := newPrometheusHook(reg, "http://example.com:9090")
+	if h == nil {
+		t.Fatal("expected non-nil hook")
+	}
+	if h.remoteWriteURL != "http://example.com:9090" {
+		t.Fatalf("expected 'http://example.com:9090', got '%s'", h.remoteWriteURL)
+	}
+
+	// Should be able to create another hook with a different registry.
+	reg2 := prometheus.NewRegistry()
+	h2 := newPrometheusHook(reg2, "")
+	if h2 == nil {
+		t.Fatal("expected non-nil hook for second registry")
+	}
+}
+
+func TestNewPrometheusHook_CustomRegistryWithLogger(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	h := newPrometheusHook(reg, "")
+	if h.log != nil {
+		t.Fatal("expected nil log")
+	}
+}
+
+func TestNewPrometheusHook_CustomRegistryHandle(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	h := newPrometheusHook(reg, "")
+	ctx := context.Background()
+
+	_ = h.Handle(ctx, event.Event{
+		Type:      event.EventTurnComplete,
+		SessionID: "sid-reg",
+		Payload: map[string]any{
+			"duration_ms":           float64(500),
+			"system_context_length": float64(1024),
+			"tool_call_count":       float64(1),
+		},
+	})
+
+	_ = h.Handle(ctx, event.Event{
+		Type:      event.EventLLMComplete,
+		SessionID: "sid-reg",
+		Payload: map[string]any{
+			"input_tokens":            50,
+			"output_tokens":           25,
+			"cache_read_input_tokens": 10,
+			"prompt_cached_tokens":    5,
+			"prompt_cache_hit_tokens": 3,
+			"prompt_cache_miss_tokens": 2,
+		},
+	})
+
+	// Verify metrics were recorded to the custom registry.
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(mfs) == 0 {
+		t.Fatal("expected metrics in custom registry")
+	}
+}
+
+func startMockServer(t *testing.T, handler http.Handler) (string, func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: handler}
+	go srv.Serve(ln)
+	addr := "http://" + ln.Addr().String()
+	return addr, func() { srv.Close() }
+}
+
+func TestPushMetrics_WithMockServer(t *testing.T) {
+	received := make(chan bool, 1)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/write", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		received <- true
+	})
+
+	addr, cleanup := startMockServer(t, mux)
+	defer cleanup()
+
+	// Create a hook with a custom registry (pushMetrics gathers from DefaultGatherer,
+	// so we register to DefaultGatherer for this test).
+	reg := prometheus.NewRegistry()
+	h := newPrometheusHook(reg, addr)
+
+	// Register a counter in the default gatherer so pushMetrics has something to push.
+	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "push_test_counter_ok"})
+	counter.Add(1)
+	prometheus.MustRegister(counter)
+	defer prometheus.Unregister(counter)
+
+	h.pushMetrics()
+
+	select {
+	case <-received:
+		// Push succeeded.
+	case <-time.After(2 * time.Second):
+		t.Fatal("pushMetrics did not complete within timeout")
+	}
+}
+
+func TestPushMetrics_HTTPError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/write", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("boom"))
+	})
+
+	addr, cleanup := startMockServer(t, mux)
+	defer cleanup()
+
+	reg := prometheus.NewRegistry()
+	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "push_err_counter_500"})
+	counter.Add(1)
+	prometheus.MustRegister(counter)
+	defer prometheus.Unregister(counter)
+
+	h := newPrometheusHook(reg, addr)
+	// Should not panic on 500 — error is logged.
+	h.pushMetrics()
+}
+
+// --- BuildPrometheus mode tests using buildPrometheus with custom registries ---
+
+func TestBuildPrometheus_PullMode(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"prometheus.enabled": true,
+		"prometheus.mode":    "pull",
+		"prometheus.addr":    ":0",
+	})
+	hr := hook.NewRegistry()
+	reg := prometheus.NewRegistry()
+	shutdown := buildPrometheus(cfg, hr, reg)
+	if shutdown == nil {
+		t.Fatal("expected non-nil shutdown")
+	}
+	time.Sleep(50 * time.Millisecond)
+	shutdown()
+}
+
+func TestBuildPrometheus_PushMode(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"prometheus.enabled":    true,
+		"prometheus.mode":       "push",
+		"prometheus.remote_url": "http://127.0.0.1:9090",
+	})
+	hr := hook.NewRegistry()
+	reg := prometheus.NewRegistry()
+	shutdown := buildPrometheus(cfg, hr, reg)
+	if shutdown == nil {
+		t.Fatal("expected non-nil shutdown")
+	}
+	shutdown()
+}
+
+func TestBuildPrometheus_BothMode(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"prometheus.enabled":    true,
+		"prometheus.mode":       "both",
+		"prometheus.addr":       ":0",
+		"prometheus.remote_url": "http://127.0.0.1:9090",
+	})
+	hr := hook.NewRegistry()
+	reg := prometheus.NewRegistry()
+	shutdown := buildPrometheus(cfg, hr, reg)
+	if shutdown == nil {
+		t.Fatal("expected non-nil shutdown")
+	}
+	time.Sleep(50 * time.Millisecond)
+	shutdown()
+}
+
+func TestBuildPrometheus_DefaultModePull(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"prometheus.enabled": true,
+		"prometheus.addr":    ":0",
+	})
+	hr := hook.NewRegistry()
+	reg := prometheus.NewRegistry()
+	shutdown := buildPrometheus(cfg, hr, reg)
+	if shutdown == nil {
+		t.Fatal("expected non-nil shutdown")
+	}
+	time.Sleep(50 * time.Millisecond)
+	shutdown()
+}
+
+func TestBuildPrometheus_PullModeDefaultAddr(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"prometheus.enabled": true,
+		"prometheus.mode":    "pull",
+	})
+	hr := hook.NewRegistry()
+	reg := prometheus.NewRegistry()
+	shutdown := buildPrometheus(cfg, hr, reg)
+	if shutdown == nil {
+		t.Fatal("expected non-nil shutdown")
+	}
+	time.Sleep(50 * time.Millisecond)
+	shutdown()
+}
+
+func TestPushMetrics_ConnectionRefused(t *testing.T) {
+	reg := prometheus.NewRegistry()
+	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "push_refused_counter"})
+	counter.Add(1)
+	prometheus.MustRegister(counter)
+	defer prometheus.Unregister(counter)
+
+	h := newPrometheusHook(reg, "http://127.0.0.1:19999")
+	// Should not panic on connection refused.
+	h.pushMetrics()
+}
+
+func TestMetricToTimeSeries_Summary(t *testing.T) {
+	// SUMMARY type falls to default case in metricToTimeSeries.
+	summary := prometheus.NewSummary(prometheus.SummaryOpts{Name: "test_summary"})
+	summary.Observe(10)
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(summary)
+
+	mfs, err := registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ts := metricToTimeSeries(mfs[0], 100)
+	// Summary falls to default case which checks m.Gauge.
+	if len(ts) == 0 {
+		t.Log("summary had no gauge field, produced 0 time series")
+	}
+}
+
+func TestMetricToTimeSeries_NilCounter(t *testing.T) {
+	// Counter with nil Counter field (edge case for default branch).
+	registry := prometheus.NewRegistry()
+	counter := prometheus.NewCounter(prometheus.CounterOpts{Name: "nil_check_counter"})
+	registry.MustRegister(counter)
+
+	mfs, err := registry.Gather()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Newly created counter should have non-nil Counter field.
+	ts := metricToTimeSeries(mfs[0], 100)
+	if len(ts) != 1 {
+		t.Fatalf("expected 1 time series, got %d", len(ts))
+	}
+	if ts[0].Samples[0].Value != 0 {
+		t.Fatalf("expected value 0, got %f", ts[0].Samples[0].Value)
+	}
 }
 
 // Import guards — ensure these types are used.

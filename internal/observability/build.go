@@ -8,6 +8,8 @@ import (
 
 	"dolphin/internal/config"
 	"dolphin/internal/hook"
+
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -113,6 +115,10 @@ func NewMetricsHook(mp metric.MeterProvider) (*MetricsHook, error) {
 // BuildPrometheus creates a PrometheusHook based on config and optionally starts
 // a pull-mode HTTP server. Returns a shutdown function.
 func BuildPrometheus(cfg *config.Config, hr *hook.Registry, log ...*zap.Logger) (shutdown func()) {
+	return buildPrometheus(cfg, hr, prometheus.DefaultRegisterer, log...)
+}
+
+func buildPrometheus(cfg *config.Config, hr *hook.Registry, reg prometheus.Registerer, log ...*zap.Logger) (shutdown func()) {
 	if !cfg.GetBool("prometheus.enabled") {
 		return func() {}
 	}
@@ -127,7 +133,7 @@ func BuildPrometheus(cfg *config.Config, hr *hook.Registry, log ...*zap.Logger) 
 		remoteWriteURL = cfg.GetString("prometheus.remote_url")
 	}
 
-	hook := NewPrometheusHook(remoteWriteURL, log...)
+	hook := newPrometheusHook(reg, remoteWriteURL, log...)
 	hr.Register(hook)
 
 	var pullShutdown func()

@@ -38,6 +38,10 @@ type PrometheusHook struct {
 }
 
 func NewPrometheusHook(remoteWriteURL string, log ...*zap.Logger) *PrometheusHook {
+	return newPrometheusHook(prometheus.DefaultRegisterer, remoteWriteURL, log...)
+}
+
+func newPrometheusHook(reg prometheus.Registerer, remoteWriteURL string, log ...*zap.Logger) *PrometheusHook {
 	h := &PrometheusHook{
 		turnTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "dolphin_turn_total",
@@ -83,7 +87,7 @@ func NewPrometheusHook(remoteWriteURL string, log ...*zap.Logger) *PrometheusHoo
 		h.log = log[0]
 	}
 
-	prometheus.MustRegister(
+	reg.MustRegister(
 		h.turnTotal,
 		h.turnDuration,
 		h.systemContextChars,
