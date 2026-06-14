@@ -603,3 +603,26 @@ func (m *mockSkillStore) Delete(_ stdctx.Context, name string) error {
 func (m *mockSkillStore) Search(_ stdctx.Context, query string) ([]skill.Skill, error) {
 	return nil, nil
 }
+
+func TestWorkflowSection(t *testing.T) {
+	Convey("Workflow section", t, func() {
+		Convey("Name returns 'workflow'", func() {
+			s := &Workflow{}
+			So(s.Name(), ShouldEqual, "workflow")
+		})
+
+		Convey("Index returns 8", func() {
+			s := &Workflow{}
+			So(s.Index(), ShouldEqual, 8)
+		})
+
+		Convey("BuildContent returns workflow instructions", func() {
+			s := &Workflow{}
+			content, err := s.BuildContent(stdctx.Background())
+			So(err, ShouldBeNil)
+			So(content, ShouldContainSubstring, "workflow")
+			So(content, ShouldContainSubstring, "brain_write")
+			So(content, ShouldContainSubstring, "run_workflow")
+		})
+	})
+}
