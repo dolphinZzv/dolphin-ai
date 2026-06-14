@@ -650,11 +650,11 @@ func TestNewPrometheusHook_CustomRegistryHandle(t *testing.T) {
 		Type:      event.EventLLMComplete,
 		SessionID: "sid-reg",
 		Payload: map[string]any{
-			"input_tokens":            50,
-			"output_tokens":           25,
-			"cache_read_input_tokens": 10,
-			"prompt_cached_tokens":    5,
-			"prompt_cache_hit_tokens": 3,
+			"input_tokens":             50,
+			"output_tokens":            25,
+			"cache_read_input_tokens":  10,
+			"prompt_cached_tokens":     5,
+			"prompt_cache_hit_tokens":  3,
 			"prompt_cache_miss_tokens": 2,
 		},
 	})
@@ -676,9 +676,9 @@ func startMockServer(t *testing.T, handler http.Handler) (string, func()) {
 		t.Fatal(err)
 	}
 	srv := &http.Server{Handler: handler}
-	go srv.Serve(ln)
+	go func() { _ = srv.Serve(ln) }()
 	addr := "http://" + ln.Addr().String()
-	return addr, func() { srv.Close() }
+	return addr, func() { _ = srv.Close() }
 }
 
 func TestPushMetrics_WithMockServer(t *testing.T) {
@@ -717,7 +717,7 @@ func TestPushMetrics_HTTPError(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/write", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("boom"))
+		_, _ = w.Write([]byte("boom"))
 	})
 
 	addr, cleanup := startMockServer(t, mux)
