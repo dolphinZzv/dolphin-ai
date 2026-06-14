@@ -1496,9 +1496,9 @@ func TestAgentLoopWorkerPanicBackoff(t *testing.T) {
 		select {
 		case <-runDone:
 		case <-time.After(5 * time.Second):
-			cancel()
-			<-runDone
 		}
+		cancel()
+		<-runDone
 
 		So(len(panicEvents), ShouldEqual, 3)
 

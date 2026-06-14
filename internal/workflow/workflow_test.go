@@ -1629,7 +1629,7 @@ func TestEngineContinueWithPausedFile(t *testing.T) {
 
 		// Create a paused result file to resume from.
 		resumeFile := spec.Name + ".result.yaml"
-		defer os.Remove(resumeFile)
+		defer func() { _ = os.Remove(resumeFile) }()
 		paused := &WorkflowResult{
 			Workflow: spec.Name,
 			Status:   "paused",
@@ -1639,7 +1639,7 @@ func TestEngineContinueWithPausedFile(t *testing.T) {
 			},
 		}
 		data, _ := yaml.Marshal(paused)
-		os.WriteFile(resumeFile, data, 0644)
+		_ = os.WriteFile(resumeFile, data, 0644)
 		result, err := engine.Continue(context.Background(), spec, "")
 		So(err, ShouldBeNil)
 		So(result.Status, ShouldEqual, "completed")
