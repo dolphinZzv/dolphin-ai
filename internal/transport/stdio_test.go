@@ -7,6 +7,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/chzyer/readline"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
@@ -211,5 +212,383 @@ func TestStdioRunInteractive_NoReadline(t *testing.T) {
 
 		err := s.RunInteractive(ctx, "nonexistent_cmd_xyz")
 		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestStdioInit_AgentNameConfig(t *testing.T) {
+	Convey("init with agent_name config", t, func() {
+		io, err := Build(context.Background(), "stdio", map[string]any{
+			"agent_name": "CustomBot",
+		})
+		So(err, ShouldBeNil)
+		So(io, ShouldNotBeNil)
+		So(io.ID(), ShouldEqual, "stdio")
+	})
+}
+
+func TestStdioInit_NoAgentNameConfig(t *testing.T) {
+	Convey("init without agent_name config", t, func() {
+		io, err := Build(context.Background(), "stdio", nil)
+		So(err, ShouldBeNil)
+		So(io, ShouldNotBeNil)
+	})
+}
+
+func TestStdioRequestPermission_FallbackReader(t *testing.T) {
+	Convey("RequestPermission with fallback reader (no readline)", t, func() {
+		Convey("returns PermissionOnce for '1'", func() {
+			r, w, err := os.Pipe()
+			So(err, ShouldBeNil)
+			oldStdin := os.Stdin
+			t.Cleanup(func() { os.Stdin = oldStdin })
+			os.Stdin = r
+
+			s := NewStdio("test", "Dolphin")
+			s.rl = nil
+
+			go func() {
+				_, _ = w.WriteString("1\n")
+			}()
+
+			result, err := s.RequestPermission(context.Background(), "test")
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, PermissionOnce)
+			_ = w.Close()
+		})
+
+		Convey("returns PermissionAlways for '2'", func() {
+			r, w, err := os.Pipe()
+			So(err, ShouldBeNil)
+			oldStdin := os.Stdin
+			t.Cleanup(func() { os.Stdin = oldStdin })
+			os.Stdin = r
+
+			s := NewStdio("test", "Dolphin")
+			s.rl = nil
+
+			go func() {
+				_, _ = w.WriteString("2\n")
+			}()
+
+			result, err := s.RequestPermission(context.Background(), "test")
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, PermissionAlways)
+			_ = w.Close()
+		})
+
+		Convey("returns PermissionDenied for unrecognized input", func() {
+			r, w, err := os.Pipe()
+			So(err, ShouldBeNil)
+			oldStdin := os.Stdin
+			t.Cleanup(func() { os.Stdin = oldStdin })
+			os.Stdin = r
+
+			s := NewStdio("test", "Dolphin")
+			s.rl = nil
+
+			go func() {
+				_, _ = w.WriteString("xyz\n")
+			}()
+
+			result, err := s.RequestPermission(context.Background(), "test")
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, PermissionDenied)
+			_ = w.Close()
+		})
+
+		Convey("returns PermissionDenied when pipe is closed", func() {
+			r, w, err := os.Pipe()
+			So(err, ShouldBeNil)
+			oldStdin := os.Stdin
+			t.Cleanup(func() { os.Stdin = oldStdin })
+			os.Stdin = r
+
+			s := NewStdio("test", "Dolphin")
+			s.rl = nil
+
+			_ = w.Close()
+
+			result, err := s.RequestPermission(context.Background(), "test")
+			So(err, ShouldBeNil)
+			So(result, ShouldEqual, PermissionDenied)
+		})
+	})
+}
+
+func TestStdioRead_ReadlineCtxCancel(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
+	Convey("Read with readline and cancelled context returns error", t, func() {
+		s := NewStdio("test", "Dolphin")
+		if s.rl == nil {
+			t.Skip("skipping: readline not available (no terminal)")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := s.Read(ctx)
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestStdioRunInteractive_WithReadline(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
+	Convey("RunInteractive with readline runs command and returns nil for 'true'", t, func() {
+		s := NewStdio("test", "Dolphin")
+		if s.rl == nil {
+			t.Skip("skipping: readline not available (no terminal)")
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := s.RunInteractive(ctx, "true")
+		So(err, ShouldBeNil)
+		// readline may or may not be re-created depending on terminal availability
+	})
+}
+
+func TestStdioMaybeExit_Yes(t *testing.T) {
+	Convey("maybeExit calls osExit when user confirms with yes", t, func() {
+		r, w, err := os.Pipe()
+		So(err, ShouldBeNil)
+
+		oldStdin := os.Stdin
+		t.Cleanup(func() { os.Stdin = oldStdin })
+		os.Stdin = r
+
+		s := NewStdio("test", "Dolphin")
+
+		exited := make(chan int, 1)
+		oldOsExit := osExit
+		osExit = func(code int) { exited <- code }
+		t.Cleanup(func() { osExit = oldOsExit })
+
+		go func() {
+			_, _ = fmt.Fprint(w, "y\n")
+		}()
+
+		result := s.maybeExit("exit")
+		So(result, ShouldEqual, "")
+
+		code := <-exited
+		So(code, ShouldEqual, 0)
+		_ = w.Close()
+	})
+}
+
+func TestStdioInit_AgentNameNotString(t *testing.T) {
+	Convey("init with agent_name as non-string type", t, func() {
+		io, err := Build(context.Background(), "stdio", map[string]any{
+			"agent_name": 123,
+		})
+		So(err, ShouldBeNil)
+		So(io, ShouldNotBeNil)
+		So(io.ID(), ShouldEqual, "stdio")
+	})
+}
+
+func TestStdioRead_FallbackErrCh(t *testing.T) {
+	Convey("Read fallback path returns error when stdin is closed", t, func() {
+		r, w, err := os.Pipe()
+		So(err, ShouldBeNil)
+
+		oldStdin := os.Stdin
+		t.Cleanup(func() { os.Stdin = oldStdin })
+		os.Stdin = r
+
+		s := NewStdio("test", "Dolphin")
+		s.rl = nil // force fallback reader
+
+		_ = w.Close() // close without writing → ReadString returns io.EOF
+
+		_, err = s.Read(context.Background())
+		So(err, ShouldNotBeNil)
+	})
+}
+
+func TestNewStdio_NonEmptyUser(t *testing.T) {
+	Convey("NewStdio with non-empty user", t, func() {
+		s := NewStdio("nonemptyuser", "Dolphin")
+		So(s, ShouldNotBeNil)
+		So(s.user, ShouldEqual, "nonemptyuser")
+	})
+}
+
+func TestStdioInit_AgentNameEmptyString(t *testing.T) {
+	Convey("init with agent_name as empty string", t, func() {
+		io, err := Build(context.Background(), "stdio", map[string]any{
+			"agent_name": "",
+		})
+		So(err, ShouldBeNil)
+		So(io, ShouldNotBeNil)
+		So(io.ID(), ShouldEqual, "stdio")
+	})
+}
+
+func TestStdioRead_FallbackEmptyLine(t *testing.T) {
+	Convey("Read fallback skips empty lines", t, func() {
+		r, w, err := os.Pipe()
+		So(err, ShouldBeNil)
+
+		oldStdin := os.Stdin
+		t.Cleanup(func() { os.Stdin = oldStdin })
+		os.Stdin = r
+
+		s := NewStdio("test", "Dolphin")
+		s.rl = nil // force fallback reader
+
+		go func() {
+			_, _ = w.WriteString("\nworld\n")
+			_ = w.Close()
+		}()
+
+		result, err := s.Read(context.Background())
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, "world")
+	})
+}
+
+func TestStdioRunInteractive_EmptyUser(t *testing.T) {
+	Convey("RunInteractive with empty user does not panic", t, func() {
+		s := &Stdio{
+			SessionHolder: NewSessionHolder(nil),
+			id:            "stdio",
+			ctx:           context.Background(),
+			user:          "",
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		err := s.RunInteractive(ctx, "true")
+		So(err, ShouldBeNil)
+	})
+}
+
+func TestStdioRead_ReadlineSuccess(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
+	Convey("Read with pipe-backed readline reads a line", t, func() {
+		pr, pw, err := os.Pipe()
+		So(err, ShouldBeNil)
+
+		rl, err := readline.NewEx(&readline.Config{
+			Prompt:       "",
+			Stdin:        pr,
+			Stdout:       io.Discard,
+			Stderr:       io.Discard,
+			FuncGetWidth: func() int { return 80 },
+		})
+		if err != nil {
+			t.Skip("readline not available: " + err.Error())
+		}
+		defer func() { _ = rl.Close() }()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		s := &Stdio{
+			SessionHolder: NewSessionHolder(nil),
+			id:            "stdio",
+			user:          "test",
+			ctx:           ctx,
+			cancel:        cancel,
+			rl:            rl,
+		}
+
+		go func() {
+			_, _ = pw.WriteString("hello\n")
+			_ = pw.Close()
+		}()
+
+		result, err := s.Read(context.Background())
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, "hello")
+	})
+}
+
+func TestStdioRead_ReadlineEmptyLine(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
+	Convey("Read with pipe-backed readline skips empty lines", t, func() {
+		pr, pw, err := os.Pipe()
+		So(err, ShouldBeNil)
+
+		rl, err := readline.NewEx(&readline.Config{
+			Prompt:       "",
+			Stdin:        pr,
+			Stdout:       io.Discard,
+			Stderr:       io.Discard,
+			FuncGetWidth: func() int { return 80 },
+		})
+		if err != nil {
+			t.Skip("readline not available: " + err.Error())
+		}
+		defer func() { _ = rl.Close() }()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		s := &Stdio{
+			SessionHolder: NewSessionHolder(nil),
+			id:            "stdio",
+			user:          "test",
+			ctx:           ctx,
+			cancel:        cancel,
+			rl:            rl,
+		}
+
+		go func() {
+			_, _ = pw.WriteString("\nworld\n")
+			_ = pw.Close()
+		}()
+
+		result, err := s.Read(context.Background())
+		So(err, ShouldBeNil)
+		So(result, ShouldEqual, "world")
+	})
+}
+
+func TestStdioRequestPermission_ReadlineCtxDone(t *testing.T) {
+	if isRace {
+		t.Skip("skipping: readline has a known race under -race")
+	}
+	Convey("RequestPermission with readline returns Denied when ctx is done", t, func() {
+		pr, pw, err := os.Pipe()
+		So(err, ShouldBeNil)
+		defer func() { _ = pw.Close() }()
+
+		rl, err := readline.NewEx(&readline.Config{
+			Prompt:       "",
+			Stdin:        pr,
+			Stdout:       io.Discard,
+			Stderr:       io.Discard,
+			FuncGetWidth: func() int { return 80 },
+		})
+		if err != nil {
+			t.Skip("readline not available: " + err.Error())
+		}
+		defer func() { _ = rl.Close() }()
+
+		ctx, cancel := context.WithCancel(context.Background())
+		s := &Stdio{
+			SessionHolder: NewSessionHolder(nil),
+			id:            "stdio",
+			user:          "test",
+			ctx:           ctx,
+			cancel:        cancel,
+			rl:            rl,
+		}
+		cancel() // cancel before calling → ctx.Done() should fire
+
+		result, err := s.RequestPermission(context.Background(), "test")
+		So(err, ShouldNotBeNil)
+		So(result, ShouldEqual, PermissionDenied)
 	})
 }

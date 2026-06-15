@@ -7,6 +7,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"dolphin/internal/types"
 )
 
 func TestStdio_Read(t *testing.T) {
@@ -433,5 +435,26 @@ func TestStdio_BuiltinRegistration(t *testing.T) {
 	}
 	if io.ID() != "stdio" {
 		t.Fatalf("expected 'stdio', got '%s'", io.ID())
+	}
+}
+
+func TestSessionHolder_WriteThinking(t *testing.T) {
+	h := NewSessionHolder(nil)
+	if err := h.WriteThinking(context.Background(), "thinking..."); err != nil {
+		t.Errorf("WriteThinking should return nil, got %v", err)
+	}
+}
+
+func TestSessionHolder_WriteToolCall(t *testing.T) {
+	h := NewSessionHolder(nil)
+	if err := h.WriteToolCall(context.Background(), types.ToolCall{Name: "test"}); err != nil {
+		t.Errorf("WriteToolCall should return nil, got %v", err)
+	}
+}
+
+func TestSessionHolder_WriteToolResult(t *testing.T) {
+	h := NewSessionHolder(nil)
+	if err := h.WriteToolResult(context.Background(), types.ToolResult{Content: "done"}); err != nil {
+		t.Errorf("WriteToolResult should return nil, got %v", err)
 	}
 }

@@ -16,6 +16,8 @@ All notable changes to Dolphin will be documented in this file.
 - User input text color changed to green in both TUI themes.
 - Markdown rendering preserves ANSI color codes for syntax highlighting.
 - Various lint and formatting fixes for the TUI transport.
+- `os.Exit` made replaceable via package-level `osExit` variable for testability.
+- Transport test coverage: `stdio.go` improved from 67.8% to 92.1% with pipe-backed readline tests.
 
 ### Breaking Changes
 

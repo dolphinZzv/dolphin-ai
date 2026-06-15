@@ -16,6 +16,8 @@ import (
 	"github.com/chzyer/readline"
 )
 
+var osExit = os.Exit
+
 func init() {
 	Register("stdio", func(ctx context.Context, cfg map[string]any) (IO, error) {
 		user := os.Getenv("USER")
@@ -172,7 +174,7 @@ func (s *Stdio) maybeExit(line string) string {
 		reply = strings.TrimSpace(strings.ToLower(reply))
 		if reply == "y" || reply == "yes" {
 			fmt.Fprintln(os.Stdout, i18n.T("transport.stdio_bye"))
-			os.Exit(0)
+			osExit(0)
 		}
 		return ""
 	}
