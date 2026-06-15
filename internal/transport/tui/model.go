@@ -384,9 +384,7 @@ func (m *model) renderIncremental() {
 	m.renderedContent += tail
 
 	// Record block offsets for the newly rendered blocks.
-	for _, b := range m.computeBlockOffsets(msgStart, offset) {
-		m.blockOffsets = append(m.blockOffsets, b)
-	}
+	m.blockOffsets = append(m.blockOffsets, m.computeBlockOffsets(msgStart, offset)...)
 
 	m.viewport.SetContent(m.renderedContent)
 }

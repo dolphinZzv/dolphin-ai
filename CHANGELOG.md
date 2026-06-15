@@ -20,6 +20,7 @@ All notable changes to Dolphin will be documented in this file.
 - Transport test coverage: `stdio.go` improved from 67.8% to 92.1% with pipe-backed readline tests.
 - TUI test coverage: all changed files (`model.go`, `tui.go`, `renderer.go`, `theme.go`, `perm_dialog.go`) now above 80%.
 - TUI viewport uses incremental rendering: only re-renders the changed message tail instead of rebuilding all content on every append.
+- Replace range loop with variadic append for block offsets in incremental renderer.
 
 ### Breaking Changes
 
