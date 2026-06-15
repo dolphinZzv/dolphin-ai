@@ -66,7 +66,11 @@ func runWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHandler 
 			return &types.ToolResult{Content: "Invalid workflow file: " + err.Error(), IsError: true}, nil
 		}
 
-		result, err := engine.Run(ctx, spec, "")
+		// Detach from the tool execution's 30s timeout. Each workflow step
+		// uses its own timeout (per-step YAML field or workflow.step_timeout
+		// config, default 300s). Set workflow.step_timeout to 0 to disable.
+		wfCtx := context.WithoutCancel(ctx)
+		result, err := engine.Run(wfCtx, spec, "")
 		if err != nil {
 			if err == ErrCheckpointReached {
 				return &types.ToolResult{
@@ -104,7 +108,9 @@ func continueWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHan
 			return &types.ToolResult{Content: "Invalid workflow file: " + err.Error(), IsError: true}, nil
 		}
 
-		result, err := engine.Continue(ctx, spec, "")
+		// Detach from the tool execution's 30s timeout.
+		wfCtx := context.WithoutCancel(ctx)
+		result, err := engine.Continue(wfCtx, spec, "")
 		if err != nil {
 			if err == ErrCheckpointReached {
 				return &types.ToolResult{

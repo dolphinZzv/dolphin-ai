@@ -31,7 +31,7 @@ steps:
     depends_on: []     # optional, step IDs this step waits for
     foreach: "$step.field"  # optional, see foreach section below
     checkpoint: false  # optional, pause after this step for review
-    timeout: "60s"     # optional, per-step timeout (default 300s)
+    timeout: "60s"     # optional, per-step timeout (default 300s, 0 = no timeout)
 ` + "```\n" + `
 
 ### Template variables

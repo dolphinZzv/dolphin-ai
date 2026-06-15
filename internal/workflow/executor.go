@@ -24,12 +24,13 @@ func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceRe
 			timeout = d
 		}
 	}
-	if timeout <= 0 {
-		timeout = 300 * time.Second
+	// timeout <= 0 means no per-step deadline. Each step runs until the
+	// overall workflow context expires or the step completes naturally.
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
 	}
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	messages := []types.Message{
 		{Role: types.RoleUser, Content: inst.Prompt},

@@ -1844,6 +1844,103 @@ func TestContinueWorkflowHandlerFullPaths(t *testing.T) {
 	})
 }
 
+func TestStepZeroTimeout(t *testing.T) {
+	Convey("Step with timeout=0 runs without deadline", t, func() {
+		logger := testLogger()
+		cfg := testConfig()
+		cfg.Set("workflow.step_timeout", "0s")
+
+		toolReg := tool.NewRegistry()
+		eventBus := event.NewBus()
+
+		mock := &mockLLMProvider{
+			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
+				// Simulate a step that takes some time.
+				return []llm.LLMChunk{textChunk("done")}
+			},
+		}
+
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
+		spec := &WorkflowSpec{
+			Version: "1",
+			Name:    "zero_timeout",
+			Steps: []StepSpec{
+				{ID: "step1", Prompt: "do something"},
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		result, err := engine.Run(ctx, spec, "")
+		So(err, ShouldBeNil)
+		So(result.Status, ShouldEqual, "completed")
+		So(result.Steps[0].Status, ShouldEqual, StatusDone)
+	})
+
+	Convey("Per-step timeout=0 overrides config default", t, func() {
+		logger := testLogger()
+		cfg := testConfig()
+
+		toolReg := tool.NewRegistry()
+		eventBus := event.NewBus()
+
+		mock := &mockLLMProvider{
+			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
+				return []llm.LLMChunk{textChunk("ok")}
+			},
+		}
+
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
+		spec := &WorkflowSpec{
+			Version: "1",
+			Name:    "per_step_timeout",
+			Steps: []StepSpec{
+				{ID: "step1", Prompt: "do something", Timeout: "0s"},
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		result, err := engine.Run(ctx, spec, "")
+		So(err, ShouldBeNil)
+		So(result.Status, ShouldEqual, "completed")
+		So(result.Steps[0].Status, ShouldEqual, StatusDone)
+	})
+}
+
+func TestHandlerStripsToolTimeout(t *testing.T) {
+	Convey("run_workflow handler ignores expired parent context", t, func() {
+		logger := testLogger()
+		cfg := testConfig()
+		cfg.Set("workflow.step_timeout", "5s")
+
+		toolReg := tool.NewRegistry()
+		eventBus := event.NewBus()
+
+		mock := &mockLLMProvider{
+			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
+				return []llm.LLMChunk{textChunk("ok")}
+			},
+		}
+		engine := NewEngine(toolReg, mock, eventBus, logger, nil, cfg)
+		handler := runWorkflowHandler(engine, logger)
+
+		yamlData := "version: \"1\"\nname: no_timeout_test\nsteps:\n  - id: a\n    prompt: hello\n"
+		yf := writeTempFile(t, "no_timeout_test.workflow.yaml", yamlData)
+
+		// Simulate the tool pipeline's 30s timeout: a context already expired.
+		expiredCtx, cancel := context.WithTimeout(context.Background(), -1*time.Second)
+		defer cancel()
+
+		result, err := handler(expiredCtx, json.RawMessage(`{"path":"`+yf+`"}`))
+		So(err, ShouldBeNil)
+		So(result.IsError, ShouldBeFalse)
+		So(result.Content, ShouldContainSubstring, "completed")
+	})
+}
+
 func writeTempFile(t *testing.T, name, content string) string {
 	t.Helper()
 	path := "/tmp/" + name
