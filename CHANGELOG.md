@@ -4,6 +4,19 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- TUI transport with dark/light themes, markdown rendering, and permission dialogs.
+- Per-round turn timeout: each agent loop round gets a fresh timeout so long-running tools don't starve subsequent LLM calls.
+- Tool parallelism config (`agent.tool_parallelism`) for concurrent tool execution.
+- Workflow agent-driven e2e tests.
+
+### Changed
+
+- User input text color changed to green in both TUI themes.
+- Markdown rendering preserves ANSI color codes for syntax highlighting.
+- Various lint and formatting fixes for the TUI transport.
+
 ### Breaking Changes
 
 - **Stage.Clone()** is now a required method on the `Stage` interface. External `Stage` implementations must add a `Clone() Stage` method. See `docs/adr/002-compositor-clone.md` for rationale.

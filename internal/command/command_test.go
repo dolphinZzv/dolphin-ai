@@ -688,6 +688,27 @@ func TestRegisterModels(t *testing.T) {
 			So(output, ShouldContainSubstring, "not supported")
 		})
 
+		Convey("models use sends interrupt to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
+
+			mockProv := &mockLister{
+				models: []llm.ModelConfig{
+					{Name: "model-a", Vendor: "test", APIType: "openai", Model: "gpt-4"},
+				},
+			}
+			RegisterModels(r, mockProv)
+			r.Execute(context.Background(), "models use model-a", "")
+
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Interrupt)
+			default:
+				So("expected interrupt signal", ShouldBeNil)
+			}
+		})
+
 		Convey("models use with SetActiveModel error", func() {
 			mockProv := &mockLister{
 				models: []llm.ModelConfig{
@@ -1027,9 +1048,15 @@ func TestRegisterSession(t *testing.T) {
 			So(output, ShouldContainSubstring, "no sessions")
 		})
 
-		Convey("session switch prints message", func() {
+		Convey("session switch to nonexistent shows error", func() {
 			output := r.Execute(context.Background(), "session switch abc123", "")
-			So(output, ShouldContainSubstring, "use /session new")
+			So(output, ShouldContainSubstring, "error")
+		})
+
+		Convey("session switch to existing session works", func() {
+			sess := mgr.NewSession(context.Background())
+			output := r.Execute(context.Background(), "session switch "+sess.ID, "")
+			So(output, ShouldContainSubstring, "switched to session")
 		})
 
 		Convey("/new alias creates session", func() {
@@ -1040,6 +1067,51 @@ func TestRegisterSession(t *testing.T) {
 		Convey("/clear alias creates session", func() {
 			output := r.Execute(context.Background(), "clear", "")
 			So(output, ShouldContainSubstring, "created session")
+		})
+
+		Convey("/session new sends interrupt to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
+
+			r.Execute(context.Background(), "session new", "")
+
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Interrupt)
+			default:
+				So("expected interrupt signal", ShouldBeNil)
+			}
+		})
+
+		Convey("/new alias sends interrupt to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
+
+			r.Execute(context.Background(), "new", "")
+
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Interrupt)
+			default:
+				So("expected interrupt signal", ShouldBeNil)
+			}
+		})
+
+		Convey("/clear alias sends interrupt to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
+
+			r.Execute(context.Background(), "clear", "")
+
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Interrupt)
+			default:
+				So("expected interrupt signal", ShouldBeNil)
+			}
 		})
 	})
 }

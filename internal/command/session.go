@@ -2,6 +2,7 @@ package command
 
 import (
 	"dolphin/internal/session"
+	"dolphin/internal/signal"
 
 	"github.com/spf13/cobra"
 )
@@ -15,6 +16,10 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "new",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Cancel all running operations in the current session before switching.
+			if cur := sessMgr.Active(); cur != nil {
+				r.signalBus.Send(cur.ID, signal.Interrupt)
+			}
 			sess := sessMgr.Create(cmd.Context())
 			cmd.Printf("created session %s\n", sess.ID)
 			return nil
@@ -56,7 +61,17 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 		Use:  "switch [id]",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cmd.Println("use /session new to create and switch to a new session")
+			id := args[0]
+			// Cancel all running operations in the current session before switching.
+			if cur := sessMgr.Active(); cur != nil && cur.ID != id {
+				r.signalBus.Send(cur.ID, signal.Interrupt)
+			}
+			sess, err := sessMgr.SwitchTo(cmd.Context(), id)
+			if err != nil {
+				cmd.Printf("error: %v\n", err)
+				return nil
+			}
+			cmd.Printf("switched to session %s\n", sess.ID)
 			return nil
 		},
 	}, "command.session_switch"))
@@ -68,6 +83,10 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 		r.Register(WithI18nShort(&cobra.Command{
 			Use: name,
 			RunE: func(cmd *cobra.Command, args []string) error {
+				// Cancel all running operations in the current session before switching.
+				if cur := sessMgr.Active(); cur != nil {
+					r.signalBus.Send(cur.ID, signal.Interrupt)
+				}
 				sess := sessMgr.Create(cmd.Context())
 				cmd.Printf("created session %s\n", sess.ID)
 				return nil

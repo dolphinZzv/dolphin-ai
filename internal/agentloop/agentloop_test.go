@@ -307,6 +307,33 @@ func TestToolStage_CheckPermission(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "denied by the user")
 		})
+
+		Convey("request_permission and emit_event bypass permission check", func() {
+			stage := &ToolStage{
+				Logger: logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{
+					"request_permission": {Deny: []map[string]string{{"*": "*"}}},
+				}),
+				Workmode: "default",
+			}
+			state := &State{}
+			So(stage.checkPermission(context.Background(), state, types.ToolCall{Name: "request_permission"}), ShouldBeNil)
+			So(stage.checkPermission(context.Background(), state, types.ToolCall{Name: "emit_event"}), ShouldBeNil)
+		})
+
+		Convey("NoMatch + transport lookup returns nil", func() {
+			stage := &ToolStage{
+				Logger:          logger,
+				PermissionStore: newTestStore(map[string]permission.RuleSet{}),
+				Workmode:        "default",
+				GetTransport:    func(id string) transport.IO { return nil },
+			}
+			state := &State{TransportID: "missing"}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			err := stage.checkPermission(context.Background(), state, call)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "requires permission")
+		})
 	})
 }
 
@@ -460,6 +487,87 @@ func TestCompositorSetTurnTimeout(t *testing.T) {
 	})
 }
 
+// delayStage sleeps for a fixed duration on its first call, then returns
+// immediately on subsequent calls. Used to test per-round timeout behavior.
+type delayStage struct {
+	delay   time.Duration
+	first   bool
+	didWait bool
+}
+
+func (s *delayStage) Name() string { return "delay" }
+func (s *delayStage) Clone() Stage {
+	return &delayStage{delay: s.delay, first: true}
+}
+func (s *delayStage) Process(ctx context.Context, _ *State) error {
+	if s.first {
+		s.first = false
+		timer := time.NewTimer(s.delay)
+		defer timer.Stop()
+		select {
+		case <-timer.C:
+			s.didWait = true
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	return nil
+}
+
+// doneStage sets state.Done after a configurable number of calls.
+type doneStage struct {
+	calls    int
+	maxCalls int
+}
+
+func (s *doneStage) Name() string { return "done" }
+func (s *doneStage) Clone() Stage { return &doneStage{maxCalls: s.maxCalls} }
+func (s *doneStage) Process(_ context.Context, state *State) error {
+	s.calls++
+	if s.calls >= s.maxCalls {
+		state.Done = true
+	}
+	return nil
+}
+
+func TestCompositorPerRoundTimeout(t *testing.T) {
+	Convey("Compositor.Execute per-round timeout", t, func() {
+		Convey("each round gets a fresh timeout context", func() {
+			// delayStage takes 150ms on its first call.
+			// turnTimeout is 200ms. Without per-round reset, 150ms +
+			// round 2 overhead would exceed the shared 200ms budget.
+			delay := &delayStage{delay: 150 * time.Millisecond, first: true}
+			done := &doneStage{maxCalls: 2} // needs two rounds to set Done
+
+			c := NewCompositor(nil, []Stage{delay, done}, 10)
+			c.SetTurnTimeout(200 * time.Millisecond)
+
+			ctx := context.Background()
+			state := &State{}
+			err := c.Execute(ctx, state)
+			So(err, ShouldBeNil)
+			So(state.Done, ShouldBeTrue)
+			So(state.Round, ShouldEqual, 2)
+			So(delay.didWait, ShouldBeTrue)
+		})
+
+		Convey("round times out when a single stage exceeds the deadline", func() {
+			// 300ms delay > 100ms timeout → should fail.
+			delay := &delayStage{delay: 300 * time.Millisecond, first: true}
+			done := &doneStage{maxCalls: 1}
+
+			c := NewCompositor(nil, []Stage{delay, done}, 10)
+			c.SetTurnTimeout(100 * time.Millisecond)
+
+			ctx := context.Background()
+			state := &State{}
+			err := c.Execute(ctx, state)
+			So(err, ShouldNotBeNil)
+			So(err.Error(), ShouldContainSubstring, "loop stage delay")
+		})
+	})
+}
+
 func TestContextBuilderStageRegisterSection(t *testing.T) {
 	Convey("ContextBuilderStage RegisterSection", t, func() {
 		Convey("registers a section that appears in build", func() {
@@ -471,6 +579,23 @@ func TestContextBuilderStageRegisterSection(t *testing.T) {
 			err := stage.Process(context.Background(), state)
 			So(err, ShouldBeNil)
 			So(state.SystemPrompt, ShouldContainSubstring, "custom content")
+		})
+
+		Convey("publishes events when EventBus is set", func() {
+			eb := event.NewBus()
+			stage := &ContextBuilderStage{
+				BaseSystemPrompt: "base",
+				EventBus:         eb,
+			}
+			var events []event.Event
+			eb.Subscribe(func(_ context.Context, e event.Event) {
+				events = append(events, e)
+			})
+			state := &State{SessionID: "s1"}
+			err := stage.Process(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(state.SystemPrompt, ShouldContainSubstring, "base")
+			So(len(events), ShouldBeGreaterThanOrEqualTo, 2)
 		})
 	})
 }
@@ -688,6 +813,91 @@ func TestToolStageProcessSuccess(t *testing.T) {
 	})
 }
 
+func TestToolStageProcessParallel(t *testing.T) {
+	Convey("ToolStage.Process parallel execution", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+
+		Convey("executes tools in parallel when MaxParallel > 1", func() {
+			var mu sync.Mutex
+			var execOrder []string
+			started := make(chan struct{})
+			reg := tool.NewRegistry()
+			reg.RegisterBuiltin("a", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+				mu.Lock()
+				execOrder = append(execOrder, "a_start")
+				mu.Unlock()
+				<-started
+				mu.Lock()
+				execOrder = append(execOrder, "a_end")
+				mu.Unlock()
+				return &types.ToolResult{Content: "a", IsError: false}, nil
+			})
+			reg.RegisterBuiltin("b", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+				mu.Lock()
+				execOrder = append(execOrder, "b_start")
+				mu.Unlock()
+				<-started
+				mu.Lock()
+				execOrder = append(execOrder, "b_end")
+				mu.Unlock()
+				return &types.ToolResult{Content: "b", IsError: false}, nil
+			})
+
+			stage := &ToolStage{
+				ToolRegistry: reg,
+				Logger:       logger,
+				EventBus:     eb,
+				MaxParallel:  2,
+			}
+			state := &State{SessionID: "s1"}
+			state.ToolCalls = []types.ToolCall{
+				{ID: "c1", Name: "a", Arguments: `{}`},
+				{ID: "c2", Name: "b", Arguments: `{}`},
+			}
+
+			go func() {
+				time.Sleep(50 * time.Millisecond)
+				close(started)
+			}()
+
+			err := stage.Process(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(len(state.Messages), ShouldEqual, 2)
+			// Both started before either finished → parallel execution.
+			So(execOrder[0], ShouldEndWith, "_start")
+			So(execOrder[1], ShouldEndWith, "_start")
+			So(execOrder[2], ShouldEndWith, "_end")
+			So(execOrder[3], ShouldEndWith, "_end")
+		})
+
+		Convey("falls back to serial when MaxParallel <= 1", func() {
+			reg := tool.NewRegistry()
+			reg.RegisterBuiltin("x", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+				return &types.ToolResult{Content: "x", IsError: false}, nil
+			})
+
+			stage := &ToolStage{
+				ToolRegistry: reg,
+				Logger:       logger,
+				EventBus:     eb,
+				MaxParallel:  1,
+			}
+			state := &State{SessionID: "s1"}
+			state.ToolCalls = []types.ToolCall{
+				{ID: "c1", Name: "x", Arguments: `{}`},
+				{ID: "c2", Name: "x", Arguments: `{}`},
+			}
+
+			err := stage.Process(context.Background(), state)
+			So(err, ShouldBeNil)
+			So(len(state.Messages), ShouldEqual, 2)
+			So(state.Messages[0].Content, ShouldEqual, "x")
+			So(state.Messages[1].Content, ShouldEqual, "x")
+		})
+	})
+}
+
 func TestLLMStageTryComplete(t *testing.T) {
 	Convey("LLMStage.tryComplete", t, func() {
 		logger, _ := zap.NewDevelopment()
@@ -716,7 +926,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				events = append(events, e)
 			})
 
-			err := stage.tryComplete(context.Background(), state)
+			err := stage.tryComplete(context.Background(), state, nil)
 			So(err, ShouldBeNil)
 			So(len(state.Messages), ShouldEqual, 2)
 			So(state.Messages[1].Role, ShouldEqual, types.RoleAssistant)
@@ -741,7 +951,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
 			}
 
-			err := stage.tryComplete(context.Background(), state)
+			err := stage.tryComplete(context.Background(), state, nil)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldEqual, "api error")
 		})
@@ -764,7 +974,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				Messages: []types.Message{{Role: types.RoleUser, Content: "do it"}},
 			}
 
-			err := stage.tryComplete(context.Background(), state)
+			err := stage.tryComplete(context.Background(), state, nil)
 			So(err, ShouldBeNil)
 			So(len(state.ToolCalls), ShouldEqual, 1)
 			So(state.ToolCalls[0].Name, ShouldEqual, "shell")
@@ -792,7 +1002,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				},
 			}
 
-			err := stage.tryComplete(context.Background(), state)
+			err := stage.tryComplete(context.Background(), state, nil)
 			So(err, ShouldBeNil)
 			So(chunks, ShouldResemble, []string{"a", "b"})
 		})
@@ -1819,5 +2029,273 @@ func FuzzSessionLock(f *testing.F) {
 		if count == 0 {
 			t.Errorf("expected at least one session lock, got 0")
 		}
+	})
+}
+
+// blockingChunkProvider sends chunks only after unblock is closed, allowing
+// tests to hold the LLM mid-stream and inject signals.
+type blockingChunkProvider struct {
+	chunks  []llm.LLMChunk
+	unblock chan struct{}
+}
+
+func (b *blockingChunkProvider) Name() string { return "blocking-chunk-provider" }
+func (b *blockingChunkProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk, len(b.chunks)+1)
+	go func() {
+		<-b.unblock
+		for _, chunk := range b.chunks {
+			ch <- chunk
+		}
+		close(ch)
+	}()
+	return ch, nil
+}
+func (b *blockingChunkProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
+func (b *blockingChunkProvider) ActiveModel() string                                 { return "" }
+
+func TestLLMStageTryCompleteInterrupt(t *testing.T) {
+	Convey("LLMStage.tryComplete interrupt during streaming", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		var gotEvents []event.Event
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			gotEvents = append(gotEvents, e)
+		})
+
+		unblock := make(chan struct{})
+		provider := &blockingChunkProvider{
+			chunks: []llm.LLMChunk{
+				{Content: "partial", OutputTokens: 5},
+				{Content: "", Done: true},
+			},
+			unblock: unblock,
+		}
+
+		stage := &LLMStage{
+			Provider:  provider,
+			Model:     "test-model",
+			EventBus:  eb,
+			SignalBus: sigBus,
+			Logger:    logger,
+		}
+		state := &State{
+			SessionID: "s1",
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		}
+
+		sigCh := sigBus.Subscribe("s1")
+		defer sigBus.Unsubscribe("s1", sigCh)
+
+		var tryCompleteErr error
+		done := make(chan struct{})
+		go func() {
+			tryCompleteErr = stage.tryComplete(context.Background(), state, sigCh)
+			close(done)
+		}()
+
+		// Send interrupt while streaming is blocked.
+		sigBus.Send("s1", signal.Interrupt)
+		<-done
+
+		So(tryCompleteErr, ShouldEqual, ErrInterrupted)
+
+		hasInterrupt := false
+		for _, e := range gotEvents {
+			if e.Type == event.EventLLMInterrupt {
+				hasInterrupt = true
+				So(e.SessionID, ShouldEqual, "s1")
+				break
+			}
+		}
+		So(hasInterrupt, ShouldBeTrue)
+	})
+
+	Convey("LLMStage.tryComplete no interrupt when signal is not Interrupt", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		provider := &blockingChunkProvider{
+			chunks: []llm.LLMChunk{
+				{Content: "done", Done: true},
+			},
+			unblock: make(chan struct{}),
+		}
+
+		stage := &LLMStage{
+			Provider:  provider,
+			Model:     "test-model",
+			EventBus:  eb,
+			SignalBus: sigBus,
+			Logger:    logger,
+		}
+		state := &State{
+			SessionID: "s2",
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		}
+
+		sigCh := sigBus.Subscribe("s2")
+		defer sigBus.Unsubscribe("s2", sigCh)
+
+		// Send a non-Interrupt signal (Continue) — should be ignored.
+		sigBus.Send("s2", signal.Continue)
+		close(provider.unblock)
+
+		err := stage.tryComplete(context.Background(), state, sigCh)
+		So(err, ShouldBeNil)
+		So(len(state.Messages), ShouldEqual, 2)
+	})
+
+	Convey("LLMStage.tryComplete context done", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		provider := &blockingChunkProvider{
+			chunks:  []llm.LLMChunk{{Content: "x", Done: true}},
+			unblock: make(chan struct{}),
+		}
+
+		stage := &LLMStage{
+			Provider:  provider,
+			Model:     "test-model",
+			EventBus:  eb,
+			SignalBus: sigBus,
+			Logger:    logger,
+		}
+		state := &State{
+			SessionID: "s3",
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		}
+
+		sigCh := sigBus.Subscribe("s3")
+		defer sigBus.Unsubscribe("s3", sigCh)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		err := stage.tryComplete(ctx, state, sigCh)
+		So(err, ShouldEqual, context.Canceled)
+	})
+}
+
+func TestLLMStageProcessInterrupt(t *testing.T) {
+	Convey("LLMStage.Process interrupt caught in tryComplete during streaming", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		var gotEvents []event.Event
+		llmStarted := make(chan struct{})
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			gotEvents = append(gotEvents, e)
+			if e.Type == event.EventLLMStart {
+				close(llmStarted)
+			}
+		})
+
+		unblock := make(chan struct{})
+		provider := &blockingChunkProvider{
+			chunks:  []llm.LLMChunk{{Content: "ok", Done: true}},
+			unblock: unblock,
+		}
+
+		stage := &LLMStage{
+			Provider:  provider,
+			Model:     "test-model",
+			EventBus:  eb,
+			SignalBus: sigBus,
+			Logger:    logger,
+		}
+		state := &State{
+			SessionID: "s-interrupt-streaming",
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		}
+
+		var procErr error
+		done := make(chan struct{})
+		go func() {
+			procErr = stage.Process(context.Background(), state)
+			close(done)
+		}()
+
+		// Wait for LLMStart event to confirm subscription is set up, then interrupt.
+		<-llmStarted
+		sigBus.Send("s-interrupt-streaming", signal.Interrupt)
+		<-done
+
+		So(procErr, ShouldEqual, ErrInterrupted)
+
+		hasInterrupt := false
+		for _, e := range gotEvents {
+			if e.Type == event.EventLLMInterrupt {
+				hasInterrupt = true
+				break
+			}
+		}
+		So(hasInterrupt, ShouldBeTrue)
+	})
+
+	Convey("LLMStage.Process no retry on ErrInterrupted from tryComplete", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		var gotEvents []event.Event
+		llmStarted := make(chan struct{})
+		eb.Subscribe(func(_ context.Context, e event.Event) {
+			gotEvents = append(gotEvents, e)
+			if e.Type == event.EventLLMStart {
+				select {
+				case <-llmStarted:
+				default:
+					close(llmStarted)
+				}
+			}
+		})
+
+		retryCount := 0
+		unblock := make(chan struct{})
+		provider := &blockingChunkProvider{
+			chunks:  []llm.LLMChunk{{Content: "ok", Done: true}},
+			unblock: unblock,
+		}
+
+		stage := &LLMStage{
+			Provider:   provider,
+			Model:      "test-model",
+			MaxRetries: 2,
+			EventBus:   eb,
+			SignalBus:  sigBus,
+			Logger:     logger,
+		}
+		state := &State{
+			SessionID: "s-no-retry",
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		}
+
+		var procErr error
+		done := make(chan struct{})
+		go func() {
+			procErr = stage.Process(context.Background(), state)
+			close(done)
+		}()
+
+		// Wait for LLMStart to confirm subscription, then interrupt.
+		<-llmStarted
+		sigBus.Send("s-no-retry", signal.Interrupt)
+		<-done
+
+		So(procErr, ShouldEqual, ErrInterrupted)
+		// Should NOT have retried — no EventLLMRetry events.
+		for _, e := range gotEvents {
+			if e.Type == event.EventLLMRetry {
+				retryCount++
+			}
+		}
+		So(retryCount, ShouldEqual, 0)
 	})
 }

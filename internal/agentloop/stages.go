@@ -3,8 +3,10 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	appctx "dolphin/internal/context"
@@ -90,12 +92,6 @@ func (c *Compositor) Clone() *Compositor {
 }
 
 func (c *Compositor) Execute(ctx context.Context, state *State) error {
-	if c.turnTimeout > 0 {
-		var cancel func()
-		ctx, cancel = context.WithTimeout(ctx, c.turnTimeout)
-		defer cancel()
-	}
-
 	for _, stage := range c.initStages {
 		if err := stage.Process(ctx, state); err != nil {
 			return fmt.Errorf("init stage %s: %w", stage.Name(), err)
@@ -103,10 +99,23 @@ func (c *Compositor) Execute(ctx context.Context, state *State) error {
 	}
 
 	for !state.Done && state.Round < c.maxRounds {
+		// Each round gets a fresh timeout so long-running tools in
+		// previous rounds don't starve subsequent LLM calls.
+		roundCtx := ctx
+		var cancel func()
+		if c.turnTimeout > 0 {
+			roundCtx, cancel = context.WithTimeout(ctx, c.turnTimeout)
+		}
 		for _, stage := range c.loopStages {
-			if err := stage.Process(ctx, state); err != nil {
+			if err := stage.Process(roundCtx, state); err != nil {
+				if cancel != nil {
+					cancel()
+				}
 				return fmt.Errorf(i18n.T("agentloop.stage_loop_failed"), stage.Name(), err)
 			}
+		}
+		if cancel != nil {
+			cancel()
 		}
 		state.Round++
 	}
@@ -184,6 +193,7 @@ func (s *ContextBuilderStage) initRegistry() {
 	s.reg.Register(&appctx.Design{Workspace: s.Workspace})
 	s.reg.Register(&appctx.Soul{Workspace: s.Workspace})
 	s.reg.Register(&appctx.Skills{Store: s.SkillStore})
+	s.reg.Register(&appctx.Workflow{})
 }
 
 func (s *ContextBuilderStage) Name() string { return "context_builder" }
@@ -269,6 +279,7 @@ type LLMStage struct {
 	MaxRetries   int
 	ToolRegistry *tool.Registry
 	EventBus     *event.Bus
+	SignalBus    *signal.Bus
 	Logger       *zap.Logger
 	HookReg      *hook.Registry
 }
@@ -282,6 +293,7 @@ func (s *LLMStage) Clone() Stage {
 		MaxRetries:   s.MaxRetries,
 		ToolRegistry: s.ToolRegistry,
 		EventBus:     s.EventBus,
+		SignalBus:    s.SignalBus,
 		Logger:       s.Logger,
 		HookReg:      s.HookReg,
 	}
@@ -301,6 +313,8 @@ func (s *LLMStage) activeModel() string {
 	return ""
 }
 
+var ErrInterrupted = errors.New("llm: interrupted")
+
 func (s *LLMStage) Process(ctx context.Context, state *State) error {
 	// Pre-check limits via hook before retry loop.
 	if s.HookReg != nil {
@@ -313,11 +327,36 @@ func (s *LLMStage) Process(ctx context.Context, state *State) error {
 			return fmt.Errorf("llm limit exceeded: %w", err)
 		}
 	}
+
+	// Subscribe to interrupt signals for this session.
+	var sigCh <-chan signal.Signal
+	if s.SignalBus != nil {
+		sigCh = s.SignalBus.Subscribe(state.SessionID)
+		defer s.SignalBus.Unsubscribe(state.SessionID, sigCh)
+	}
+
 	var lastErr error
 	for i := 0; i <= s.MaxRetries; i++ {
-		err := s.tryComplete(ctx, state)
+		// Check for interrupt before each retry.
+		select {
+		case sig, ok := <-sigCh:
+			if ok && sig == signal.Interrupt {
+				s.EventBus.Publish(ctx, event.Event{
+					Type:      event.EventLLMInterrupt,
+					Timestamp: time.Now(),
+					SessionID: state.SessionID,
+				})
+				return ErrInterrupted
+			}
+		default:
+		}
+
+		err := s.tryComplete(ctx, state, sigCh)
 		if err == nil {
 			return nil
+		}
+		if errors.Is(err, ErrInterrupted) {
+			return err
 		}
 		lastErr = err
 		s.EventBus.Publish(ctx, event.Event{
@@ -337,7 +376,7 @@ func (s *LLMStage) Process(ctx context.Context, state *State) error {
 	return lastErr
 }
 
-func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
+func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan signal.Signal) error {
 	msgs := state.Messages
 
 	// Use per-turn tools if set, otherwise fall back to global registry.
@@ -389,64 +428,85 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State) error {
 	var cacheCreationInputTokens, cacheReadInputTokens, promptCachedTokens int
 	var promptCacheHitTokens, promptCacheMissTokens int
 
-	for chunk := range ch {
-		if chunk.Error != nil {
-			s.EventBus.Publish(ctx, event.Event{
-				Type:      event.EventLLMError,
-				Timestamp: time.Now(),
-				SessionID: state.SessionID,
-				Payload:   map[string]any{"error": chunk.Error.Error()},
-			})
-			return chunk.Error
-		}
+	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if chunk.Error != nil {
+				s.EventBus.Publish(ctx, event.Event{
+					Type:      event.EventLLMError,
+					Timestamp: time.Now(),
+					SessionID: state.SessionID,
+					Payload:   map[string]any{"error": chunk.Error.Error()},
+				})
+				return chunk.Error
+			}
 
-		thinking.WriteString(chunk.Thinking)
-		if chunk.Thinking != "" && state.OnThinking != nil {
-			state.OnThinking(chunk.Thinking)
-		}
-		if chunk.ThinkingSignature != "" {
-			thinkingSignature = chunk.ThinkingSignature
-		}
-		content.WriteString(chunk.Content)
-		if len(chunk.ToolCalls) > 0 {
-			toolCalls = append(toolCalls, chunk.ToolCalls...)
-			if state.OnToolCall != nil {
-				for _, tc := range chunk.ToolCalls {
-					state.OnToolCall(tc)
+			thinking.WriteString(chunk.Thinking)
+			if chunk.Thinking != "" && state.OnThinking != nil {
+				state.OnThinking(chunk.Thinking)
+			}
+			if chunk.ThinkingSignature != "" {
+				thinkingSignature = chunk.ThinkingSignature
+			}
+			content.WriteString(chunk.Content)
+			if len(chunk.ToolCalls) > 0 {
+				toolCalls = append(toolCalls, chunk.ToolCalls...)
+				if state.OnToolCall != nil {
+					for _, tc := range chunk.ToolCalls {
+						state.OnToolCall(tc)
+					}
 				}
 			}
-		}
 
-		if chunk.InputTokens > 0 {
-			inputTokens = chunk.InputTokens
-		}
-		if chunk.OutputTokens > 0 {
-			outputTokens = chunk.OutputTokens
-		}
-		if chunk.CacheCreationInputTokens > 0 {
-			cacheCreationInputTokens = chunk.CacheCreationInputTokens
-		}
-		if chunk.CacheReadInputTokens > 0 {
-			cacheReadInputTokens = chunk.CacheReadInputTokens
-		}
-		if chunk.PromptCachedTokens > 0 {
-			promptCachedTokens = chunk.PromptCachedTokens
-		}
-		if chunk.PromptCacheHitTokens > 0 {
-			promptCacheHitTokens = chunk.PromptCacheHitTokens
-		}
-		if chunk.PromptCacheMissTokens > 0 {
-			promptCacheMissTokens = chunk.PromptCacheMissTokens
-		}
+			if chunk.InputTokens > 0 {
+				inputTokens = chunk.InputTokens
+			}
+			if chunk.OutputTokens > 0 {
+				outputTokens = chunk.OutputTokens
+			}
+			if chunk.CacheCreationInputTokens > 0 {
+				cacheCreationInputTokens = chunk.CacheCreationInputTokens
+			}
+			if chunk.CacheReadInputTokens > 0 {
+				cacheReadInputTokens = chunk.CacheReadInputTokens
+			}
+			if chunk.PromptCachedTokens > 0 {
+				promptCachedTokens = chunk.PromptCachedTokens
+			}
+			if chunk.PromptCacheHitTokens > 0 {
+				promptCacheHitTokens = chunk.PromptCacheHitTokens
+			}
+			if chunk.PromptCacheMissTokens > 0 {
+				promptCacheMissTokens = chunk.PromptCacheMissTokens
+			}
 
-		if chunk.Content != "" && state.OnChunk != nil {
-			state.OnChunk(chunk.Content)
-		}
+			if chunk.Content != "" && state.OnChunk != nil {
+				state.OnChunk(chunk.Content)
+			}
 
-		if chunk.Done {
-			break
+			if chunk.Done {
+				goto done
+			}
+
+		case sig, ok := <-sigCh:
+			if ok && sig == signal.Interrupt {
+				s.EventBus.Publish(ctx, event.Event{
+					Type:      event.EventLLMInterrupt,
+					Timestamp: time.Now(),
+					SessionID: state.SessionID,
+				})
+				return ErrInterrupted
+			}
+
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
+
+done:
 
 	s.Logger.Debug("llm chunk results",
 		zap.Int("thinking_len", thinking.Len()),
@@ -497,6 +557,7 @@ type ToolStage struct {
 	PermissionStore *permission.Store
 	GetTransport    func(id string) transport.IO
 	Workmode        string
+	MaxParallel     int
 }
 
 // errPermissionDenied is a sentinel error for permission-denied tool calls.
@@ -529,103 +590,299 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 
 	state.ToolsCalled = true
 
-	// Subscribe to signal bus once and clean up when done.
 	var sigCh <-chan signal.Signal
 	if s.SignalBus != nil {
 		sigCh = s.SignalBus.Subscribe(state.SessionID)
 		defer s.SignalBus.Unsubscribe(state.SessionID, sigCh)
 	}
 
-	for _, call := range calls {
-		if sigCh != nil {
-			select {
-			case sig := <-sigCh:
-				switch sig {
-				case signal.Interrupt:
-					s.EventBus.Publish(ctx, event.Event{
-						Type:      event.EventTurnInterrupt,
-						Timestamp: time.Now(),
-						SessionID: state.SessionID,
-						Payload:   map[string]any{"tool": call.Name},
-					})
-					return nil
-				case signal.Continue:
-					// continue execution
+	// Fast path: serial execution when parallelism is disabled.
+	if s.MaxParallel <= 1 {
+		for i, call := range calls {
+			// Interrupt check before each call.
+			if sigCh != nil {
+				select {
+				case sig := <-sigCh:
+					if sig == signal.Interrupt {
+						s.EventBus.Publish(ctx, event.Event{
+							Type:      event.EventTurnInterrupt,
+							Timestamp: time.Now(),
+							SessionID: state.SessionID,
+							Payload:   map[string]any{"tool": call.Name},
+						})
+						// Append error results for remaining calls so every
+						// tool_use has a matching tool_result.
+						for _, c := range calls[i:] {
+							msg, tr := s.interruptedToolResult(c)
+							state.Messages = append(state.Messages, msg)
+							state.ToolResults = append(state.ToolResults, tr)
+						}
+						return nil
+					}
+				default:
 				}
-			default:
 			}
-		}
 
-		// Permission check.
-		if err := s.checkPermission(ctx, state, call); err != nil {
+			if err := s.checkPermission(ctx, state, call); err != nil {
+				msg, tr := s.deniedToolResult(call, err)
+				s.EventBus.Publish(ctx, event.Event{
+					Type:      event.EventToolError,
+					Timestamp: time.Now(),
+					SessionID: state.SessionID,
+					Payload:   map[string]any{"error": err.Error(), "tool": call.Name, "input": call.Arguments},
+				})
+				state.Messages = append(state.Messages, msg)
+				state.ToolResults = append(state.ToolResults, tr)
+				continue
+			}
+
 			s.EventBus.Publish(ctx, event.Event{
-				Type:      event.EventToolError,
+				Type:      event.EventToolStart,
 				Timestamp: time.Now(),
 				SessionID: state.SessionID,
-				Payload:   map[string]any{"error": err.Error(), "tool": call.Name, "input": call.Arguments},
+				Payload:   map[string]any{"tool": call.Name, "input": call.Arguments},
 			})
+
+			execCtx := ctx
+			var cancel func()
+			if s.Timeout > 0 {
+				execCtx, cancel = context.WithTimeout(ctx, s.Timeout)
+			}
+
+			result, err := s.ToolRegistry.Execute(execCtx, call)
+			if cancel != nil {
+				cancel()
+			}
+
+			if err != nil {
+				s.EventBus.Publish(ctx, event.Event{
+					Type:      event.EventToolError,
+					Timestamp: time.Now(),
+					SessionID: state.SessionID,
+					Payload:   map[string]any{"error": err.Error(), "tool": call.Name, "input": call.Arguments},
+				})
+				msg, tr := s.interruptedToolResult(call)
+				state.Messages = append(state.Messages, msg)
+				state.ToolResults = append(state.ToolResults, tr)
+				return err
+			}
+
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventToolComplete,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload:   map[string]any{"tool": call.Name, "output": result.Content, "is_error": result.IsError},
+			})
+
 			state.Messages = append(state.Messages, types.Message{
 				Role:       types.RoleTool,
 				ToolCallID: call.ID,
-				Content:    fmt.Sprintf(i18n.T("agentloop.denied_message"), err.Error()),
-				IsError:    true,
+				Content:    result.Content,
+				IsError:    result.IsError,
+				Timestamp:  time.Now(),
 			})
-			state.ToolResults = append(state.ToolResults, types.ToolResult{
-				ToolCallID: call.ID,
-				Content:    err.Error(),
-				IsError:    true,
-			})
-			continue
+			state.ToolResults = append(state.ToolResults, *result)
+			if state.OnToolResult != nil {
+				state.OnToolResult(*result)
+			}
 		}
+		return nil
+	}
 
-		s.EventBus.Publish(ctx, event.Event{
-			Type:      event.EventToolStart,
-			Timestamp: time.Now(),
-			SessionID: state.SessionID,
-			Payload:   map[string]any{"tool": call.Name, "input": call.Arguments},
-		})
+	// Parallel path: permission checks run serially (may prompt), then
+	// approved tools execute concurrently bounded by MaxParallel.
+	return s.processParallel(ctx, state, calls, sigCh)
+}
 
-		execCtx := ctx
-		var cancel func()
-		if s.Timeout > 0 {
-			execCtx, cancel = context.WithTimeout(ctx, s.Timeout)
-		}
+// deniedToolResult builds the error message and ToolResult for a
+// permission-denied tool call.
+func (s *ToolStage) deniedToolResult(call types.ToolCall, err error) (types.Message, types.ToolResult) {
+	msg := types.Message{
+		Role:       types.RoleTool,
+		ToolCallID: call.ID,
+		Content:    fmt.Sprintf(i18n.T("agentloop.denied_message"), err.Error()),
+		IsError:    true,
+		Timestamp:  time.Now(),
+	}
+	tr := types.ToolResult{
+		ToolCallID: call.ID,
+		Content:    err.Error(),
+		IsError:    true,
+	}
+	return msg, tr
+}
 
-		result, err := s.ToolRegistry.Execute(execCtx, call)
-		if cancel != nil {
-			cancel()
-		}
+// interruptedToolResult builds an error result for a tool call that was
+// interrupted before execution. Ensures every tool_use has a matching
+// tool_result in the message history.
+func (s *ToolStage) interruptedToolResult(call types.ToolCall) (types.Message, types.ToolResult) {
+	content := i18n.T("agentloop.tool_interrupted", call.Name)
+	msg := types.Message{
+		Role:       types.RoleTool,
+		ToolCallID: call.ID,
+		Content:    content,
+		IsError:    true,
+		Timestamp:  time.Now(),
+	}
+	tr := types.ToolResult{
+		ToolCallID: call.ID,
+		Content:    content,
+		IsError:    true,
+	}
+	return msg, tr
+}
 
-		if err != nil {
+// processParallel executes tool calls concurrently, bounded by MaxParallel.
+// Permission checks already passed for all calls.
+func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []types.ToolCall, sigCh <-chan signal.Signal) error {
+	execCtx, execCancel := context.WithCancel(ctx)
+	defer execCancel()
 
+	sem := make(chan struct{}, s.MaxParallel)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var firstErr error
+	completed := make(map[string]bool)
+
+	// Collect denied calls and passing calls.
+	type pending struct {
+		call types.ToolCall
+	}
+	var pendingCalls []pending
+
+	for _, call := range calls {
+		if err := s.checkPermission(ctx, state, call); err != nil {
+			msg, tr := s.deniedToolResult(call, err)
 			s.EventBus.Publish(ctx, event.Event{
 				Type:      event.EventToolError,
 				Timestamp: time.Now(),
 				SessionID: state.SessionID,
 				Payload:   map[string]any{"error": err.Error(), "tool": call.Name, "input": call.Arguments},
 			})
-			return err
+			state.Messages = append(state.Messages, msg)
+			state.ToolResults = append(state.ToolResults, tr)
+			continue
+		}
+		pendingCalls = append(pendingCalls, pending{call})
+	}
+
+	// Watch for interrupt while tools are running.
+	if sigCh != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case sig := <-sigCh:
+					if sig == signal.Interrupt {
+						s.EventBus.Publish(ctx, event.Event{
+							Type:      event.EventTurnInterrupt,
+							Timestamp: time.Now(),
+							SessionID: state.SessionID,
+						})
+						execCancel()
+						return
+					}
+				case <-execCtx.Done():
+					return
+				}
+			}
+		}()
+	}
+
+	for _, p := range pendingCalls {
+		call := p.call
+
+		// Don't start new work if already cancelled.
+		if execCtx.Err() != nil {
+			break
 		}
 
-		s.EventBus.Publish(ctx, event.Event{
-			Type:      event.EventToolComplete,
-			Timestamp: time.Now(),
-			SessionID: state.SessionID,
-			Payload:   map[string]any{"tool": call.Name, "output": result.Content, "is_error": result.IsError},
-		})
+		wg.Add(1)
+		go func(tc types.ToolCall) {
+			defer wg.Done()
 
-		state.Messages = append(state.Messages, types.Message{
-			Role:       types.RoleTool,
-			ToolCallID: call.ID,
-			Content:    result.Content,
-			IsError:    result.IsError,
-		})
-		state.ToolResults = append(state.ToolResults, *result)
-		if state.OnToolResult != nil {
-			state.OnToolResult(*result)
+			select {
+			case sem <- struct{}{}:
+			case <-execCtx.Done():
+				return
+			}
+			defer func() { <-sem }()
+
+			toolCtx := execCtx
+			var cancel func()
+			if s.Timeout > 0 {
+				toolCtx, cancel = context.WithTimeout(execCtx, s.Timeout)
+				defer cancel()
+			}
+
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventToolStart,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload:   map[string]any{"tool": tc.Name, "input": tc.Arguments},
+			})
+
+			result, err := s.ToolRegistry.Execute(toolCtx, tc)
+
+			mu.Lock()
+			if err != nil {
+				s.EventBus.Publish(ctx, event.Event{
+					Type:      event.EventToolError,
+					Timestamp: time.Now(),
+					SessionID: state.SessionID,
+					Payload:   map[string]any{"error": err.Error(), "tool": tc.Name, "input": tc.Arguments},
+				})
+				if firstErr == nil {
+					firstErr = err
+					execCancel()
+				}
+				// Always append a tool_result so every tool_use has a match.
+				msg, tr := s.interruptedToolResult(tc)
+				state.Messages = append(state.Messages, msg)
+				state.ToolResults = append(state.ToolResults, tr)
+				completed[tc.ID] = true
+				mu.Unlock()
+				return
+			}
+
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventToolComplete,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload:   map[string]any{"tool": tc.Name, "output": result.Content, "is_error": result.IsError},
+			})
+
+			state.Messages = append(state.Messages, types.Message{
+				Role:       types.RoleTool,
+				ToolCallID: tc.ID,
+				Content:    result.Content,
+				IsError:    result.IsError,
+				Timestamp:  time.Now(),
+			})
+			state.ToolResults = append(state.ToolResults, *result)
+			completed[tc.ID] = true
+			mu.Unlock()
+
+			if state.OnToolResult != nil {
+				state.OnToolResult(*result)
+			}
+		}(call)
+	}
+
+	wg.Wait()
+
+	// Ensure every tool_use has a matching tool_result, even for calls
+	// that were skipped due to cancellation or interrupt.
+	for _, p := range pendingCalls {
+		if !completed[p.call.ID] {
+			msg, tr := s.interruptedToolResult(p.call)
+			state.Messages = append(state.Messages, msg)
+			state.ToolResults = append(state.ToolResults, tr)
 		}
 	}
-	return nil
+
+	return firstErr
 }
 
 // checkPermission evaluates whether a tool call is allowed under the current

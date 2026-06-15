@@ -23,7 +23,7 @@ func init() {
 			"workflow.schema_mismatch":   "step %q output does not match schema: %s",
 			"workflow.step_timeout":      "step %q timed out after %s",
 
-			"tool.run_workflow":           "Execute a workflow YAML file",
+			"tool.run_workflow":           "Execute a workflow YAML file. The .workflow.yaml format:\nversion: \"1\"\nname: \"workflow_name\"\nsteps:\n  - id: step1\n    prompt: \"task description for LLM\"\n    # optional: depends_on: [other_step_id]\n    # optional: foreach: \"$prev_step.field\" (requires prev_step to have output_schema with array field)\n    # optional: output_schema: {field: type}\nSteps with no depends_on or same-level dependencies run in parallel.",
 			"tool.run_workflow_path":      "Path to the .workflow.yaml file",
 			"tool.continue_workflow":      "Continue a paused workflow from checkpoint",
 			"tool.continue_workflow_path": "Path to the .workflow.yaml file",
@@ -47,7 +47,7 @@ func init() {
 			"workflow.schema_mismatch":   "步骤 %q 输出与 schema 不匹配: %s",
 			"workflow.step_timeout":      "步骤 %q 超时 (%s)",
 
-			"tool.run_workflow":           "执行工作流 YAML 文件",
+			"tool.run_workflow":           "执行工作流 YAML 文件。.workflow.yaml 格式：\nversion: \"1\"\nname: \"工作流名称\"\nsteps:\n  - id: step1\n    prompt: \"给 LLM 的任务描述\"\n    # 可选: depends_on: [其他步骤id]\n    # 可选: foreach: \"$上一步.field\" (需上一步有 output_schema 且包含数组字段)\n    # 可选: output_schema: {field: 类型}\n无 depends_on 或同级依赖的 step 会并行执行。",
 			"tool.run_workflow_path":      ".workflow.yaml 文件路径",
 			"tool.continue_workflow":      "从检查点继续暂停的工作流",
 			"tool.continue_workflow_path": ".workflow.yaml 文件路径",

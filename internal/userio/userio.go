@@ -125,6 +125,12 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 				ss.SetSession(u.sessionMgr.Active())
 			}
 		}
+		if strings.HasPrefix(line, "models use ") {
+			if notifier, ok := tio.(interface{ NotifyModelChange(string) }); ok {
+				name := strings.TrimSpace(strings.TrimPrefix(line, "models use "))
+				notifier.NotifyModelChange(name)
+			}
+		}
 		return false
 	}
 

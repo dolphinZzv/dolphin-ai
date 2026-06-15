@@ -10,6 +10,7 @@ import (
 	_ "dolphin/internal/transport/a2a"
 	_ "dolphin/internal/transport/dingtalk"
 	_ "dolphin/internal/transport/panda"
+	_ "dolphin/internal/transport/tui"
 	_ "dolphin/internal/transport/wework"
 )
 

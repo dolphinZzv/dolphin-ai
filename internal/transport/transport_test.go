@@ -19,7 +19,7 @@ func TestStdio_Read(t *testing.T) {
 	t.Cleanup(func() { os.Stdin = oldStdin })
 	os.Stdin = r
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	s.rl = nil // force fallback reader in test
 
 	go func() {
@@ -46,7 +46,7 @@ func TestStdio_Write(t *testing.T) {
 	t.Cleanup(func() { os.Stdout = oldStdout })
 	os.Stdout = w
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 
 	err = s.Write(context.Background(), "test output")
 	if err != nil {
@@ -71,7 +71,7 @@ func TestStdio_Flush(t *testing.T) {
 	t.Cleanup(func() { os.Stdout = oldStdout })
 	os.Stdout = w
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	err = s.Flush()
 	if err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestStdio_Close(t *testing.T) {
 	if isRace {
 		t.Skip("skipping: readline has a known race under -race")
 	}
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	err := s.Close()
 	if err != nil {
 		t.Fatal(err)
@@ -97,14 +97,14 @@ func TestStdio_Close(t *testing.T) {
 }
 
 func TestStdio_ID(t *testing.T) {
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	if s.ID() != "stdio" {
 		t.Fatalf("expected 'stdio', got '%s'", s.ID())
 	}
 }
 
 func TestStdio_Capability(t *testing.T) {
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	c := s.Capability()
 	if !c.Interactive {
 		t.Fatal("expected Interactive=true")
@@ -127,7 +127,7 @@ func TestStdio_ReadContextCancelled(t *testing.T) {
 	t.Cleanup(func() { os.Stdin = oldStdin })
 	os.Stdin = r
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	s.rl = nil // force fallback reader in test
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -241,7 +241,7 @@ func TestStdio_RequestPermission_Denied(t *testing.T) {
 	os.Stdin = stdinR
 	os.Stdout = stdoutW
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	s.rl = nil
 
 	go func() {
@@ -280,7 +280,7 @@ func TestStdio_RequestPermission_Once(t *testing.T) {
 	os.Stdin = stdinR
 	os.Stdout = stdoutW
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	s.rl = nil
 
 	go func() {
@@ -318,7 +318,7 @@ func TestStdio_RequestPermission_Always(t *testing.T) {
 	os.Stdin = stdinR
 	os.Stdout = stdoutW
 
-	s := NewStdio("test")
+	s := NewStdio("test", "Dolphin")
 	s.rl = nil
 
 	go func() {

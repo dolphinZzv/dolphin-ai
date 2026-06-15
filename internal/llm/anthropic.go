@@ -114,18 +114,30 @@ func AnthropicChatURL(baseURL string) string {
 // BuildAnthropicMessages converts an LLMRequest to an Anthropic-compatible message array.
 func BuildAnthropicMessages(req LLMRequest, logger *zap.Logger) []AnthropicMessage {
 	var msgs []AnthropicMessage
-	for _, m := range req.Messages {
+	for i := 0; i < len(req.Messages); i++ {
+		m := req.Messages[i]
 		switch m.Role {
 		case types.RoleTool:
-			block := map[string]any{
-				"type":        "tool_result",
-				"tool_use_id": m.ToolCallID,
-				"content":     m.Content,
+			// Collect all consecutive tool_result blocks into a single
+			// user message so every tool_use from the preceding assistant
+			// message has its result in the immediately following message.
+			var blocks []map[string]any
+			for j := i; j < len(req.Messages); j++ {
+				tm := req.Messages[j]
+				if tm.Role != types.RoleTool {
+					break
+				}
+				block := map[string]any{
+					"type":        "tool_result",
+					"tool_use_id": tm.ToolCallID,
+					"content":     tm.Content,
+				}
+				if tm.IsError {
+					block["is_error"] = true
+				}
+				blocks = append(blocks, block)
+				i = j
 			}
-			if m.IsError {
-				block["is_error"] = true
-			}
-			blocks := []map[string]any{block}
 			data, _ := json.Marshal(blocks)
 			msgs = append(msgs, AnthropicMessage{Role: "user", Content: data})
 

@@ -103,6 +103,9 @@ func parseProviderModels(cfg interface {
 		if maxTokens == 0 {
 			maxTokens = cfg.GetInt("llm.max_tokens")
 		}
+		if maxTokens == 0 {
+			maxTokens = 4096
+		}
 
 		maxRetries := cfg.GetInt(prefix + ".max_retries")
 		if maxRetries == 0 {
@@ -114,6 +117,8 @@ func parseProviderModels(cfg interface {
 			timeout = cfg.GetDuration("llm.timeout")
 		}
 
+		maxConcurrency := cfg.GetInt(prefix + ".limit.max_concurrency")
+
 		models = append(models, llm.ModelConfig{
 			Name:            name,
 			Provider:        provider,
@@ -123,6 +128,7 @@ func parseProviderModels(cfg interface {
 			MaxTokens:       maxTokens,
 			Temperature:     cfg.GetFloat(prefix + ".temperature"),
 			MaxRetries:      maxRetries,
+			MaxConcurrency:  maxConcurrency,
 			Timeout:         timeout,
 			ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
 			Disabled:        cfg.GetBool(prefix + ".disabled"),

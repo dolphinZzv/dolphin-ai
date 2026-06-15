@@ -69,10 +69,11 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		[]agentloop.Stage{
 			&agentloop.LLMStage{
 				Provider:     c.LLMProvider,
-				MaxTokens:    c.Config.GetInt("llm.max_tokens"),
+				MaxTokens:    maxInt(c.Config.GetInt("llm.max_tokens"), 4096),
 				MaxRetries:   c.Config.GetInt("llm.max_retries"),
 				ToolRegistry: c.ToolReg,
 				EventBus:     c.EventBus,
+				SignalBus:    c.SignalBus,
 				Logger:       c.Logger,
 				HookReg:      c.HookReg,
 			},
@@ -85,6 +86,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 				PermissionStore: permStore,
 				GetTransport:    c.AgentIO.GetTransport,
 				Workmode:        workmode,
+				MaxParallel:     c.Config.GetInt("agent.tool_parallelism"),
 			},
 			&agentloop.MemoryWriteStage{
 				Memory:   c.Mem,
@@ -101,4 +103,11 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	c.CmdReg.SetAgentIO(c.AgentIO)
 
 	return nil
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }

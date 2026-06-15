@@ -256,44 +256,68 @@ func (b *Brain) List(ctx context.Context) ([]string, error) {
 	return files, nil
 }
 
-// ReadIndex reads root-level concept files plus index.md in each immediate
-// subdirectory. Returns concatenated content.
-func (b *Brain) ReadIndex(ctx context.Context) (string, error) {
-	var parts []string
-
-	for _, name := range []string{"index.md", "workflow.md", "brain.md"} {
-		if _, err := os.Stat(filepath.Join(b.dir, name)); err == nil {
-			data, err := os.ReadFile(filepath.Join(b.dir, name))
-			if err != nil {
-				return "", fmt.Errorf("brain: read root %s: %w", name, err)
-			}
-			parts = append(parts, "## /"+name+"\n"+string(data))
-		}
-	}
-
-	entries, err := os.ReadDir(b.dir)
+// Tree returns a hierarchical text tree of the brain directory,
+// showing .md files and directories. Dotfiles and .git are excluded.
+func (b *Brain) Tree() (string, error) {
+	var sb strings.Builder
+	err := walkTree(b.dir, "", &sb)
 	if err != nil {
-		return "", fmt.Errorf("brain: read dir: %w", err)
+		return "", err
 	}
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		if entry.Name() == ".git" {
-			continue
-		}
-		idxPath := filepath.Join(b.dir, entry.Name(), "index.md")
-		if _, err := os.Stat(idxPath); err != nil {
-			continue
-		}
-		data, err := os.ReadFile(idxPath)
-		if err != nil {
-			return "", fmt.Errorf("brain: read %s/index.md: %w", entry.Name(), err)
-		}
-		parts = append(parts, "## "+entry.Name()+"/index.md\n"+string(data))
+	return sb.String(), nil
+}
+
+func walkTree(root string, prefix string, sb *strings.Builder) error {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return fmt.Errorf("brain: tree read %s: %w", root, err)
 	}
 
-	return strings.Join(parts, "\n---\n"), nil
+	visible := make([]os.DirEntry, 0, len(entries))
+	for _, e := range entries {
+		name := e.Name()
+		if name == ".git" {
+			continue
+		}
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		if e.IsDir() || strings.HasSuffix(name, ".md") {
+			visible = append(visible, e)
+		}
+	}
+
+	sort.Slice(visible, func(i, j int) bool {
+		// Directories first, then files.
+		if visible[i].IsDir() != visible[j].IsDir() {
+			return visible[i].IsDir()
+		}
+		return visible[i].Name() < visible[j].Name()
+	})
+
+	for i, e := range visible {
+		isLast := i == len(visible)-1
+		conn := "├── "
+		childPrefix := prefix + "│   "
+		if isLast {
+			conn = "└── "
+			childPrefix = prefix + "    "
+		}
+
+		display := e.Name()
+		if e.IsDir() {
+			display += "/"
+		}
+		sb.WriteString(prefix + conn + display + "\n")
+
+		if e.IsDir() {
+			subRoot := filepath.Join(root, e.Name())
+			if err := walkTree(subRoot, childPrefix, sb); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // GitLog returns the last n commits.

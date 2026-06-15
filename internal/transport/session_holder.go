@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"dolphin/internal/session"
+	"dolphin/internal/types"
 	"github.com/rs/xid"
 )
 
@@ -88,3 +89,12 @@ func (h *SessionHolder) ResetSession() {
 	defer h.mu.Unlock()
 	h.current = nil
 }
+
+// WriteThinking is a no-op default. Transports with rich rendering override it.
+func (h *SessionHolder) WriteThinking(_ context.Context, _ string) error { return nil }
+
+// WriteToolCall is a no-op default. Transports with rich rendering override it.
+func (h *SessionHolder) WriteToolCall(_ context.Context, _ types.ToolCall) error { return nil }
+
+// WriteToolResult is a no-op default. Transports with rich rendering override it.
+func (h *SessionHolder) WriteToolResult(_ context.Context, _ types.ToolResult) error { return nil }

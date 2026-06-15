@@ -22,7 +22,11 @@ func init() {
 		if user == "" {
 			user = "unknown"
 		}
-		return NewStdio(user), nil
+		agentName := "Dolphin"
+		if name, ok := cfg["agent_name"].(string); ok && name != "" {
+			agentName = name
+		}
+		return NewStdio(user, agentName), nil
 	})
 }
 
@@ -33,18 +37,20 @@ type Stdio struct {
 	reader     *bufio.Reader
 	mu         sync.Mutex
 	user       string
+	agentName  string
 	ctx        context.Context
 	cancel     context.CancelFunc
 	permResult chan string // non-nil when a permission request is pending
 }
 
-func NewStdio(user string) *Stdio {
+func NewStdio(user, agentName string) *Stdio {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &Stdio{
 		SessionHolder: NewSessionHolder(nil),
 		id:            "stdio",
 		reader:        bufio.NewReader(os.Stdin),
 		user:          user,
+		agentName:     agentName,
 		ctx:           ctx,
 		cancel:        cancel,
 	}
@@ -68,9 +74,12 @@ func NewStdio(user string) *Stdio {
 
 func (s *Stdio) ID() string { return s.id }
 
-func (s *Stdio) Context() string                 { return "" }
-func (s *Stdio) Tools() []common.ToolDesc        { return nil }
-func (s *Stdio) Start(ctx context.Context) error { return nil }
+func (s *Stdio) Context() string          { return "" }
+func (s *Stdio) Tools() []common.ToolDesc { return nil }
+func (s *Stdio) Start(ctx context.Context) error {
+	_, _ = fmt.Fprintf(os.Stdout, "\n%s> ", s.agentName)
+	return nil
+}
 
 func (s *Stdio) Read(ctx context.Context) (string, error) {
 	if s.rl != nil {

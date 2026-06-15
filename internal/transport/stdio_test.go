@@ -12,7 +12,7 @@ import (
 
 func TestStdioGetters(t *testing.T) {
 	Convey("Stdio getters", t, func() {
-		s := NewStdio("testuser")
+		s := NewStdio("testuser", "Dolphin")
 
 		Convey("ID returns stdio", func() {
 			So(s.ID(), ShouldEqual, "stdio")
@@ -85,7 +85,7 @@ func TestNullTransportIO(t *testing.T) {
 
 func TestNewStdio_EmptyUser(t *testing.T) {
 	Convey("NewStdio with empty user", t, func() {
-		s := NewStdio("")
+		s := NewStdio("", "Dolphin")
 		So(s, ShouldNotBeNil)
 		So(s.id, ShouldEqual, "stdio")
 	})
@@ -112,7 +112,7 @@ func TestStdioClose_WithReadline(t *testing.T) {
 		t.Skip("skipping: readline has a known race under -race")
 	}
 	Convey("Close with readline returns no error", t, func() {
-		s := NewStdio("testuser")
+		s := NewStdio("testuser", "Dolphin")
 		So(s.rl, ShouldNotBeNil)
 
 		err := s.Close()
@@ -122,7 +122,7 @@ func TestStdioClose_WithReadline(t *testing.T) {
 
 func TestStdioMaybeExit_NoMatch(t *testing.T) {
 	Convey("maybeExit returns input unchanged for non-exit commands", t, func() {
-		s := NewStdio("test")
+		s := NewStdio("test", "Dolphin")
 		result := s.maybeExit("hello")
 		So(result, ShouldEqual, "hello")
 
@@ -143,7 +143,7 @@ func TestStdioMaybeExit_Cancel(t *testing.T) {
 		t.Cleanup(func() { os.Stdin = oldStdin })
 		os.Stdin = r
 
-		s := NewStdio("test")
+		s := NewStdio("test", "Dolphin")
 
 		go func() {
 			fmt.Fprint(w, "n\n")
@@ -166,7 +166,7 @@ func TestStdioMaybeExit_Variants(t *testing.T) {
 			os.Stdin = r
 			t.Cleanup(func() { os.Stdin = oldStdin })
 
-			s := NewStdio("test")
+			s := NewStdio("test", "Dolphin")
 
 			go func() {
 				fmt.Fprint(w, "n\n")
@@ -181,7 +181,7 @@ func TestStdioMaybeExit_Variants(t *testing.T) {
 
 func TestStdioWriteReturnsNil(t *testing.T) {
 	Convey("Stdio.Write returns nil", t, func() {
-		s := NewStdio("test")
+		s := NewStdio("test", "Dolphin")
 		err := s.Write(context.Background(), "hello")
 		So(err, ShouldBeNil)
 	})
@@ -189,7 +189,7 @@ func TestStdioWriteReturnsNil(t *testing.T) {
 
 func TestStdioCapability(t *testing.T) {
 	Convey("Stdio.Capability returns interactive+streamable+nestRead", t, func() {
-		s := NewStdio("test")
+		s := NewStdio("test", "Dolphin")
 		c := s.Capability()
 		So(c.Interactive, ShouldBeTrue)
 		So(c.Streamable, ShouldBeTrue)

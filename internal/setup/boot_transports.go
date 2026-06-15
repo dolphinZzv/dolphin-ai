@@ -24,6 +24,11 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 		return nil
 	}
 	transportCfgs, _ := loadTransportConfigs(c.Config, c.Config.GetString("agent.name"))
+	if hasTransportType(transportCfgs, "tui") && hasTransportType(transportCfgs, "stdio") {
+		c.Logger.Fatal("tui and stdio transports cannot be enabled at the same time",
+			zap.String("reason", "both require raw terminal mode"),
+		)
+	}
 	for _, tc := range transportCfgs {
 		tc.Config["logger"] = c.Logger
 		tio, err := transport.Build(ctx, tc.Type, tc.Config)
@@ -204,8 +209,24 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 			})
 		}
 	}
+	if cfg.GetBool("tui.enabled") {
+		if !hasTransportType(tcs, "tui") {
+			tcs = append(tcs, transportConfig{
+				Type: "tui",
+				Config: map[string]any{
+					"type":       "tui",
+					"agent_name": agentName,
+					"theme":      cfg.GetString("tui.theme"),
+					"model":      cfg.GetString("llm.use"),
+				},
+			})
+		}
+	}
 	if !hasExplicit && !hasTransportType(tcs, "stdio") {
-		tcs = append([]transportConfig{{Type: "stdio", Config: map[string]any{"type": "stdio"}}}, tcs...)
+		stdioExplicitlyDisabled := configHasKey(cfg, "stdio.enabled") && !cfg.GetBool("stdio.enabled")
+		if !stdioExplicitlyDisabled {
+			tcs = append([]transportConfig{{Type: "stdio", Config: map[string]any{"type": "stdio"}}}, tcs...)
+		}
 	}
 	return tcs, nil
 }
@@ -213,6 +234,16 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 func hasTransportType(tcs []transportConfig, typ string) bool {
 	for _, tc := range tcs {
 		if tc.Type == typ {
+			return true
+		}
+	}
+	return false
+}
+
+// configHasKey returns true if the config key exists (was explicitly set).
+func configHasKey(cfg *config.Config, key string) bool {
+	for _, k := range cfg.Keys() {
+		if k == key {
 			return true
 		}
 	}

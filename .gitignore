@@ -52,3 +52,5 @@ e2e/
 # Workflow test artifacts
 internal/workflow/*.result.yaml
 todo.md
+*.result.yaml
+.workflow.yaml

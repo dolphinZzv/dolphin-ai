@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"dolphin/internal/llm"
+	"dolphin/internal/signal"
 
 	"github.com/spf13/cobra"
 )
@@ -86,6 +87,10 @@ func RegisterModels(r *Registry, provider llm.Provider) {
 			if mgr == nil {
 				cmd.Printf("switching models is not supported with the current provider\n")
 				return nil
+			}
+			// Cancel all running operations before switching models.
+			if cur := r.sessMgr.Active(); cur != nil {
+				r.signalBus.Send(cur.ID, signal.Interrupt)
 			}
 			name := strings.TrimSpace(args[0])
 			if err := mgr.SetActiveModel(name); err != nil {

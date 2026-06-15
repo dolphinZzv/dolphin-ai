@@ -572,7 +572,7 @@ type mockReader struct {
 	err   error
 }
 
-func (m *mockReader) ReadIndex(_ stdctx.Context) (string, error) {
+func (m *mockReader) Tree() (string, error) {
 	return m.index, m.err
 }
 

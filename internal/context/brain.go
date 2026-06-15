@@ -2,12 +2,13 @@ package context
 
 import stdctx "context"
 
-// BrainIndexReader provides the brain index content to inject into system prompt.
+// BrainIndexReader provides the brain tree and file contents.
 type BrainIndexReader interface {
-	ReadIndex(ctx stdctx.Context) (string, error)
+	Tree() (string, error)
 }
 
-// Brain injects brain index.
+// Brain injects a tree view of the brain directory so the LLM can
+// decide which files to read via the brain_read tool.
 type Brain struct {
 	Reader BrainIndexReader
 }
@@ -18,9 +19,9 @@ func (s *Brain) BuildContent(ctx stdctx.Context) (string, error) {
 	if s.Reader == nil {
 		return "", nil
 	}
-	idx, err := s.Reader.ReadIndex(ctx)
-	if err != nil || idx == "" {
+	tree, err := s.Reader.Tree()
+	if err != nil || tree == "" {
 		return "", nil
 	}
-	return "## Brain Index\nThe following is an index of my long-term knowledge directory. Use brain_read / brain_write tools to access specific files.\n\n" + idx, nil
+	return "## Brain Index\nThe following is my long-term knowledge directory. Use brain_read to load files you need, brain_list to search by keyword.\n\n" + tree, nil
 }

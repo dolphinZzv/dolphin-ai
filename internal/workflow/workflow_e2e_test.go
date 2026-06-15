@@ -6,7 +6,9 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
+	"os/exec"
 	"strconv"
 	"testing"
 	"time"
@@ -89,7 +91,7 @@ func createE2EEngine(t *testing.T) (*Engine, *config.Config, *zap.Logger) {
 	toolReg := tool.NewRegistry()
 	eventBus := event.NewBus()
 
-	engine := NewEngine(toolReg, provider, eventBus, logger, nil, nil, cfg)
+	engine := NewEngine(toolReg, provider, eventBus, logger, nil, cfg)
 
 	return engine, cfg, logger
 }
@@ -536,8 +538,117 @@ func TestE2EProgressCallback(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// E2E: Speed comparison — 3 parallel curl steps → 1 summarize
+// ---------------------------------------------------------------------------
+
+func TestE2ESpeedComparison(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping E2E test in short mode")
+	}
+
+	Convey("E2E: speed comparison — parallel curl baidu/google/bing", t, func() {
+		engine, cfg, _ := createE2EEngine(t)
+		cfg.Set("agent.pool_size", 3)
+
+		// Register a shell tool so the LLM can actually run curl.
+		engine.toolReg.RegisterBuiltin(
+			"shell",
+			"Run a shell command and return its output. Args: {command: string}",
+			json.RawMessage(`{
+				"type": "object",
+				"properties": {
+					"command": {"type": "string", "description": "The shell command to execute"}
+				},
+				"required": ["command"]
+			}`),
+			func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+				var params struct {
+					Command string `json:"command"`
+				}
+				json.Unmarshal(args, &params)
+				cmd := execCommand(ctx, params.Command)
+				return &types.ToolResult{Content: cmd}, nil
+			},
+		)
+
+		spec := &WorkflowSpec{
+			Version: "1",
+			Name:    "e2e_speed_comparison",
+			Steps: []StepSpec{
+				{
+					ID:     "test_baidu",
+					Prompt: "请使用 shell 工具执行命令，测量访问 baidu.com 的响应时间，然后输出 JSON：{\"time_seconds\": <数字>}。命令示例：curl -o /dev/null -s -w '%{time_total}' --max-time 10 https://www.baidu.com。只输出 JSON。",
+					OutputSchema: map[string]any{
+						"time_seconds": "number",
+					},
+				},
+				{
+					ID:     "test_google",
+					Prompt: "请使用 shell 工具执行命令，测量访问 google.com 的响应时间，然后输出 JSON：{\"time_seconds\": <数字>}。命令示例：curl -o /dev/null -s -w '%{time_total}' --max-time 10 https://www.google.com。只输出 JSON。",
+					OutputSchema: map[string]any{
+						"time_seconds": "number",
+					},
+				},
+				{
+					ID:     "test_bing",
+					Prompt: "请使用 shell 工具执行命令，测量访问 bing.com 的响应时间，然后输出 JSON：{\"time_seconds\": <数字>}。命令示例：curl -o /dev/null -s -w '%{time_total}' --max-time 10 https://www.bing.com。只输出 JSON。",
+					OutputSchema: map[string]any{
+						"time_seconds": "number",
+					},
+				},
+				{
+					ID:        "summarize",
+					Prompt:    "以下是用 curl 测量三个网站的响应时间（秒）：\n- baidu.com: $test_baidu.time_seconds 秒\n- google.com: $test_google.time_seconds 秒\n- bing.com: $test_bing.time_seconds 秒\n\n请判断哪个网站最快，用中文回答。输出 JSON：{\"fastest\": \"<最快网站>\", \"baidu_time\": $test_baidu.time_seconds, \"google_time\": $test_google.time_seconds, \"bing_time\": $test_bing.time_seconds}。只输出 JSON。",
+					DependsOn: []string{"test_baidu", "test_google", "test_bing"},
+					OutputSchema: map[string]any{
+						"fastest":     "string",
+						"baidu_time":  "number",
+						"google_time": "number",
+						"bing_time":   "number",
+					},
+				},
+			},
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer cancel()
+
+		start := time.Now()
+		result, err := engine.Run(ctx, spec, "")
+		elapsed := time.Since(start)
+		So(err, ShouldBeNil)
+		So(result, ShouldNotBeNil)
+		So(result.Status, ShouldEqual, "completed")
+
+		t.Logf("total elapsed: %v (parallel curl should be much less than sum of individual times)", elapsed)
+
+		for _, step := range result.Steps {
+			t.Logf("  %s: status=%s result=%v", step.ID, step.Status, step.Result)
+			So(step.Status, ShouldEqual, StatusDone)
+		}
+
+		// Verify summarize step has the merged result.
+		summarize := result.Steps[3]
+		m, ok := summarize.Result.(map[string]any)
+		So(ok, ShouldBeTrue)
+		So(m["fastest"], ShouldNotBeEmpty)
+		t.Logf("fastest website: %v", m["fastest"])
+		t.Logf("  baidu: %vs, google: %vs, bing: %vs", m["baidu_time"], m["google_time"], m["bing_time"])
+	})
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+func execCommand(ctx context.Context, command string) string {
+	cmd := exec.CommandContext(ctx, "sh", "-c", command)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Sprintf("error: %v\noutput: %s", err, string(out))
+	}
+	return string(out)
+}
 
 func itoa(n int) string {
 	return strconv.Itoa(n)

@@ -22,6 +22,7 @@ const (
 	EventLLMComplete          Type = "llm.complete"
 	EventLLMError             Type = "llm.error"
 	EventLLMRetry             Type = "llm.retry"
+	EventLLMInterrupt         Type = "llm.interrupt"
 	EventToolAssembly         Type = "tool.assembly"
 	EventToolStart            Type = "tool.start"
 	EventToolComplete         Type = "tool.complete"

@@ -287,30 +287,6 @@ func TestGitAccessDenied(t *testing.T) {
 	}
 }
 
-func TestReadIndex(t *testing.T) {
-	ctx := context.Background()
-	dir := t.TempDir()
-	b := New(dir)
-	if err := b.Init(ctx); err != nil {
-		t.Fatalf("Init failed: %v", err)
-	}
-
-	idx, err := b.ReadIndex(ctx)
-	if err != nil {
-		t.Fatalf("ReadIndex failed: %v", err)
-	}
-
-	// Should contain root-level introduction content.
-	if !strings.Contains(idx, "Brain Index") {
-		t.Errorf("expected root index in output, got: %s", idx)
-	}
-
-	// Should contain subdirectory index.md content.
-	if !strings.Contains(idx, "rules") || !strings.Contains(idx, "knowledge") {
-		t.Errorf("expected subdirectory references in index, got: %s", idx)
-	}
-}
-
 func TestResolveMarkDownFile_modelOverride(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -429,26 +405,6 @@ func TestInsertModelSuffix(t *testing.T) {
 		if got != tt.expected {
 			t.Errorf("insertModelSuffix(%q, %q) = %q, want %q", tt.base, tt.model, got, tt.expected)
 		}
-	}
-}
-
-func TestReadIndexNoGit(t *testing.T) {
-	// ReadIndex should work even without git (e.g. during pipeline init sequence).
-	dir := t.TempDir()
-	b := New(dir)
-
-	// Create files manually without Init.
-	os.MkdirAll(dir, 0755)
-	os.WriteFile(filepath.Join(dir, "index.md"), []byte("Root index"), 0644)
-	os.MkdirAll(filepath.Join(dir, "sub"), 0755)
-	os.WriteFile(filepath.Join(dir, "sub", "index.md"), []byte("Sub index"), 0644)
-
-	idx, err := b.ReadIndex(context.Background())
-	if err != nil {
-		t.Fatalf("ReadIndex failed: %v", err)
-	}
-	if !strings.Contains(idx, "Root index") || !strings.Contains(idx, "Sub index") {
-		t.Errorf("unexpected index content: %s", idx)
 	}
 }
 
@@ -611,4 +567,43 @@ func TestAutoCommit(t *testing.T) {
 			t.Errorf("expected 'my custom message', got: %s", commits[0].Message)
 		}
 	})
+}
+
+func TestBrainTree(t *testing.T) {
+	dir := t.TempDir()
+	b := New(dir)
+
+	// Create some .md files and subdirectories.
+	_ = os.WriteFile(filepath.Join(dir, "index.md"), []byte("index"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "notes.md"), []byte("notes"), 0600)
+	_ = os.MkdirAll(filepath.Join(dir, "sub"), 0750)
+	_ = os.WriteFile(filepath.Join(dir, "sub", "child.md"), []byte("child"), 0600)
+	// Dotfiles dir should be hidden.
+	_ = os.MkdirAll(filepath.Join(dir, ".hidden"), 0750)
+	_ = os.WriteFile(filepath.Join(dir, ".hidden", "secret.md"), []byte("secret"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte("env"), 0600)
+
+	tree, err := b.Tree()
+	if err != nil {
+		t.Fatalf("Tree failed: %v", err)
+	}
+
+	if !strings.Contains(tree, "index.md") {
+		t.Errorf("expected index.md in tree, got:\n%s", tree)
+	}
+	if !strings.Contains(tree, "notes.md") {
+		t.Errorf("expected notes.md in tree, got:\n%s", tree)
+	}
+	if !strings.Contains(tree, "sub/") {
+		t.Errorf("expected sub/ in tree, got:\n%s", tree)
+	}
+	if !strings.Contains(tree, "child.md") {
+		t.Errorf("expected child.md in tree, got:\n%s", tree)
+	}
+	if strings.Contains(tree, ".hidden") {
+		t.Errorf("expected .hidden to be excluded from tree:\n%s", tree)
+	}
+	if strings.Contains(tree, ".env") {
+		t.Errorf("expected .env to be excluded from tree:\n%s", tree)
+	}
 }

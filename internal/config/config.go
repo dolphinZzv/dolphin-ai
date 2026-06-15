@@ -69,9 +69,13 @@ func defaultConfig() *Config {
 			"session.dir":               ".dolphin/sessions",
 			"session.mode":              "per_transport",
 			"agent.pool_size":           1,
+			"agent.tool_parallelism":    1,
 			"agent.turn_timeout":        "120s",
 			"agent.session_gc_interval": "300s",
 			"workflow.step_timeout":     "300s",
+			"llm.max_tokens":            4096,
+			"llm.max_retries":           3,
+			"llm.timeout":               "120s",
 		},
 	}
 }

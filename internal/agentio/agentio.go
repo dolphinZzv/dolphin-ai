@@ -51,7 +51,6 @@ type AgentIO struct {
 	signalBus  *signal.Bus
 	logger     *zap.Logger
 	agentName  string
-	replied    map[string]bool
 
 	bufMu   sync.Mutex
 	buffers map[string]string // partial text for chunk-mode transports
@@ -75,7 +74,6 @@ func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *za
 		signalBus:   sb,
 		logger:      logger,
 		agentName:   agentName,
-		replied:     make(map[string]bool),
 		buffers:     make(map[string]string),
 		cancelled:   make(map[string]bool),
 		activeTurns: make(map[string]*TurnInfo),
@@ -260,33 +258,27 @@ func (a *AgentIO) writeResult(result *TurnResult, transportID string) {
 	cap := tio.Capability()
 
 	if result.Thinking != "" {
-		if tw, ok := tio.(transport.ThinkingWriter); ok {
-			if err := tw.WriteThinking(context.Background(), result.Thinking); err != nil {
-				a.logger.Error("OnResult WriteThinking failed",
-					zap.Error(err),
-					zap.String("transport_id", transportID),
-				)
-			}
+		if err := tio.WriteThinking(context.Background(), result.Thinking); err != nil {
+			a.logger.Error("OnResult WriteThinking failed",
+				zap.Error(err),
+				zap.String("transport_id", transportID),
+			)
 		}
 	}
 	if result.ToolCall != nil {
-		if tcw, ok := tio.(transport.ToolCallWriter); ok {
-			if err := tcw.WriteToolCall(context.Background(), *result.ToolCall); err != nil {
-				a.logger.Error("OnResult WriteToolCall failed",
-					zap.Error(err),
-					zap.String("transport_id", transportID),
-				)
-			}
+		if err := tio.WriteToolCall(context.Background(), *result.ToolCall); err != nil {
+			a.logger.Error("OnResult WriteToolCall failed",
+				zap.Error(err),
+				zap.String("transport_id", transportID),
+			)
 		}
 	}
 	if result.ToolResult != nil {
-		if trw, ok := tio.(transport.ToolResultWriter); ok {
-			if err := trw.WriteToolResult(context.Background(), *result.ToolResult); err != nil {
-				a.logger.Error("OnResult WriteToolResult failed",
-					zap.Error(err),
-					zap.String("transport_id", transportID),
-				)
-			}
+		if err := tio.WriteToolResult(context.Background(), *result.ToolResult); err != nil {
+			a.logger.Error("OnResult WriteToolResult failed",
+				zap.Error(err),
+				zap.String("transport_id", transportID),
+			)
 		}
 	}
 
@@ -294,10 +286,6 @@ func (a *AgentIO) writeResult(result *TurnResult, transportID string) {
 		if cap.Streamable {
 			// Streamable: write chunks as they arrive.
 			text := result.Text
-			if !a.replied[transportID] {
-				text = i18n.T("agentio.reply_prefix", a.agentName) + text
-				a.replied[transportID] = true
-			}
 			if err := tio.Write(context.Background(), text); err != nil {
 				a.logger.Error("OnResult write failed",
 					zap.Error(err),
@@ -338,7 +326,6 @@ func (a *AgentIO) writeResult(result *TurnResult, transportID string) {
 			}
 		}
 
-		a.replied[transportID] = false
 		if err := tio.Flush(); err != nil {
 			a.logger.Error("OnResult flush failed",
 				zap.Error(err),

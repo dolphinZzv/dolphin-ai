@@ -75,6 +75,7 @@
         "name": { "type": "string", "default": "Dolphin" },
         "max_rounds": { "type": "integer", "minimum": 1, "default": 100 },
         "pool_size": { "type": "integer", "minimum": 1, "default": 1 },
+        "tool_parallelism": { "type": "integer", "minimum": 1, "default": 1, "description": "Max parallel tool calls per turn" },
         "buffer_size": { "type": "integer", "default": 1024 },
         "turn_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "120s" },
         "workspace": { "type": "string", "default": "." },
@@ -172,6 +173,22 @@
         "addr": { "type": "string", "description": "Listen address for pprof HTTP server, e.g. :6060" }
       }
     },
+    "stdio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "Enable stdio transport. Set to false when using tui." }
+      }
+    },
+    "tui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "theme": { "type": "string", "enum": ["auto", "dark", "light"], "default": "auto" },
+        "history_file": { "type": "string", "description": "Path to input history file" }
+      }
+    },
     "email": {
       "type": "object",
       "additionalProperties": false,
@@ -251,7 +268,8 @@
                   "max_requests": { "$ref": "#/definitions/limitValue" },
                   "max_total_tokens": { "$ref": "#/definitions/limitValue" },
                   "max_input_tokens": { "$ref": "#/definitions/limitValue" },
-                  "max_output_tokens": { "$ref": "#/definitions/limitValue" }
+                  "max_output_tokens": { "$ref": "#/definitions/limitValue" },
+                  "max_concurrency": { "type": "integer", "minimum": 1, "description": "Max concurrent LLM streams for this model" }
                 }
               }
             },
