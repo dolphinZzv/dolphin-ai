@@ -18,6 +18,7 @@ All notable changes to Dolphin will be documented in this file.
 - Various lint and formatting fixes for the TUI transport.
 - `os.Exit` made replaceable via package-level `osExit` variable for testability.
 - Transport test coverage: `stdio.go` improved from 67.8% to 92.1% with pipe-backed readline tests.
+- TUI test coverage: all changed files (`model.go`, `tui.go`, `renderer.go`, `theme.go`, `perm_dialog.go`) now above 80%.
 
 ### Breaking Changes
 

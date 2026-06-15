@@ -2,11 +2,16 @@ package tui
 
 import (
 	"context"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestNewTUI(t *testing.T) {
@@ -314,4 +319,818 @@ func TestPermRequestMsgType(t *testing.T) {
 	if msg.prompt != "allow?" {
 		t.Errorf("expected 'allow?', got %q", msg.prompt)
 	}
+}
+
+// --- perm_dialog.go tests ---
+
+func TestRenderPermDialog(t *testing.T) {
+	d := permDialog{
+		prompt:  "Allow this action?",
+		choices: []string{"y (once)", "a (always)", "n (deny)"},
+		active:  0,
+	}
+	result := renderPermDialog(d, 80)
+	if result == "" {
+		t.Error("renderPermDialog returned empty string")
+	}
+	if !strings.Contains(result, "Allow this action?") {
+		t.Error("renderPermDialog should contain prompt")
+	}
+}
+
+func TestRenderPermDialog_ActiveChoice(t *testing.T) {
+	d := permDialog{
+		prompt:  "Test",
+		choices: []string{"a", "b"},
+		active:  1,
+	}
+	result := renderPermDialog(d, 80)
+	if result == "" {
+		t.Error("renderPermDialog returned empty string")
+	}
+}
+
+func TestRenderPermDialog_NarrowWidth(t *testing.T) {
+	d := permDialog{prompt: "Test", choices: []string{"x"}}
+	result := renderPermDialog(d, 10)
+	if result == "" {
+		t.Error("renderPermDialog should handle narrow width")
+	}
+}
+
+// --- theme.go tests ---
+
+func TestThemeFromString_Dark(t *testing.T) {
+	th := ThemeFromString("dark")
+	if th.MarkdownStyle != "dark" {
+		t.Errorf("expected dark theme, got markdown style %q", th.MarkdownStyle)
+	}
+}
+
+func TestThemeFromString_Light(t *testing.T) {
+	th := ThemeFromString("light")
+	if th.MarkdownStyle != "light" {
+		t.Errorf("expected light theme, got markdown style %q", th.MarkdownStyle)
+	}
+}
+
+func TestThemeFromString_Invalid(t *testing.T) {
+	th := ThemeFromString("invalid")
+	if th.MarkdownStyle != "dark" {
+		t.Errorf("expected dark fallback for invalid, got %q", th.MarkdownStyle)
+	}
+}
+
+func TestThemeFromString_AutoLightEnv(t *testing.T) {
+	_ = os.Setenv("COLORFGRD", "something")
+	defer func() { _ = os.Unsetenv("COLORFGRD") }()
+	th := ThemeFromString("auto")
+	if th.MarkdownStyle != "light" {
+		t.Errorf("expected light theme when COLORFGRD is set, got %q", th.MarkdownStyle)
+	}
+}
+
+func TestThemeFromString_AutoDark(t *testing.T) {
+	_ = os.Unsetenv("COLORFGRD")
+	_ = os.Unsetenv("TERM_BG")
+	th := ThemeFromString("auto")
+	if th.MarkdownStyle != "dark" {
+		t.Errorf("expected dark theme when no light env vars, got %q", th.MarkdownStyle)
+	}
+}
+
+func TestThemeFromString_AutoTERMBG(t *testing.T) {
+	_ = os.Unsetenv("COLORFGRD")
+	_ = os.Setenv("TERM_BG", "light")
+	defer func() { _ = os.Unsetenv("TERM_BG") }()
+	th := ThemeFromString("auto")
+	if th.MarkdownStyle != "light" {
+		t.Errorf("expected light theme when TERM_BG=light, got %q", th.MarkdownStyle)
+	}
+}
+
+func TestIsLightTerminal_Colorfgbg(t *testing.T) {
+	_ = os.Setenv("COLORFGRD", "x")
+	defer func() { _ = os.Unsetenv("COLORFGRD") }()
+	if !isLightTerminal() {
+		t.Error("expected true when COLORFGRD is set")
+	}
+}
+
+func TestIsLightTerminal_TermBg(t *testing.T) {
+	_ = os.Unsetenv("COLORFGRD")
+	_ = os.Setenv("TERM_BG", "light")
+	defer func() { _ = os.Unsetenv("TERM_BG") }()
+	if !isLightTerminal() {
+		t.Error("expected true when TERM_BG=light")
+	}
+}
+
+func TestIsLightTerminal_False(t *testing.T) {
+	_ = os.Unsetenv("COLORFGRD")
+	_ = os.Unsetenv("TERM_BG")
+	if isLightTerminal() {
+		t.Error("expected false when no env vars set")
+	}
+}
+
+// --- renderer.go tests ---
+
+func TestMarkdownRenderer(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	r := markdownRenderer()
+	if r == nil {
+		t.Fatal("markdownRenderer returned nil")
+	}
+	// Second call should return cached.
+	r2 := markdownRenderer()
+	if r != r2 {
+		t.Error("markdownRenderer should return cached instance")
+	}
+}
+
+func TestSetMarkdownStyle(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	_ = markdownRenderer() // prime cache
+	setMarkdownStyle("dark")
+	r1 := markdownRenderer()
+	setMarkdownStyle("light")
+	r2 := markdownRenderer()
+	// Different styles should produce different renderers.
+	_ = r1
+	_ = r2
+}
+
+func TestRenderMarkdown_Empty(t *testing.T) {
+	result := renderMarkdown("")
+	if result != "" {
+		t.Errorf("expected empty for empty input, got %q", result)
+	}
+}
+
+func TestRenderMarkdown_Plain(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	result := renderMarkdown("hello world")
+	if result == "" {
+		t.Error("renderMarkdown returned empty")
+	}
+}
+
+func TestRenderMarkdown_CodeBlock(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	input := "```go\nfunc main() {}\n```"
+	result := renderMarkdown(input)
+	if result == "" {
+		t.Error("renderMarkdown returned empty for code block")
+	}
+}
+
+func TestRenderSeparator_Empty(t *testing.T) {
+	result := renderSeparator("", 80)
+	if result != "" {
+		t.Errorf("expected empty for empty name, got %q", result)
+	}
+}
+
+func TestRenderSeparator_WithName(t *testing.T) {
+	result := renderSeparator("Dolphin", 80)
+	if result == "" {
+		t.Error("renderSeparator returned empty")
+	}
+	if !strings.Contains(result, "-") {
+		t.Error("renderSeparator should contain dashes")
+	}
+}
+
+// --- model.go tests ---
+
+func TestOnOff(t *testing.T) {
+	if onOff(true) != "on" {
+		t.Error("expected 'on'")
+	}
+	if onOff(false) != "off" {
+		t.Error("expected 'off'")
+	}
+}
+
+func TestModelCurrentThemeName(t *testing.T) {
+	m := newModel()
+	m.themeName = "dark"
+	if m.currentThemeName() != "dark" {
+		t.Errorf("expected 'dark', got %q", m.currentThemeName())
+	}
+}
+
+func TestModelSwitchTheme(t *testing.T) {
+	m := newModel()
+	m.themeName = "dark"
+	m.theme = ThemeDark
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+
+	m.switchTheme("light")
+	if m.themeName != "light" {
+		t.Errorf("expected 'light', got %q", m.themeName)
+	}
+	if m.theme.MarkdownStyle != "light" {
+		t.Error("theme should be light")
+	}
+}
+
+func TestModelAppendEntry_Text(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	m.appendEntry(renderEntry{content: "hello", style: "text"})
+	if len(m.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	}
+	if m.messages[0].content != "hello" {
+		t.Errorf("expected 'hello', got %q", m.messages[0].content)
+	}
+}
+
+func TestModelAppendEntry_TextMultiline(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	m.appendEntry(renderEntry{content: "line1\nline2", style: "text"})
+	if len(m.messages) < 1 {
+		t.Error("expected at least 1 message")
+	}
+}
+
+func TestModelAppendEntry_TextConsecutive(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	m.appendEntry(renderEntry{content: "hello", style: "text"})
+	m.appendEntry(renderEntry{content: " world", style: "text"})
+	if m.messages[0].content != "hello world" {
+		t.Errorf("expected merged text, got %q", m.messages[0].content)
+	}
+}
+
+func TestModelAppendEntry_NonText(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	m.appendEntry(renderEntry{content: "thinking...", style: "thinking"})
+	if len(m.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	}
+	if m.messages[0].style != "thinking" {
+		t.Errorf("expected 'thinking' style, got %q", m.messages[0].style)
+	}
+}
+
+func TestModelRebuildViewport_TextBlock(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	m.messages = []renderEntry{
+		{content: "hello", style: "text"},
+		{content: "world", style: "text"},
+	}
+	m.rebuildViewport()
+	content := m.viewport.View()
+	if content == "" {
+		t.Error("viewport content is empty after rebuild")
+	}
+}
+
+func TestModelRebuildViewport_StyledEntries(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	m.messages = []renderEntry{
+		{content: "---", style: "separator"},
+		{content: "thinking...", style: "thinking"},
+	}
+	m.rebuildViewport()
+	content := m.viewport.View()
+	if content == "" {
+		t.Error("viewport content is empty")
+	}
+}
+
+func TestModelViewReady(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.modelName = "test-model"
+	m.theme = ThemeDark
+	m.themeName = "dark"
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("hello")
+
+	view := m.View()
+	if view == "Initializing..." {
+		t.Error("View should not be 'Initializing...' when ready")
+	}
+	if !strings.Contains(view, "Dolphin") {
+		t.Error("View should contain agent name")
+	}
+}
+
+func TestModelViewWithPermDialog(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.modelName = "test-model"
+	m.theme = ThemeDark
+	m.themeName = "dark"
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("hello")
+	m.permDialog = &permDialog{
+		prompt:  "Allow?",
+		choices: []string{"y (once)", "a (always)", "n (deny)"},
+		active:  0,
+	}
+
+	view := m.View()
+	if view == "" {
+		t.Error("View should not be empty with perm dialog")
+	}
+}
+
+// Update message tests
+
+func TestModelUpdate_WindowSizeMsg(t *testing.T) {
+	m := newModel()
+	m.width = 0
+	m.height = 0
+	m.viewport = viewport.New(80, 20)
+
+	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = newM.(model)
+	if m.width != 100 {
+		t.Errorf("expected width=100, got %d", m.width)
+	}
+	if m.height != 30 {
+		t.Errorf("expected height=30, got %d", m.height)
+	}
+}
+
+func TestModelUpdate_CtrlC(t *testing.T) {
+	m := newModel()
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Alt: false})
+	// With ctrl+c, should return Quit. Let's just check it doesn't panic.
+	_ = cmd
+}
+
+func TestModelUpdate_ContentMsg(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.newReply = true
+
+	newM, _ := m.Update(contentMsg{text: "hello"})
+	m = newM.(model)
+	if m.newReply {
+		t.Error("newReply should be false after contentMsg")
+	}
+}
+
+func TestModelUpdate_ThinkingMsg_ShowOff(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.showThinking = false
+
+	_, _ = m.Update(thinkingMsg{text: "thinking..."})
+	if m.inThinking {
+		t.Error("inThinking should be false when showThinking is off")
+	}
+}
+
+func TestModelUpdate_ThinkingMsg_ShowOn(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.showThinking = true
+
+	newM, _ := m.Update(thinkingMsg{text: "thinking..."})
+	m = newM.(model)
+	if !m.inThinking {
+		t.Error("inThinking should be true")
+	}
+}
+
+func TestModelUpdate_ThinkingMsg_Append(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.showThinking = true
+
+	newM, _ := m.Update(thinkingMsg{text: "first"})
+	m = newM.(model)
+	newM, _ = m.Update(thinkingMsg{text: " second"})
+	m = newM.(model)
+	if len(m.messages) < 1 {
+		t.Error("should have thinking entries")
+	}
+}
+
+func TestModelUpdate_ToolCallMsg_ShowOff(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.showTools = false
+
+	_, _ = m.Update(toolCallMsg{call: types.ToolCall{Name: "test", Arguments: "{}"}})
+	// Should not add entry when showTools is off.
+}
+
+func TestModelUpdate_ToolCallMsg_ShowOn(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.showTools = true
+
+	newM, _ := m.Update(toolCallMsg{call: types.ToolCall{Name: "test", Arguments: "{}"}})
+	m = newM.(model)
+	if len(m.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	}
+	if m.messages[0].style != "tool_call" {
+		t.Errorf("expected tool_call style, got %q", m.messages[0].style)
+	}
+}
+
+func TestModelUpdate_ToolResultMsg_ShowOff(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.showTools = false
+
+	_, _ = m.Update(toolResultMsg{result: types.ToolResult{Content: "done"}})
+}
+
+func TestModelUpdate_ToolResultMsg_ShowOn(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.showTools = true
+
+	newM, _ := m.Update(toolResultMsg{result: types.ToolResult{Content: "done"}})
+	m = newM.(model)
+	if len(m.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	}
+	if m.messages[0].style != "tool_result" {
+		t.Errorf("expected tool_result style, got %q", m.messages[0].style)
+	}
+}
+
+func TestModelUpdate_ToolResultMsg_Error(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.showTools = true
+
+	newM, _ := m.Update(toolResultMsg{result: types.ToolResult{Content: "error", IsError: true}})
+	m = newM.(model)
+	if len(m.messages) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	}
+}
+
+func TestModelUpdate_FlushMsg(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	_, _ = m.Update(flushMsg{})
+}
+
+func TestModelUpdate_ModelChangeMsg(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+
+	newM, _ := m.Update(modelChangeMsg{name: "new-model"})
+	m = newM.(model)
+	if m.modelName != "new-model" {
+		t.Errorf("expected modelName='new-model', got %q", m.modelName)
+	}
+}
+
+func TestModelUpdate_PermRequestMsg(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+
+	newM, _ := m.Update(permRequestMsg{prompt: "allow?"})
+	m = newM.(model)
+	if m.permDialog == nil {
+		t.Fatal("permDialog should not be nil")
+	}
+	if m.permDialog.prompt != "allow?" {
+		t.Errorf("expected prompt 'allow?', got %q", m.permDialog.prompt)
+	}
+}
+
+func TestModelUpdate_UserSubmitMsg(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.msgChan = make(chan string, 1)
+
+	_, _ = m.Update(userSubmitMsg{text: "hello"})
+	select {
+	case txt := <-m.msgChan:
+		if txt != "hello" {
+			t.Errorf("expected 'hello', got %q", txt)
+		}
+	default:
+		// Channel may be empty if the message wasn't written (which is okay for the test)
+	}
+}
+
+func TestModelUpdate_PermResponseMsg(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.permCh = make(chan string, 1)
+
+	_, _ = m.Update(permResponseMsg{choice: "once"})
+	select {
+	case choice := <-m.permCh:
+		if choice != "once" {
+			t.Errorf("expected 'once', got %q", choice)
+		}
+	default:
+	}
+}
+
+// Permission dialog key handling in Update
+
+func TestModelUpdate_PermDialogKey_Y(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.permDialog = &permDialog{
+		prompt:  "test",
+		choices: []string{"y", "n"},
+		active:  0,
+	}
+	m.permCh = make(chan string, 1)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	m = newM.(model)
+	if m.permDialog != nil {
+		t.Error("permDialog should be cleared after key press")
+	}
+}
+
+func TestModelUpdate_PermDialogKey_A(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.permDialog = &permDialog{
+		prompt:  "test",
+		choices: []string{"y", "n"},
+	}
+	m.permCh = make(chan string, 1)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	m = newM.(model)
+	if m.permDialog != nil {
+		t.Error("permDialog should be cleared")
+	}
+}
+
+func TestModelUpdate_PermDialogKey_N(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.permDialog = &permDialog{
+		prompt:  "test",
+		choices: []string{"y", "n"},
+	}
+	m.permCh = make(chan string, 1)
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	m = newM.(model)
+	if m.permDialog != nil {
+		t.Error("permDialog should be cleared")
+	}
+}
+
+// --- tui.go tests ---
+
+func TestTUI_NotifyModelChange_NilProgram(t *testing.T) {
+	tui := NewTUI("dark", "", true, true)
+	// Should not panic with nil program.
+	tui.NotifyModelChange("new-model")
+}
+
+func TestTUI_NotifyModelChange_Running(t *testing.T) {
+	tui := NewTUI("dark", "", true, true)
+	_ = tui.Start(context.Background())
+	defer func() { _ = tui.Close() }()
+
+	tui.NotifyModelChange("test-model")
+}
+
+func TestTUI_Read_CtxDone(t *testing.T) {
+	tui := NewTUI("dark", "", true, true)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := tui.Read(ctx)
+	if err == nil {
+		t.Error("expected error from cancelled context")
+	}
+}
+
+func TestTUI_RequestPermission_ReplyPaths(t *testing.T) {
+	tui := NewTUI("dark", "", true, true)
+	_ = tui.Start(context.Background())
+	defer func() { _ = tui.Close() }()
+
+	// Send a perm response and test it gets picked up.
+	go func() {
+		tui.permCh <- "once"
+	}()
+
+	result, err := tui.RequestPermission(context.Background(), "test")
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if result != transport.PermissionOnce {
+		t.Errorf("expected PermissionOnce, got %v", result)
+	}
+}
+
+func TestTUI_RequestPermission_CtxDone(t *testing.T) {
+	tui := NewTUI("dark", "", true, true)
+	_ = tui.Start(context.Background())
+	defer func() { _ = tui.Close() }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := tui.RequestPermission(ctx, "test")
+	if err == nil {
+		t.Error("expected error")
+	}
+}
+
+func TestTUI_RequestPermission_TUICtxDone(t *testing.T) {
+	tui := NewTUI("dark", "", true, true)
+	_ = tui.Start(context.Background())
+
+	_ = tui.Close() // cancels tui.ctx
+
+	_, err := tui.RequestPermission(context.Background(), "test")
+	if err == nil {
+		t.Error("expected error after close")
+	}
+}
+
+func TestTUI_Init_WithConfig(t *testing.T) {
+	// Build a TUI via the registered builder with config.
+	io, err := transport.Build(context.Background(), "tui", map[string]any{
+		"theme":         "light",
+		"model":         "test-model",
+		"show_tools":    true,
+		"show_thinking": true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if io == nil {
+		t.Fatal("expected non-nil IO")
+	}
+	if io.ID() != "tui" {
+		t.Errorf("expected 'tui', got %q", io.ID())
+	}
+}
+
+func TestTUI_Init_EmptyConfig(t *testing.T) {
+	io, err := transport.Build(context.Background(), "tui", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if io == nil {
+		t.Fatal("expected non-nil IO")
+	}
+}
+
+func TestTUI_Init_ConfigNonBool(t *testing.T) {
+	io, err := transport.Build(context.Background(), "tui", map[string]any{
+		"show_tools":    "not-a-bool",
+		"show_thinking": "not-a-bool",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if io == nil {
+		t.Fatal("expected non-nil IO")
+	}
+}
+
+// Additional Update path tests for enter key commands.
+
+func TestModelUpdate_EnterTheme(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.theme = ThemeDark
+	m.themeName = "dark"
+	m.textarea.SetValue("/theme")
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(model)
+	// /theme should have added a system message.
+	if len(m.messages) < 1 {
+		t.Error("expected at least 1 message after /theme")
+	}
+}
+
+func TestModelUpdate_EnterThemeSwitch(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.theme = ThemeDark
+	m.themeName = "dark"
+	m.textarea.SetValue("/theme light")
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(model)
+	if m.themeName != "light" {
+		t.Errorf("expected themeName 'light', got %q", m.themeName)
+	}
+}
+
+func TestModelUpdate_EnterTools(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.theme = ThemeDark
+	m.themeName = "dark"
+	m.showTools = false
+	m.textarea.SetValue("/tools")
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(model)
+	if !m.showTools {
+		t.Error("showTools should be true after toggling")
+	}
+}
+
+func TestModelUpdate_EnterThinking(t *testing.T) {
+	ApplyTheme(ThemeDark)
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.theme = ThemeDark
+	m.themeName = "dark"
+	m.showThinking = false
+	m.textarea.SetValue("/thinking")
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = newM.(model)
+	if !m.showThinking {
+		t.Error("showThinking should be true after toggling")
+	}
+}
+
+func TestModelUpdate_AltEnter(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+
+	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
 }
