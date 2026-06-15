@@ -23,6 +23,16 @@ type flushMsg struct{}
 type permRequestMsg struct{ prompt string }
 type userSubmitMsg struct{ text string }
 type modelChangeMsg struct{ name string }
+type sessionMsg struct{ id string }
+type usageMsg struct {
+	inputTokens  int
+	outputTokens int
+	rounds       int
+	hardReqs     int64
+	reqs         int64
+	hardTokens   int64
+	tokens       int64
+}
 
 // renderEntry is a rendered line or block in the conversation viewport.
 type renderEntry struct {
@@ -47,10 +57,19 @@ type model struct {
 	modelName    string
 	newReply     bool
 	closeBlock   bool
-	theme        Theme
-	themeName    string
 	showTools    bool
 	showThinking bool
+	sessionID    string
+	inputTokens  int
+	outputTokens int
+	rounds       int
+	hardReqs     int64
+	reqs         int64
+	hardTokens   int64
+	tokens       int64
+	savePrefs    func()
+	currentMsg   string // user message currently being processed
+	msgStatus    string // "pending", "success", "error"
 
 	// Incremental rendering state.
 	renderedContent string
@@ -91,7 +110,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ready = true
 		}
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 5
+		m.viewport.Height = msg.Height - 7
 		m.textarea.SetWidth(msg.Width - 1)
 		cmds = append(cmds, tea.ClearScreen)
 
@@ -101,7 +120,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "alt+enter":
-			// Insert newline without submitting.
 			ta, _ := m.textarea.Update(tea.KeyMsg{
 				Type:  tea.KeyRunes,
 				Runes: []rune{'\n'},
@@ -116,23 +134,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if input == "exit" || input == "/exit" {
 					return m, tea.Quit
 				}
-				if input == "/theme" {
-					m.appendEntry(renderEntry{content: fmt.Sprintf("Usage: /theme dark|light|auto  (current: %s)", m.currentThemeName()), style: "system"})
-					return m, tea.Batch(cmds...)
-				}
-				if strings.HasPrefix(input, "/theme ") {
-					m.switchTheme(strings.TrimSpace(strings.TrimPrefix(input, "/theme ")))
-					m.appendEntry(renderEntry{content: fmt.Sprintf("Theme switched to %s", m.currentThemeName()), style: "system"})
-					return m, tea.Batch(cmds...)
-				}
 				if input == "/tools" {
 					m.showTools = !m.showTools
 					m.appendEntry(renderEntry{content: fmt.Sprintf("Tool calls: %s", onOff(m.showTools)), style: "system"})
+					m.notifyPrefsChanged()
 					return m, tea.Batch(cmds...)
 				}
 				if input == "/thinking" {
 					m.showThinking = !m.showThinking
 					m.appendEntry(renderEntry{content: fmt.Sprintf("Thinking: %s", onOff(m.showThinking)), style: "system"})
+					m.notifyPrefsChanged()
 					return m, tea.Batch(cmds...)
 				}
 				if input != "" {
@@ -200,13 +211,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case flushMsg:
+		m.msgStatus = "success"
 		if m.textBlockDirty {
 			m.renderIncremental()
 			m.textBlockDirty = false
 		}
 		m.viewport.GotoBottom()
 
-	case modelChangeMsg:
+	case sessionMsg:
+		m.sessionID = msg.id
+
+		case usageMsg:
+			m.inputTokens = msg.inputTokens
+			m.outputTokens = msg.outputTokens
+			m.rounds = msg.rounds
+			m.hardReqs = msg.hardReqs
+			m.reqs = msg.reqs
+			m.hardTokens = msg.hardTokens
+			m.tokens = msg.tokens
+
+		case modelChangeMsg:
 		m.modelName = msg.name
 		m.rebuildViewport()
 
@@ -225,6 +249,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.appendEntry(renderEntry{content: msg.text, style: "user_text"})
 		m.viewport.GotoBottom()
 		m.newReply = true
+		m.currentMsg = msg.text
+		m.msgStatus = "pending"
 		m.closeBlock = false
 		if m.msgChan != nil {
 			select {
@@ -264,7 +290,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.textarea = ta
 	cmds = append(cmds, taCmd)
 
-	// Auto-grow textarea height with content, capped at 5 lines.
 	lines := strings.Count(ta.Value(), "\n") + 1
 	if lines < 1 {
 		lines = 1
@@ -299,8 +324,6 @@ func (m *model) appendEntry(e renderEntry) {
 			}
 		}
 		if hadMerge {
-			// Streaming merge: skip glamour markdown render, append raw delta.
-			// The block will be re-rendered properly when the next non-text entry arrives.
 			m.renderedContent += e.content
 			m.textBlockDirty = true
 			m.viewport.SetContent(m.renderedContent)
@@ -308,7 +331,6 @@ func (m *model) appendEntry(e renderEntry) {
 			m.renderIncremental()
 		}
 	} else {
-		// Non-text finalizes any dirty text block before appending.
 		if m.textBlockDirty {
 			m.renderIncremental()
 			m.textBlockDirty = false
@@ -321,13 +343,11 @@ func (m *model) appendEntry(e renderEntry) {
 	}
 }
 
-// trimFront discards the oldest messages so len(messages) stays within maxMessages.
 func (m *model) trimFront() {
 	keep := maxMessages / 2
 	if keep <= 0 {
 		return
 	}
-	// Find block boundary: remove complete blocks from the front.
 	dropBlocks := m.messageBlockIndex(len(m.messages) - keep)
 	if dropBlocks <= 0 {
 		dropBlocks = 1
@@ -337,8 +357,6 @@ func (m *model) trimFront() {
 	m.fullRebuild()
 }
 
-// textRunStart returns the index of the first message in the consecutive text
-// run that contains messages[idx]. messages[idx] must be a text-style entry.
 func (m *model) textRunStart(idx int) int {
 	for idx > 0 && m.messages[idx-1].style == "text" {
 		idx--
@@ -346,13 +364,11 @@ func (m *model) textRunStart(idx int) int {
 	return idx
 }
 
-// messageBlockIndex returns the block index that contains the given message index.
 func (m *model) messageBlockIndex(msgIdx int) int {
 	blk := 0
 	i := 0
 	for i <= msgIdx && i < len(m.messages) {
 		if m.messages[i].style == "text" {
-			// Consume consecutive text.
 			for i < len(m.messages) && m.messages[i].style == "text" {
 				i++
 			}
@@ -366,7 +382,6 @@ func (m *model) messageBlockIndex(msgIdx int) int {
 	return blk
 }
 
-// renderIncremental renders only the changed tail of messages and updates the viewport.
 func (m *model) renderIncremental() {
 	if len(m.messages) == 0 {
 		m.renderedContent = ""
@@ -375,47 +390,38 @@ func (m *model) renderIncremental() {
 		return
 	}
 
-	// Find the last text-style entry that may have been merged.
 	lastIdx := len(m.messages) - 1
 	reRenderFrom := lastIdx
 	if m.messages[lastIdx].style == "text" {
 		reRenderFrom = m.textRunStart(lastIdx)
 	}
 
-	// If we're only appending and there's no text merge, reRenderFrom stays at
-	// the start of the new entries. Determine how many messages were already rendered.
 	oldBlockCount := len(m.blockOffsets)
 	if oldBlockCount == 0 {
-		// First render — do a full build.
 		m.fullRebuild()
 		return
 	}
 
-	// Find the block that contains reRenderFrom.
 	truncateBlock := m.messageBlockIndex(reRenderFrom)
 	if truncateBlock >= oldBlockCount {
 		truncateBlock = oldBlockCount
 	}
 
-	// If there are no new blocks to append and no text was merged, we're done.
 	newBlockCount := m.countBlocks()
 	if truncateBlock >= newBlockCount {
 		return
 	}
 
-	// If we're truncating near the beginning, a full rebuild is simpler.
 	if truncateBlock == 0 {
 		m.fullRebuild()
 		return
 	}
 
-	// Truncate renderedContent at the start of truncateBlock.
 	if truncateBlock < len(m.blockOffsets) {
 		m.renderedContent = m.renderedContent[:m.blockOffsets[truncateBlock]]
 		m.blockOffsets = m.blockOffsets[:truncateBlock]
 	}
 
-	// Render messages from the first message of truncateBlock to end.
 	msgStart := m.blockMessageStart(truncateBlock)
 	tail := m.renderBlocks(msgStart)
 
@@ -425,7 +431,6 @@ func (m *model) renderIncremental() {
 	offset := len(m.renderedContent)
 	m.renderedContent += tail
 
-	// Record block offsets for the newly rendered blocks.
 	m.blockOffsets = append(m.blockOffsets, m.computeBlockOffsets(msgStart, offset)...)
 
 	m.viewport.SetContent(m.renderedContent)
@@ -447,7 +452,6 @@ func (m *model) countBlocks() int {
 	return n
 }
 
-// blockMessageStart returns the first message index for the given block.
 func (m *model) blockMessageStart(blk int) int {
 	if blk <= 0 {
 		return 0
@@ -467,7 +471,6 @@ func (m *model) blockMessageStart(blk int) int {
 	return i
 }
 
-// renderBlocks renders messages from startIdx to end, joining consecutive text entries.
 func (m *model) renderBlocks(startIdx int) string {
 	var b strings.Builder
 	for i := startIdx; i < len(m.messages); {
@@ -491,8 +494,6 @@ func (m *model) renderBlocks(startIdx int) string {
 	return b.String()
 }
 
-// computeBlockOffsets returns byte offsets for each block rendered from startIdx,
-// relative to baseOffset.
 func (m *model) computeBlockOffsets(startIdx int, baseOffset int) []int {
 	var offsets []int
 	offset := baseOffset
@@ -519,7 +520,6 @@ func (m *model) computeBlockOffsets(startIdx int, baseOffset int) []int {
 	return offsets
 }
 
-// fullRebuild rebuilds the entire viewport content and tracking state.
 func (m *model) fullRebuild() {
 	m.textBlockDirty = false
 	var b strings.Builder
@@ -555,13 +555,17 @@ func onOff(v bool) string {
 	return "off"
 }
 
-func (m *model) currentThemeName() string { return m.themeName }
+func truncateSessionID(id string) string {
+	if len(id) <= 8 {
+		return id
+	}
+	return id[:8]
+}
 
-func (m *model) switchTheme(name string) {
-	m.themeName = name
-	m.theme = ThemeFromString(name)
-	ApplyTheme(m.theme)
-	m.rebuildViewport()
+func (m *model) notifyPrefsChanged() {
+	if m.savePrefs != nil {
+		m.savePrefs()
+	}
 }
 
 func (m *model) rebuildViewport() {
@@ -575,29 +579,47 @@ func (m model) View() string {
 
 	toggles := fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking))
 
-	statusBar := lipgloss.NewStyle().
-		Foreground(m.theme.StatusForeground).
-		Background(m.theme.StatusBackground).
-		Width(m.width).
-		Padding(0, 1).
-		Render("🐬 " + m.agentName + " | " + m.modelName + " | " + toggles + " | /exit")
+	// Build all status parts, then fit into lines by actual width.
+	var parts []string
+	parts = append(parts, "🐬 "+m.agentName)
+	if m.sessionID != "" {
+		parts = append(parts, truncateSessionID(m.sessionID))
+	}
+	parts = append(parts, m.modelName)
+	parts = append(parts, toggles)
+	if m.inputTokens > 0 || m.outputTokens > 0 {
+		parts = append(parts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
+	}
+	if m.rounds > 0 {
+		if m.hardReqs > 0 {
+			parts = append(parts, fmt.Sprintf("req:%d/%d", m.reqs, m.hardReqs))
+		}
+		if m.hardTokens > 0 {
+			parts = append(parts, fmt.Sprintf("tok:%d/%d", m.tokens, m.hardTokens))
+		}
+		parts = append(parts, fmt.Sprintf("r%d", m.rounds))
+	}
+	parts = append(parts, "/exit")
+
+	statusBar := renderStatusBar(parts, m.width)
 
 	sep := styleSeparator.Render(strings.Repeat("-", m.width))
 
 	inputLine := lipgloss.NewStyle().
-		Background(m.theme.UserTextBg).
 		Width(m.width).
 		Render(m.textarea.View())
 
 	viewportView := m.viewport.View()
 
+	var topElements []string
+	if m.currentMsg != "" && !m.viewport.AtBottom() {
+		topElements = append(topElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, m.width))
+	}
+	topElements = append(topElements, viewportView, sep)
+
 	mainView := lipgloss.JoinVertical(
 		lipgloss.Left,
-		viewportView,
-		sep,
-		inputLine,
-		sep,
-		statusBar,
+		append(topElements, inputLine, sep, statusBar)...,
 	)
 
 	if m.permDialog != nil {
@@ -615,4 +637,57 @@ func (m model) View() string {
 	}
 
 	return mainView
+}
+
+func renderStatusBar(parts []string, width int) string {
+	s := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+		Background(adaptiveStatusBg).
+		Width(width).
+		Padding(0, 1)
+
+	avail := width - 2
+	if avail < 10 {
+		avail = 10
+	}
+
+	// Try all on one line first.
+	if lipgloss.Width(strings.Join(parts, " | ")) <= avail {
+		return s.Render(strings.Join(parts, " | "))
+	}
+
+	// Find a split point where both lines fit.
+	for k := len(parts) - 1; k >= 1; k-- {
+		line1 := strings.Join(parts[:k], " | ")
+		line2 := strings.Join(parts[k:], " | ")
+		if lipgloss.Width(line1) <= avail && lipgloss.Width(line2) <= avail {
+			return s.Render(line1) + "\n" + s.Render(line2)
+		}
+	}
+
+	// Even split at half doesn't help — render with best-effort split.
+	mid := len(parts) / 2
+	return s.Render(strings.Join(parts[:mid], " | ")) + "\n" + s.Render(strings.Join(parts[mid:], " | "))
+}
+
+func renderCurrentMsg(msg, username, status string, width int) string {
+	icon := "⏳"
+	if status == "success" {
+		icon = "✅"
+	} else if status == "error" {
+		icon = "❌"
+	}
+	label := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+		Render(icon + " " + username + ":")
+	body := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+		MaxWidth(width - lipgloss.Width(label) - 3).
+		Render(msg)
+	return lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(adaptiveFaint).
+		Padding(0, 1).
+		Width(width).
+		Render(label + " " + body)
 }

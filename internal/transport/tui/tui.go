@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"dolphin/internal/common"
+	"dolphin/internal/limit"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
 
@@ -14,10 +15,6 @@ import (
 
 func init() {
 	transport.Register("tui", func(ctx context.Context, cfg map[string]any) (transport.IO, error) {
-		themeName := "light"
-		if name, ok := cfg["theme"].(string); ok && name != "" {
-			themeName = name
-		}
 		modelName, _ := cfg["model"].(string)
 		showTools := false
 		if v, ok := cfg["show_tools"].(bool); ok {
@@ -27,7 +24,7 @@ func init() {
 		if v, ok := cfg["show_thinking"].(bool); ok {
 			showThinking = v
 		}
-		return NewTUI(themeName, modelName, showTools, showThinking), nil
+		return NewTUI(modelName, showTools, showThinking), nil
 	})
 }
 
@@ -43,13 +40,12 @@ type TUI struct {
 	agentName    string
 	modelName    string
 	username     string
-	theme        Theme
-	themeName    string
 	showTools    bool
 	showThinking bool
+	limiter      *limit.Limiter
 }
 
-func NewTUI(themeName, modelName string, showTools, showThinking bool) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
@@ -61,8 +57,6 @@ func NewTUI(themeName, modelName string, showTools, showThinking bool) *TUI {
 		agentName:     "Dolphin",
 		modelName:     modelName,
 		username:      username,
-		theme:         ThemeFromString(themeName),
-		themeName:     themeName,
 		showTools:     showTools,
 		showThinking:  showThinking,
 	}
@@ -88,15 +82,29 @@ func (t *TUI) Capability() transport.Capability {
 }
 
 func (t *TUI) Start(_ context.Context) error {
-	ApplyTheme(t.theme)
+	// Load persisted preferences, overriding config defaults.
+	if prefs, err := loadPrefs(); err == nil {
+		t.showTools = prefs.ShowTools
+		t.showThinking = prefs.ShowThinking
+	}
+
 	m := newModel()
 	m.msgChan = t.msgChan
 	m.permCh = t.permCh
 	m.username = t.username
 	m.agentName = t.agentName
 	m.modelName = t.modelName
-	m.theme = t.theme
-	m.themeName = t.themeName
+	m.showTools = t.showTools
+	m.showThinking = t.showThinking
+
+	// Set up preference persistence callback.
+	m.savePrefs = func() {
+		_ = savePrefs(tuiPrefs{
+			ShowTools:    m.showTools,
+			ShowThinking: m.showThinking,
+		})
+	}
+
 	t.program = tea.NewProgram(m, tea.WithContext(t.ctx))
 
 	go func() {
@@ -109,12 +117,41 @@ func (t *TUI) Start(_ context.Context) error {
 func (t *TUI) Read(ctx context.Context) (string, error) {
 	select {
 	case line := <-t.msgChan:
+		t.syncSession()
 		return line, nil
 	case <-ctx.Done():
 		return "", ctx.Err()
 	case <-t.ctx.Done():
 		return "", t.ctx.Err()
 	}
+}
+
+func (t *TUI) SetLimiter(l *limit.Limiter) {
+	t.limiter = l
+}
+
+func (t *TUI) syncSession() {
+	s := t.Session()
+	if s == nil || t.program == nil {
+		return
+	}
+	t.program.Send(sessionMsg{id: s.ID})
+	input, _ := s.Get("input_tokens").(int)
+	output, _ := s.Get("output_tokens").(int)
+	rounds, _ := s.Get("rounds").(int)
+
+	msg := usageMsg{inputTokens: input, outputTokens: output, rounds: rounds}
+
+	if t.limiter != nil {
+		cfg := t.limiter.Config()
+		store := t.limiter.Store()
+		msg.hardReqs = limit.ReadHardLimit(cfg, "llm.limit.max_requests")
+		msg.hardTokens = limit.ReadHardLimit(cfg, "llm.limit.max_total_tokens")
+		msg.reqs, _ = store.Get("llm.requests")
+		msg.tokens, _ = store.Get("llm.total_tokens")
+	}
+
+	t.program.Send(msg)
 }
 
 var _ transport.IO = (*TUI)(nil)
@@ -150,6 +187,12 @@ func (t *TUI) WriteToolResult(_ context.Context, result types.ToolResult) error 
 func (t *TUI) NotifyModelChange(name string) {
 	if t.program != nil {
 		t.program.Send(modelChangeMsg{name: name})
+	}
+}
+
+func (t *TUI) NotifySessionID(id string) {
+	if t.program != nil {
+		t.program.Send(sessionMsg{id: id})
 	}
 }
 func (t *TUI) Close() error {

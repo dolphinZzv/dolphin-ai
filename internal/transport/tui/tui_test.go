@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +14,7 @@ import (
 )
 
 func TestNewTUI(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	if tui == nil {
 		t.Fatal("NewTUI returned nil")
 	}
@@ -31,21 +30,21 @@ func TestNewTUI(t *testing.T) {
 }
 
 func TestTUI_ID(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	if tui.ID() != "tui" {
 		t.Errorf("expected 'tui', got %q", tui.ID())
 	}
 }
 
 func TestTUI_Context(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	if tui.Context() != "" {
 		t.Errorf("expected empty context, got %q", tui.Context())
 	}
 }
 
 func TestTUI_Tools(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	tools := tui.Tools()
 	if tools != nil {
 		t.Errorf("expected nil tools, got %v", tools)
@@ -53,14 +52,14 @@ func TestTUI_Tools(t *testing.T) {
 }
 
 func TestTUI_Flush(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	if err := tui.Flush(); err != nil {
 		t.Errorf("Flush returned error: %v", err)
 	}
 }
 
 func TestTUI_Capability(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	cap := tui.Capability()
 	if !cap.Interactive {
 		t.Error("expected Interactive to be true")
@@ -77,7 +76,7 @@ func TestTUI_Capability(t *testing.T) {
 }
 
 func TestTUI_WriteNilProgram(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	// Write before Start (nil program) should not panic.
 	err := tui.Write(context.Background(), "hello")
 	if err != nil {
@@ -86,7 +85,7 @@ func TestTUI_WriteNilProgram(t *testing.T) {
 }
 
 func TestTUI_WriteThinkingNilProgram(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.WriteThinking(context.Background(), "thinking...")
 	if err != nil {
 		t.Errorf("WriteThinking returned error: %v", err)
@@ -94,7 +93,7 @@ func TestTUI_WriteThinkingNilProgram(t *testing.T) {
 }
 
 func TestTUI_WriteToolCallNilProgram(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.WriteToolCall(context.Background(), types.ToolCall{
 		ID:   "call_1",
 		Name: "test_tool",
@@ -105,7 +104,7 @@ func TestTUI_WriteToolCallNilProgram(t *testing.T) {
 }
 
 func TestTUI_WriteToolResultNilProgram(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.WriteToolResult(context.Background(), types.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "result",
@@ -116,7 +115,7 @@ func TestTUI_WriteToolResultNilProgram(t *testing.T) {
 }
 
 func TestTUI_ReadContextCancel(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -127,7 +126,7 @@ func TestTUI_ReadContextCancel(t *testing.T) {
 }
 
 func TestTUI_ReadCloseCancel(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	if err := tui.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +138,7 @@ func TestTUI_ReadCloseCancel(t *testing.T) {
 }
 
 func TestTUI_Close(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.Close()
 	if err != nil {
 		t.Errorf("Close returned error: %v", err)
@@ -147,7 +146,7 @@ func TestTUI_Close(t *testing.T) {
 }
 
 func TestTUI_RequestPermissionContextCancel(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -161,7 +160,7 @@ func TestTUI_RequestPermissionContextCancel(t *testing.T) {
 }
 
 func TestTUI_RequestPermissionCloseCancel(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	_ = tui.Close()
 
 	result, err := tui.RequestPermission(context.Background(), "test prompt")
@@ -174,7 +173,7 @@ func TestTUI_RequestPermissionCloseCancel(t *testing.T) {
 }
 
 func TestTUI_Start(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Errorf("Start returned error: %v", err)
@@ -187,7 +186,7 @@ func TestTUI_Start(t *testing.T) {
 }
 
 func TestTUI_StartWriteRead(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -211,7 +210,7 @@ func TestTUI_StartWriteRead(t *testing.T) {
 }
 
 func TestTUI_StartWriteThinking(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -225,7 +224,7 @@ func TestTUI_StartWriteThinking(t *testing.T) {
 }
 
 func TestTUI_StartWriteToolCall(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -243,7 +242,7 @@ func TestTUI_StartWriteToolCall(t *testing.T) {
 }
 
 func TestTUI_StartWriteToolResult(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -360,106 +359,7 @@ func TestRenderPermDialog_NarrowWidth(t *testing.T) {
 
 // --- theme.go tests ---
 
-func TestThemeFromString_Dark(t *testing.T) {
-	th := ThemeFromString("dark")
-	if th.MarkdownStyle != "dark" {
-		t.Errorf("expected dark theme, got markdown style %q", th.MarkdownStyle)
-	}
-}
-
-func TestThemeFromString_Light(t *testing.T) {
-	th := ThemeFromString("light")
-	if th.MarkdownStyle != "light" {
-		t.Errorf("expected light theme, got markdown style %q", th.MarkdownStyle)
-	}
-}
-
-func TestThemeFromString_Invalid(t *testing.T) {
-	th := ThemeFromString("invalid")
-	if th.MarkdownStyle != "dark" {
-		t.Errorf("expected dark fallback for invalid, got %q", th.MarkdownStyle)
-	}
-}
-
-func TestThemeFromString_AutoLightEnv(t *testing.T) {
-	_ = os.Setenv("COLORFGRD", "something")
-	defer func() { _ = os.Unsetenv("COLORFGRD") }()
-	th := ThemeFromString("auto")
-	if th.MarkdownStyle != "light" {
-		t.Errorf("expected light theme when COLORFGRD is set, got %q", th.MarkdownStyle)
-	}
-}
-
-func TestThemeFromString_AutoDark(t *testing.T) {
-	_ = os.Unsetenv("COLORFGRD")
-	_ = os.Unsetenv("TERM_BG")
-	th := ThemeFromString("auto")
-	if th.MarkdownStyle != "dark" {
-		t.Errorf("expected dark theme when no light env vars, got %q", th.MarkdownStyle)
-	}
-}
-
-func TestThemeFromString_AutoTERMBG(t *testing.T) {
-	_ = os.Unsetenv("COLORFGRD")
-	_ = os.Setenv("TERM_BG", "light")
-	defer func() { _ = os.Unsetenv("TERM_BG") }()
-	th := ThemeFromString("auto")
-	if th.MarkdownStyle != "light" {
-		t.Errorf("expected light theme when TERM_BG=light, got %q", th.MarkdownStyle)
-	}
-}
-
-func TestIsLightTerminal_Colorfgbg(t *testing.T) {
-	_ = os.Setenv("COLORFGRD", "x")
-	defer func() { _ = os.Unsetenv("COLORFGRD") }()
-	if !isLightTerminal() {
-		t.Error("expected true when COLORFGRD is set")
-	}
-}
-
-func TestIsLightTerminal_TermBg(t *testing.T) {
-	_ = os.Unsetenv("COLORFGRD")
-	_ = os.Setenv("TERM_BG", "light")
-	defer func() { _ = os.Unsetenv("TERM_BG") }()
-	if !isLightTerminal() {
-		t.Error("expected true when TERM_BG=light")
-	}
-}
-
-func TestIsLightTerminal_False(t *testing.T) {
-	_ = os.Unsetenv("COLORFGRD")
-	_ = os.Unsetenv("TERM_BG")
-	if isLightTerminal() {
-		t.Error("expected false when no env vars set")
-	}
-}
-
 // --- renderer.go tests ---
-
-func TestMarkdownRenderer(t *testing.T) {
-	ApplyTheme(ThemeDark)
-	r := markdownRenderer()
-	if r == nil {
-		t.Fatal("markdownRenderer returned nil")
-	}
-	// Second call should return cached.
-	r2 := markdownRenderer()
-	if r != r2 {
-		t.Error("markdownRenderer should return cached instance")
-	}
-}
-
-func TestSetMarkdownStyle(t *testing.T) {
-	ApplyTheme(ThemeDark)
-	_ = markdownRenderer() // prime cache
-	setMarkdownStyle("dark")
-	r1 := markdownRenderer()
-	setMarkdownStyle("light")
-	r2 := markdownRenderer()
-	// Different styles should produce different renderers.
-	_ = r1
-	_ = r2
-}
 
 func TestRenderMarkdown_Empty(t *testing.T) {
 	result := renderMarkdown("")
@@ -469,7 +369,6 @@ func TestRenderMarkdown_Empty(t *testing.T) {
 }
 
 func TestRenderMarkdown_Plain(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	result := renderMarkdown("hello world")
 	if result == "" {
 		t.Error("renderMarkdown returned empty")
@@ -477,7 +376,6 @@ func TestRenderMarkdown_Plain(t *testing.T) {
 }
 
 func TestRenderMarkdown_CodeBlock(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	input := "```go\nfunc main() {}\n```"
 	result := renderMarkdown(input)
 	if result == "" {
@@ -510,30 +408,6 @@ func TestOnOff(t *testing.T) {
 	}
 	if onOff(false) != "off" {
 		t.Error("expected 'off'")
-	}
-}
-
-func TestModelCurrentThemeName(t *testing.T) {
-	m := newModel()
-	m.themeName = "dark"
-	if m.currentThemeName() != "dark" {
-		t.Errorf("expected 'dark', got %q", m.currentThemeName())
-	}
-}
-
-func TestModelSwitchTheme(t *testing.T) {
-	m := newModel()
-	m.themeName = "dark"
-	m.theme = ThemeDark
-	m.viewport = viewport.New(80, 20)
-	m.viewport.SetContent("")
-
-	m.switchTheme("light")
-	if m.themeName != "light" {
-		t.Errorf("expected 'light', got %q", m.themeName)
-	}
-	if m.theme.MarkdownStyle != "light" {
-		t.Error("theme should be light")
 	}
 }
 
@@ -593,7 +467,6 @@ func TestModelAppendEntry_NonText(t *testing.T) {
 }
 
 func TestModelRebuildViewport_TextBlock(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -611,7 +484,6 @@ func TestModelRebuildViewport_TextBlock(t *testing.T) {
 }
 
 func TestModelRebuildViewport_StyledEntries(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -652,15 +524,12 @@ func TestModelAppendEntry_TrimFront(t *testing.T) {
 }
 
 func TestModelViewReady(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.ready = true
 	m.width = 80
 	m.height = 24
 	m.agentName = "Dolphin"
 	m.modelName = "test-model"
-	m.theme = ThemeDark
-	m.themeName = "dark"
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("hello")
 
@@ -674,15 +543,12 @@ func TestModelViewReady(t *testing.T) {
 }
 
 func TestModelViewWithPermDialog(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.ready = true
 	m.width = 80
 	m.height = 24
 	m.agentName = "Dolphin"
 	m.modelName = "test-model"
-	m.theme = ThemeDark
-	m.themeName = "dark"
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("hello")
 	m.permDialog = &permDialog{
@@ -723,7 +589,6 @@ func TestModelUpdate_CtrlC(t *testing.T) {
 }
 
 func TestModelUpdate_ContentMsg(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -749,7 +614,6 @@ func TestModelUpdate_ThinkingMsg_ShowOff(t *testing.T) {
 }
 
 func TestModelUpdate_ThinkingMsg_ShowOn(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -764,7 +628,6 @@ func TestModelUpdate_ThinkingMsg_ShowOn(t *testing.T) {
 }
 
 func TestModelUpdate_ThinkingMsg_Append(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -790,7 +653,6 @@ func TestModelUpdate_ToolCallMsg_ShowOff(t *testing.T) {
 }
 
 func TestModelUpdate_ToolCallMsg_ShowOn(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -816,7 +678,6 @@ func TestModelUpdate_ToolResultMsg_ShowOff(t *testing.T) {
 }
 
 func TestModelUpdate_ToolResultMsg_ShowOn(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -834,7 +695,6 @@ func TestModelUpdate_ToolResultMsg_ShowOn(t *testing.T) {
 }
 
 func TestModelUpdate_ToolResultMsg_Error(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -855,7 +715,6 @@ func TestModelUpdate_FlushMsg(t *testing.T) {
 }
 
 func TestModelUpdate_ModelChangeMsg(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -883,7 +742,6 @@ func TestModelUpdate_PermRequestMsg(t *testing.T) {
 }
 
 func TestModelUpdate_UserSubmitMsg(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
@@ -967,13 +825,13 @@ func TestModelUpdate_PermDialogKey_N(t *testing.T) {
 // --- tui.go tests ---
 
 func TestTUI_NotifyModelChange_NilProgram(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	// Should not panic with nil program.
 	tui.NotifyModelChange("new-model")
 }
 
 func TestTUI_NotifyModelChange_Running(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	_ = tui.Start(context.Background())
 	defer func() { _ = tui.Close() }()
 
@@ -981,7 +839,7 @@ func TestTUI_NotifyModelChange_Running(t *testing.T) {
 }
 
 func TestTUI_Read_CtxDone(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -992,7 +850,7 @@ func TestTUI_Read_CtxDone(t *testing.T) {
 }
 
 func TestTUI_RequestPermission_ReplyPaths(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	_ = tui.Start(context.Background())
 	defer func() { _ = tui.Close() }()
 
@@ -1011,7 +869,7 @@ func TestTUI_RequestPermission_ReplyPaths(t *testing.T) {
 }
 
 func TestTUI_RequestPermission_CtxDone(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	_ = tui.Start(context.Background())
 	defer func() { _ = tui.Close() }()
 
@@ -1025,7 +883,7 @@ func TestTUI_RequestPermission_CtxDone(t *testing.T) {
 }
 
 func TestTUI_RequestPermission_TUICtxDone(t *testing.T) {
-	tui := NewTUI("dark", "", true, true)
+	tui := NewTUI("", true, true)
 	_ = tui.Start(context.Background())
 
 	_ = tui.Close() // cancels tui.ctx
@@ -1039,7 +897,6 @@ func TestTUI_RequestPermission_TUICtxDone(t *testing.T) {
 func TestTUI_Init_WithConfig(t *testing.T) {
 	// Build a TUI via the registered builder with config.
 	io, err := transport.Build(context.Background(), "tui", map[string]any{
-		"theme":         "light",
 		"model":         "test-model",
 		"show_tools":    true,
 		"show_thinking": true,
@@ -1080,49 +937,11 @@ func TestTUI_Init_ConfigNonBool(t *testing.T) {
 
 // Additional Update path tests for enter key commands.
 
-func TestModelUpdate_EnterTheme(t *testing.T) {
-	ApplyTheme(ThemeDark)
-	m := newModel()
-	m.viewport = viewport.New(80, 20)
-	m.viewport.SetContent("")
-	m.width = 80
-	m.theme = ThemeDark
-	m.themeName = "dark"
-	m.textarea.SetValue("/theme")
-
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = newM.(model)
-	// /theme should have added a system message.
-	if len(m.messages) < 1 {
-		t.Error("expected at least 1 message after /theme")
-	}
-}
-
-func TestModelUpdate_EnterThemeSwitch(t *testing.T) {
-	ApplyTheme(ThemeDark)
-	m := newModel()
-	m.viewport = viewport.New(80, 20)
-	m.viewport.SetContent("")
-	m.width = 80
-	m.theme = ThemeDark
-	m.themeName = "dark"
-	m.textarea.SetValue("/theme light")
-
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = newM.(model)
-	if m.themeName != "light" {
-		t.Errorf("expected themeName 'light', got %q", m.themeName)
-	}
-}
-
 func TestModelUpdate_EnterTools(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
 	m.width = 80
-	m.theme = ThemeDark
-	m.themeName = "dark"
 	m.showTools = false
 	m.textarea.SetValue("/tools")
 
@@ -1134,13 +953,10 @@ func TestModelUpdate_EnterTools(t *testing.T) {
 }
 
 func TestModelUpdate_EnterThinking(t *testing.T) {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.viewport.SetContent("")
 	m.width = 80
-	m.theme = ThemeDark
-	m.themeName = "dark"
 	m.showThinking = false
 	m.textarea.SetValue("/thinking")
 

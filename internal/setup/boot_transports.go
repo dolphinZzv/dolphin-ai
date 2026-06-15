@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"dolphin/internal/config"
+	"dolphin/internal/limit"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/tool"
@@ -47,6 +48,9 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 			if s := c.SessionMgr.Active(); s != nil {
 				ss.SetSession(s)
 			}
+		}
+		if sl, ok := tio.(interface{ SetLimiter(*limit.Limiter) }); ok && c.Limit != nil {
+			sl.SetLimiter(c.Limit)
 		}
 		c.AgentIO.RegisterTransport(tio.ID(), tio)
 		c.Transports = append(c.Transports, tio)

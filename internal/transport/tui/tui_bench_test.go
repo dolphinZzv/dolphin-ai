@@ -10,14 +10,11 @@ import (
 // Each round: user message (user_text) + AI text + tool call + tool result.
 // Returns total message count and the model.
 func newBenchModel(rounds int) model {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.width = 120
 	m.height = 40
 	m.agentName = "Dolphin"
 	m.modelName = "bench-model"
-	m.theme = ThemeDark
-	m.themeName = "dark"
 	m.showTools = true
 	m.ready = true
 	m.textarea.SetWidth(119)
@@ -192,8 +189,6 @@ func BenchmarkFullConversationRound(b *testing.B) {
 		m.height = 40
 		m.agentName = "Dolphin"
 		m.modelName = "bench"
-		m.theme = ThemeDark
-		m.themeName = "dark"
 		m.showTools = true
 		m.ready = true
 		m.textarea.SetWidth(119)
@@ -228,8 +223,6 @@ func BenchmarkRealisticStreaming(b *testing.B) {
 			m.height = 40
 			m.agentName = "Dolphin"
 			m.modelName = "bench"
-			m.theme = ThemeDark
-			m.themeName = "dark"
 			m.showTools = true
 			m.ready = true
 			m.textarea.SetWidth(119)

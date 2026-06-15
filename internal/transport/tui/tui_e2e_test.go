@@ -17,14 +17,11 @@ type simModel struct {
 }
 
 func newSim(width, height int) *simModel {
-	ApplyTheme(ThemeDark)
 	m := newModel()
 	m.width = width
 	m.height = height
 	m.agentName = "Dolphin"
 	m.modelName = "claude"
-	m.theme = ThemeDark
-	m.themeName = "dark"
 	m.showTools = true
 	m.showThinking = true
 	m.ready = true // skip WindowSizeMsg init
@@ -205,30 +202,6 @@ func TestE2E_MultiTurnMemory(t *testing.T) {
 	// 5 rounds * (1 user + ~100 text + 1 tool_call + 1 tool_result + 1 text) > 500
 	if len(sim.m.messages) > maxMessages {
 		t.Errorf("trimFront did not trim enough: %d > %d", len(sim.m.messages), maxMessages)
-	}
-}
-
-func TestE2E_ThemeSwitch(t *testing.T) {
-	sim := newSim(80, 24)
-
-	sim.send(userSubmitMsg{text: "hello"})
-	sim.stepAll()
-	sim.send(contentMsg{text: "Hi there!"})
-	sim.stepAll()
-
-	// Switch theme via slash command — simulate typing and enter.
-	newM, _ := sim.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/theme light")})
-	sim.m = newM.(model)
-	sim.stepAll()
-	newM, cmd := sim.m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	sim.m = newM.(model)
-	if cmd != nil {
-		cmd()
-	}
-	sim.stepAll()
-
-	if sim.m.currentThemeName() != "light" {
-		t.Errorf("expected theme 'light', got %q", sim.m.currentThemeName())
 	}
 }
 

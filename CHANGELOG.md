@@ -6,7 +6,14 @@ All notable changes to Dolphin will be documented in this file.
 
 ### Added
 
-- TUI transport with dark/light themes, markdown rendering, and permission dialogs.
+- TUI transport with adaptive terminal theming, markdown rendering, and permission dialogs.
+- TUI status bar shows session usage (tokens, rounds) and limit caps (req:N/M, tok:N/M).
+- Sticky floating indicator at top showing current user message with pending/success/error state.
+
+### Changed
+
+- TUI theme system replaced with terminal-native adaptive colors via lipgloss.AdaptiveColor.
+- Status bar wraps to multiple lines automatically when content exceeds terminal width.
 - Per-round turn timeout: each agent loop round gets a fresh timeout so long-running tools don't starve subsequent LLM calls.
 - Tool parallelism config (`agent.tool_parallelism`) for concurrent tool execution.
 - Workflow agent-driven e2e tests.

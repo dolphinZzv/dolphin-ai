@@ -22,64 +22,36 @@ var (
 
 	mdRenderer   *glamour.TermRenderer
 	mdRendererMu sync.Mutex
-	mdStyle      string
 )
 
-func ApplyTheme(t Theme) {
+func init() {
 	styleThinking = lipgloss.NewStyle().
-		Foreground(t.ThinkingColor).
+		Foreground(adaptiveThinking).
 		Italic(true)
 
 	styleToolCall = lipgloss.NewStyle().
-		Foreground(t.ToolCallColor)
+		Foreground(lipgloss.AdaptiveColor{Light: "26", Dark: "117"})
 
 	styleToolResult = lipgloss.NewStyle().
-		Foreground(t.ToolResultColor)
+		Foreground(adaptiveToolResult)
 
 	styleSystem = lipgloss.NewStyle().
-		Foreground(t.SystemColor)
+		Foreground(adaptiveSystem)
 
 	styleSeparator = lipgloss.NewStyle().
-		Foreground(t.SeparatorColor)
+		Foreground(adaptiveSeparator)
 
 	styleSeparatorFaint = lipgloss.NewStyle().
-		Foreground(t.SeparatorFaintColor)
+		Foreground(adaptiveFaint)
 
 	styleUserText = lipgloss.NewStyle().
-		Foreground(t.UserLabelColor).
-		Background(t.UserTextBg)
+		Foreground(adaptiveUserLabel)
 
-	setMarkdownStyle(t.MarkdownStyle)
-}
-
-func markdownRenderer() *glamour.TermRenderer {
-	mdRendererMu.Lock()
-	defer mdRendererMu.Unlock()
-
-	style := "dark"
-	if mdStyle != "" {
-		style = mdStyle
-	}
-
-	if mdRenderer != nil {
-		return mdRenderer
-	}
-
-	r, err := glamour.NewTermRenderer(glamour.WithStandardStyle(style))
-	if err != nil {
-		return nil
-	}
-	mdRenderer = r
-	return mdRenderer
-}
-
-func setMarkdownStyle(style string) {
-	mdRendererMu.Lock()
-	defer mdRendererMu.Unlock()
-
-	if mdStyle != style {
-		mdStyle = style
-		mdRenderer = nil
+	r, err := glamour.NewTermRenderer(
+		glamour.WithEnvironmentConfig(),
+	)
+	if err == nil {
+		mdRenderer = r
 	}
 }
 
@@ -108,7 +80,9 @@ func renderMarkdown(s string) string {
 	if s == "" {
 		return s
 	}
-	r := markdownRenderer()
+	mdRendererMu.Lock()
+	r := mdRenderer
+	mdRendererMu.Unlock()
 	if r == nil {
 		return s
 	}
@@ -131,11 +105,9 @@ func renderMarkdown(s string) string {
 		}
 		cleaned = append(cleaned, trimmed)
 	}
-	// Trim trailing blank lines.
 	for len(cleaned) > 0 && cleaned[len(cleaned)-1] == "" {
 		cleaned = cleaned[:len(cleaned)-1]
 	}
-	// Trim leading blank lines.
 	for len(cleaned) > 0 && cleaned[0] == "" {
 		cleaned = cleaned[1:]
 	}
