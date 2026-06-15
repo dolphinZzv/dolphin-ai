@@ -22,6 +22,7 @@ All notable changes to Dolphin will be documented in this file.
 - TUI viewport uses incremental rendering: only re-renders the changed message tail instead of rebuilding all content on every append.
 - Replace range loop with variadic append for block offsets in incremental renderer.
 - TUI messages capped at 500 entries with front-trim to prevent memory exhaustion in long conversations.
+- TUI streaming text bypasses glamour markdown rendering to avoid O(n²) re-render cost; block is finalized on next non-text event.
 
 ### Breaking Changes
 

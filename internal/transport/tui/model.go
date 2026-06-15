@@ -55,6 +55,7 @@ type model struct {
 	// Incremental rendering state.
 	renderedContent string
 	blockOffsets    []int // byte offset in renderedContent where each output block starts
+	textBlockDirty  bool  // true when last text block has merged content not yet markdown-rendered
 }
 
 func newModel() model {
@@ -199,6 +200,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case flushMsg:
+		if m.textBlockDirty {
+			m.renderIncremental()
+			m.textBlockDirty = false
+		}
 		m.viewport.GotoBottom()
 
 	case modelChangeMsg:
@@ -278,6 +283,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *model) appendEntry(e renderEntry) {
 	if e.style == "text" {
+		hadMerge := false
 		lines := strings.Split(e.content, "\n")
 		for i, line := range lines {
 			if i > 0 {
@@ -286,15 +292,30 @@ func (m *model) appendEntry(e renderEntry) {
 				n := len(m.messages)
 				if n > 0 && m.messages[n-1].style == "text" {
 					m.messages[n-1].content += line
+					hadMerge = true
 				} else {
 					m.messages = append(m.messages, renderEntry{content: line, style: "text"})
 				}
 			}
 		}
+		if hadMerge {
+			// Streaming merge: skip glamour markdown render, append raw delta.
+			// The block will be re-rendered properly when the next non-text entry arrives.
+			m.renderedContent += e.content
+			m.textBlockDirty = true
+			m.viewport.SetContent(m.renderedContent)
+		} else {
+			m.renderIncremental()
+		}
 	} else {
+		// Non-text finalizes any dirty text block before appending.
+		if m.textBlockDirty {
+			m.renderIncremental()
+			m.textBlockDirty = false
+		}
 		m.messages = append(m.messages, e)
+		m.renderIncremental()
 	}
-	m.renderIncremental()
 	if len(m.messages) > maxMessages {
 		m.trimFront()
 	}
@@ -500,6 +521,7 @@ func (m *model) computeBlockOffsets(startIdx int, baseOffset int) []int {
 
 // fullRebuild rebuilds the entire viewport content and tracking state.
 func (m *model) fullRebuild() {
+	m.textBlockDirty = false
 	var b strings.Builder
 	m.blockOffsets = nil
 	i := 0
