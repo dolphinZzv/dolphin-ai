@@ -21,6 +21,7 @@ All notable changes to Dolphin will be documented in this file.
 - TUI test coverage: all changed files (`model.go`, `tui.go`, `renderer.go`, `theme.go`, `perm_dialog.go`) now above 80%.
 - TUI viewport uses incremental rendering: only re-renders the changed message tail instead of rebuilding all content on every append.
 - Replace range loop with variadic append for block offsets in incremental renderer.
+- TUI messages capped at 500 entries with front-trim to prevent memory exhaustion in long conversations.
 
 ### Breaking Changes
 

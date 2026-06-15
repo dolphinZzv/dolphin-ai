@@ -12,6 +12,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+const maxMessages = 500
+
 // Message types sent via tea.Program.Send.
 type contentMsg struct{ text string }
 type thinkingMsg struct{ text string }
@@ -293,6 +295,25 @@ func (m *model) appendEntry(e renderEntry) {
 		m.messages = append(m.messages, e)
 	}
 	m.renderIncremental()
+	if len(m.messages) > maxMessages {
+		m.trimFront()
+	}
+}
+
+// trimFront discards the oldest messages so len(messages) stays within maxMessages.
+func (m *model) trimFront() {
+	keep := maxMessages / 2
+	if keep <= 0 {
+		return
+	}
+	// Find block boundary: remove complete blocks from the front.
+	dropBlocks := m.messageBlockIndex(len(m.messages) - keep)
+	if dropBlocks <= 0 {
+		dropBlocks = 1
+	}
+	msgStart := m.blockMessageStart(dropBlocks)
+	m.messages = m.messages[msgStart:]
+	m.fullRebuild()
 }
 
 // textRunStart returns the index of the first message in the consecutive text

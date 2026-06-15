@@ -628,6 +628,29 @@ func TestModelRebuildViewport_StyledEntries(t *testing.T) {
 	}
 }
 
+func TestModelAppendEntry_TrimFront(t *testing.T) {
+	// maxMessages is 500; adding 600 entries should trigger trimFront.
+	m := newModel()
+	// Alternate user_text and system to prevent consecutive text merging.
+	for i := 0; i < 600; i++ {
+		if i%2 == 0 {
+			m.appendEntry(renderEntry{content: "padding", style: "user_text"})
+		} else {
+			m.appendEntry(renderEntry{content: "padding", style: "system"})
+		}
+	}
+
+	if len(m.messages) >= 500 {
+		t.Errorf("expected messages to be trimmed below maxMessages, got %d", len(m.messages))
+	}
+	if len(m.blockOffsets) == 0 {
+		t.Error("blockOffsets should not be empty after trim")
+	}
+	if m.renderedContent == "" {
+		t.Error("renderedContent should not be empty after trim")
+	}
+}
+
 func TestModelViewReady(t *testing.T) {
 	ApplyTheme(ThemeDark)
 	m := newModel()
