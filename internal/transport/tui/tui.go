@@ -71,7 +71,12 @@ func NewTUI(themeName, modelName string, showTools, showThinking bool) *TUI {
 func (t *TUI) ID() string               { return t.id }
 func (t *TUI) Context() string          { return "" }
 func (t *TUI) Tools() []common.ToolDesc { return nil }
-func (t *TUI) Flush() error             { return nil }
+func (t *TUI) Flush() error {
+	if t.program != nil {
+		t.program.Send(flushMsg{})
+	}
+	return nil
+}
 
 func (t *TUI) Capability() transport.Capability {
 	return transport.Capability{

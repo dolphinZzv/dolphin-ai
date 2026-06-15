@@ -25,6 +25,7 @@ All notable changes to Dolphin will be documented in this file.
 - TUI streaming text bypasses glamour markdown rendering to avoid O(n²) re-render cost; block is finalized on next non-text event.
 - TUI e2e tests: 8 integration tests covering streaming conversation, permission flow, multi-turn memory, theme switch, and dirty block lifecycle.
 - TUI benchmarks: 10 benchmark suites measuring render performance, streaming vs non-streaming paths, and markdown rendering cost.
+- TUI `Flush()` now sends `flushMsg` to program to finalize dirty text blocks; previously dirty blocks persisted until the next non-text event.
 
 ### Breaking Changes
 
