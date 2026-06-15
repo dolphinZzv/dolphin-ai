@@ -49,6 +49,10 @@ type model struct {
 	themeName    string
 	showTools    bool
 	showThinking bool
+
+	// Incremental rendering state.
+	renderedContent string
+	blockOffsets    []int // byte offset in renderedContent where each output block starts
 }
 
 func newModel() model {
@@ -288,7 +292,219 @@ func (m *model) appendEntry(e renderEntry) {
 	} else {
 		m.messages = append(m.messages, e)
 	}
-	m.rebuildViewport()
+	m.renderIncremental()
+}
+
+// textRunStart returns the index of the first message in the consecutive text
+// run that contains messages[idx]. messages[idx] must be a text-style entry.
+func (m *model) textRunStart(idx int) int {
+	for idx > 0 && m.messages[idx-1].style == "text" {
+		idx--
+	}
+	return idx
+}
+
+// messageBlockIndex returns the block index that contains the given message index.
+func (m *model) messageBlockIndex(msgIdx int) int {
+	blk := 0
+	i := 0
+	for i <= msgIdx && i < len(m.messages) {
+		if m.messages[i].style == "text" {
+			// Consume consecutive text.
+			for i < len(m.messages) && m.messages[i].style == "text" {
+				i++
+			}
+		} else {
+			i++
+		}
+		if i <= msgIdx {
+			blk++
+		}
+	}
+	return blk
+}
+
+// renderIncremental renders only the changed tail of messages and updates the viewport.
+func (m *model) renderIncremental() {
+	if len(m.messages) == 0 {
+		m.renderedContent = ""
+		m.blockOffsets = nil
+		m.viewport.SetContent("")
+		return
+	}
+
+	// Find the last text-style entry that may have been merged.
+	lastIdx := len(m.messages) - 1
+	reRenderFrom := lastIdx
+	if m.messages[lastIdx].style == "text" {
+		reRenderFrom = m.textRunStart(lastIdx)
+	}
+
+	// If we're only appending and there's no text merge, reRenderFrom stays at
+	// the start of the new entries. Determine how many messages were already rendered.
+	oldBlockCount := len(m.blockOffsets)
+	if oldBlockCount == 0 {
+		// First render — do a full build.
+		m.fullRebuild()
+		return
+	}
+
+	// Find the block that contains reRenderFrom.
+	truncateBlock := m.messageBlockIndex(reRenderFrom)
+	if truncateBlock >= oldBlockCount {
+		truncateBlock = oldBlockCount
+	}
+
+	// If there are no new blocks to append and no text was merged, we're done.
+	newBlockCount := m.countBlocks()
+	if truncateBlock >= newBlockCount {
+		return
+	}
+
+	// If we're truncating near the beginning, a full rebuild is simpler.
+	if truncateBlock == 0 {
+		m.fullRebuild()
+		return
+	}
+
+	// Truncate renderedContent at the start of truncateBlock.
+	if truncateBlock < len(m.blockOffsets) {
+		m.renderedContent = m.renderedContent[:m.blockOffsets[truncateBlock]]
+		m.blockOffsets = m.blockOffsets[:truncateBlock]
+	}
+
+	// Render messages from the first message of truncateBlock to end.
+	msgStart := m.blockMessageStart(truncateBlock)
+	tail := m.renderBlocks(msgStart)
+
+	if len(m.renderedContent) > 0 && len(tail) > 0 && m.renderedContent[len(m.renderedContent)-1] != '\n' {
+		m.renderedContent += "\n"
+	}
+	offset := len(m.renderedContent)
+	m.renderedContent += tail
+
+	// Record block offsets for the newly rendered blocks.
+	for _, b := range m.computeBlockOffsets(msgStart, offset) {
+		m.blockOffsets = append(m.blockOffsets, b)
+	}
+
+	m.viewport.SetContent(m.renderedContent)
+}
+
+func (m *model) countBlocks() int {
+	n := 0
+	i := 0
+	for i < len(m.messages) {
+		if m.messages[i].style == "text" {
+			for i < len(m.messages) && m.messages[i].style == "text" {
+				i++
+			}
+		} else {
+			i++
+		}
+		n++
+	}
+	return n
+}
+
+// blockMessageStart returns the first message index for the given block.
+func (m *model) blockMessageStart(blk int) int {
+	if blk <= 0 {
+		return 0
+	}
+	i := 0
+	b := 0
+	for i < len(m.messages) && b < blk {
+		if m.messages[i].style == "text" {
+			for i < len(m.messages) && m.messages[i].style == "text" {
+				i++
+			}
+		} else {
+			i++
+		}
+		b++
+	}
+	return i
+}
+
+// renderBlocks renders messages from startIdx to end, joining consecutive text entries.
+func (m *model) renderBlocks(startIdx int) string {
+	var b strings.Builder
+	for i := startIdx; i < len(m.messages); {
+		entry := m.messages[i]
+		if entry.style == "text" {
+			var buf strings.Builder
+			for i < len(m.messages) && m.messages[i].style == "text" {
+				if buf.Len() > 0 {
+					buf.WriteString("\n")
+				}
+				buf.WriteString(m.messages[i].content)
+				i++
+			}
+			b.WriteString(renderMarkdown(buf.String()))
+		} else {
+			b.WriteString(renderStyled(entry))
+			i++
+		}
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+// computeBlockOffsets returns byte offsets for each block rendered from startIdx,
+// relative to baseOffset.
+func (m *model) computeBlockOffsets(startIdx int, baseOffset int) []int {
+	var offsets []int
+	offset := baseOffset
+	i := startIdx
+	for i < len(m.messages) {
+		offsets = append(offsets, offset)
+		if m.messages[i].style == "text" {
+			var buf strings.Builder
+			for i < len(m.messages) && m.messages[i].style == "text" {
+				if buf.Len() > 0 {
+					buf.WriteString("\n")
+				}
+				buf.WriteString(m.messages[i].content)
+				i++
+			}
+			block := renderMarkdown(buf.String()) + "\n"
+			offset += len(block)
+		} else {
+			block := renderStyled(m.messages[i]) + "\n"
+			offset += len(block)
+			i++
+		}
+	}
+	return offsets
+}
+
+// fullRebuild rebuilds the entire viewport content and tracking state.
+func (m *model) fullRebuild() {
+	var b strings.Builder
+	m.blockOffsets = nil
+	i := 0
+	for i < len(m.messages) {
+		m.blockOffsets = append(m.blockOffsets, b.Len())
+		entry := m.messages[i]
+		if entry.style == "text" {
+			var buf strings.Builder
+			for i < len(m.messages) && m.messages[i].style == "text" {
+				if buf.Len() > 0 {
+					buf.WriteString("\n")
+				}
+				buf.WriteString(m.messages[i].content)
+				i++
+			}
+			b.WriteString(renderMarkdown(buf.String()))
+		} else {
+			b.WriteString(renderStyled(entry))
+			i++
+		}
+		b.WriteString("\n")
+	}
+	m.renderedContent = b.String()
+	m.viewport.SetContent(m.renderedContent)
 }
 
 func onOff(v bool) string {
@@ -308,27 +524,7 @@ func (m *model) switchTheme(name string) {
 }
 
 func (m *model) rebuildViewport() {
-	var b strings.Builder
-	for i := 0; i < len(m.messages); {
-		entry := m.messages[i]
-		if entry.style == "text" {
-			// Join consecutive text entries and render as one block.
-			var buf strings.Builder
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				if buf.Len() > 0 {
-					buf.WriteString("\n")
-				}
-				buf.WriteString(m.messages[i].content)
-				i++
-			}
-			b.WriteString(renderMarkdown(buf.String()))
-		} else {
-			b.WriteString(renderStyled(entry))
-			i++
-		}
-		b.WriteString("\n")
-	}
-	m.viewport.SetContent(b.String())
+	m.fullRebuild()
 }
 
 func (m model) View() string {
