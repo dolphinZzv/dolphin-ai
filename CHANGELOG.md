@@ -23,6 +23,8 @@ All notable changes to Dolphin will be documented in this file.
 - Replace range loop with variadic append for block offsets in incremental renderer.
 - TUI messages capped at 500 entries with front-trim to prevent memory exhaustion in long conversations.
 - TUI streaming text bypasses glamour markdown rendering to avoid O(n²) re-render cost; block is finalized on next non-text event.
+- TUI e2e tests: 8 integration tests covering streaming conversation, permission flow, multi-turn memory, theme switch, and dirty block lifecycle.
+- TUI benchmarks: 10 benchmark suites measuring render performance, streaming vs non-streaming paths, and markdown rendering cost.
 
 ### Breaking Changes
 
