@@ -28,6 +28,7 @@ type queueTickMsg struct{}
 type setAgentIOMsg struct{ a *agentio.AgentIO }
 type permRequestMsg struct{ prompt string }
 type userSubmitMsg struct{ text string }
+type prioritySubmitMsg struct{ text string }
 type modelChangeMsg struct{ name string }
 type sessionMsg struct{ id string }
 type usageMsg struct {
@@ -79,6 +80,7 @@ type model struct {
 	hardTokens      int64
 	tokens          int64
 	toolCalls       int
+	setPriority     func()
 	savePrefs       func()
 	currentMsg      string // user message currently being processed
 	msgStatus       string // "pending", "success", "error"
@@ -143,6 +145,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Runes: []rune{'\n'},
 			})
 			m.textarea = ta
+
+		case "ctrl+enter":
+			if m.permDialog == nil {
+				input := strings.TrimSpace(m.textarea.Value())
+				cmds = append(cmds, func() tea.Msg { return prioritySubmitMsg{text: input} })
+				m.textarea.Reset()
+				m.textarea.SetHeight(1)
+				return m, tea.Batch(cmds...)
+			}
 
 		case "enter":
 			if m.permDialog == nil {
@@ -270,6 +281,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case userSubmitMsg:
+		if m.closeBlock {
+			m.appendEntry(renderEntry{content: strings.Repeat("-", m.width), style: "separator"})
+		}
+
+		m.appendEntry(renderEntry{content: msg.text, style: "user_text"})
+		m.viewport.GotoBottom()
+		m.newReply = true
+		m.currentMsg = msg.text
+		m.msgStatus = "pending"
+		m.closeBlock = false
+		if m.msgChan != nil {
+			select {
+			case m.msgChan <- msg.text:
+			default:
+			}
+		}
+
+	case prioritySubmitMsg:
+		if m.setPriority != nil {
+			m.setPriority()
+		}
 		if m.closeBlock {
 			m.appendEntry(renderEntry{content: strings.Repeat("-", m.width), style: "separator"})
 		}

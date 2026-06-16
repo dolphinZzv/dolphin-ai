@@ -158,7 +158,14 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 			}
 		}
 	}
-	u.agentIO.SendTurn(ctx, &agentio.Turn{
+	sendFn := u.agentIO.SendTurn
+	if pt, ok := tio.(interface{ IsPriority() bool }); ok && pt.IsPriority() {
+		sendFn = u.agentIO.SendTurnPriority
+		if rst, ok := tio.(interface{ ResetPriority() }); ok {
+			defer rst.ResetPriority()
+		}
+	}
+	sendFn(ctx, &agentio.Turn{
 		TransportID: tio.ID(),
 		SessionID:   sess.ID,
 		Input:       input,

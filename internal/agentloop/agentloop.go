@@ -20,6 +20,7 @@ import (
 
 type AgentLoop struct {
 	queue      chan *agentio.Turn
+	priority   chan *agentio.Turn
 	onResult   func(agentio.TurnResult)
 	compositor *Compositor
 	logger     *zap.Logger
@@ -39,8 +40,13 @@ func NewAgentLoop(queue chan *agentio.Turn, compositor *Compositor, logger *zap.
 	if poolSize <= 0 {
 		poolSize = 1
 	}
+	pr := make(chan *agentio.Turn)
+	if agentIO != nil {
+		pr = agentIO.PriorityQueue()
+	}
 	return &AgentLoop{
 		queue:                queue,
+		priority:             pr,
 		compositor:           compositor,
 		logger:               logger,
 		eventBus:             eventBus,
@@ -136,6 +142,15 @@ func (a *AgentLoop) runWorker(ctx context.Context, id string) {
 		case <-ctx.Done():
 			wLogger.Info("worker stopped")
 			return
+		case turn := <-a.priority:
+			if a.agentIO != nil {
+				cancelled := a.agentIO.IsCancelled(turn.TurnID)
+				a.agentIO.OnTurnDequeued(turn)
+				if cancelled {
+					continue
+				}
+			}
+			a.processTurn(ctx, turn, compositor, id, wLogger)
 		case turn := <-a.queue:
 			if a.agentIO != nil {
 				cancelled := a.agentIO.IsCancelled(turn.TurnID)

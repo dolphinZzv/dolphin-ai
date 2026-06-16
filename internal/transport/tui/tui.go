@@ -37,6 +37,7 @@ type TUI struct {
 	id              string
 	program         *tea.Program
 	pendingAgentIO  *agentio.AgentIO
+	priority        bool
 	msgChan         chan string
 	permCh          chan string
 	ctx             context.Context
@@ -114,7 +115,12 @@ func (t *TUI) Start(_ context.Context) error {
 	m.version = t.version
 	m.toolParallelism = t.toolParallelism
 
-	// Set up preference persistence callback.
+	// Set up callbacks for model → TUI communication.
+	m.setPriority = func() {
+		t.mu.Lock()
+		t.priority = true
+		t.mu.Unlock()
+	}
 	m.savePrefs = func() {
 		_ = savePrefs(tuiPrefs{
 			ShowTools:    m.showTools,
@@ -158,6 +164,18 @@ func (t *TUI) SetAgentIO(a *agentio.AgentIO) {
 	if t.program != nil {
 		t.program.Send(setAgentIOMsg{a: a})
 	}
+}
+
+func (t *TUI) IsPriority() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.priority
+}
+
+func (t *TUI) ResetPriority() {
+	t.mu.Lock()
+	t.priority = false
+	t.mu.Unlock()
 }
 
 func (t *TUI) SetLimiter(l *limit.Limiter) {

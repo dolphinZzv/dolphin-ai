@@ -46,6 +46,7 @@ type TurnInfo struct {
 
 type AgentIO struct {
 	queue      chan *Turn
+	priority   chan *Turn // priority queue, selected before regular queue
 	routes     map[string]transport.IO
 	sessionMgr *session.Manager
 	signalBus  *signal.Bus
@@ -69,6 +70,7 @@ type AgentIO struct {
 func NewAgentIO(bufferSize int, mgr *session.Manager, sb *signal.Bus, logger *zap.Logger, agentName string) *AgentIO {
 	a := &AgentIO{
 		queue:       make(chan *Turn, bufferSize),
+		priority:    make(chan *Turn, bufferSize),
 		routes:      make(map[string]transport.IO),
 		sessionMgr:  mgr,
 		signalBus:   sb,
@@ -149,6 +151,49 @@ func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
 
 func (a *AgentIO) Queue() chan *Turn {
 	return a.queue
+}
+
+func (a *AgentIO) PriorityQueue() chan *Turn {
+	return a.priority
+}
+
+// SendTurnPriority enqueues a turn at the front of the pending queue.
+func (a *AgentIO) SendTurnPriority(ctx context.Context, turn *Turn) {
+	if turn.TurnID == "" {
+		turn.TurnID = xid.New().String()
+	}
+
+	if turn.TransportID == "" {
+		if info := transport.GetInfo(ctx); info != nil {
+			turn.TransportID = info.ID
+		} else {
+			a.lastTransportMu.RLock()
+			turn.TransportID = a.lastTransportID
+			a.lastTransportMu.RUnlock()
+		}
+	}
+
+	if turn.TransportID != "" {
+		a.lastTransportMu.Lock()
+		a.lastTransportID = turn.TransportID
+		a.lastTransportMu.Unlock()
+	}
+
+	if turn.SessionID == "" {
+		sess := a.sessionMgr.Active()
+		if sess == nil {
+			sess = a.sessionMgr.Create(ctx)
+		}
+		turn.SessionID = sess.ID
+	}
+
+	turn.EnqueuedAt = time.Now()
+
+	a.pendingMu.Lock()
+	a.pending = append([]*Turn{turn}, a.pending...)
+	a.pendingMu.Unlock()
+
+	a.priority <- turn
 }
 
 // QueueSnapshot returns a snapshot of the pending turns, the queue capacity,

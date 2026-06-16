@@ -13,6 +13,8 @@ All notable changes to Dolphin will be documented in this file.
 ### Added
 
 - TUI transport with adaptive terminal theming, markdown rendering, and permission dialogs.
+- Ctrl+Enter in TUI sends message as priority turn, jumping to the front of the agent queue.
+- Priority queue channel in AgentIO and AgentLoop for front-of-queue turn dispatch.
 - TUI status bar shows session usage (tokens, rounds) and limit caps with percentage.
 - TUI live queue display showing active and pending turns above the input area.
 - `config init` command to generate a default config.yaml file.
