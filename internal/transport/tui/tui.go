@@ -5,6 +5,7 @@ import (
 	"os"
 	"sync"
 
+	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/limit"
 	"dolphin/internal/transport"
@@ -135,6 +136,12 @@ func (t *TUI) Read(ctx context.Context) (string, error) {
 		return "", ctx.Err()
 	case <-t.ctx.Done():
 		return "", t.ctx.Err()
+	}
+}
+
+func (t *TUI) SetAgentIO(a *agentio.AgentIO) {
+	if t.program != nil {
+		t.program.Send(setAgentIOMsg{a: a})
 	}
 }
 

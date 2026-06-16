@@ -123,6 +123,10 @@ func init() {
 			"lang_use":       "Switch to a language",
 			"lang_switched":  "switched to %s\n",
 			"lang_invalid":   "invalid language: %s\n",
+
+			// config
+			"config_desc":      "Manage configuration",
+			"config_init_desc": "Generate a default config.yaml",
 		},
 		"zh", i18n.Dict{
 			// models
@@ -243,6 +247,10 @@ func init() {
 			"lang_use":       "切换语言",
 			"lang_switched":  "已切换到 %s\n",
 			"lang_invalid":   "无效语言: %s\n",
+
+			// config
+			"config_desc":      "管理配置",
+			"config_init_desc": "生成默认 config.yaml",
 		},
 	)
 }

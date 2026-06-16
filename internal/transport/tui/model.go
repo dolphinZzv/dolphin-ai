@@ -2,8 +2,12 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
+	"time"
+
+	"dolphin/internal/agentio"
 	"dolphin/internal/types"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -20,6 +24,8 @@ type thinkingMsg struct{ text string }
 type toolCallMsg struct{ call types.ToolCall }
 type toolResultMsg struct{ result types.ToolResult }
 type flushMsg struct{}
+type queueTickMsg struct{}
+type setAgentIOMsg struct{ a *agentio.AgentIO }
 type permRequestMsg struct{ prompt string }
 type userSubmitMsg struct{ text string }
 type modelChangeMsg struct{ name string }
@@ -75,6 +81,7 @@ type model struct {
 	savePrefs       func()
 	currentMsg      string // user message currently being processed
 	msgStatus       string // "pending", "success", "error"
+	agentIO         *agentio.AgentIO
 
 	// Incremental rendering state.
 	renderedContent string
@@ -101,7 +108,12 @@ func newModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return textarea.Blink
+	return tea.Batch(textarea.Blink, queueTick)
+}
+
+func queueTick() tea.Msg {
+	time.Sleep(time.Second)
+	return queueTickMsg{}
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -222,6 +234,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textBlockDirty = false
 		}
 		m.viewport.GotoBottom()
+
+	case queueTickMsg:
+		if m.agentIO != nil {
+			m.viewport.Height = m.height - 7 - queueLineCount(m.agentIO)
+		}
+		cmds = append(cmds, queueTick)
+
+	case setAgentIOMsg:
+		m.agentIO = msg.a
 
 	case sessionMsg:
 		m.sessionID = msg.id
@@ -565,6 +586,74 @@ func onOff(v bool) string {
 	return "off"
 }
 
+func queueLineCount(aio *agentio.AgentIO) int {
+	if aio == nil {
+		return 0
+	}
+	active := aio.ActiveSnapshot()
+	pending, _, _ := aio.QueueSnapshot()
+	n := len(active) + len(pending)
+	if n == 0 {
+		return 0
+	}
+	return n + 1 // header
+}
+
+func renderQueue(aio *agentio.AgentIO, width int) string {
+	if aio == nil {
+		return ""
+	}
+	active := aio.ActiveSnapshot()
+	pending, _, _ := aio.QueueSnapshot()
+	if len(active)+len(pending) == 0 {
+		return ""
+	}
+
+	var lines []string
+	header := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+		Bold(true).
+		Render("📋 Queue")
+	lines = append(lines, header)
+
+	for _, id := range sortedKeys(active) {
+		t := active[id]
+		elapsed := time.Since(t.StartedAt).Round(time.Second)
+		line := fmt.Sprintf("  %s %s — %s",
+			styleQueueActive.Render("▶"),
+			truncateInput(t.Input, width-25),
+			styleQueueTime.Render(elapsed.String()),
+		)
+		lines = append(lines, line)
+	}
+	for i, t := range pending {
+		wait := time.Since(t.EnqueuedAt).Round(time.Second)
+		line := fmt.Sprintf("  %s %s — %s",
+			styleQueueWait.Render(fmt.Sprintf("#%d", i+1)),
+			truncateInput(t.Input, width-25),
+			styleQueueTime.Render(wait.String()),
+		)
+		lines = append(lines, line)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func sortedKeys(m map[string]*agentio.TurnInfo) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func truncateInput(s string, n int) string {
+	if len(s) > n {
+		return s[:n-3] + "..."
+	}
+	return s
+}
+
 func truncateSessionID(id string) string {
 	if len(id) <= 8 {
 		return id
@@ -639,7 +728,12 @@ func (m model) View() string {
 	if m.currentMsg != "" && !m.viewport.AtBottom() {
 		topElements = append(topElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, m.width))
 	}
-	topElements = append(topElements, viewportView, sep)
+	topElements = append(topElements, viewportView)
+
+	if q := renderQueue(m.agentIO, m.width); q != "" {
+		topElements = append(topElements, q)
+	}
+	topElements = append(topElements, sep)
 
 	mainView := lipgloss.JoinVertical(
 		lipgloss.Left,

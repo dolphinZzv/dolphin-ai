@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"dolphin/internal/event"
@@ -20,7 +21,7 @@ type SubscriptionEngine struct {
 	eventBus *event.Bus
 	logger   *zap.Logger
 	handler  event.Handler
-	running  bool
+	running  atomic.Bool
 
 	// SendTurn enqueues a new turn for the agent loop. If nil, triggers are
 	// silently dropped.
@@ -46,10 +47,10 @@ func NewSubscriptionEngine(brain *Brain, eventBus *event.Bus, logger *zap.Logger
 
 // Start subscribes to the event bus and begins processing events.
 func (e *SubscriptionEngine) Start() {
-	if e.running {
+	if e.running.Load() {
 		return
 	}
-	e.running = true
+	e.running.Store(true)
 	e.handler = e.handleEvent
 	e.eventBus.Subscribe(e.handler)
 	if e.logger != nil {
@@ -59,7 +60,7 @@ func (e *SubscriptionEngine) Start() {
 
 // Stop unsubscribes from the event bus.
 func (e *SubscriptionEngine) Stop() {
-	e.running = false
+	e.running.Store(false)
 	if e.logger != nil {
 		e.logger.Info("subscription engine stopped")
 	}
@@ -67,7 +68,7 @@ func (e *SubscriptionEngine) Stop() {
 
 // handleEvent is called for every event on the bus.
 func (e *SubscriptionEngine) handleEvent(ctx context.Context, evt event.Event) {
-	if !e.running {
+	if !e.running.Load() {
 		return
 	}
 

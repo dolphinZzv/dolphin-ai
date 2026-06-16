@@ -250,6 +250,34 @@ func TestDroppingMemoryWindowTruncation(t *testing.T) {
 	}
 }
 
+func TestDroppingMemoryPreservesToolContext(t *testing.T) {
+	inner := NewFileMemory(newTestStore("s2"))
+	dm := NewDroppingMemory(inner, 1) // window=1 => max 2 messages, but must not orphan tool results
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Simulate a round with tool calls: user, assistant(tool_use), tool_result
+	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleUser, Content: "u", Timestamp: now})
+	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleAssistant, Content: "a", ToolCalls: []types.ToolCall{{ID: "t1", Name: "ls"}}, Timestamp: now})
+	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleTool, ToolCallID: "t1", Content: "result", Timestamp: now})
+
+	msgs, err := dm.Read(ctx, "s2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// window*2=2, but tool_result at index 2 must not be orphaned.
+	// The trim should walk back to include the assistant message.
+	if len(msgs) < 2 {
+		t.Fatalf("expected at least 2 messages, got %d", len(msgs))
+	}
+	if msgs[0].Role != types.RoleAssistant {
+		t.Errorf("first message should be assistant (has tool_use), got %s", msgs[0].Role)
+	}
+	if msgs[1].Role != types.RoleTool {
+		t.Errorf("second message should be tool, got %s", msgs[1].Role)
+	}
+}
+
 func TestDroppingMemoryNoTruncation(t *testing.T) {
 	inner := NewFileMemory(newTestStore("s1"))
 	dm := NewDroppingMemory(inner, 0) // 0 = no truncation

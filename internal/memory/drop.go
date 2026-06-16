@@ -24,7 +24,14 @@ func (m *DroppingMemory) Read(ctx context.Context, sessionID string) ([]types.Me
 	}
 
 	if m.window > 0 && len(msgs) > m.window*2 {
-		msgs = msgs[len(msgs)-m.window*2:]
+		start := len(msgs) - m.window*2
+		// Never orphan tool_result messages: walk back until we find a
+		// non-tool message (user or assistant) so every tool_result in
+		// the kept range has its corresponding tool_use.
+		for start > 0 && msgs[start].Role == types.RoleTool {
+			start--
+		}
+		msgs = msgs[start:]
 	}
 	return msgs, nil
 }

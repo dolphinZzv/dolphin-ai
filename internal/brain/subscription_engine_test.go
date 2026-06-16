@@ -397,14 +397,14 @@ func TestEngineStartStop(t *testing.T) {
 	bus.Publish(context.Background(), event.Event{Type: event.EventFileCreate})
 
 	engine.Start()
-	if !engine.running {
+	if !engine.running.Load() {
 		t.Error("expected engine running after Start")
 	}
 
 	engine.Start() // idempotent
 
 	engine.Stop()
-	if engine.running {
+	if engine.running.Load() {
 		t.Error("expected engine stopped after Stop")
 	}
 

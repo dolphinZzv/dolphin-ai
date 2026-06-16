@@ -2299,3 +2299,51 @@ func TestLLMStageProcessInterrupt(t *testing.T) {
 		So(retryCount, ShouldEqual, 0)
 	})
 }
+
+func TestLLMStage_SendsStreamTrue(t *testing.T) {
+	Convey("LLM stage sends Stream:true in LLMRequest", t, func() {
+		var capturedReq llm.LLMRequest
+		p := &captureProvider{
+			fn: func(_ context.Context, req llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+				capturedReq = req
+				ch := make(chan llm.LLMChunk, 1)
+				ch <- llm.LLMChunk{
+					Content:      "ok",
+					Done:         true,
+					InputTokens:  1,
+					OutputTokens: 1,
+				}
+				close(ch)
+				return ch, nil
+			},
+		}
+
+		state := &State{
+			SessionID:    "test-session",
+			SystemPrompt: "sys",
+			Messages:     []types.Message{{Role: "user", Content: "hi"}},
+		}
+
+		stage := &LLMStage{
+			Provider:   p,
+			Model:      "test-model",
+			MaxTokens:  100,
+			MaxRetries: 0,
+			EventBus:   event.NewBus(),
+			Logger:     zap.NewNop(),
+		}
+		err := stage.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(capturedReq.Stream, ShouldBeTrue)
+	})
+}
+
+type captureProvider struct {
+	fn func(context.Context, llm.LLMRequest) (<-chan llm.LLMChunk, error)
+}
+
+func (c *captureProvider) Name() string { return "capture" }
+func (c *captureProvider) CompleteStream(ctx context.Context, req llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	return c.fn(ctx, req)
+}
+func (c *captureProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }

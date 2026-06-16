@@ -103,7 +103,7 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 				cmd.Println("| **Session ID** | (none) |")
 			}
 			cmd.Printf("| **Session Mode** | %s |\n", sessionMode)
-			cmd.Printf("| **System Ctx** | %s characters |\n", comma(tokenVal(sess.Get("system_context"))))
+			cmd.Printf("| **System Ctx** | %s characters |\n", comma(tokenVal(sessVal(sess, "system_context"))))
 		} else {
 			if sess != nil {
 				cmd.Printf("Session ID:    %s\n", sess.ID)
@@ -111,7 +111,7 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 				cmd.Println("Session ID:    (none)")
 			}
 			cmd.Printf("Session Mode:  %s\n", sessionMode)
-			cmd.Printf("System Ctx:    %s characters\n", comma(tokenVal(sess.Get("system_context"))))
+			cmd.Printf("System Ctx:    %s characters\n", comma(tokenVal(sessVal(sess, "system_context"))))
 		}
 
 		if sess != nil && mem != nil {
@@ -154,6 +154,13 @@ func tokenVal(v any) int {
 	}
 	n, _ := v.(int)
 	return n
+}
+
+func sessVal(sess *session.Session, key string) any {
+	if sess == nil {
+		return nil
+	}
+	return sess.Get(key)
 }
 
 // comma formats an integer with thousand separators.

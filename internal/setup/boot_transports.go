@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 
+	"dolphin/internal/agentio"
 	"dolphin/internal/config"
 	"dolphin/internal/limit"
 	"dolphin/internal/mcp"
@@ -54,6 +55,9 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 		}
 		c.AgentIO.RegisterTransport(tio.ID(), tio)
 		c.Transports = append(c.Transports, tio)
+		if sa, ok := tio.(interface{ SetAgentIO(*agentio.AgentIO) }); ok {
+			sa.SetAgentIO(c.AgentIO)
+		}
 
 		// Register transport-specific MCP tools from Tools().
 		for i, td := range tio.Tools() {

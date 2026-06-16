@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/i18n"
 	"dolphin/internal/lifecycle"
@@ -46,5 +47,10 @@ func main() {
 	}
 
 	rootCmd.Flags().StringVarP(&configPath, "config", "c", "config.yaml", "path to config file")
+
+	configCmd := &cobra.Command{Use: "config"}
+	configCmd.AddCommand(command.NewConfigInitCmd())
+	rootCmd.AddCommand(configCmd)
+
 	rootCmd.Execute()
 }

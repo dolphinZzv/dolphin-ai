@@ -626,3 +626,27 @@ func TestWorkflowSection(t *testing.T) {
 		})
 	})
 }
+
+func TestDolphin(t *testing.T) {
+	Convey("Dolphin", t, func() {
+		Convey("Name returns 'dolphin'", func() {
+			s := &Dolphin{}
+			So(s.Name(), ShouldEqual, "dolphin")
+		})
+
+		Convey("Index returns 10", func() {
+			s := &Dolphin{}
+			So(s.Index(), ShouldEqual, 10)
+		})
+
+		Convey("BuildContent returns feedback instructions", func() {
+			s := &Dolphin{}
+			content, err := s.BuildContent(stdctx.Background())
+			So(err, ShouldBeNil)
+			So(content, ShouldContainSubstring, "Dolphin Project")
+			So(content, ShouldContainSubstring, "github.com/dolphinZzv/dolphin-ai")
+			So(content, ShouldContainSubstring, "request_permission")
+			So(content, ShouldContainSubstring, "gh issue create")
+		})
+	})
+}

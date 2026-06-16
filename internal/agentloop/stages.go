@@ -92,8 +92,17 @@ func (c *Compositor) Clone() *Compositor {
 }
 
 func (c *Compositor) Execute(ctx context.Context, state *State) error {
+	// Apply turn timeout to the entire turn (init + all rounds) so
+	// hung LLM calls or slow init stages can't block the worker forever.
+	execCtx := ctx
+	var turnCancel func()
+	if c.turnTimeout > 0 {
+		execCtx, turnCancel = context.WithTimeout(ctx, c.turnTimeout)
+		defer turnCancel()
+	}
+
 	for _, stage := range c.initStages {
-		if err := stage.Process(ctx, state); err != nil {
+		if err := stage.Process(execCtx, state); err != nil {
 			return fmt.Errorf("init stage %s: %w", stage.Name(), err)
 		}
 	}
@@ -101,10 +110,10 @@ func (c *Compositor) Execute(ctx context.Context, state *State) error {
 	for !state.Done && state.Round < c.maxRounds {
 		// Each round gets a fresh timeout so long-running tools in
 		// previous rounds don't starve subsequent LLM calls.
-		roundCtx := ctx
+		roundCtx := execCtx
 		var cancel func()
 		if c.turnTimeout > 0 {
-			roundCtx, cancel = context.WithTimeout(ctx, c.turnTimeout)
+			roundCtx, cancel = context.WithTimeout(execCtx, c.turnTimeout)
 		}
 		for _, stage := range c.loopStages {
 			if err := stage.Process(roundCtx, state); err != nil {
@@ -409,6 +418,15 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan s
 		},
 	})
 
+	// Derive HTTP timeout from context deadline so the HTTP client has a
+	// direct timeout even if context cancellation propagation lags.
+	httpTimeout := 120 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		if d := time.Until(deadline); d > 0 && d < httpTimeout {
+			httpTimeout = d
+		}
+	}
+
 	ch, err := s.Provider.CompleteStream(ctx, llm.LLMRequest{
 		Messages:  msgs,
 		System:    state.SystemPrompt,
@@ -416,6 +434,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan s
 		MaxTokens: s.MaxTokens,
 		Tools:     tools,
 		Stream:    true,
+		Timeout:   httpTimeout,
 	})
 	if err != nil {
 		return err

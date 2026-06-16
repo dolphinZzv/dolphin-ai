@@ -8,6 +8,16 @@ All notable changes to Dolphin will be documented in this file.
 
 - TUI transport with adaptive terminal theming, markdown rendering, and permission dialogs.
 - TUI status bar shows session usage (tokens, rounds) and limit caps with percentage.
+- TUI live queue display showing active and pending turns above the input area.
+- `config init` command to generate a default config.yaml file.
+
+### Fixed
+
+- Turn timeout now covers the entire turn (init + loop stages), not just each loop round.
+- LLM HTTP client now derives timeout from context deadline, preventing hung connections.
+- SubscriptionEngine data race on `running` field (switched to atomic.Bool).
+- DroppingMemory no longer orphans tool_result messages when truncating the message window.
+- Nil pointer panic in status command when no active session exists.
 - Per-model `stream`, `temperature`, `top_p` configuration in provider model lists.
 - Non-streaming LLM path (`CompleteOpenAI`) for models that don't support SSE.
 - LLM request hooks (`internal/llm/models/`) for per-model request rewriting.

@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"dolphin/internal/agentio"
+	"dolphin/internal/session"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
 
@@ -978,4 +980,104 @@ func TestModelUpdate_AltEnter(t *testing.T) {
 	m.viewport = viewport.New(80, 20)
 
 	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+}
+
+func newTestAgentIO(t *testing.T) *agentio.AgentIO {
+	t.Helper()
+	mgr := session.NewManager(t.TempDir())
+	return agentio.NewAgentIO(1, mgr, nil, nil, "test")
+}
+
+func TestQueueLineCount(t *testing.T) {
+	t.Run("nil agentIO", func(t *testing.T) {
+		if n := queueLineCount(nil); n != 0 {
+			t.Errorf("expected 0 for nil, got %d", n)
+		}
+	})
+
+	t.Run("empty queue", func(t *testing.T) {
+		aio := newTestAgentIO(t)
+		if n := queueLineCount(aio); n != 0 {
+			t.Errorf("expected 0 for empty, got %d", n)
+		}
+	})
+
+	t.Run("with active and pending", func(t *testing.T) {
+		aio := newTestAgentIO(t)
+		aio.SetActive("worker-1", &agentio.Turn{TurnID: "t1", SessionID: "s1", Input: "hi"})
+		aio.SendTurn(context.Background(), &agentio.Turn{Input: "next"})
+		if n := queueLineCount(aio); n != 3 { // header + 1 active + 1 pending
+			t.Errorf("expected 3, got %d", n)
+		}
+	})
+}
+
+func TestRenderQueue(t *testing.T) {
+	t.Run("nil agentIO", func(t *testing.T) {
+		if s := renderQueue(nil, 80); s != "" {
+			t.Errorf("expected empty for nil, got %q", s)
+		}
+	})
+
+	t.Run("empty queue", func(t *testing.T) {
+		aio := newTestAgentIO(t)
+		if s := renderQueue(aio, 80); s != "" {
+			t.Errorf("expected empty, got %q", s)
+		}
+	})
+
+	t.Run("with active turn", func(t *testing.T) {
+		aio := newTestAgentIO(t)
+		aio.SetActive("worker-1", &agentio.Turn{TurnID: "t1", SessionID: "s1", Input: "hello world"})
+		s := renderQueue(aio, 80)
+		if !strings.Contains(s, "Queue") {
+			t.Errorf("expected Queue header, got %q", s)
+		}
+		if !strings.Contains(s, "hello world") {
+			t.Errorf("expected input in output, got %q", s)
+		}
+	})
+
+	t.Run("with pending turn", func(t *testing.T) {
+		aio := newTestAgentIO(t)
+		aio.SendTurn(context.Background(), &agentio.Turn{Input: "pending task"})
+		s := renderQueue(aio, 80)
+		if !strings.Contains(s, "Queue") {
+			t.Errorf("expected Queue header, got %q", s)
+		}
+		if !strings.Contains(s, "pending task") {
+			t.Errorf("expected pending input, got %q", s)
+		}
+	})
+}
+
+func TestSortedKeys(t *testing.T) {
+	m := map[string]*agentio.TurnInfo{
+		"worker-2": {},
+		"worker-1": {},
+		"worker-3": {},
+	}
+	keys := sortedKeys(m)
+	if len(keys) != 3 {
+		t.Fatalf("expected 3 keys, got %d", len(keys))
+	}
+	if keys[0] != "worker-1" || keys[1] != "worker-2" || keys[2] != "worker-3" {
+		t.Errorf("expected sorted keys, got %v", keys)
+	}
+}
+
+func TestQueueTickMsg(t *testing.T) {
+	msg := queueTickMsg{}
+	if msg != (queueTickMsg{}) {
+		t.Error("queueTickMsg should be comparable")
+	}
+}
+
+func TestSetAgentIOMsg(t *testing.T) {
+	aio := newTestAgentIO(t)
+	m := newModel()
+	m2, _ := m.Update(setAgentIOMsg{a: aio})
+	if m2.(model).agentIO != aio {
+		t.Error("SetAgentIO should store agentIO on model")
+	}
 }

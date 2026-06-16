@@ -55,6 +55,7 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	command.RegisterContext(c.CmdReg, func() *appctx.Registry {
 		return c.ContextReg
 	})
+	command.RegisterConfig(c.CmdReg)
 
 	return nil
 }

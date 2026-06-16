@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -1262,6 +1264,51 @@ func TestContextListAndDetail(t *testing.T) {
 			output := r.Execute(context.Background(), "context unknown", "")
 			So(output, ShouldContainSubstring, "Unknown section")
 			So(output, ShouldContainSubstring, "base")
+		})
+	})
+}
+
+func TestRegisterConfig(t *testing.T) {
+	Convey("RegisterConfig", t, func() {
+		mgr := session.NewManager(t.TempDir())
+		sb := signal.NewBus()
+		r := NewRegistry(mgr, sb)
+		RegisterConfig(r)
+
+		Convey("generates config file at specified path", func() {
+			tmpPath := filepath.Join(t.TempDir(), "test-config.yaml")
+			output := r.Execute(context.Background(),
+				"config init -o "+tmpPath, "")
+			So(output, ShouldContainSubstring, "created default config at")
+			data, err := os.ReadFile(tmpPath)
+			So(err, ShouldBeNil)
+			So(string(data), ShouldContainSubstring, "llm:")
+			So(string(data), ShouldContainSubstring, "# yaml-language-server")
+		})
+
+		Convey("refuses to overwrite without --force", func() {
+			tmpPath := filepath.Join(t.TempDir(), "existing.yaml")
+			_ = os.WriteFile(tmpPath, []byte("original"), 0644)
+			output := r.Execute(context.Background(),
+				"config init -o "+tmpPath, "")
+			So(output, ShouldContainSubstring, "already exists")
+			data, _ := os.ReadFile(tmpPath)
+			So(string(data), ShouldEqual, "original")
+		})
+
+		Convey("overwrites with --force", func() {
+			tmpPath := filepath.Join(t.TempDir(), "force-test.yaml")
+			_ = os.WriteFile(tmpPath, []byte("original"), 0644)
+			output := r.Execute(context.Background(),
+				"config init -o "+tmpPath+" --force", "")
+			So(output, ShouldContainSubstring, "created default config at")
+			data, _ := os.ReadFile(tmpPath)
+			So(string(data), ShouldContainSubstring, "llm:")
+		})
+
+		Convey("shows init subcommand in help", func() {
+			output := r.Execute(context.Background(), "config", "")
+			So(output, ShouldContainSubstring, "init")
 		})
 	})
 }

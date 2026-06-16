@@ -19,6 +19,9 @@ var (
 	styleSeparator      lipgloss.Style
 	styleSeparatorFaint lipgloss.Style
 	styleUserText       lipgloss.Style
+	styleQueueActive    lipgloss.Style
+	styleQueueWait      lipgloss.Style
+	styleQueueTime      lipgloss.Style
 
 	mdRenderer   *glamour.TermRenderer
 	mdRendererMu sync.Mutex
@@ -46,6 +49,13 @@ func init() {
 
 	styleUserText = lipgloss.NewStyle().
 		Foreground(adaptiveUserLabel)
+
+	styleQueueActive = lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "40"})
+	styleQueueWait = lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "178"})
+	styleQueueTime = lipgloss.NewStyle().
+		Foreground(adaptiveFaint)
 
 	r, err := glamour.NewTermRenderer(
 		glamour.WithEnvironmentConfig(),
