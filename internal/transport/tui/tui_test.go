@@ -855,8 +855,14 @@ func TestTUI_RequestPermission_ReplyPaths(t *testing.T) {
 	defer func() { _ = tui.Close() }()
 
 	// Send a perm response and test it gets picked up.
+	// Protect permCh access with mu to prevent race with RequestPermission's write.
 	go func() {
-		tui.permCh <- "once"
+		tui.mu.Lock()
+		ch := tui.permCh
+		tui.mu.Unlock()
+		if ch != nil {
+			ch <- "once"
+		}
 	}()
 
 	result, err := tui.RequestPermission(context.Background(), "test")
