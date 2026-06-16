@@ -3,6 +3,8 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- Add version.go for build-time version injection
+- Add speedtest workflow
 
 ### Changed
 

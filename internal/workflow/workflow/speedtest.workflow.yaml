@@ -1,0 +1,49 @@
+version: "1"
+name: speedtest
+description: "Parallel analysis of HTTP response times and ping latencies for three websites"
+steps:
+  - id: step_a1
+    prompt: "Run 'curl -o /dev/null -s -w %{time_total}' against https://www.baidu.com and output the total HTTP response time in seconds. Output JSON: {site: 'baidu.com', time_seconds: <number>}"
+    output_schema:
+      site: string
+      time_seconds: number
+
+  - id: step_a2
+    prompt: "Run 'curl -o /dev/null -s -w %{time_total}' against https://www.google.com and output the total HTTP response time in seconds. Output JSON: {site: 'google.com', time_seconds: <number>}"
+    output_schema:
+      site: string
+      time_seconds: number
+
+  - id: step_a3
+    prompt: "Run 'curl -o /dev/null -s -w %{time_total}' against https://www.bing.com and output the total HTTP response time in seconds. Output JSON: {site: 'bing.com', time_seconds: <number>}"
+    output_schema:
+      site: string
+      time_seconds: number
+
+  - id: step_b1
+    prompt: "Run 'ping -c 2 www.baidu.com' and extract the average ping time (e.g., 'rtt min/avg/max/mdev = ...'). Output JSON: {site: 'baidu.com', ping_ms: <number>}"
+    depends_on: [step_a1]
+    output_schema:
+      site: string
+      ping_ms: number
+
+  - id: step_b2
+    prompt: "Run 'ping -c 2 www.google.com' and extract the average ping time. Output JSON: {site: 'google.com', ping_ms: <number>}"
+    depends_on: [step_a2]
+    output_schema:
+      site: string
+      ping_ms: number
+
+  - id: step_b3
+    prompt: "Run 'ping -c 2 www.bing.com' and extract the average ping time. Output JSON: {site: 'bing.com', ping_ms: <number>}"
+    depends_on: [step_a3]
+    output_schema:
+      site: string
+      ping_ms: number
+
+  - id: summarize
+    prompt: "Compare all results from the previous steps. The upstream step results are available. Determine which site is fastest overall (lowest ping_ms, tie-break by time_seconds). Output JSON: {fastest: <string>, ranking: [<string>, <string>, <string>]}"
+    depends_on: [step_b1, step_b2, step_b3]
+    output_schema:
+      fastest: string
+      ranking: array
