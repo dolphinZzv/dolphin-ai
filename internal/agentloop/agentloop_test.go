@@ -2348,6 +2348,190 @@ func (c *captureProvider) CompleteStream(ctx context.Context, req llm.LLMRequest
 }
 func (c *captureProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
 
+func TestToolStageProcessSerialPause(t *testing.T) {
+	Convey("ToolStage.Process serial path Pause+Resume between calls", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		firstBlocked := make(chan struct{})
+		firstUnblock := make(chan struct{})
+		reg := tool.NewRegistry()
+		reg.RegisterBuiltin("tool1", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			close(firstBlocked)
+			<-firstUnblock
+			return &types.ToolResult{Content: "ok1", IsError: false}, nil
+		})
+		reg.RegisterBuiltin("tool2", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			return &types.ToolResult{Content: "ok2", IsError: false}, nil
+		})
+
+		stage := &ToolStage{
+			ToolRegistry: reg,
+			Logger:       logger,
+			EventBus:     eb,
+			SignalBus:    sigBus,
+		}
+		state := &State{SessionID: "s-pause"}
+		state.ToolCalls = []types.ToolCall{
+			{ID: "c1", Name: "tool1", Arguments: `{}`},
+			{ID: "c2", Name: "tool2", Arguments: `{}`},
+		}
+
+		var procErr error
+		done := make(chan struct{})
+		go func() {
+			procErr = stage.Process(context.Background(), state)
+			close(done)
+		}()
+
+		// Wait for first tool to start, then send Pause. When first tool
+		// unblocks, the Pause will be caught at the signal check before
+		// the second call.
+		<-firstBlocked
+		sigBus.Send("s-pause", signal.Pause)
+		close(firstUnblock)
+
+		// Wait a bit for pauseOnSignal to start blocking, then resume.
+		time.Sleep(20 * time.Millisecond)
+		sigBus.Send("s-pause", signal.Resume)
+		<-done
+
+		So(procErr, ShouldBeNil)
+		So(len(state.Messages), ShouldEqual, 2)
+		So(state.Messages[0].Content, ShouldEqual, "ok1")
+		So(state.Messages[1].Content, ShouldEqual, "ok2")
+	})
+}
+
+func TestLLMStageProcessRetryPause(t *testing.T) {
+	Convey("LLMStage.Process Pause in retry loop", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		// Provider fails on first call, succeeds on retry.
+		provider := &errorThenSuccessProvider{
+			good: []llm.LLMChunk{{Content: "recovered", Done: true}},
+		}
+
+		stage := &LLMStage{
+			Provider:   provider,
+			Model:      "test-model",
+			MaxRetries: 1,
+			EventBus:   eb,
+			SignalBus:  sigBus,
+			Logger:     logger,
+		}
+		state := &State{
+			SessionID: "s-retry-pause",
+			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		}
+
+		// Start Process; first tryComplete fails immediately (provider error).
+		var procErr error
+		done := make(chan struct{})
+		go func() {
+			procErr = stage.Process(context.Background(), state)
+			close(done)
+		}()
+
+		// Give Process time to fail once and enter the retry signal check.
+		time.Sleep(20 * time.Millisecond)
+		// Send Pause to be caught at the retry loop top, then Resume.
+		sigBus.Send("s-retry-pause", signal.Pause)
+		time.Sleep(20 * time.Millisecond)
+		sigBus.Send("s-retry-pause", signal.Resume)
+		<-done
+
+		So(procErr, ShouldBeNil)
+		So(len(state.Messages), ShouldEqual, 2)
+		So(state.Messages[1].Content, ShouldEqual, "recovered")
+	})
+}
+
+// errorThenSuccessProvider fails on first CompleteStream call, then succeeds.
+type errorThenSuccessProvider struct {
+	mu       sync.Mutex
+	attempts int
+	good     []llm.LLMChunk
+}
+
+func (e *errorThenSuccessProvider) Name() string { return "error-then-success" }
+func (e *errorThenSuccessProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	e.mu.Lock()
+	n := e.attempts
+	e.attempts++
+	e.mu.Unlock()
+	if n == 0 {
+		return nil, fmt.Errorf("injected network error")
+	}
+	ch := make(chan llm.LLMChunk, len(e.good))
+	for _, c := range e.good {
+		ch <- c
+	}
+	close(ch)
+	return ch, nil
+}
+func (e *errorThenSuccessProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	return nil, nil
+}
+func (e *errorThenSuccessProvider) ActiveModel() string { return "" }
+
+func TestToolStageProcessParallelPause(t *testing.T) {
+	Convey("ToolStage processParallel watcher Pause+Resume", t, func() {
+		logger, _ := zap.NewDevelopment()
+		eb := event.NewBus()
+		sigBus := signal.NewBus()
+
+		handlerRunning := make(chan struct{})
+		handlerResume := make(chan struct{})
+		reg := tool.NewRegistry()
+		reg.RegisterBuiltin("a", "", nil, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+			close(handlerRunning)
+			<-handlerResume
+			return &types.ToolResult{Content: "a-ok", IsError: false}, nil
+		})
+
+		stage := &ToolStage{
+			ToolRegistry: reg,
+			Logger:       logger,
+			EventBus:     eb,
+			SignalBus:    sigBus,
+			MaxParallel:  2,
+		}
+		state := &State{SessionID: "s-parallel-pause"}
+		state.ToolCalls = []types.ToolCall{
+			{ID: "c1", Name: "a", Arguments: `{}`},
+		}
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		var procErr error
+		done := make(chan struct{})
+		go func() {
+			procErr = stage.Process(ctx, state)
+			close(done)
+		}()
+
+		// Wait for handler to start, then send Pause to the signal watcher.
+		<-handlerRunning
+		sigBus.Send("s-parallel-pause", signal.Pause)
+		time.Sleep(20 * time.Millisecond)
+		sigBus.Send("s-parallel-pause", signal.Resume)
+
+		// Unblock the tool handler so it completes.
+		close(handlerResume)
+
+		// Cancel the parent context so the signal watcher exits via execCtx.Done().
+		cancel()
+		<-done
+
+		So(procErr, ShouldBeNil)
+	})
+}
+
 func TestPauseOnSignal(t *testing.T) {
 	Convey("pauseOnSignal", t, func() {
 		Convey("returns Resume when received", func() {

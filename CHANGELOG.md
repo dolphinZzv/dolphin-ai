@@ -6,6 +6,7 @@ All notable changes to Dolphin will be documented in this file.
 - Add version.go for build-time version injection
 - /context list uses 1-based numbered format (1) base, 2) soul, ...)
 - Add /session stop and /session continue to pause and resume turn processing
+- Add test coverage for pause/resume paths in LLMStage, ToolStage serial, and processParallel
 - Add speedtest workflow
 
 ### Changed
