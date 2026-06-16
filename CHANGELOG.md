@@ -15,6 +15,7 @@ All notable changes to Dolphin will be documented in this file.
 - `/status` command shows current model's `temperature` and `top_p`.
 - Python test scripts for OpenAI and Anthropic API validation (`scripts/`).
 - Sticky floating indicator at top showing current user message with pending/success/error state.
+- GitHub Issue auto-review system: poller script (`scripts/github-issue-poll.sh`) cross-repo, deduped via `.dolphin/github-issues-state.json`, cron every 5min, subscription `review-assigned-issues` triggers LLM analysis + auto-label + reply draft on `file.update` of `.dolphin/issue-changes.json`.
 
 ### Changed
 
@@ -25,6 +26,7 @@ All notable changes to Dolphin will be documented in this file.
 - TUI status bar shows `pool_size` and `tool_parallelism` when above defaults.
 - Thinking continuation lines padded to align with content text.
 - gofmt formatting fixes across changed files.
+- Fix agentloop LLMRequest missing `Stream: true`, causing non-streaming path and DeepSeek API 400 error.
 - Per-round turn timeout: each agent loop round gets a fresh timeout so long-running tools don't starve subsequent LLM calls.
 - Tool parallelism config (`agent.tool_parallelism`) for concurrent tool execution.
 - Workflow agent-driven e2e tests.

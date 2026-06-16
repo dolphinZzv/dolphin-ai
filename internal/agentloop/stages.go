@@ -415,6 +415,7 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan s
 		Model:     s.activeModel(),
 		MaxTokens: s.MaxTokens,
 		Tools:     tools,
+		Stream:    true,
 	})
 	if err != nil {
 		return err
