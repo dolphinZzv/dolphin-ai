@@ -22,9 +22,7 @@ func TestRegisterScriptTools(t *testing.T) {
 
 	expected := map[string]bool{
 		"scripts_list":  false,
-		"script_create": false,
-		"script_update": false,
-		"script_delete": false,
+		"script_upsert": false,
 		"script_toggle": false,
 	}
 
@@ -83,7 +81,7 @@ func TestScriptsListEmpty(t *testing.T) {
 	}
 }
 
-func TestScriptCreate(t *testing.T) {
+func TestScriptUpsertCreate(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterScriptTools(r, br)
@@ -92,7 +90,7 @@ func TestScriptCreate(t *testing.T) {
 		"name": "my-scr", "description": "my script", "content": "run this",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-3", Name: "script_create", Arguments: string(args),
+		ID: "call-3", Name: "script_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -113,66 +111,7 @@ func TestScriptCreate(t *testing.T) {
 	}
 }
 
-func TestScriptCreateDuplicate(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterScriptTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{
-		"name": "dup-scr", "description": "first", "content": "first",
-	})
-	r.Execute(context.Background(), types.ToolCall{
-		ID: "call-4", Name: "script_create", Arguments: string(args),
-	})
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-5", Name: "script_create", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for duplicate")
-	}
-	if !strings.Contains(result.Content, "already exists") {
-		t.Errorf("expected 'already exists', got: %s", result.Content)
-	}
-}
-
-func TestScriptCreateMissingName(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterScriptTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{"name": ""})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-6", Name: "script_create", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for empty name")
-	}
-}
-
-func TestScriptCreateInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterScriptTools(r, br)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-7", Name: "script_create", Arguments: "not json",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
-func TestScriptUpdate(t *testing.T) {
+func TestScriptUpsertUpdate(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterScriptTools(r, br)
@@ -181,14 +120,14 @@ func TestScriptUpdate(t *testing.T) {
 		"name": "upd-scr", "description": "original", "content": "original",
 	})
 	r.Execute(context.Background(), types.ToolCall{
-		ID: "call-8", Name: "script_create", Arguments: string(createArgs),
+		ID: "call-4", Name: "script_upsert", Arguments: string(createArgs),
 	})
 
 	updateArgs, _ := json.Marshal(map[string]string{
 		"name": "upd-scr", "content": "updated",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-9", Name: "script_update", Arguments: string(updateArgs),
+		ID: "call-5", Name: "script_upsert", Arguments: string(updateArgs),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -201,40 +140,7 @@ func TestScriptUpdate(t *testing.T) {
 	}
 }
 
-func TestScriptUpdateNotFound(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterScriptTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-10", Name: "script_update", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for missing script")
-	}
-}
-
-func TestScriptUpdateInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterScriptTools(r, br)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-11", Name: "script_update", Arguments: "not json",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
-func TestScriptDelete(t *testing.T) {
+func TestScriptUpsertDelete(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterScriptTools(r, br)
@@ -243,12 +149,12 @@ func TestScriptDelete(t *testing.T) {
 		"name": "del-scr", "description": "to delete", "content": "bye",
 	})
 	r.Execute(context.Background(), types.ToolCall{
-		ID: "call-12", Name: "script_create", Arguments: string(createArgs),
+		ID: "call-6", Name: "script_upsert", Arguments: string(createArgs),
 	})
 
 	args, _ := json.Marshal(map[string]string{"name": "del-scr"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-13", Name: "script_delete", Arguments: string(args),
+		ID: "call-7", Name: "script_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -266,13 +172,47 @@ func TestScriptDelete(t *testing.T) {
 	}
 }
 
-func TestScriptDeleteInvalidArgs(t *testing.T) {
+func TestScriptUpsertDeleteNotFound(t *testing.T) {
+	r := NewRegistry()
+	br := setupTestBrainForTools(t)
+	RegisterScriptTools(r, br)
+
+	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-8", Name: "script_upsert", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for deleting nonexistent")
+	}
+}
+
+func TestScriptUpsertMissingName(t *testing.T) {
+	r := NewRegistry()
+	br := setupTestBrainForTools(t)
+	RegisterScriptTools(r, br)
+
+	args, _ := json.Marshal(map[string]string{"name": ""})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-9", Name: "script_upsert", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for empty name")
+	}
+}
+
+func TestScriptUpsertInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterScriptTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-14", Name: "script_delete", Arguments: "not json",
+		ID: "call-10", Name: "script_upsert", Arguments: "not json",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -291,12 +231,12 @@ func TestScriptToggle(t *testing.T) {
 		"name": "tog-scr", "description": "toggle test", "content": "toggle me",
 	})
 	r.Execute(context.Background(), types.ToolCall{
-		ID: "call-15", Name: "script_create", Arguments: string(createArgs),
+		ID: "call-11", Name: "script_upsert", Arguments: string(createArgs),
 	})
 
 	args, _ := json.Marshal(map[string]any{"name": "tog-scr", "enabled": false})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-16", Name: "script_toggle", Arguments: string(args),
+		ID: "call-12", Name: "script_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -321,7 +261,7 @@ func TestScriptToggleNotFound(t *testing.T) {
 
 	args, _ := json.Marshal(map[string]any{"name": "nonexistent", "enabled": false})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-17", Name: "script_toggle", Arguments: string(args),
+		ID: "call-13", Name: "script_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -337,7 +277,7 @@ func TestScriptToggleInvalidArgs(t *testing.T) {
 	RegisterScriptTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-18", Name: "script_toggle", Arguments: "not json",
+		ID: "call-14", Name: "script_toggle", Arguments: "not json",
 	})
 	if err != nil {
 		t.Fatal(err)

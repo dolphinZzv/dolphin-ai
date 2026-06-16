@@ -30,18 +30,16 @@ Each skill is stored as a directory under the skills directory:
       CHANGELOG.md    — Change history (user-managed)
 
 ## Available Tools
-- skill_new — Create a new skill (fields: name, description, prompt, tools, commands, enabled)
+- skill_upsert — Create, update, or delete a skill by name (only name = delete)
 - skill_search — Search existing skills by name or description
 - skill_load — Enable/load a skill by name
-- skill_update — Update an existing skill's fields
-- skill_delete — Delete a skill by name
 
 ## Creation Process
 1. Discuss with the user: what should the skill do? What trigger commands?
 2. Define the skill's name, description, and system prompt
-3. Use skill_new to register it
+3. Use skill_upsert to register it
 4. Suggest the user populate supplementary files (examples/, scripts/, README.md) in the skill directory
-5. Test the skill and iterate using skill_update
+5. Test the skill and iterate using skill_upsert
 
 ## Guidelines
 - Keep skill prompts focused and single-purpose

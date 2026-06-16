@@ -14,8 +14,7 @@ import (
 func RegisterCommandTools(r *Registry, br *brain.Brain) {
 	listSchema := json.RawMessage(`{"type":"object"}`)
 	nameSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"Command name"}},"required":["name"]}`)
-	createSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"Command name"},"description":{"type":"string","description":"What this command does"},"content":{"type":"string","description":"Instructions for the LLM to execute"}},"required":["name","description","content"]}`)
-	updateSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"},"description":{"type":"string"},"content":{"type":"string"}},"required":["name"]}`)
+	upsertSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string","description":"Command name"},"description":{"type":"string","description":"What this command does"},"content":{"type":"string","description":"Instructions for the LLM to execute"}},"required":["name"]}`)
 	toggleSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"},"enabled":{"type":"boolean"}},"required":["name","enabled"]}`)
 
 	r.RegisterBuiltin("commands_list", "List all available commands with their description and status", listSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
@@ -37,7 +36,7 @@ func RegisterCommandTools(r *Registry, br *brain.Brain) {
 		return &types.ToolResult{Content: strings.TrimRight(sb.String(), "\n")}, nil
 	})
 
-	r.RegisterBuiltin("command_create", "Create a new command. Args: {name, description, content}", createSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	r.RegisterBuiltin("command_upsert", "Create, update, or delete a command by name. If only name is provided, deletes. Args: {name, description?, content?}", upsertSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
 		var req struct {
 			Name        string `json:"name"`
 			Description string `json:"description"`
@@ -49,54 +48,36 @@ func RegisterCommandTools(r *Registry, br *brain.Brain) {
 		if req.Name == "" {
 			return &types.ToolResult{Content: "command name is required", IsError: true}, nil
 		}
-		// Check if already exists.
+
+		// Delete: only name provided.
+		if req.Description == "" && req.Content == "" {
+			if err := brain.DeleteCommand(ctx, br, req.Name); err != nil {
+				return &types.ToolResult{Content: "failed to delete: " + err.Error(), IsError: true}, nil
+			}
+			return &types.ToolResult{Content: fmt.Sprintf("command %q deleted", req.Name)}, nil
+		}
+
 		existing, err := brain.ReadCommand(ctx, br, req.Name)
 		if err == nil && existing != nil {
-			return &types.ToolResult{Content: fmt.Sprintf("command %q already exists, use command_update to modify", req.Name), IsError: true}, nil
+			// Update.
+			if req.Description != "" {
+				existing.Description = req.Description
+			}
+			if req.Content != "" {
+				existing.Content = req.Content
+			}
+			if err := brain.WriteCommand(ctx, br, *existing); err != nil {
+				return &types.ToolResult{Content: "failed: " + err.Error(), IsError: true}, nil
+			}
+			return &types.ToolResult{Content: fmt.Sprintf("command %q updated", req.Name)}, nil
 		}
+
+		// Create.
 		cmd := brain.Command{Name: req.Name, Description: req.Description, Enabled: true, Content: req.Content}
 		if err := brain.WriteCommand(ctx, br, cmd); err != nil {
-			return &types.ToolResult{Content: "failed to create command: " + err.Error(), IsError: true}, nil
+			return &types.ToolResult{Content: "failed: " + err.Error(), IsError: true}, nil
 		}
 		return &types.ToolResult{Content: fmt.Sprintf("command %q created", req.Name)}, nil
-	})
-
-	r.RegisterBuiltin("command_update", "Update an existing command. Args: {name, description?, content?}", updateSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-		var req struct {
-			Name        string `json:"name"`
-			Description string `json:"description"`
-			Content     string `json:"content"`
-		}
-		if err := json.Unmarshal(args, &req); err != nil {
-			return &types.ToolResult{Content: "invalid args: " + err.Error(), IsError: true}, nil
-		}
-		existing, err := brain.ReadCommand(ctx, br, req.Name)
-		if err != nil {
-			return &types.ToolResult{Content: fmt.Sprintf("command %q not found", req.Name), IsError: true}, nil
-		}
-		if req.Description != "" {
-			existing.Description = req.Description
-		}
-		if req.Content != "" {
-			existing.Content = req.Content
-		}
-		if err := brain.WriteCommand(ctx, br, *existing); err != nil {
-			return &types.ToolResult{Content: "failed to update command: " + err.Error(), IsError: true}, nil
-		}
-		return &types.ToolResult{Content: fmt.Sprintf("command %q updated", req.Name)}, nil
-	})
-
-	r.RegisterBuiltin("command_delete", "Delete a command by name. Args: {name}", nameSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-		var req struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(args, &req); err != nil {
-			return &types.ToolResult{Content: "invalid args: " + err.Error(), IsError: true}, nil
-		}
-		if err := brain.DeleteCommand(ctx, br, req.Name); err != nil {
-			return &types.ToolResult{Content: "failed to delete: " + err.Error(), IsError: true}, nil
-		}
-		return &types.ToolResult{Content: fmt.Sprintf("command %q deleted", req.Name)}, nil
 	})
 
 	r.RegisterBuiltin("command_toggle", "Enable or disable a command. Args: {name, enabled}", toggleSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {

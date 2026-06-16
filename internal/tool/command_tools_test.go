@@ -22,9 +22,7 @@ func TestRegisterCommandTools(t *testing.T) {
 
 	expected := map[string]bool{
 		"commands_list":   false,
-		"command_create":  false,
-		"command_update":  false,
-		"command_delete":  false,
+		"command_upsert":  false,
 		"command_toggle":  false,
 		"command_execute": false,
 	}
@@ -47,14 +45,13 @@ func TestCommandsList(t *testing.T) {
 	br := setupTestBrainForTools(t)
 	RegisterCommandTools(r, br)
 
-	// Create a command first.
 	createArgs, _ := json.Marshal(map[string]string{
 		"name":        "test-cmd",
 		"description": "a test command",
 		"content":     "do something",
 	})
 	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-0", Name: "command_create", Arguments: string(createArgs),
+		ID: "call-0", Name: "command_upsert", Arguments: string(createArgs),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -96,7 +93,7 @@ func TestCommandsListEmpty(t *testing.T) {
 	}
 }
 
-func TestCommandCreate(t *testing.T) {
+func TestCommandUpsertCreate(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterCommandTools(r, br)
@@ -107,7 +104,7 @@ func TestCommandCreate(t *testing.T) {
 		"content":     "run this",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-3", Name: "command_create", Arguments: string(args),
+		ID: "call-3", Name: "command_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +116,6 @@ func TestCommandCreate(t *testing.T) {
 		t.Errorf("expected created message, got: %s", result.Content)
 	}
 
-	// Verify it was saved.
 	cmd, err := brain.ReadCommand(context.Background(), br, "my-cmd")
 	if err != nil {
 		t.Fatal(err)
@@ -129,96 +125,28 @@ func TestCommandCreate(t *testing.T) {
 	}
 }
 
-func TestCommandCreateDuplicate(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterCommandTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{
-		"name":        "dup-cmd",
-		"description": "first",
-		"content":     "first",
-	})
-	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-4", Name: "command_create", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// Create same command again.
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-5", Name: "command_create", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for duplicate")
-	}
-	if !strings.Contains(result.Content, "already exists") {
-		t.Errorf("expected 'already exists', got: %s", result.Content)
-	}
-}
-
-func TestCommandCreateMissingName(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterCommandTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{"name": ""})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-6", Name: "command_create", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for empty name")
-	}
-}
-
-func TestCommandCreateInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterCommandTools(r, br)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-7", Name: "command_create", Arguments: `not json`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
-func TestCommandUpdate(t *testing.T) {
+func TestCommandUpsertUpdate(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterCommandTools(r, br)
 
 	// Create first.
 	createArgs, _ := json.Marshal(map[string]string{
-		"name":        "update-cmd",
+		"name":        "upsert-cmd",
 		"description": "original",
 		"content":     "original content",
 	})
-	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-8", Name: "command_create", Arguments: string(createArgs),
+	r.Execute(context.Background(), types.ToolCall{
+		ID: "call-4", Name: "command_upsert", Arguments: string(createArgs),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	// Update content.
+	// Same name = update.
 	updateArgs, _ := json.Marshal(map[string]string{
-		"name":    "update-cmd",
+		"name":    "upsert-cmd",
 		"content": "updated content",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-9", Name: "command_update", Arguments: string(updateArgs),
+		ID: "call-5", Name: "command_upsert", Arguments: string(updateArgs),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -226,11 +154,11 @@ func TestCommandUpdate(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if !strings.Contains(result.Content, `"update-cmd" updated`) {
+	if !strings.Contains(result.Content, `"upsert-cmd" updated`) {
 		t.Errorf("expected updated message, got: %s", result.Content)
 	}
 
-	cmd, _ := brain.ReadCommand(context.Background(), br, "update-cmd")
+	cmd, _ := brain.ReadCommand(context.Background(), br, "upsert-cmd")
 	if !strings.Contains(cmd.Content, "updated content") {
 		t.Errorf("expected content containing 'updated content', got %q", cmd.Content)
 	}
@@ -239,40 +167,7 @@ func TestCommandUpdate(t *testing.T) {
 	}
 }
 
-func TestCommandUpdateNotFound(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterCommandTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-10", Name: "command_update", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for missing command")
-	}
-}
-
-func TestCommandUpdateInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForTools(t)
-	RegisterCommandTools(r, br)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-11", Name: "command_update", Arguments: `not json`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
-func TestCommandDelete(t *testing.T) {
+func TestCommandUpsertDelete(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterCommandTools(r, br)
@@ -282,16 +177,14 @@ func TestCommandDelete(t *testing.T) {
 		"description": "to delete",
 		"content":     "bye",
 	})
-	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-12", Name: "command_create", Arguments: string(createArgs),
+	r.Execute(context.Background(), types.ToolCall{
+		ID: "call-6", Name: "command_upsert", Arguments: string(createArgs),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
+	// Only name = delete.
 	args, _ := json.Marshal(map[string]string{"name": "del-cmd"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-13", Name: "command_delete", Arguments: string(args),
+		ID: "call-7", Name: "command_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -309,13 +202,47 @@ func TestCommandDelete(t *testing.T) {
 	}
 }
 
-func TestCommandDeleteInvalidArgs(t *testing.T) {
+func TestCommandUpsertDeleteNotFound(t *testing.T) {
+	r := NewRegistry()
+	br := setupTestBrainForTools(t)
+	RegisterCommandTools(r, br)
+
+	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-8", Name: "command_upsert", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for deleting nonexistent")
+	}
+}
+
+func TestCommandUpsertMissingName(t *testing.T) {
+	r := NewRegistry()
+	br := setupTestBrainForTools(t)
+	RegisterCommandTools(r, br)
+
+	args, _ := json.Marshal(map[string]string{"name": ""})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-9", Name: "command_upsert", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected IsError for empty name")
+	}
+}
+
+func TestCommandUpsertInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForTools(t)
 	RegisterCommandTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-14", Name: "command_delete", Arguments: `not json`,
+		ID: "call-10", Name: "command_upsert", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -335,17 +262,13 @@ func TestCommandToggle(t *testing.T) {
 		"description": "toggle test",
 		"content":     "toggle me",
 	})
-	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-15", Name: "command_create", Arguments: string(createArgs),
+	r.Execute(context.Background(), types.ToolCall{
+		ID: "call-11", Name: "command_upsert", Arguments: string(createArgs),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	// Disable it.
 	args, _ := json.Marshal(map[string]any{"name": "tog-cmd", "enabled": false})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-16", Name: "command_toggle", Arguments: string(args),
+		ID: "call-12", Name: "command_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -370,7 +293,7 @@ func TestCommandToggleNotFound(t *testing.T) {
 
 	args, _ := json.Marshal(map[string]any{"name": "nonexistent", "enabled": false})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-17", Name: "command_toggle", Arguments: string(args),
+		ID: "call-13", Name: "command_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -386,7 +309,7 @@ func TestCommandToggleInvalidArgs(t *testing.T) {
 	RegisterCommandTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-18", Name: "command_toggle", Arguments: `not json`,
+		ID: "call-14", Name: "command_toggle", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -406,16 +329,13 @@ func TestCommandExecute(t *testing.T) {
 		"description": "exec test",
 		"content":     "do something useful",
 	})
-	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-19", Name: "command_create", Arguments: string(createArgs),
+	r.Execute(context.Background(), types.ToolCall{
+		ID: "call-15", Name: "command_upsert", Arguments: string(createArgs),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	args, _ := json.Marshal(map[string]string{"name": "exec-cmd"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-20", Name: "command_execute", Arguments: string(args),
+		ID: "call-16", Name: "command_execute", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -435,7 +355,7 @@ func TestCommandExecuteNotFound(t *testing.T) {
 
 	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-21", Name: "command_execute", Arguments: string(args),
+		ID: "call-17", Name: "command_execute", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -455,25 +375,18 @@ func TestCommandExecuteDisabled(t *testing.T) {
 		"description": "disabled test",
 		"content":     "should not run",
 	})
-	_, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-22", Name: "command_create", Arguments: string(createArgs),
+	r.Execute(context.Background(), types.ToolCall{
+		ID: "call-18", Name: "command_upsert", Arguments: string(createArgs),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	// Disable it.
 	toggleArgs, _ := json.Marshal(map[string]any{"name": "dis-cmd", "enabled": false})
-	_, err = r.Execute(context.Background(), types.ToolCall{
-		ID: "call-23", Name: "command_toggle", Arguments: string(toggleArgs),
+	r.Execute(context.Background(), types.ToolCall{
+		ID: "call-19", Name: "command_toggle", Arguments: string(toggleArgs),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	args, _ := json.Marshal(map[string]string{"name": "dis-cmd"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-24", Name: "command_execute", Arguments: string(args),
+		ID: "call-20", Name: "command_execute", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -492,7 +405,7 @@ func TestCommandExecuteInvalidArgs(t *testing.T) {
 	RegisterCommandTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-25", Name: "command_execute", Arguments: `not json`,
+		ID: "call-21", Name: "command_execute", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)

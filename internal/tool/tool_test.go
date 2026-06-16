@@ -632,11 +632,9 @@ func TestRegisterSkillTools(t *testing.T) {
 	}
 
 	expected := map[string]bool{
-		"skill_new":    false,
+		"skill_upsert": false,
 		"skill_search": false,
 		"skill_load":   false,
-		"skill_update": false,
-		"skill_delete": false,
 	}
 
 	if len(defs) != len(expected) {
@@ -658,7 +656,7 @@ func TestRegisterSkillTools(t *testing.T) {
 	}
 }
 
-func TestSkill_new(t *testing.T) {
+func TestSkillUpsertCreate(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	RegisterSkillTools(r, store)
@@ -666,7 +664,7 @@ func TestSkill_new(t *testing.T) {
 	args, _ := json.Marshal(skill.Skill{Name: "my_skill", Prompt: "do something"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-1",
-		Name:      "skill_new",
+		Name:      "skill_upsert",
 		Arguments: string(args),
 	})
 	if err != nil {
@@ -675,7 +673,7 @@ func TestSkill_new(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if result.Content != "skill 'my_skill' created" {
+	if result.Content != "skill 'my_skill' saved" {
 		t.Fatalf("unexpected content: %s", result.Content)
 	}
 
@@ -689,14 +687,14 @@ func TestSkill_new(t *testing.T) {
 	}
 }
 
-func TestSkill_newInvalidArgs(t *testing.T) {
+func TestSkillUpsertInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-1",
-		Name:      "skill_new",
+		Name:      "skill_upsert",
 		Arguments: `not json`,
 	})
 	if err != nil {
@@ -819,7 +817,7 @@ func TestSkill_loadNotFound(t *testing.T) {
 	}
 }
 
-func TestSkill_update(t *testing.T) {
+func TestSkillUpsertUpdate(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	store.Save(context.Background(), skill.Skill{Name: "my_skill", Prompt: "original"})
@@ -828,7 +826,7 @@ func TestSkill_update(t *testing.T) {
 	args, _ := json.Marshal(skill.Skill{Name: "my_skill", Prompt: "updated"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-5",
-		Name:      "skill_update",
+		Name:      "skill_upsert",
 		Arguments: string(args),
 	})
 	if err != nil {
@@ -837,7 +835,7 @@ func TestSkill_update(t *testing.T) {
 	if result.IsError {
 		t.Fatalf("unexpected error: %s", result.Content)
 	}
-	if result.Content != "skill 'my_skill' updated" {
+	if result.Content != "skill 'my_skill' saved" {
 		t.Fatalf("unexpected content: %s", result.Content)
 	}
 
@@ -847,25 +845,7 @@ func TestSkill_update(t *testing.T) {
 	}
 }
 
-func TestSkill_updateInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	store := newMockSkillStore()
-	RegisterSkillTools(r, store)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID:        "call-5",
-		Name:      "skill_update",
-		Arguments: `not json`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
-func TestSkill_delete(t *testing.T) {
+func TestSkillUpsertDelete(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	store.Save(context.Background(), skill.Skill{Name: "my_skill", Prompt: "do something"})
@@ -874,7 +854,7 @@ func TestSkill_delete(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"name": "my_skill"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-6",
-		Name:      "skill_delete",
+		Name:      "skill_upsert",
 		Arguments: string(args),
 	})
 	if err != nil {
@@ -893,14 +873,15 @@ func TestSkill_delete(t *testing.T) {
 	}
 }
 
-func TestSkill_deleteInvalidArgs(t *testing.T) {
+// removed - covered by TestSkillUpsertInvalidArgs
+func _removed(t *testing.T) {
 	r := NewRegistry()
 	store := newMockSkillStore()
 	RegisterSkillTools(r, store)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-6",
-		Name:      "skill_delete",
+		Name:      "skill_upsert",
 		Arguments: `not json`,
 	})
 	if err != nil {

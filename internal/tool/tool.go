@@ -385,7 +385,25 @@ func RegisterSkillTools(r *Registry, store SkillStore) {
 	nameSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"}},"required":["name"]}`)
 	querySchema := json.RawMessage(`{"type":"object","properties":{"query":{"type":"string"}},"required":["query"]}`)
 
-	r.RegisterBuiltin("skill_new", "Create a new skill. Args: {name, description?, prompt?, tools?}", skillSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+	r.RegisterBuiltin("skill_upsert", "Create, update, or delete a skill by name. If only name is provided, deletes. Args: {name, description?, prompt?, tools?, enabled?}", skillSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
+		// Check if only "name" was provided (delete signal).
+		var raw map[string]json.RawMessage
+		if err := json.Unmarshal(args, &raw); err != nil {
+			return &types.ToolResult{Content: "invalid args", IsError: true}, nil
+		}
+		if len(raw) == 1 {
+			if _, ok := raw["name"]; ok {
+				var nameReq struct {
+					Name string `json:"name"`
+				}
+				json.Unmarshal(args, &nameReq)
+				if err := store.Delete(ctx, nameReq.Name); err != nil {
+					return &types.ToolResult{Content: "failed to delete: " + err.Error(), IsError: true}, nil
+				}
+				return &types.ToolResult{Content: "skill '" + nameReq.Name + "' deleted"}, nil
+			}
+		}
+
 		var sk skill.Skill
 		if err := json.Unmarshal(args, &sk); err != nil {
 			return &types.ToolResult{Content: "invalid skill definition: " + err.Error(), IsError: true}, nil
@@ -394,9 +412,9 @@ func RegisterSkillTools(r *Registry, store SkillStore) {
 			return &types.ToolResult{Content: "skill name is required", IsError: true}, nil
 		}
 		if err := store.Save(ctx, sk); err != nil {
-			return &types.ToolResult{Content: "failed to save skill: " + err.Error(), IsError: true}, nil
+			return &types.ToolResult{Content: "failed: " + err.Error(), IsError: true}, nil
 		}
-		return &types.ToolResult{Content: "skill '" + sk.Name + "' created"}, nil
+		return &types.ToolResult{Content: "skill '" + sk.Name + "' saved"}, nil
 	})
 
 	r.RegisterBuiltin("skill_search", "Search for skills by query", querySchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
@@ -425,33 +443,6 @@ func RegisterSkillTools(r *Registry, store SkillStore) {
 		sk.Enabled = true
 		store.Save(ctx, *sk)
 		return &types.ToolResult{Content: "skill '" + sk.Name + "' loaded"}, nil
-	})
-
-	r.RegisterBuiltin("skill_update", "Update an existing skill. Args: {name, description?, prompt?, tools?, enabled?}", skillSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-		var sk skill.Skill
-		if err := json.Unmarshal(args, &sk); err != nil {
-			return &types.ToolResult{Content: "invalid skill definition", IsError: true}, nil
-		}
-		if sk.Name == "" {
-			return &types.ToolResult{Content: "skill name is required", IsError: true}, nil
-		}
-		if err := store.Save(ctx, sk); err != nil {
-			return &types.ToolResult{Content: "failed to update: " + err.Error(), IsError: true}, nil
-		}
-		return &types.ToolResult{Content: "skill '" + sk.Name + "' updated"}, nil
-	})
-
-	r.RegisterBuiltin("skill_delete", "Delete a skill by name", nameSchema, func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
-		var req struct {
-			Name string `json:"name"`
-		}
-		if err := json.Unmarshal(args, &req); err != nil {
-			return &types.ToolResult{Content: "invalid args", IsError: true}, nil
-		}
-		if err := store.Delete(ctx, req.Name); err != nil {
-			return &types.ToolResult{Content: "failed to delete: " + err.Error(), IsError: true}, nil
-		}
-		return &types.ToolResult{Content: "skill '" + req.Name + "' deleted"}, nil
 	})
 }
 

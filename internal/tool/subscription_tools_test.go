@@ -32,9 +32,7 @@ func TestRegisterSubscriptionTools(t *testing.T) {
 
 	expected := map[string]bool{
 		"subscriptions_list":  false,
-		"subscription_create": false,
-		"subscription_update": false,
-		"subscription_delete": false,
+		"subscription_upsert": false,
 		"subscription_toggle": false,
 	}
 
@@ -51,7 +49,7 @@ func TestRegisterSubscriptionTools(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCreate(t *testing.T) {
+func TestSubscriptionUpsertCreate(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForSubscriptions(t)
 	RegisterSubscriptionTools(r, br)
@@ -65,7 +63,7 @@ func TestSubscriptionCreate(t *testing.T) {
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-1",
-		Name:      "subscription_create",
+		Name:      "subscription_upsert",
 		Arguments: string(args),
 	})
 	if err != nil {
@@ -78,7 +76,6 @@ func TestSubscriptionCreate(t *testing.T) {
 		t.Errorf("expected 'created' in response, got: %s", result.Content)
 	}
 
-	// Verify
 	sub, err := brain.ReadSubscription(context.Background(), br, "test-sub")
 	if err != nil {
 		t.Fatalf("ReadSubscription failed: %v", err)
@@ -91,7 +88,7 @@ func TestSubscriptionCreate(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCreateWithFilterPath(t *testing.T) {
+func TestSubscriptionUpsertCreateWithFilterPath(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForSubscriptions(t)
 	RegisterSubscriptionTools(r, br)
@@ -105,7 +102,7 @@ func TestSubscriptionCreateWithFilterPath(t *testing.T) {
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
 		ID:        "call-2",
-		Name:      "subscription_create",
+		Name:      "subscription_upsert",
 		Arguments: string(args),
 	})
 	if err != nil {
@@ -121,40 +118,94 @@ func TestSubscriptionCreateWithFilterPath(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCreateDuplicate(t *testing.T) {
+func TestSubscriptionUpsertUpdate(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForSubscriptions(t)
 	RegisterSubscriptionTools(r, br)
 
-	// Create once
-	args, _ := json.Marshal(map[string]string{"name": "dup", "event_pattern": "file.*"})
-	r.Execute(context.Background(), types.ToolCall{
-		ID: "call-3", Name: "subscription_create", Arguments: string(args),
+	brain.WriteSubscription(context.Background(), br, brain.Subscription{
+		Name: "updatable", EventPattern: "file.*", Content: "old", Enabled: true,
 	})
 
-	// Create again — should error
+	args, _ := json.Marshal(map[string]interface{}{
+		"name":    "updatable",
+		"content": "new content",
+		"enabled": false,
+	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-4", Name: "subscription_create", Arguments: string(args),
+		ID: "call-3", Name: "subscription_upsert", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "updated") {
+		t.Errorf("expected 'updated' in response, got: %s", result.Content)
+	}
+
+	sub, _ := brain.ReadSubscription(context.Background(), br, "updatable")
+	if strings.TrimSpace(sub.Content) != "new content" {
+		t.Errorf("expected 'new content', got %q", sub.Content)
+	}
+	if sub.Enabled {
+		t.Error("expected enabled=false after update")
+	}
+}
+
+func TestSubscriptionUpsertDelete(t *testing.T) {
+	r := NewRegistry()
+	br := setupTestBrainForSubscriptions(t)
+	RegisterSubscriptionTools(r, br)
+
+	brain.WriteSubscription(context.Background(), br, brain.Subscription{Name: "delete-me", EventPattern: "file.*"})
+
+	args, _ := json.Marshal(map[string]string{"name": "delete-me"})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-4", Name: "subscription_upsert", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected error: %s", result.Content)
+	}
+	if !strings.Contains(result.Content, "deleted") {
+		t.Errorf("expected 'deleted' in response, got: %s", result.Content)
+	}
+
+	_, err = brain.ReadSubscription(context.Background(), br, "delete-me")
+	if err == nil {
+		t.Fatal("expected error after delete")
+	}
+}
+
+func TestSubscriptionUpsertDeleteNotFound(t *testing.T) {
+	r := NewRegistry()
+	br := setupTestBrainForSubscriptions(t)
+	RegisterSubscriptionTools(r, br)
+
+	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-5", Name: "subscription_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !result.IsError {
-		t.Fatal("expected IsError for duplicate create")
-	}
-	if !strings.Contains(result.Content, "already exists") {
-		t.Errorf("expected 'already exists' error, got: %s", result.Content)
+		t.Fatal("expected IsError for deleting nonexistent")
 	}
 }
 
-func TestSubscriptionCreateInvalidArgs(t *testing.T) {
+func TestSubscriptionUpsertInvalidArgs(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForSubscriptions(t)
 	RegisterSubscriptionTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID:        "call-5",
-		Name:      "subscription_create",
+		ID:        "call-6",
+		Name:      "subscription_upsert",
 		Arguments: `not json`,
 	})
 	if err != nil {
@@ -165,14 +216,14 @@ func TestSubscriptionCreateInvalidArgs(t *testing.T) {
 	}
 }
 
-func TestSubscriptionCreateMissingName(t *testing.T) {
+func TestSubscriptionUpsertMissingName(t *testing.T) {
 	r := NewRegistry()
 	br := setupTestBrainForSubscriptions(t)
 	RegisterSubscriptionTools(r, br)
 
 	args, _ := json.Marshal(map[string]string{"event_pattern": "file.*"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-6", Name: "subscription_create", Arguments: string(args),
+		ID: "call-7", Name: "subscription_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -187,12 +238,11 @@ func TestSubscriptionList(t *testing.T) {
 	br := setupTestBrainForSubscriptions(t)
 	RegisterSubscriptionTools(r, br)
 
-	// Create two subscriptions
 	brain.WriteSubscription(context.Background(), br, brain.Subscription{Name: "sub-a", EventPattern: "file.*", Content: "a"})
 	brain.WriteSubscription(context.Background(), br, brain.Subscription{Name: "sub-b", EventPattern: "llm.emit", Content: "b"})
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID:   "call-7",
+		ID:   "call-8",
 		Name: "subscriptions_list",
 	})
 	if err != nil {
@@ -215,7 +265,7 @@ func TestSubscriptionListEmpty(t *testing.T) {
 	RegisterSubscriptionTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID:   "call-8",
+		ID:   "call-9",
 		Name: "subscriptions_list",
 	})
 	if err != nil {
@@ -226,132 +276,6 @@ func TestSubscriptionListEmpty(t *testing.T) {
 	}
 	if !strings.Contains(result.Content, "No subscriptions found") {
 		t.Errorf("expected 'No subscriptions found', got: %s", result.Content)
-	}
-}
-
-func TestSubscriptionUpdate(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForSubscriptions(t)
-	RegisterSubscriptionTools(r, br)
-
-	brain.WriteSubscription(context.Background(), br, brain.Subscription{
-		Name: "updatable", EventPattern: "file.*", Content: "old", Enabled: true,
-	})
-
-	args, _ := json.Marshal(map[string]interface{}{
-		"name":    "updatable",
-		"content": "new content",
-		"enabled": false,
-	})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-9", Name: "subscription_update", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError {
-		t.Fatalf("unexpected error: %s", result.Content)
-	}
-
-	sub, _ := brain.ReadSubscription(context.Background(), br, "updatable")
-	if strings.TrimSpace(sub.Content) != "new content" {
-		t.Errorf("expected 'new content', got %q", sub.Content)
-	}
-	if sub.Enabled {
-		t.Error("expected enabled=false after update")
-	}
-}
-
-func TestSubscriptionUpdateNotFound(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForSubscriptions(t)
-	RegisterSubscriptionTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-10", Name: "subscription_update", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for updating nonexistent")
-	}
-}
-
-func TestSubscriptionUpdateInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForSubscriptions(t)
-	RegisterSubscriptionTools(r, br)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-11", Name: "subscription_update", Arguments: `not json`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
-func TestSubscriptionDelete(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForSubscriptions(t)
-	RegisterSubscriptionTools(r, br)
-
-	brain.WriteSubscription(context.Background(), br, brain.Subscription{Name: "delete-me", EventPattern: "file.*"})
-
-	args, _ := json.Marshal(map[string]string{"name": "delete-me"})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-12", Name: "subscription_delete", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.IsError {
-		t.Fatalf("unexpected error: %s", result.Content)
-	}
-	if !strings.Contains(result.Content, "deleted") {
-		t.Errorf("expected 'deleted' in response, got: %s", result.Content)
-	}
-
-	_, err = brain.ReadSubscription(context.Background(), br, "delete-me")
-	if err == nil {
-		t.Fatal("expected error after delete")
-	}
-}
-
-func TestSubscriptionDeleteNotFound(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForSubscriptions(t)
-	RegisterSubscriptionTools(r, br)
-
-	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-13", Name: "subscription_delete", Arguments: string(args),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for deleting nonexistent")
-	}
-}
-
-func TestSubscriptionDeleteInvalidArgs(t *testing.T) {
-	r := NewRegistry()
-	br := setupTestBrainForSubscriptions(t)
-	RegisterSubscriptionTools(r, br)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-14", Name: "subscription_delete", Arguments: `not json`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
 	}
 }
 
@@ -368,7 +292,7 @@ func TestSubscriptionToggleEnable(t *testing.T) {
 		"name": "togglable", "enabled": true,
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-15", Name: "subscription_toggle", Arguments: string(args),
+		ID: "call-10", Name: "subscription_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -399,7 +323,7 @@ func TestSubscriptionToggleDisable(t *testing.T) {
 		"name": "togglable", "enabled": false,
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-16", Name: "subscription_toggle", Arguments: string(args),
+		ID: "call-11", Name: "subscription_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -426,7 +350,7 @@ func TestSubscriptionToggleNotFound(t *testing.T) {
 		"name": "nonexistent", "enabled": true,
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-17", Name: "subscription_toggle", Arguments: string(args),
+		ID: "call-12", Name: "subscription_toggle", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -442,7 +366,7 @@ func TestSubscriptionToggleInvalidArgs(t *testing.T) {
 	RegisterSubscriptionTools(r, br)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-18", Name: "subscription_toggle", Arguments: `not json`,
+		ID: "call-13", Name: "subscription_toggle", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)
