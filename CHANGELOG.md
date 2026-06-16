@@ -80,3 +80,4 @@ All notable changes to Dolphin will be documented in this file.
 	- Root OpenAI/Anthropic providers now route to non-streaming HTTP path when `Stream: false`, matching the volcengine provider pattern. Adds `CompleteAnthropic` for non-streaming Anthropic API calls.
 	- gofmt formatting fixes across changed files.
 	- Add test coverage for temperature and topP display in `/status` command.
+	- Add test coverage for LLM request hook registration and dispatch.
