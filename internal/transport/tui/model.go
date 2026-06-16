@@ -592,10 +592,12 @@ func (m model) View() string {
 	}
 	if m.rounds > 0 {
 		if m.hardReqs > 0 {
-			parts = append(parts, fmt.Sprintf("req:%d/%d", m.reqs, m.hardReqs))
+			pct := float64(m.reqs) / float64(m.hardReqs) * 100
+			parts = append(parts, fmt.Sprintf("req:%d/%d(%.1f%%)", m.reqs, m.hardReqs, pct))
 		}
 		if m.hardTokens > 0 {
-			parts = append(parts, fmt.Sprintf("tok:%d/%d", m.tokens, m.hardTokens))
+			pct := float64(m.tokens) / float64(m.hardTokens) * 100
+			parts = append(parts, fmt.Sprintf("tok:%d/%d(%.1f%%)", m.tokens, m.hardTokens, pct))
 		}
 		parts = append(parts, fmt.Sprintf("r%d", m.rounds))
 	}

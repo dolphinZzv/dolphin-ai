@@ -7,7 +7,13 @@ All notable changes to Dolphin will be documented in this file.
 ### Added
 
 - TUI transport with adaptive terminal theming, markdown rendering, and permission dialogs.
-- TUI status bar shows session usage (tokens, rounds) and limit caps (req:N/M, tok:N/M).
+- TUI status bar shows session usage (tokens, rounds) and limit caps with percentage.
+- Per-model `stream`, `temperature`, `top_p` configuration in provider model lists.
+- Non-streaming LLM path (`CompleteOpenAI`) for models that don't support SSE.
+- LLM request hooks (`internal/llm/models/`) for per-model request rewriting.
+- DeepSeek V4 Pro preset: default `reasoning_effort=high`.
+- `/status` command shows current model's `temperature` and `top_p`.
+- Python test scripts for OpenAI and Anthropic API validation (`scripts/`).
 - Sticky floating indicator at top showing current user message with pending/success/error state.
 
 ### Changed

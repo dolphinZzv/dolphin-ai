@@ -642,6 +642,26 @@ func TestParseProviderModels(t *testing.T) {
 		}
 		if models[0].Temperature != 0.7 {
 			t.Errorf("Temperature = %f", models[0].Temperature)
+		if models[0].TopP != 0 {
+			t.Errorf("TopP should default to 0, got %f", models[0].TopP)
+		}
+		}
+	})
+
+	t.Run("parses top_p from config", func(t *testing.T) {
+		cfg := configMapFull{
+			configMap: configMap{
+				"llm.openai.provider":      "openai",
+				"llm.openai.models.0.name": "gpt-4o",
+			},
+			floats: map[string]float64{"llm.openai.models.0.top_p": 0.85},
+		}
+		models := parseProviderModels(cfg, "openai")
+		if len(models) != 1 {
+			t.Fatalf("expected 1 model, got %d", len(models))
+		}
+		if models[0].TopP != 0.85 {
+			t.Errorf("TopP = %f, want 0.85", models[0].TopP)
 		}
 	})
 

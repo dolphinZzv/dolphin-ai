@@ -215,3 +215,164 @@ func TestManager_ConcurrentLimitsSequentialAccess(t *testing.T) {
 	}
 	<-ch2
 }
+
+func TestManager_QualifiedModelName_StreamConfig(t *testing.T) {
+	mgr := NewManager()
+	mgr.AddProvider("volcengine_agent", &mockProvider{
+		name: "volcengine_agent",
+		models: []ModelConfig{
+			{Name: "minimax-m3", Model: "minimax-m3", Stream: false, StreamSet: true},
+			{Name: "deepseek-v4-pro", Model: "deepseek-v4-pro", Stream: true},
+		},
+	})
+
+	// Set active with qualified name.
+	if err := mgr.SetActiveModel("volcengine_agent/minimax-m3"); err != nil {
+		t.Fatalf("SetActiveModel failed: %v", err)
+	}
+	if mgr.ActiveModel() != "minimax-m3" {
+		t.Errorf("expected active model 'minimax-m3', got '%s'", mgr.ActiveModel())
+	}
+
+	// CompleteStream should use Stream: false from the matched ModelConfig.
+	// We verify this by checking the request's Stream field through a custom mock.
+	var capturedReq LLMRequest
+	mgr.providers["volcengine_agent"] = &captureProvider{
+		name: "volcengine_agent",
+		models: []ModelConfig{
+			{Name: "minimax-m3", Model: "minimax-m3", Stream: false, StreamSet: true},
+		},
+		capture: func(req LLMRequest) {
+			capturedReq = req
+		},
+	}
+
+	ch, err := mgr.CompleteStream(context.Background(), LLMRequest{})
+	if err != nil {
+		t.Fatalf("CompleteStream failed: %v", err)
+	}
+	<-ch
+
+	if capturedReq.Stream {
+		t.Error("expected Stream=false in captured request, got true")
+	}
+}
+
+func TestManager_QualifiedModelName_MatchesShortName(t *testing.T) {
+	mgr := NewManager()
+	mgr.AddProvider("volcengine_agent", &mockProvider{
+		name: "volcengine_agent",
+		models: []ModelConfig{
+			{Name: "minimax-m3", Model: "minimax-m3", Stream: false, StreamSet: true},
+		},
+	})
+
+	// SetActiveModel with short name.
+	if err := mgr.SetActiveModel("minimax-m3"); err != nil {
+		t.Fatalf("SetActiveModel with short name failed: %v", err)
+	}
+	if mgr.ActiveModel() != "minimax-m3" {
+		t.Errorf("expected 'minimax-m3', got '%s'", mgr.ActiveModel())
+	}
+
+	// SetActiveModel with qualified name.
+	if err := mgr.SetActiveModel("volcengine_agent/minimax-m3"); err != nil {
+		t.Fatalf("SetActiveModel with qualified name failed: %v", err)
+	}
+	if mgr.ActiveModel() != "minimax-m3" {
+		t.Errorf("expected 'minimax-m3', got '%s'", mgr.ActiveModel())
+	}
+}
+
+type captureProvider struct {
+	name   string
+	models []ModelConfig
+	capture func(LLMRequest)
+}
+
+func (m *captureProvider) Name() string { return m.name }
+
+func (m *captureProvider) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LLMChunk, error) {
+	if m.capture != nil {
+		m.capture(req)
+	}
+	ch := make(chan LLMChunk)
+	close(ch)
+	return ch, nil
+}
+
+func (m *captureProvider) Models(ctx context.Context) ([]ModelConfig, error) {
+	return m.models, nil
+}
+
+func TestManager_TopP_Forwarding(t *testing.T) {
+	mgr := NewManager()
+	mgr.AddProvider("openai", &mockProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", TopP: 0.85, Temperature: 0.9, MaxTokens: 8192},
+		},
+	})
+	mgr.SetActiveModel("gpt-4o")
+
+	var capturedReq LLMRequest
+	mgr.providers["openai"] = &captureProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", TopP: 0.85, Temperature: 0.9, MaxTokens: 8192},
+		},
+		capture: func(req LLMRequest) {
+			capturedReq = req
+		},
+	}
+
+	ch, err := mgr.CompleteStream(context.Background(), LLMRequest{})
+	if err != nil {
+		t.Fatalf("CompleteStream failed: %v", err)
+	}
+	<-ch
+
+	if capturedReq.TopP != 0.85 {
+		t.Errorf("expected TopP=0.85, got %f", capturedReq.TopP)
+	}
+	if capturedReq.Temperature != 0.9 {
+		t.Errorf("expected Temperature=0.9, got %f", capturedReq.Temperature)
+	}
+	if capturedReq.MaxTokens != 8192 {
+		t.Errorf("expected MaxTokens=8192, got %d", capturedReq.MaxTokens)
+	}
+}
+
+func TestManager_TopP_Zero_NotForwarded(t *testing.T) {
+	// TopP=0 means "not configured", so it should not override the request.
+	mgr := NewManager()
+	mgr.AddProvider("openai", &mockProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", TopP: 0},
+		},
+	})
+	mgr.SetActiveModel("gpt-4o")
+
+	var capturedReq LLMRequest
+	mgr.providers["openai"] = &captureProvider{
+		name: "openai",
+		models: []ModelConfig{
+			{Name: "gpt-4o", Model: "gpt-4o", TopP: 0},
+		},
+		capture: func(req LLMRequest) {
+			capturedReq = req
+		},
+	}
+
+	ch, err := mgr.CompleteStream(context.Background(), LLMRequest{TopP: 0.5})
+	if err != nil {
+		t.Fatalf("CompleteStream failed: %v", err)
+	}
+	<-ch
+
+	// TopP=0 in ModelConfig should not override the request's 0.5.
+	if capturedReq.TopP != 0.5 {
+		t.Errorf("expected TopP=0.5 (unchanged), got %f", capturedReq.TopP)
+	}
+}

@@ -220,7 +220,7 @@ func BuildAnthropicRequest(model string, messages []AnthropicMessage, cfg Config
 		MaxTokens:   req.MaxTokens,
 		Temperature: temperature,
 		TopP:        req.TopP,
-		Stream:      true,
+		Stream:      req.Stream,
 		Stop:        req.Stop,
 	}
 	if req.ReasoningEffort != "" {

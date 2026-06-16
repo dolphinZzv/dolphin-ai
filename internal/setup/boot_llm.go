@@ -9,6 +9,7 @@ import (
 	"dolphin/internal/llm"
 	_ "dolphin/internal/llm/custom"
 	"dolphin/internal/llm/deepseek"
+	_ "dolphin/internal/llm/models"
 	_ "dolphin/internal/llm/volcengine"
 
 	"go.uber.org/zap"
@@ -82,12 +83,22 @@ func discoverProviderNames(cfg interface {
 	return providers
 }
 
+func hasKey(keys []string, target string) bool {
+	for _, k := range keys {
+		if k == target {
+			return true
+		}
+	}
+	return false
+}
+
 func parseProviderModels(cfg interface {
 	GetString(string) string
 	GetInt(string) int
 	GetFloat(string) float64
 	GetDuration(string) time.Duration
 	GetBool(string) bool
+	Keys() []string
 }, provider string) []llm.ModelConfig {
 	var models []llm.ModelConfig
 	for i := 0; ; i++ {
@@ -119,19 +130,29 @@ func parseProviderModels(cfg interface {
 
 		maxConcurrency := cfg.GetInt(prefix + ".limit.max_concurrency")
 
-		models = append(models, llm.ModelConfig{
-			Name:            name,
-			Provider:        provider,
-			Vendor:          vendor,
-			APIType:         apiType,
-			Model:           name,
-			MaxTokens:       maxTokens,
-			Temperature:     cfg.GetFloat(prefix + ".temperature"),
-			MaxRetries:      maxRetries,
-			MaxConcurrency:  maxConcurrency,
-			Timeout:         timeout,
-			ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
-			Disabled:        cfg.GetBool(prefix + ".disabled"),
+			stream := true
+			streamSet := false
+			if hasKey(cfg.Keys(), prefix+".stream") {
+				stream = cfg.GetBool(prefix + ".stream")
+				streamSet = true
+			}
+
+			models = append(models, llm.ModelConfig{
+				Name:            name,
+				Provider:        provider,
+				Vendor:          vendor,
+				APIType:         apiType,
+				Model:           name,
+				MaxTokens:       maxTokens,
+				Temperature:     cfg.GetFloat(prefix + ".temperature"),
+				TopP:            cfg.GetFloat(prefix + ".top_p"),
+				MaxRetries:      maxRetries,
+				MaxConcurrency:  maxConcurrency,
+				Timeout:         timeout,
+				ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
+				Stream:          stream,
+				StreamSet:       streamSet,
+				Disabled:        cfg.GetBool(prefix + ".disabled"),
 		})
 	}
 	return models

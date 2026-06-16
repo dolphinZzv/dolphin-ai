@@ -54,3 +54,4 @@ internal/workflow/*.result.yaml
 todo.md
 *.result.yaml
 .workflow.yaml
+__pycache__

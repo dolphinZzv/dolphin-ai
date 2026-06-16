@@ -216,7 +216,7 @@ func BuildOpenAIRequest(model string, messages []OpenAIMessage, cfg Config, req 
 		Temperature:     temperature,
 		TopP:            req.TopP,
 		MaxTokens:       req.MaxTokens,
-		Stream:          true,
+		Stream:          req.Stream,
 		Stop:            req.Stop,
 		ReasoningEffort: req.ReasoningEffort,
 	}
@@ -300,6 +300,104 @@ func StreamOpenAI(ctx context.Context, url, apiKey string, headers map[string]st
 				return
 			}
 		}
+	}()
+
+	return ch, nil
+}
+
+// completionResponse is an OpenAI non-streaming chat completion response.
+type completionResponse struct {
+	Choices []struct {
+		Message struct {
+			Content          string           `json:"content"`
+			ReasoningContent string           `json:"reasoning_content"`
+			ToolCalls        []OpenAIToolCall `json:"tool_calls"`
+		} `json:"message"`
+	} `json:"choices"`
+	Usage *struct {
+		PromptTokens        int `json:"prompt_tokens"`
+		CompletionTokens    int `json:"completion_tokens"`
+		TotalTokens         int `json:"total_tokens"`
+		PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
+		PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
+		PromptTokensDetails *struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
+	} `json:"usage,omitempty"`
+}
+
+// CompleteOpenAI sends a non-streaming HTTP POST and returns one chunk.
+func CompleteOpenAI(ctx context.Context, url, apiKey string, headers map[string]string, body []byte, timeout time.Duration, logger *zap.Logger) (<-chan LLMChunk, error) {
+	ch := make(chan LLMChunk, 1)
+
+	go func() {
+		defer close(ch)
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			ch <- LLMChunk{Error: fmt.Errorf("llm: create request: %w", err)}
+			return
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("Authorization", "Bearer "+apiKey)
+		for k, v := range headers {
+			httpReq.Header.Set(k, v)
+		}
+
+		cl := &http.Client{Timeout: timeout}
+		resp, err := cl.Do(httpReq)
+		if err != nil {
+			ch <- LLMChunk{Error: fmt.Errorf("llm: request failed: %w", err)}
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusOK {
+			errBody, _ := io.ReadAll(resp.Body)
+			var apiErr OpenAIErrorBody
+			if json.Unmarshal(errBody, &apiErr) == nil && apiErr.Error.Message != "" {
+				ch <- LLMChunk{Error: fmt.Errorf("llm: %s (status %d)", apiErr.Error.Message, resp.StatusCode)}
+			} else {
+				ch <- LLMChunk{Error: fmt.Errorf("llm: status %d (body: %s)", resp.StatusCode, string(errBody))}
+			}
+			return
+		}
+
+		var cr completionResponse
+		if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+			ch <- LLMChunk{Error: fmt.Errorf("llm: decode response: %w", err)}
+			return
+		}
+
+		chunk := LLMChunk{}
+		if cr.Usage != nil {
+			chunk.InputTokens = cr.Usage.PromptTokens
+			chunk.OutputTokens = cr.Usage.CompletionTokens
+			chunk.TotalTokens = cr.Usage.TotalTokens
+			chunk.PromptCacheHitTokens = cr.Usage.PromptCacheHitTokens
+			chunk.PromptCacheMissTokens = cr.Usage.PromptCacheMissTokens
+			if cr.Usage.PromptTokensDetails != nil {
+				chunk.PromptCachedTokens = cr.Usage.PromptTokensDetails.CachedTokens
+			}
+		}
+		if len(cr.Choices) > 0 {
+			msg := cr.Choices[0].Message
+			chunk.Content = msg.Content
+			chunk.Thinking = msg.ReasoningContent
+			if len(msg.ToolCalls) > 0 {
+				tcs := make([]types.ToolCall, len(msg.ToolCalls))
+				for i, tc := range msg.ToolCalls {
+					tcs[i] = types.ToolCall{
+						ID:        tc.ID,
+						Name:      tc.Function.Name,
+						Arguments: tc.Function.Arguments,
+					}
+				}
+				chunk.ToolCalls = tcs
+			}
+		}
+		chunk.Done = true
+		ch <- chunk
 	}()
 
 	return ch, nil

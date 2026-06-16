@@ -21,6 +21,8 @@ type ModelConfig struct {
 	TopP            float64       `json:"top_p"`
 	Stop            []string      `json:"stop"`
 	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
+	Stream          bool          `json:"stream"`
+	StreamSet       bool          `json:"-"`
 	Disabled        bool          `json:"disabled,omitempty"`
 }
 
@@ -35,6 +37,7 @@ type LLMRequest struct {
 	Stop            []string
 	Tools           []types.ToolDef
 	ReasoningEffort string
+	Stream          bool
 }
 
 type LLMChunk struct {
@@ -64,6 +67,7 @@ type Provider interface {
 	CompleteStream(ctx context.Context, req LLMRequest) (<-chan LLMChunk, error)
 	Models(ctx context.Context) ([]ModelConfig, error)
 }
+
 
 type Config struct {
 	Provider      string // display name (config section name)

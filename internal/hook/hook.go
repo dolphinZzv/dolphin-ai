@@ -43,3 +43,22 @@ func (r *Registry) DispatchCheck(ctx context.Context, e event.Event) error {
 	}
 	return nil
 }
+
+// LLMRequestHook is called before an LLM request is sent.
+// model and apiType identify the target model. The req pointer can be
+// modified to rewrite the request.
+type LLMRequestHook func(req any, model, apiType string)
+
+var llmHooks []LLMRequestHook
+
+// RegisterLLMRequestHook registers a hook that rewrites LLM requests.
+func RegisterLLMRequestHook(h LLMRequestHook) {
+	llmHooks = append(llmHooks, h)
+}
+
+// DispatchLLMRequest runs all registered LLM request hooks.
+func DispatchLLMRequest(req any, model, apiType string) {
+	for _, h := range llmHooks {
+		h(req, model, apiType)
+	}
+}

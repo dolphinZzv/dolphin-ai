@@ -530,7 +530,7 @@ func TestAnthropicChatURL(t *testing.T) {
 
 func TestBuildOpenAIRequest(t *testing.T) {
 	msgs := []OpenAIMessage{{Role: "user", Content: "hello"}}
-	req := LLMRequest{Model: "gpt-4", Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, MaxTokens: 100}
+	req := LLMRequest{Model: "gpt-4", Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, MaxTokens: 100, Stream: true}
 
 	t.Run("default temperature", func(t *testing.T) {
 		data, err := BuildOpenAIRequest("gpt-4", msgs, Config{}, req)
@@ -633,6 +633,7 @@ func TestBuildAnthropicRequest(t *testing.T) {
 		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
 		System:    "You are helpful.",
 		MaxTokens: 100,
+		Stream:    true,
 	}
 
 	t.Run("basic request", func(t *testing.T) {

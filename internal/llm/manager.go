@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	"dolphin/internal/hook"
 )
 
 // Manager holds multiple providers and routes requests by model name.
@@ -95,12 +97,16 @@ func (m *Manager) SetActiveModel(name string) error {
 	// Use qualified name (provider/name) if the model list uses it due to
 	// name collisions across providers.
 	qualified := providerName + "/" + name
+	shortName := name
+	if _, after, found := strings.Cut(name, "/"); found {
+		shortName = after
+	}
 	for _, mc := range m.models {
-		if mc.Name == qualified {
+		if mc.Name == qualified || mc.Name == shortName {
 			if mc.Disabled {
 				return fmt.Errorf("llm: model %q is disabled", name)
 			}
-			m.active = qualified
+			m.active = mc.Name
 			return nil
 		}
 	}
@@ -128,9 +134,15 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 
 	// Use the original API model name, not the qualified routing name.
 	apiModel := modelName
+	apiType := ""
 	maxConcurrency := 0
+	stream := true
+	shortName := modelName
+	if _, after, found := strings.Cut(modelName, "/"); found {
+		shortName = after
+	}
 	for _, mc := range m.models {
-		if mc.Name == modelName {
+		if mc.Name == modelName || mc.Name == shortName {
 			if mc.Disabled {
 				return nil, fmt.Errorf("llm: model %q is disabled", modelName)
 			}
@@ -147,11 +159,20 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 			if mc.ReasoningEffort != "" {
 				req.ReasoningEffort = mc.ReasoningEffort
 			}
+			if mc.TopP != 0 {
+				req.TopP = mc.TopP
+			}
+			apiType = mc.APIType
+			if mc.StreamSet {
+					stream = mc.Stream
+				}
 			maxConcurrency = mc.MaxConcurrency
 			break
 		}
 	}
 	req.Model = apiModel
+	req.Stream = stream
+	hook.DispatchLLMRequest(&req, modelName, apiType)
 
 	if maxConcurrency <= 0 {
 		return provider.CompleteStream(ctx, req)

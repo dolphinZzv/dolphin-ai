@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"dolphin/internal/llm"
+
 	"go.uber.org/zap"
 )
 
@@ -52,5 +53,9 @@ func (p *openAIProvider) CompleteStream(ctx context.Context, req llm.LLMRequest)
 		return nil, err
 	}
 	url := p.chatURL(p.cfg.BaseURL)
-	return llm.StreamOpenAI(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
+	if req.Stream {
+
+		return llm.StreamOpenAI(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
+	}
+	return llm.CompleteOpenAI(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
 }

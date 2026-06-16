@@ -40,6 +40,8 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 		// LLM provider & model info.
 		providerName := "unknown"
 		activeModel := "unknown"
+		temperature := 0.0
+		topP := 0.0
 		if llmProvider != nil {
 			providerName = llmProvider.Name()
 			if a, ok := llmProvider.(interface{ ActiveModel() string }); ok {
@@ -47,14 +49,24 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 					activeModel = m
 				}
 			}
+			// Look up the active model config for temperature, top_p, etc.
 			if mm, ok := llmProvider.(interface {
 				Models(ctx context.Context) ([]llm.ModelConfig, error)
 				ActiveModel() string
 			}); ok {
 				if models, err := mm.Models(context.Background()); err == nil {
+					name := mm.ActiveModel()
+					shortName := name
+					if _, after, found := strings.Cut(name, "/"); found {
+						shortName = after
+					}
 					for _, mc := range models {
-						if mc.Name == mm.ActiveModel() && mc.Provider != "" {
-							providerName = mc.Provider
+						if mc.Name == name || mc.Name == shortName {
+							if mc.Provider != "" {
+								providerName = mc.Provider
+							}
+							temperature = mc.Temperature
+							topP = mc.TopP
 							break
 						}
 					}
@@ -69,9 +81,17 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 			cmd.Println("|-----|-------|")
 			cmd.Printf("| **Provider** | %s |\n", providerName)
 			cmd.Printf("| **Model** | %s |\n", activeModel)
+			cmd.Printf("| **Temperature** | %.1f |\n", temperature)
+			if topP > 0 {
+				cmd.Printf("| **Top P** | %.2f |\n", topP)
+			}
 		} else {
 			cmd.Printf("Provider:      %s\n", providerName)
 			cmd.Printf("Model:         %s\n", activeModel)
+			cmd.Printf("Temperature:   %.1f\n", temperature)
+			if topP > 0 {
+				cmd.Printf("Top P:         %.2f\n", topP)
+			}
 		}
 
 		sess := sessMgr.Active()
