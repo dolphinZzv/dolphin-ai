@@ -1221,8 +1221,8 @@ func TestContextListAndDetail(t *testing.T) {
 			output := r.Execute(context.Background(), "context", "")
 			So(output, ShouldContainSubstring, "base")
 			So(output, ShouldContainSubstring, "soul")
-			So(output, ShouldContainSubstring, "index=0")
-			So(output, ShouldContainSubstring, "index=1")
+			So(output, ShouldContainSubstring, "1) base")
+			So(output, ShouldContainSubstring, "2) soul")
 		})
 
 		Convey("/context all builds full prompt", func() {

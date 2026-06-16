@@ -42,7 +42,7 @@ func listSections(cmd *cobra.Command, reg *appctx.Registry) error {
 		return nil
 	}
 	for _, s := range sections {
-		cmd.Printf("%-15s  index=%d\n", s.Name(), s.Index())
+		cmd.Printf("%d) %s\n", s.Index()+1, s.Name())
 	}
 	cmd.Println("\nUse /context all for full content, or /context <name> for a specific section.")
 	return nil

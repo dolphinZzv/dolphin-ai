@@ -4,6 +4,7 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 - Add version.go for build-time version injection
+- /context list uses 1-based numbered format (1) base, 2) soul, ...)
 - Add speedtest workflow
 
 ### Changed
