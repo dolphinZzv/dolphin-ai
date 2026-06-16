@@ -79,3 +79,4 @@ All notable changes to Dolphin will be documented in this file.
 - Workflow step timeout: `run_workflow` handlers now use `context.WithoutCancel` to strip the tool pipeline's 30s timeout. Workflow steps can now be configured to never timeout by setting `workflow.step_timeout: "0s"` or per-step `timeout: "0s"`.
 	- Root OpenAI/Anthropic providers now route to non-streaming HTTP path when `Stream: false`, matching the volcengine provider pattern. Adds `CompleteAnthropic` for non-streaming Anthropic API calls.
 	- gofmt formatting fixes across changed files.
+	- Add test coverage for temperature and topP display in `/status` command.

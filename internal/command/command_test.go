@@ -774,6 +774,83 @@ func TestRegisterSessionStatusWithMode(t *testing.T) {
 	})
 }
 
+func TestRegisterSessionStatusWithTemperatureTopP(t *testing.T) {
+	Convey("RegisterSessionStatus with temperature and topP", t, func() {
+		mgr := session.NewManager(t.TempDir())
+		sb := signal.NewBus()
+		r := NewRegistry(mgr, sb)
+		mem := memory.NewFileMemory(mgr)
+
+		sess := mgr.Create(context.Background())
+		sess.Set("rounds", 3)
+
+		prov := &mockStatusProvider{
+			name:  "gpt-4",
+			model: "gpt-4",
+			temp:  0.7,
+			tp:    0.85,
+		}
+		RegisterSessionStatus(r, mgr, mem, "shared", prov)
+
+		Convey("shows temperature", func() {
+			output := r.Execute(context.Background(), "session status", "")
+			So(output, ShouldContainSubstring, "0.7")
+		})
+
+		Convey("shows top P when set", func() {
+			output := r.Execute(context.Background(), "session status", "")
+			So(output, ShouldContainSubstring, "0.85")
+		})
+
+		Convey("/status alias shows provider info", func() {
+			output := r.Execute(context.Background(), "status", "")
+			So(output, ShouldContainSubstring, "gpt-4")
+		})
+
+		Convey("markdown mode shows temperature and topP", func() {
+			output := r.Execute(context.Background(), "session status", "markdown")
+			So(output, ShouldContainSubstring, "0.7")
+			So(output, ShouldContainSubstring, "0.85")
+		})
+
+		Convey("topP not shown when zero", func() {
+			r2 := NewRegistry(mgr, sb)
+			noTopP := &mockStatusProvider{
+				name:  "claude-3",
+				model: "claude-3",
+				temp:  1.0,
+				tp:    0,
+			}
+			RegisterSessionStatus(r2, mgr, mem, "shared", noTopP)
+			output := r2.Execute(context.Background(), "session status", "")
+			So(output, ShouldContainSubstring, "1.0")
+			So(output, ShouldNotContainSubstring, "Top P")
+		})
+	})
+}
+
+// mockStatusProvider implements both ActiveModel and Models for status tests.
+type mockStatusProvider struct {
+	models []llm.ModelConfig
+	name   string
+	model  string
+	temp   float64
+	tp     float64
+}
+
+func (m *mockStatusProvider) ActiveModel() string { return m.name }
+func (m *mockStatusProvider) Name() string        { return "mock-status" }
+func (m *mockStatusProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	return []llm.ModelConfig{
+		{Name: m.name, Model: m.model, Temperature: m.temp, TopP: m.tp},
+	}, nil
+}
+func (m *mockStatusProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk)
+	close(ch)
+	return ch, nil
+}
+
 func TestRegisterCommands(t *testing.T) {
 	Convey("RegisterCommands", t, func() {
 		mgr := session.NewManager(t.TempDir())
