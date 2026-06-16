@@ -2379,5 +2379,3 @@ func TestPauseOnSignal(t *testing.T) {
 		})
 	})
 }
-
-

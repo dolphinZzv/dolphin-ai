@@ -75,34 +75,33 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 			return nil
 		},
 	}, "command.session_switch"))
-		sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
-			Use: "stop",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				cur := sessMgr.Active()
-				if cur == nil {
-					cmd.Println("no active session")
-					return nil
-				}
-				r.signalBus.Send(cur.ID, signal.Pause)
-				cmd.Printf("session %s paused\n", cur.ID[:8])
+	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use: "stop",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cur := sessMgr.Active()
+			if cur == nil {
+				cmd.Println("no active session")
 				return nil
-			},
-		}, "command.session_pause"))
+			}
+			r.signalBus.Send(cur.ID, signal.Pause)
+			cmd.Printf("session %s paused\n", cur.ID[:8])
+			return nil
+		},
+	}, "command.session_pause"))
 
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
-			Use: "continue",
-			RunE: func(cmd *cobra.Command, args []string) error {
-				cur := sessMgr.Active()
-				if cur == nil {
-					cmd.Println("no active session")
-					return nil
-				}
-				r.signalBus.Send(cur.ID, signal.Resume)
-				cmd.Printf("session %s resumed\n", cur.ID[:8])
+		Use: "continue",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cur := sessMgr.Active()
+			if cur == nil {
+				cmd.Println("no active session")
 				return nil
-			},
-		}, "command.session_resume"))
-
+			}
+			r.signalBus.Send(cur.ID, signal.Resume)
+			cmd.Printf("session %s resumed\n", cur.ID[:8])
+			return nil
+		},
+	}, "command.session_resume"))
 
 	r.Register(sessionCmd)
 

@@ -30,8 +30,8 @@ func init() {
 			"session_active":  " [active]",
 			"session_switch":  "Switch to a session (deprecated: use /session new)",
 			"session_use_new": "use /session new to create and switch to a new session",
-				"session_pause":  "Pause the current session",
-				"session_resume": "Resume the paused session",
+			"session_pause":   "Pause the current session",
+			"session_resume":  "Resume the paused session",
 
 			// skills
 			"skills_manage":       "List and manage skills",
@@ -156,8 +156,8 @@ func init() {
 			"session_active":  " [当前]",
 			"session_switch":  "切换会话（已弃用，请使用 /session new）",
 			"session_use_new": "请使用 /session new 创建并切换到新会话",
-				"session_pause":  "暂停当前会话",
-				"session_resume": "恢复暂停的会话",
+			"session_pause":   "暂停当前会话",
+			"session_resume":  "恢复暂停的会话",
 
 			// skills
 			"skills_manage":       "管理和查看技能",

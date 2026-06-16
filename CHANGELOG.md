@@ -112,3 +112,5 @@ All notable changes to Dolphin will be documented in this file.
 	- Add test coverage for LLM request hook registration and dispatch.
 	- Add test coverage for non-streaming OpenAI and Anthropic HTTP completion paths.
 	- Fix data race in TUI TestRequestPermission_ReplyPaths: protect permCh access with mutex.
+
+  (format fix)
