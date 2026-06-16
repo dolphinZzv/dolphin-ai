@@ -263,6 +263,58 @@ func TestAgentIO(t *testing.T) {
 			So(aio.Processing(), ShouldBeFalse)
 		})
 
+		Convey("PriorityQueue returns priority channel", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			So(aio.PriorityQueue(), ShouldNotBeNil)
+			So(aio.PriorityQueue(), ShouldEqual, aio.priority)
+		})
+
+		Convey("SendTurnPriority creates session when none active", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test-1", Type: "stdio"})
+
+			aio.SendTurnPriority(ctx, &Turn{Input: "priority hello"})
+
+			sess := mgr.Active()
+			So(sess, ShouldNotBeNil)
+			So(sess.Active, ShouldBeTrue)
+		})
+
+		Convey("SendTurnPriority prepends to pending queue", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test-1"})
+
+			aio.SendTurn(ctx, &Turn{Input: "regular"})
+			aio.SendTurnPriority(ctx, &Turn{Input: "priority"})
+
+			pending, _, _ := aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 2)
+			So(pending[0].Input, ShouldEqual, "priority")
+			So(pending[1].Input, ShouldEqual, "regular")
+		})
+
+		Convey("SendTurnPriority falls back to last transport when ctx has no info", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test-1"})
+
+			aio.SendTurn(ctx, &Turn{Input: "first"})
+			aio.SendTurnPriority(context.Background(), &Turn{Input: "second"})
+
+			pending, _, _ := aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 2)
+			So(pending[0].TransportID, ShouldEqual, "test-1")
+		})
+
+		Convey("SendTurnPriority uses existing transport ID when set", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+
+			aio.SendTurnPriority(context.Background(), &Turn{Input: "hi", TransportID: "explicit-id"})
+
+			pending, _, _ := aio.QueueSnapshot()
+			So(len(pending), ShouldEqual, 1)
+			So(pending[0].TransportID, ShouldEqual, "explicit-id")
+		})
+
 		Convey("ActiveSnapshot returns a copy of active turns", func() {
 			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
 			aio.SetActive("worker-1", &Turn{TurnID: "t1", SessionID: "s1", Input: "hello"})
