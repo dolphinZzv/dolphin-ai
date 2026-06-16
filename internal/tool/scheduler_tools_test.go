@@ -36,7 +36,6 @@ func TestRegisterSchedulerTools(t *testing.T) {
 	expected := map[string]bool{
 		"cron_create": false,
 		"cron_list":   false,
-		"cron_delete": false,
 		"cron_delay":  false,
 	}
 
@@ -84,6 +83,54 @@ func TestSchedulerCreate(t *testing.T) {
 	}
 	if tasks[0].Name != "test-task" {
 		t.Errorf("expected name 'test-task', got %q", tasks[0].Name)
+	}
+}
+
+func TestSchedulerUpsert(t *testing.T) {
+	r := NewRegistry()
+	dir := t.TempDir()
+	br := &mockBrainWriter{dir: dir}
+	sched := scheduler.New(dir, zap.NewNop(), br)
+	RegisterSchedulerTools(r, sched)
+
+	// First create.
+	args, _ := json.Marshal(map[string]string{
+		"name":     "upsert-task",
+		"schedule": "0 * * * *",
+		"command":  "echo v1",
+	})
+	result, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-upsert-1", Name: "cron_create", Arguments: string(args),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Content, "created") {
+		t.Errorf("expected 'created', got: %s", result.Content)
+	}
+
+	// Update with same name.
+	args2, _ := json.Marshal(map[string]string{
+		"name":     "upsert-task",
+		"schedule": "*/5 * * * *",
+		"command":  "echo v2",
+	})
+	result2, err := r.Execute(context.Background(), types.ToolCall{
+		ID: "call-upsert-2", Name: "cron_create", Arguments: string(args2),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result2.Content, "updated") {
+		t.Errorf("expected 'updated', got: %s", result2.Content)
+	}
+
+	tasks := sched.List()
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task after upsert, got %d", len(tasks))
+	}
+	if tasks[0].Command != "echo v2" {
+		t.Errorf("expected updated command, got %q", tasks[0].Command)
 	}
 }
 
@@ -177,14 +224,15 @@ func TestSchedulerDelete(t *testing.T) {
 	sched := scheduler.New(dir, zap.NewNop(), br)
 	RegisterSchedulerTools(r, sched)
 
-	task, err := sched.Create(context.Background(), "del-task", "0 0 * * *", "echo delete")
+	_, err := sched.Create(context.Background(), "del-task", "0 0 * * *", "echo delete")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	args, _ := json.Marshal(map[string]string{"id": task.ID})
+	// Delete via cron_create with empty command.
+	args, _ := json.Marshal(map[string]string{"name": "del-task"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-6", Name: "cron_delete", Arguments: string(args),
+		ID: "call-6", Name: "cron_create", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -207,9 +255,9 @@ func TestSchedulerDeleteNotFound(t *testing.T) {
 	sched := scheduler.New(dir, zap.NewNop(), &mockBrainWriter{})
 	RegisterSchedulerTools(r, sched)
 
-	args, _ := json.Marshal(map[string]string{"id": "nonexistent-id"})
+	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-7", Name: "cron_delete", Arguments: string(args),
+		ID: "call-7", Name: "cron_create", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +274,7 @@ func TestSchedulerDeleteInvalidArgs(t *testing.T) {
 	RegisterSchedulerTools(r, sched)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-8", Name: "cron_delete", Arguments: `not json`,
+		ID: "call-8", Name: "cron_create", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)

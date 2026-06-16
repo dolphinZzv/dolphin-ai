@@ -238,6 +238,76 @@ func (s *Scheduler) scheduleDelayedLocked(t *Task) {
 	s.addTimerLocked(t, remaining)
 }
 
+// Upsert creates a new task or updates an existing one by name.
+// Returns the task and true if created, false if updated.
+func (s *Scheduler) Upsert(ctx context.Context, name, schedule, command string) (*Task, bool, error) {
+	if _, err := cron.ParseStandard(schedule); err != nil {
+		return nil, false, fmt.Errorf("invalid cron schedule %q: %w", schedule, err)
+	}
+	if name == "" || command == "" {
+		return nil, false, fmt.Errorf("name and command are required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// Check for existing task with the same name.
+	for _, t := range s.tasks {
+		if t.Name == name {
+			// Remove old cron entry.
+			if eid, ok := s.entries[t.ID]; ok {
+				s.cron.Remove(eid)
+				delete(s.entries, t.ID)
+			}
+			t.Schedule = schedule
+			t.Command = command
+			t.Enabled = true
+			s.addCronLocked(t)
+			s.syncTaskToFileLocked(t)
+			s.syncBrainLocked(ctx, t)
+			return t, false, nil
+		}
+	}
+
+	t := &Task{
+		ID:        uuid.NewString(),
+		Name:      name,
+		Schedule:  schedule,
+		Command:   command,
+		Enabled:   true,
+		CreatedAt: time.Now(),
+	}
+	s.tasks[t.ID] = t
+	s.addCronLocked(t)
+	s.syncTaskToFileLocked(t)
+	s.syncBrainLocked(ctx, t)
+	return t, true, nil
+}
+
+// DeleteByName removes a task by name.
+func (s *Scheduler) DeleteByName(ctx context.Context, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, t := range s.tasks {
+		if t.Name == name {
+			if eid, ok := s.entries[id]; ok {
+				s.cron.Remove(eid)
+				delete(s.entries, id)
+			}
+			if tmr, ok := s.timers[id]; ok {
+				tmr.Stop()
+				delete(s.timers, id)
+			}
+			delete(s.tasks, id)
+			s.removeTaskFileLocked(id)
+			s.deleteBrainLocked(ctx, t)
+			return nil
+		}
+	}
+	return fmt.Errorf("task %q not found", name)
+}
+
 // Delete removes a task by ID.
 func (s *Scheduler) Delete(ctx context.Context, id string) error {
 	s.mu.Lock()

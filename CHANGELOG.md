@@ -4,6 +4,10 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+
+- Merged `cron_delete` tool into `cron_create`: empty command deletes by name, same name updates.
+
 ### Added
 
 - TUI transport with adaptive terminal theming, markdown rendering, and permission dialogs.
