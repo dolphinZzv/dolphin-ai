@@ -1192,7 +1192,38 @@ func TestRegisterSession(t *testing.T) {
 				So("expected interrupt signal", ShouldBeNil)
 			}
 		})
+
+			Convey("/session stop sends pause to active session", func() {
+				sess := mgr.Create(context.Background())
+				sigCh := sb.Subscribe(sess.ID)
+				defer sb.Unsubscribe(sess.ID, sigCh)
+
+				r.Execute(context.Background(), "session stop", "")
+
+				select {
+				case sig := <-sigCh:
+					So(sig, ShouldEqual, signal.Pause)
+				default:
+					So("expected pause signal", ShouldBeNil)
+				}
+			})
+
+			Convey("/session continue sends resume to active session", func() {
+				sess := mgr.Create(context.Background())
+				sigCh := sb.Subscribe(sess.ID)
+				defer sb.Unsubscribe(sess.ID, sigCh)
+
+				r.Execute(context.Background(), "session continue", "")
+
+				select {
+				case sig := <-sigCh:
+					So(sig, ShouldEqual, signal.Resume)
+				default:
+					So("expected resume signal", ShouldBeNil)
+				}
+			})
 	})
+
 }
 
 // testContextSection implements appctx.Section for context command tests.

@@ -349,7 +349,16 @@ func (s *LLMStage) Process(ctx context.Context, state *State) error {
 		// Check for interrupt before each retry.
 		select {
 		case sig, ok := <-sigCh:
-			if ok && sig == signal.Interrupt {
+			if ok && sig == signal.Pause {
+				if pauseOnSignal(sigCh) != signal.Resume {
+					s.EventBus.Publish(ctx, event.Event{
+						Type:      event.EventLLMInterrupt,
+						Timestamp: time.Now(),
+						SessionID: state.SessionID,
+					})
+					return ErrInterrupted
+				}
+			} else if ok && sig == signal.Interrupt {
 				s.EventBus.Publish(ctx, event.Event{
 					Type:      event.EventLLMInterrupt,
 					Timestamp: time.Now(),
@@ -512,7 +521,16 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan s
 			}
 
 		case sig, ok := <-sigCh:
-			if ok && sig == signal.Interrupt {
+			if ok && sig == signal.Pause {
+				if pauseOnSignal(sigCh) != signal.Resume {
+					s.EventBus.Publish(ctx, event.Event{
+						Type:      event.EventLLMInterrupt,
+						Timestamp: time.Now(),
+						SessionID: state.SessionID,
+					})
+					return ErrInterrupted
+				}
+			} else if ok && sig == signal.Interrupt {
 				s.EventBus.Publish(ctx, event.Event{
 					Type:      event.EventLLMInterrupt,
 					Timestamp: time.Now(),
@@ -623,6 +641,9 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			if sigCh != nil {
 				select {
 				case sig := <-sigCh:
+					if sig == signal.Pause {
+						sig = pauseOnSignal(sigCh)
+					}
 					if sig == signal.Interrupt {
 						s.EventBus.Publish(ctx, event.Event{
 							Type:      event.EventTurnInterrupt,
@@ -794,6 +815,9 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 			for {
 				select {
 				case sig := <-sigCh:
+					if sig == signal.Pause {
+						sig = pauseOnSignal(sigCh)
+					}
 					if sig == signal.Interrupt {
 						s.EventBus.Publish(ctx, event.Event{
 							Type:      event.EventTurnInterrupt,

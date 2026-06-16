@@ -2347,3 +2347,37 @@ func (c *captureProvider) CompleteStream(ctx context.Context, req llm.LLMRequest
 	return c.fn(ctx, req)
 }
 func (c *captureProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
+
+func TestPauseOnSignal(t *testing.T) {
+	Convey("pauseOnSignal", t, func() {
+		Convey("returns Resume when received", func() {
+			ch := make(chan signal.Signal, 2)
+			ch <- signal.Pause
+			ch <- signal.Resume
+			So(pauseOnSignal(ch), ShouldEqual, signal.Resume)
+		})
+
+		Convey("returns Interrupt when received during pause", func() {
+			ch := make(chan signal.Signal, 2)
+			ch <- signal.Pause
+			ch <- signal.Interrupt
+			So(pauseOnSignal(ch), ShouldEqual, signal.Interrupt)
+		})
+
+		Convey("returns Cancel when received during pause", func() {
+			ch := make(chan signal.Signal, 2)
+			ch <- signal.Pause
+			ch <- signal.Cancel
+			So(pauseOnSignal(ch), ShouldEqual, signal.Cancel)
+		})
+
+		Convey("returns 0 when channel is closed", func() {
+			ch := make(chan signal.Signal, 2)
+			ch <- signal.Pause
+			close(ch)
+			So(pauseOnSignal(ch), ShouldEqual, signal.Signal(0))
+		})
+	})
+}
+
+
