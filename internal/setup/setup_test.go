@@ -420,6 +420,67 @@ func TestTransportsBootstrapper(t *testing.T) {
 	}
 }
 
+func TestTransportsBootstrapperBootstrap(t *testing.T) {
+	ctx := context.Background()
+	t.Run("stdio", func(t *testing.T) {
+		mgr := session.NewManager(t.TempDir())
+		c := &Context{
+			Config:     config.LoadConfigFromMap(map[string]any{"stdio": map[string]any{"enabled": true}}),
+			AgentIO:    agentio.NewAgentIO(0, mgr, nil, zap.NewNop(), "test"),
+			SessionMgr: mgr,
+			ToolReg:    tool.NewRegistry(),
+			Logger:     zap.NewNop(),
+		}
+		b := &TransportsBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(c.Transports) != 1 {
+			t.Errorf("expected 1 transport, got %d", len(c.Transports))
+		}
+	})
+	t.Run("noop when already bootstrapped", func(t *testing.T) {
+		c := &Context{Transports: []transport.IO{}}
+		b := &TransportsBootstrapper{}
+		err := b.Bootstrap(ctx, c)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestLoadTransportConfigs_TUIConfig(t *testing.T) {
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"tui.enabled":       true,
+		"tui.show_tools":    true,
+		"tui.show_thinking": true,
+		"agent.workmode":    "yolo",
+	})
+	tcs, err := loadTransportConfigs(cfg, "test-agent")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	found := false
+	for _, tc := range tcs {
+		if tc.Type == "tui" {
+			found = true
+			if v, ok := tc.Config["show_tools"].(bool); !ok || !v {
+				t.Error("show_tools should be true")
+			}
+			if v, ok := tc.Config["show_thinking"].(bool); !ok || !v {
+				t.Error("show_thinking should be true")
+			}
+			if v, ok := tc.Config["workmode"].(string); !ok || v != "yolo" {
+				t.Errorf("workmode = %q, want yolo", v)
+			}
+		}
+	}
+	if !found {
+		t.Error("tui transport not found in configs")
+	}
+}
+
 func TestLimitBootstrapperBootstrap(t *testing.T) {
 	ctx := context.Background()
 
