@@ -642,9 +642,9 @@ func TestParseProviderModels(t *testing.T) {
 		}
 		if models[0].Temperature != 0.7 {
 			t.Errorf("Temperature = %f", models[0].Temperature)
-		if models[0].TopP != 0 {
-			t.Errorf("TopP should default to 0, got %f", models[0].TopP)
-		}
+			if models[0].TopP != 0 {
+				t.Errorf("TopP should default to 0, got %f", models[0].TopP)
+			}
 		}
 	})
 

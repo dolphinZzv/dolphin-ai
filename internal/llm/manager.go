@@ -164,8 +164,8 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 			}
 			apiType = mc.APIType
 			if mc.StreamSet {
-					stream = mc.Stream
-				}
+				stream = mc.Stream
+			}
 			maxConcurrency = mc.MaxConcurrency
 			break
 		}

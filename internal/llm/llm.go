@@ -68,7 +68,6 @@ type Provider interface {
 	Models(ctx context.Context) ([]ModelConfig, error)
 }
 
-
 type Config struct {
 	Provider      string // display name (config section name)
 	Vendor        string // vendor name for factory lookup (e.g. "deepseek")

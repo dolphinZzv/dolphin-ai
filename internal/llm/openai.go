@@ -318,12 +318,12 @@ type completionResponse struct {
 		} `json:"message"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens        int `json:"prompt_tokens"`
-		CompletionTokens    int `json:"completion_tokens"`
-		TotalTokens         int `json:"total_tokens"`
+		PromptTokens          int `json:"prompt_tokens"`
+		CompletionTokens      int `json:"completion_tokens"`
+		TotalTokens           int `json:"total_tokens"`
 		PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
 		PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
-		PromptTokensDetails *struct {
+		PromptTokensDetails   *struct {
 			CachedTokens int `json:"cached_tokens"`
 		} `json:"prompt_tokens_details"`
 	} `json:"usage,omitempty"`

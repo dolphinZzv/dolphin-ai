@@ -285,8 +285,8 @@ func TestManager_QualifiedModelName_MatchesShortName(t *testing.T) {
 }
 
 type captureProvider struct {
-	name   string
-	models []ModelConfig
+	name    string
+	models  []ModelConfig
 	capture func(LLMRequest)
 }
 

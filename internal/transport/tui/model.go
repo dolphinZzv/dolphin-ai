@@ -221,16 +221,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sessionMsg:
 		m.sessionID = msg.id
 
-		case usageMsg:
-			m.inputTokens = msg.inputTokens
-			m.outputTokens = msg.outputTokens
-			m.rounds = msg.rounds
-			m.hardReqs = msg.hardReqs
-			m.reqs = msg.reqs
-			m.hardTokens = msg.hardTokens
-			m.tokens = msg.tokens
+	case usageMsg:
+		m.inputTokens = msg.inputTokens
+		m.outputTokens = msg.outputTokens
+		m.rounds = msg.rounds
+		m.hardReqs = msg.hardReqs
+		m.reqs = msg.reqs
+		m.hardTokens = msg.hardTokens
+		m.tokens = msg.tokens
 
-		case modelChangeMsg:
+	case modelChangeMsg:
 		m.modelName = msg.name
 		m.rebuildViewport()
 

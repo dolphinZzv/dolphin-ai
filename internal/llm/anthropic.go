@@ -325,10 +325,10 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 
 // anthropicNonStreamResponse is an Anthropic non-streaming messages response.
 type anthropicNonStreamResponse struct {
-	ID    string `json:"id"`
-	Type  string `json:"type"`
-	Role  string `json:"role"`
-	Model string `json:"model"`
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Role    string `json:"role"`
+	Model   string `json:"model"`
 	Content []struct {
 		Type      string          `json:"type"`
 		Text      string          `json:"text"`
@@ -339,7 +339,7 @@ type anthropicNonStreamResponse struct {
 		Input     json.RawMessage `json:"input"`
 	} `json:"content"`
 	StopReason string `json:"stop_reason"`
-	Usage *struct {
+	Usage      *struct {
 		InputTokens              int `json:"input_tokens"`
 		OutputTokens             int `json:"output_tokens"`
 		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`

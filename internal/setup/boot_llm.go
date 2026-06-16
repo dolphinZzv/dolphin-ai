@@ -130,29 +130,29 @@ func parseProviderModels(cfg interface {
 
 		maxConcurrency := cfg.GetInt(prefix + ".limit.max_concurrency")
 
-			stream := true
-			streamSet := false
-			if hasKey(cfg.Keys(), prefix+".stream") {
-				stream = cfg.GetBool(prefix + ".stream")
-				streamSet = true
-			}
+		stream := true
+		streamSet := false
+		if hasKey(cfg.Keys(), prefix+".stream") {
+			stream = cfg.GetBool(prefix + ".stream")
+			streamSet = true
+		}
 
-			models = append(models, llm.ModelConfig{
-				Name:            name,
-				Provider:        provider,
-				Vendor:          vendor,
-				APIType:         apiType,
-				Model:           name,
-				MaxTokens:       maxTokens,
-				Temperature:     cfg.GetFloat(prefix + ".temperature"),
-				TopP:            cfg.GetFloat(prefix + ".top_p"),
-				MaxRetries:      maxRetries,
-				MaxConcurrency:  maxConcurrency,
-				Timeout:         timeout,
-				ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
-				Stream:          stream,
-				StreamSet:       streamSet,
-				Disabled:        cfg.GetBool(prefix + ".disabled"),
+		models = append(models, llm.ModelConfig{
+			Name:            name,
+			Provider:        provider,
+			Vendor:          vendor,
+			APIType:         apiType,
+			Model:           name,
+			MaxTokens:       maxTokens,
+			Temperature:     cfg.GetFloat(prefix + ".temperature"),
+			TopP:            cfg.GetFloat(prefix + ".top_p"),
+			MaxRetries:      maxRetries,
+			MaxConcurrency:  maxConcurrency,
+			Timeout:         timeout,
+			ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
+			Stream:          stream,
+			StreamSet:       streamSet,
+			Disabled:        cfg.GetBool(prefix + ".disabled"),
 		})
 	}
 	return models
