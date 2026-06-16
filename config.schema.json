@@ -186,6 +186,8 @@
       "properties": {
         "enabled": { "type": "boolean", "default": false },
         "theme": { "type": "string", "enum": ["auto", "dark", "light"], "default": "auto" },
+        "show_tools": { "type": "boolean", "default": false },
+        "show_thinking": { "type": "boolean", "default": false },
         "history_file": { "type": "string", "description": "Path to input history file" }
       }
     },

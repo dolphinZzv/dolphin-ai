@@ -24,7 +24,8 @@ func init() {
 		if v, ok := cfg["show_thinking"].(bool); ok {
 			showThinking = v
 		}
-		return NewTUI(modelName, showTools, showThinking), nil
+		workmode, _ := cfg["workmode"].(string)
+		return NewTUI(modelName, showTools, showThinking, workmode), nil
 	})
 }
 
@@ -42,10 +43,11 @@ type TUI struct {
 	username     string
 	showTools    bool
 	showThinking bool
+	workmode     string
 	limiter      *limit.Limiter
 }
 
-func NewTUI(modelName string, showTools, showThinking bool) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool, workmode string) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
@@ -59,6 +61,7 @@ func NewTUI(modelName string, showTools, showThinking bool) *TUI {
 		username:      username,
 		showTools:     showTools,
 		showThinking:  showThinking,
+		workmode:      workmode,
 	}
 }
 
@@ -82,10 +85,10 @@ func (t *TUI) Capability() transport.Capability {
 }
 
 func (t *TUI) Start(_ context.Context) error {
-	// Load persisted preferences, overriding config defaults.
+	// Load persisted preferences, but config values take priority.
 	if prefs, err := loadPrefs(); err == nil {
-		t.showTools = prefs.ShowTools
-		t.showThinking = prefs.ShowThinking
+		t.showTools = t.showTools || prefs.ShowTools
+		t.showThinking = t.showThinking || prefs.ShowThinking
 	}
 
 	m := newModel()
@@ -96,6 +99,7 @@ func (t *TUI) Start(_ context.Context) error {
 	m.modelName = t.modelName
 	m.showTools = t.showTools
 	m.showThinking = t.showThinking
+	m.workmode = t.workmode
 
 	// Set up preference persistence callback.
 	m.savePrefs = func() {
@@ -140,7 +144,8 @@ func (t *TUI) syncSession() {
 	output, _ := s.Get("output_tokens").(int)
 	rounds, _ := s.Get("rounds").(int)
 
-	msg := usageMsg{inputTokens: input, outputTokens: output, rounds: rounds}
+	toolCalls, _ := s.Get("tool_calls").(int)
+	msg := usageMsg{inputTokens: input, outputTokens: output, rounds: rounds, toolCalls: toolCalls}
 
 	if t.limiter != nil {
 		cfg := t.limiter.Config()

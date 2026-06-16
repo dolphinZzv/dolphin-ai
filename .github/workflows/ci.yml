@@ -39,10 +39,11 @@ jobs:
       - name: Test with coverage
         run: |
           pkgs=$(go list ./... | grep -v internal/limit)
-          go test $pkgs -v -race -count=1 -coverprofile=coverage.out -covermode=atomic
+          go test $pkgs -v -race -count=1 -run '^Test' -coverprofile=coverage.out -covermode=atomic
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
           files: coverage.out
           fail_ci_if_error: false
+

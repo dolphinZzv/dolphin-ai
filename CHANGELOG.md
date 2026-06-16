@@ -19,7 +19,10 @@ All notable changes to Dolphin will be documented in this file.
 ### Changed
 
 - TUI theme system replaced with terminal-native adaptive colors via lipgloss.AdaptiveColor.
-- Status bar wraps to multiple lines automatically when content exceeds terminal width.
+- Status bar stays single-line, dropping low-priority parts when content exceeds terminal width.
+- Status bar req/tok simplified to percentage only; added tool call count display.
+- TUI `show_tools`, `show_thinking`, `workmode` now read from config; config values take priority over persisted prefs.
+- Thinking continuation lines padded to align with content text.
 - Per-round turn timeout: each agent loop round gets a fresh timeout so long-running tools don't starve subsequent LLM calls.
 - Tool parallelism config (`agent.tool_parallelism`) for concurrent tool execution.
 - Workflow agent-driven e2e tests.

@@ -14,7 +14,7 @@ import (
 )
 
 func TestNewTUI(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	if tui == nil {
 		t.Fatal("NewTUI returned nil")
 	}
@@ -30,21 +30,21 @@ func TestNewTUI(t *testing.T) {
 }
 
 func TestTUI_ID(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	if tui.ID() != "tui" {
 		t.Errorf("expected 'tui', got %q", tui.ID())
 	}
 }
 
 func TestTUI_Context(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	if tui.Context() != "" {
 		t.Errorf("expected empty context, got %q", tui.Context())
 	}
 }
 
 func TestTUI_Tools(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	tools := tui.Tools()
 	if tools != nil {
 		t.Errorf("expected nil tools, got %v", tools)
@@ -52,14 +52,14 @@ func TestTUI_Tools(t *testing.T) {
 }
 
 func TestTUI_Flush(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	if err := tui.Flush(); err != nil {
 		t.Errorf("Flush returned error: %v", err)
 	}
 }
 
 func TestTUI_Capability(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	cap := tui.Capability()
 	if !cap.Interactive {
 		t.Error("expected Interactive to be true")
@@ -76,7 +76,7 @@ func TestTUI_Capability(t *testing.T) {
 }
 
 func TestTUI_WriteNilProgram(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	// Write before Start (nil program) should not panic.
 	err := tui.Write(context.Background(), "hello")
 	if err != nil {
@@ -85,7 +85,7 @@ func TestTUI_WriteNilProgram(t *testing.T) {
 }
 
 func TestTUI_WriteThinkingNilProgram(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.WriteThinking(context.Background(), "thinking...")
 	if err != nil {
 		t.Errorf("WriteThinking returned error: %v", err)
@@ -93,7 +93,7 @@ func TestTUI_WriteThinkingNilProgram(t *testing.T) {
 }
 
 func TestTUI_WriteToolCallNilProgram(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.WriteToolCall(context.Background(), types.ToolCall{
 		ID:   "call_1",
 		Name: "test_tool",
@@ -104,7 +104,7 @@ func TestTUI_WriteToolCallNilProgram(t *testing.T) {
 }
 
 func TestTUI_WriteToolResultNilProgram(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.WriteToolResult(context.Background(), types.ToolResult{
 		ToolCallID: "call_1",
 		Content:    "result",
@@ -115,7 +115,7 @@ func TestTUI_WriteToolResultNilProgram(t *testing.T) {
 }
 
 func TestTUI_ReadContextCancel(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -126,7 +126,7 @@ func TestTUI_ReadContextCancel(t *testing.T) {
 }
 
 func TestTUI_ReadCloseCancel(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	if err := tui.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestTUI_ReadCloseCancel(t *testing.T) {
 }
 
 func TestTUI_Close(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.Close()
 	if err != nil {
 		t.Errorf("Close returned error: %v", err)
@@ -146,7 +146,7 @@ func TestTUI_Close(t *testing.T) {
 }
 
 func TestTUI_RequestPermissionContextCancel(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -160,7 +160,7 @@ func TestTUI_RequestPermissionContextCancel(t *testing.T) {
 }
 
 func TestTUI_RequestPermissionCloseCancel(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	_ = tui.Close()
 
 	result, err := tui.RequestPermission(context.Background(), "test prompt")
@@ -173,7 +173,7 @@ func TestTUI_RequestPermissionCloseCancel(t *testing.T) {
 }
 
 func TestTUI_Start(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Errorf("Start returned error: %v", err)
@@ -186,7 +186,7 @@ func TestTUI_Start(t *testing.T) {
 }
 
 func TestTUI_StartWriteRead(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -210,7 +210,7 @@ func TestTUI_StartWriteRead(t *testing.T) {
 }
 
 func TestTUI_StartWriteThinking(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -224,7 +224,7 @@ func TestTUI_StartWriteThinking(t *testing.T) {
 }
 
 func TestTUI_StartWriteToolCall(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -242,7 +242,7 @@ func TestTUI_StartWriteToolCall(t *testing.T) {
 }
 
 func TestTUI_StartWriteToolResult(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	err := tui.Start(context.Background())
 	if err != nil {
 		t.Fatal(err)
@@ -825,13 +825,13 @@ func TestModelUpdate_PermDialogKey_N(t *testing.T) {
 // --- tui.go tests ---
 
 func TestTUI_NotifyModelChange_NilProgram(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	// Should not panic with nil program.
 	tui.NotifyModelChange("new-model")
 }
 
 func TestTUI_NotifyModelChange_Running(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	_ = tui.Start(context.Background())
 	defer func() { _ = tui.Close() }()
 
@@ -839,7 +839,7 @@ func TestTUI_NotifyModelChange_Running(t *testing.T) {
 }
 
 func TestTUI_Read_CtxDone(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -850,7 +850,7 @@ func TestTUI_Read_CtxDone(t *testing.T) {
 }
 
 func TestTUI_RequestPermission_ReplyPaths(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	_ = tui.Start(context.Background())
 	defer func() { _ = tui.Close() }()
 
@@ -875,7 +875,7 @@ func TestTUI_RequestPermission_ReplyPaths(t *testing.T) {
 }
 
 func TestTUI_RequestPermission_CtxDone(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	_ = tui.Start(context.Background())
 	defer func() { _ = tui.Close() }()
 
@@ -889,7 +889,7 @@ func TestTUI_RequestPermission_CtxDone(t *testing.T) {
 }
 
 func TestTUI_RequestPermission_TUICtxDone(t *testing.T) {
-	tui := NewTUI("", true, true)
+	tui := NewTUI("", true, true, "")
 	_ = tui.Start(context.Background())
 
 	_ = tui.Close() // cancels tui.ctx

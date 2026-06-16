@@ -32,6 +32,7 @@ type usageMsg struct {
 	reqs         int64
 	hardTokens   int64
 	tokens       int64
+	toolCalls    int
 }
 
 // renderEntry is a rendered line or block in the conversation viewport.
@@ -59,6 +60,7 @@ type model struct {
 	closeBlock   bool
 	showTools    bool
 	showThinking bool
+	workmode     string
 	sessionID    string
 	inputTokens  int
 	outputTokens int
@@ -67,6 +69,7 @@ type model struct {
 	reqs         int64
 	hardTokens   int64
 	tokens       int64
+	toolCalls    int
 	savePrefs    func()
 	currentMsg   string // user message currently being processed
 	msgStatus    string // "pending", "success", "error"
@@ -176,13 +179,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.thinking += msg.text
 			n := len(m.messages)
 			if n > 0 && m.messages[n-1].style == "thinking" {
-				m.messages[n-1].content = "💭 " + m.thinking
+				m.messages[n-1].content = "💭 " + padThinkingCont(m.thinking)
 				m.rebuildViewport()
 			}
 		} else {
 			m.inThinking = true
 			m.thinking = msg.text
-			m.appendEntry(renderEntry{content: "💭 " + msg.text, style: "thinking"})
+			m.appendEntry(renderEntry{content: "💭 " + padThinkingCont(msg.text), style: "thinking"})
 		}
 		m.viewport.GotoBottom()
 
@@ -229,6 +232,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.reqs = msg.reqs
 		m.hardTokens = msg.hardTokens
 		m.tokens = msg.tokens
+		m.toolCalls = msg.toolCalls
 
 	case modelChangeMsg:
 		m.modelName = msg.name
@@ -548,6 +552,10 @@ func (m *model) fullRebuild() {
 	m.viewport.SetContent(m.renderedContent)
 }
 
+func padThinkingCont(s string) string {
+	return strings.ReplaceAll(s, "\n", "\n ")
+}
+
 func onOff(v bool) string {
 	if v {
 		return "on"
@@ -579,28 +587,34 @@ func (m model) View() string {
 
 	toggles := fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking))
 
-	// Build all status parts, then fit into lines by actual width.
+	// Build status parts ordered by priority: left = essential, right = droppable.
 	var parts []string
 	parts = append(parts, "🐬 "+m.agentName)
 	if m.sessionID != "" {
 		parts = append(parts, truncateSessionID(m.sessionID))
 	}
 	parts = append(parts, m.modelName)
-	parts = append(parts, toggles)
-	if m.inputTokens > 0 || m.outputTokens > 0 {
-		parts = append(parts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
+	if m.workmode != "" && m.workmode != "default" {
+		parts = append(parts, m.workmode)
 	}
 	if m.rounds > 0 {
+		parts = append(parts, fmt.Sprintf("r%d", m.rounds))
 		if m.hardReqs > 0 {
 			pct := float64(m.reqs) / float64(m.hardReqs) * 100
-			parts = append(parts, fmt.Sprintf("req:%d/%d(%.1f%%)", m.reqs, m.hardReqs, pct))
+			parts = append(parts, fmt.Sprintf("req:%.1f%%", pct))
 		}
 		if m.hardTokens > 0 {
 			pct := float64(m.tokens) / float64(m.hardTokens) * 100
-			parts = append(parts, fmt.Sprintf("tok:%d/%d(%.1f%%)", m.tokens, m.hardTokens, pct))
+			parts = append(parts, fmt.Sprintf("tok:%.1f%%", pct))
 		}
-		parts = append(parts, fmt.Sprintf("r%d", m.rounds))
+		if m.toolCalls > 0 {
+			parts = append(parts, fmt.Sprintf("t%d", m.toolCalls))
+		}
 	}
+	if m.inputTokens > 0 || m.outputTokens > 0 {
+		parts = append(parts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
+	}
+	parts = append(parts, toggles)
 	parts = append(parts, "/exit")
 
 	statusBar := renderStatusBar(parts, m.width)
@@ -653,23 +667,13 @@ func renderStatusBar(parts []string, width int) string {
 		avail = 10
 	}
 
-	// Try all on one line first.
-	if lipgloss.Width(strings.Join(parts, " | ")) <= avail {
-		return s.Render(strings.Join(parts, " | "))
-	}
-
-	// Find a split point where both lines fit.
-	for k := len(parts) - 1; k >= 1; k-- {
-		line1 := strings.Join(parts[:k], " | ")
-		line2 := strings.Join(parts[k:], " | ")
-		if lipgloss.Width(line1) <= avail && lipgloss.Width(line2) <= avail {
-			return s.Render(line1) + "\n" + s.Render(line2)
+	// Drop parts from right to left until it fits on one line.
+	for i := len(parts); i >= 1; i-- {
+		if lipgloss.Width(strings.Join(parts[:i], " | ")) <= avail {
+			return s.Render(strings.Join(parts[:i], " | "))
 		}
 	}
-
-	// Even split at half doesn't help — render with best-effort split.
-	mid := len(parts) / 2
-	return s.Render(strings.Join(parts[:mid], " | ")) + "\n" + s.Render(strings.Join(parts[mid:], " | "))
+	return s.Render(parts[0])
 }
 
 func renderCurrentMsg(msg, username, status string, width int) string {
