@@ -15,7 +15,7 @@ func RegisterSchedulerTools(r *Registry, sched *scheduler.Scheduler) {
 	createSchema := json.RawMessage(`{"type":"object","properties":{"name":{"type":"string"},"schedule":{"type":"string","description":"Cron expression, e.g. */5 * * * *"},"command":{"type":"string","description":"Shell command to execute. If empty, the task is deleted."}},"required":["name"]}`)
 	listSchema := json.RawMessage(`{"type":"object"}`)
 
-	r.RegisterBuiltin("cron_create", "Create or update a scheduled task. If command is empty, deletes the task by name. Args: {name, schedule?, command?}", createSchema,
+	r.RegisterBuiltin("cron_upsert", "Create or update a scheduled task. If command is empty, deletes the task by name. Args: {name, schedule?, command?}", createSchema,
 		func(ctx context.Context, args json.RawMessage) (*types.ToolResult, error) {
 			var req struct {
 				Name     string `json:"name"`

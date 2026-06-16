@@ -6,7 +6,8 @@ All notable changes to Dolphin will be documented in this file.
 
 ### Changed
 
-- Merged `cron_delete` tool into `cron_create`: empty command deletes by name, same name updates.
+- Renamed `cron_create` to `cron_upsert` and added `Upsert`/`DeleteByName` to scheduler.
+- Merged `cron_delete` into `cron_upsert`: empty command deletes by name, same name updates.
 
 ### Added
 

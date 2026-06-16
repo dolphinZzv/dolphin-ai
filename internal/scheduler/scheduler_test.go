@@ -314,6 +314,108 @@ func TestList(t *testing.T) {
 	})
 }
 
+func TestUpsert(t *testing.T) {
+	logger := zap.NewNop()
+	brain := newMockBrain(t)
+
+	t.Run("creates new task", func(t *testing.T) {
+		s := New(t.TempDir(), logger, brain)
+		task, created, err := s.Upsert(context.Background(), "upsert-task", "*/5 * * * *", "echo upsert")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !created {
+			t.Error("expected created=true")
+		}
+		if task.Name != "upsert-task" {
+			t.Errorf("got name %q", task.Name)
+		}
+	})
+
+	t.Run("updates existing task by name", func(t *testing.T) {
+		s := New(t.TempDir(), logger, brain)
+		t1, created, err := s.Upsert(context.Background(), "same-name", "0 * * * *", "echo v1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !created {
+			t.Error("first call should create")
+		}
+
+		t2, created2, err := s.Upsert(context.Background(), "same-name", "*/5 * * * *", "echo v2")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if created2 {
+			t.Error("second call should update, not create")
+		}
+		if t2.ID != t1.ID {
+			t.Error("update should preserve ID")
+		}
+		if t2.Command != "echo v2" {
+			t.Errorf("got command %q", t2.Command)
+		}
+		if t2.Schedule != "*/5 * * * *" {
+			t.Errorf("got schedule %q", t2.Schedule)
+		}
+
+		tasks := s.List()
+		if len(tasks) != 1 {
+			t.Fatalf("expected 1 task, got %d", len(tasks))
+		}
+	})
+
+	t.Run("invalid schedule", func(t *testing.T) {
+		s := New(t.TempDir(), logger, brain)
+		_, _, err := s.Upsert(context.Background(), "bad", "invalid", "echo x")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("empty name or command", func(t *testing.T) {
+		s := New(t.TempDir(), logger, brain)
+		_, _, err := s.Upsert(context.Background(), "", "* * * * *", "echo")
+		if err == nil {
+			t.Fatal("expected error for empty name")
+		}
+		_, _, err = s.Upsert(context.Background(), "test", "* * * * *", "")
+		if err == nil {
+			t.Fatal("expected error for empty command")
+		}
+	})
+}
+
+func TestDeleteByName(t *testing.T) {
+	logger := zap.NewNop()
+
+	t.Run("deletes existing task by name", func(t *testing.T) {
+		s := New(t.TempDir(), logger, nil)
+		task, _ := s.Create(context.Background(), "del-by-name", "* * * * *", "echo x")
+		err := s.DeleteByName(context.Background(), "del-by-name")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(s.List()) != 0 {
+			t.Error("expected 0 tasks after delete")
+		}
+		// Second delete should fail
+		err = s.DeleteByName(context.Background(), "del-by-name")
+		if err == nil {
+			t.Fatal("expected error for already-deleted task")
+		}
+		_ = task
+	})
+
+	t.Run("nonexistent task", func(t *testing.T) {
+		s := New(t.TempDir(), logger, nil)
+		err := s.DeleteByName(context.Background(), "no-such")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+}
+
 func TestDelete(t *testing.T) {
 	logger := zap.NewNop()
 

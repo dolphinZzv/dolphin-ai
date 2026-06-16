@@ -34,7 +34,7 @@ func TestRegisterSchedulerTools(t *testing.T) {
 	}
 
 	expected := map[string]bool{
-		"cron_create": false,
+		"cron_upsert": false,
 		"cron_list":   false,
 		"cron_delay":  false,
 	}
@@ -65,7 +65,7 @@ func TestSchedulerCreate(t *testing.T) {
 		"command":  "echo hello",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-1", Name: "cron_create", Arguments: string(args),
+		ID: "call-1", Name: "cron_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestSchedulerUpsert(t *testing.T) {
 		"command":  "echo v1",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-upsert-1", Name: "cron_create", Arguments: string(args),
+		ID: "call-upsert-1", Name: "cron_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +116,7 @@ func TestSchedulerUpsert(t *testing.T) {
 		"command":  "echo v2",
 	})
 	result2, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-upsert-2", Name: "cron_create", Arguments: string(args2),
+		ID: "call-upsert-2", Name: "cron_upsert", Arguments: string(args2),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -146,7 +146,7 @@ func TestSchedulerCreateInvalidSchedule(t *testing.T) {
 		"command":  "echo hello",
 	})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-2", Name: "cron_create", Arguments: string(args),
+		ID: "call-2", Name: "cron_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestSchedulerCreateInvalidArgs(t *testing.T) {
 	RegisterSchedulerTools(r, sched)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-3", Name: "cron_create", Arguments: `not json`,
+		ID: "call-3", Name: "cron_upsert", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -229,10 +229,10 @@ func TestSchedulerDelete(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Delete via cron_create with empty command.
+	// Delete via cron_upsert with empty command.
 	args, _ := json.Marshal(map[string]string{"name": "del-task"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-6", Name: "cron_create", Arguments: string(args),
+		ID: "call-6", Name: "cron_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -257,7 +257,7 @@ func TestSchedulerDeleteNotFound(t *testing.T) {
 
 	args, _ := json.Marshal(map[string]string{"name": "nonexistent"})
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-7", Name: "cron_create", Arguments: string(args),
+		ID: "call-7", Name: "cron_upsert", Arguments: string(args),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -274,7 +274,7 @@ func TestSchedulerDeleteInvalidArgs(t *testing.T) {
 	RegisterSchedulerTools(r, sched)
 
 	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID: "call-8", Name: "cron_create", Arguments: `not json`,
+		ID: "call-8", Name: "cron_upsert", Arguments: `not json`,
 	})
 	if err != nil {
 		t.Fatal(err)
