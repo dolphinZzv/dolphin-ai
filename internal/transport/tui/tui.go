@@ -36,6 +36,7 @@ type TUI struct {
 	*transport.SessionHolder
 	id              string
 	program         *tea.Program
+	pendingAgentIO  *agentio.AgentIO
 	msgChan         chan string
 	permCh          chan string
 	ctx             context.Context
@@ -47,6 +48,7 @@ type TUI struct {
 	showTools       bool
 	showThinking    bool
 	workmode        string
+	version         string
 	poolSize        int
 	toolParallelism int
 	limiter         *limit.Limiter
@@ -64,6 +66,7 @@ func NewTUI(modelName string, showTools, showThinking bool, workmode string, poo
 		agentName:       "Dolphin",
 		modelName:       modelName,
 		username:        username,
+		version:         common.Version,
 		showTools:       showTools,
 		showThinking:    showThinking,
 		workmode:        workmode,
@@ -108,6 +111,7 @@ func (t *TUI) Start(_ context.Context) error {
 	m.showThinking = t.showThinking
 	m.workmode = t.workmode
 	m.poolSize = t.poolSize
+	m.version = t.version
 	m.toolParallelism = t.toolParallelism
 
 	// Set up preference persistence callback.
@@ -119,6 +123,14 @@ func (t *TUI) Start(_ context.Context) error {
 	}
 
 	t.program = tea.NewProgram(m, tea.WithContext(t.ctx))
+
+	// Deferred: SetAgentIO may have been called before Start() when program was nil.
+	t.mu.Lock()
+	if t.pendingAgentIO != nil {
+		t.program.Send(setAgentIOMsg{a: t.pendingAgentIO})
+		t.pendingAgentIO = nil
+	}
+	t.mu.Unlock()
 
 	go func() {
 		_, _ = t.program.Run()
@@ -140,6 +152,9 @@ func (t *TUI) Read(ctx context.Context) (string, error) {
 }
 
 func (t *TUI) SetAgentIO(a *agentio.AgentIO) {
+	t.mu.Lock()
+	t.pendingAgentIO = a
+	t.mu.Unlock()
 	if t.program != nil {
 		t.program.Send(setAgentIOMsg{a: a})
 	}

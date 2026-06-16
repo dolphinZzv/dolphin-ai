@@ -7,6 +7,8 @@ All notable changes to Dolphin will be documented in this file.
 ### Changed
 
 - Merged create/update/delete into upsert for scheduler, subscriptions, commands, scripts, skills to reduce tool count and per-turn context.
+- TUI status bar now displays git hash version alongside agent name (e.g., `🐬 Dolphin abc1234`).
+- TUI queue display now properly renders after boot; SetAgentIO send deferred until program ready.
 
 ### Added
 

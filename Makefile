@@ -1,9 +1,11 @@
 BINARY ?= dolphin
 CONFIG ?= config.yaml
+GIT_HASH ?= $(shell git rev-parse --short HEAD)
+LDFLAGS ?= -X dolphin/internal/common.Version=$(GIT_HASH)
 
 .PHONY: build
 build:
-	mkdir -p bin && go build -race -o bin/$(BINARY) ./cmd/dolphin
+	mkdir -p bin && go build -race -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/dolphin
 
 .PHONY: build-mail
 build-mail:

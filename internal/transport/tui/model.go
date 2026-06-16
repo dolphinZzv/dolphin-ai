@@ -61,6 +61,7 @@ type model struct {
 	permCh          chan string
 	username        string
 	agentName       string
+	version         string
 	modelName       string
 	newReply        bool
 	closeBlock      bool
@@ -680,7 +681,7 @@ func (m model) View() string {
 
 	// Build status parts ordered by priority: left = essential, right = droppable.
 	var parts []string
-	parts = append(parts, "🐬 "+m.agentName)
+	parts = append(parts, "🐬 "+m.agentName+" "+m.version)
 	if m.sessionID != "" {
 		parts = append(parts, truncateSessionID(m.sessionID))
 	}
