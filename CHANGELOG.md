@@ -77,3 +77,4 @@ All notable changes to Dolphin will be documented in this file.
 - golangci-lint: fixed gofmt, exhaustive, gosec, and staticcheck issues in transport, workflow, limit, and llm packages.
 - Workflow path resolution: `run_workflow` now resolves file paths relative to the brain directory, fixing a mismatch where `brain_write` wrote to the brain dir but `run_workflow` read from CWD.
 - Workflow step timeout: `run_workflow` handlers now use `context.WithoutCancel` to strip the tool pipeline's 30s timeout. Workflow steps can now be configured to never timeout by setting `workflow.step_timeout: "0s"` or per-step `timeout: "0s"`.
+	- Root OpenAI/Anthropic providers now route to non-streaming HTTP path when `Stream: false`, matching the volcengine provider pattern. Adds `CompleteAnthropic` for non-streaming Anthropic API calls.

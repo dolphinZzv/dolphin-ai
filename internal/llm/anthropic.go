@@ -56,7 +56,10 @@ func (p *anthropicProvider) CompleteStream(ctx context.Context, req LLMRequest) 
 		return nil, err
 	}
 	url := p.chatURL(p.cfg.BaseURL)
-	return StreamAnthropic(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
+	if req.Stream {
+		return StreamAnthropic(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
+	}
+	return CompleteAnthropic(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +318,107 @@ func StreamAnthropic(ctx context.Context, url, apiKey string, headers map[string
 				return
 			}
 		}
+	}()
+
+	return ch, nil
+}
+
+// anthropicNonStreamResponse is an Anthropic non-streaming messages response.
+type anthropicNonStreamResponse struct {
+	ID    string `json:"id"`
+	Type  string `json:"type"`
+	Role  string `json:"role"`
+	Model string `json:"model"`
+	Content []struct {
+		Type      string          `json:"type"`
+		Text      string          `json:"text"`
+		Thinking  string          `json:"thinking"`
+		Signature string          `json:"signature"`
+		ID        string          `json:"id"`
+		Name      string          `json:"name"`
+		Input     json.RawMessage `json:"input"`
+	} `json:"content"`
+	StopReason string `json:"stop_reason"`
+	Usage *struct {
+		InputTokens              int `json:"input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	} `json:"usage,omitempty"`
+}
+
+// CompleteAnthropic sends a non-streaming HTTP POST and returns one chunk.
+func CompleteAnthropic(ctx context.Context, url, apiKey string, headers map[string]string, body []byte, timeout time.Duration, logger *zap.Logger) (<-chan LLMChunk, error) {
+	ch := make(chan LLMChunk, 1)
+
+	go func() {
+		defer close(ch)
+
+		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			ch <- LLMChunk{Error: fmt.Errorf("llm: create request: %w", err)}
+			return
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-api-key", apiKey)
+		httpReq.Header.Set("anthropic-version", "2023-06-01")
+		for k, v := range headers {
+			httpReq.Header.Set(k, v)
+		}
+
+		cl := &http.Client{Timeout: timeout}
+		resp, err := cl.Do(httpReq)
+		if err != nil {
+			ch <- LLMChunk{Error: fmt.Errorf("llm: request failed: %w", err)}
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusOK {
+			errBody, _ := io.ReadAll(resp.Body)
+			var apiErr AnthropicErrorBody
+			if json.Unmarshal(errBody, &apiErr) == nil && apiErr.Error.Message != "" {
+				ch <- LLMChunk{Error: fmt.Errorf("llm: %s (status %d)", apiErr.Error.Message, resp.StatusCode)}
+			} else {
+				ch <- LLMChunk{Error: fmt.Errorf("llm: status %d (body: %s)", resp.StatusCode, string(errBody))}
+			}
+			return
+		}
+
+		var cr anthropicNonStreamResponse
+		if err := json.NewDecoder(resp.Body).Decode(&cr); err != nil {
+			ch <- LLMChunk{Error: fmt.Errorf("llm: decode response: %w", err)}
+			return
+		}
+
+		chunk := LLMChunk{}
+		if cr.Usage != nil {
+			chunk.InputTokens = cr.Usage.InputTokens
+			chunk.OutputTokens = cr.Usage.OutputTokens
+			chunk.CacheCreationInputTokens = cr.Usage.CacheCreationInputTokens
+			chunk.CacheReadInputTokens = cr.Usage.CacheReadInputTokens
+		}
+		for _, block := range cr.Content {
+			switch block.Type {
+			case "text":
+				chunk.Content += block.Text
+			case "thinking":
+				chunk.Thinking = block.Thinking
+				chunk.ThinkingSignature = block.Signature
+			case "tool_use":
+				args := ""
+				if block.Input != nil {
+					args = string(block.Input)
+				}
+				chunk.ToolCalls = append(chunk.ToolCalls, types.ToolCall{
+					ID:        block.ID,
+					Name:      block.Name,
+					Arguments: args,
+				})
+			}
+		}
+		chunk.Done = true
+		ch <- chunk
 	}()
 
 	return ch, nil

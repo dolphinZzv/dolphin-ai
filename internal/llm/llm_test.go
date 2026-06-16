@@ -941,7 +941,7 @@ func TestRootOpenAIProvider_CompleteStream(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -973,7 +973,7 @@ func TestRootOpenAIProvider_CompleteStreamHTTPError(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1001,7 +1001,7 @@ func TestRootOpenAIProvider_CompleteStreamNetworkError(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1027,7 +1027,7 @@ func TestRootOpenAIProvider_CompleteStreamEmptyResponse(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1116,7 +1116,7 @@ func TestRootAnthropicProvider_CompleteStream(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1148,7 +1148,7 @@ func TestRootAnthropicProvider_CompleteStreamHTTPError(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -1180,7 +1180,7 @@ func TestRootAnthropicProvider_CompleteStreamNetworkError(t *testing.T) {
 	}
 
 	ch, err := provider.CompleteStream(context.Background(), LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, Stream: true,
 	})
 	if err != nil {
 		t.Fatal(err)

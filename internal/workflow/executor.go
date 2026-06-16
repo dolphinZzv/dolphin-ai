@@ -49,6 +49,7 @@ func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceRe
 			Messages:  messages,
 			MaxTokens: maxTokens,
 			Tools:     tools,
+			Stream:    true,
 		})
 		if err != nil {
 			e.logger.Warn("workflow step LLM error",
