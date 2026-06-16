@@ -22,6 +22,7 @@ All notable changes to Dolphin will be documented in this file.
 - Status bar stays single-line, dropping low-priority parts when content exceeds terminal width.
 - Status bar req/tok simplified to percentage only; added tool call count display.
 - TUI `show_tools`, `show_thinking`, `workmode` now read from config; config values take priority over persisted prefs.
+- TUI status bar shows `pool_size` and `tool_parallelism` when above defaults.
 - Thinking continuation lines padded to align with content text.
 - Per-round turn timeout: each agent loop round gets a fresh timeout so long-running tools don't starve subsequent LLM calls.
 - Tool parallelism config (`agent.tool_parallelism`) for concurrent tool execution.

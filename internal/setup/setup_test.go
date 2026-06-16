@@ -452,10 +452,12 @@ func TestTransportsBootstrapperBootstrap(t *testing.T) {
 
 func TestLoadTransportConfigs_TUIConfig(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"tui.enabled":       true,
-		"tui.show_tools":    true,
-		"tui.show_thinking": true,
-		"agent.workmode":    "yolo",
+		"tui.enabled":           true,
+		"tui.show_tools":        true,
+		"tui.show_thinking":     true,
+		"agent.workmode":        "yolo",
+		"agent.pool_size":       4,
+		"agent.tool_parallelism": 2,
 	})
 	tcs, err := loadTransportConfigs(cfg, "test-agent")
 	if err != nil {
@@ -473,6 +475,12 @@ func TestLoadTransportConfigs_TUIConfig(t *testing.T) {
 			}
 			if v, ok := tc.Config["workmode"].(string); !ok || v != "yolo" {
 				t.Errorf("workmode = %q, want yolo", v)
+			}
+			if v, ok := tc.Config["pool_size"].(int); !ok || v != 4 {
+				t.Errorf("pool_size = %d, want 4", v)
+			}
+			if v, ok := tc.Config["tool_parallelism"].(int); !ok || v != 2 {
+				t.Errorf("tool_parallelism = %d, want 2", v)
 			}
 		}
 	}

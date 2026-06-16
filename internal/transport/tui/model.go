@@ -60,8 +60,10 @@ type model struct {
 	closeBlock   bool
 	showTools    bool
 	showThinking bool
-	workmode     string
-	sessionID    string
+	workmode         string
+	poolSize         int
+	toolParallelism  int
+	sessionID        string
 	inputTokens  int
 	outputTokens int
 	rounds       int
@@ -596,6 +598,12 @@ func (m model) View() string {
 	parts = append(parts, m.modelName)
 	if m.workmode != "" && m.workmode != "default" {
 		parts = append(parts, m.workmode)
+	}
+	if m.poolSize > 1 {
+		parts = append(parts, fmt.Sprintf("p%d", m.poolSize))
+	}
+	if m.toolParallelism > 1 {
+		parts = append(parts, fmt.Sprintf("∥%d", m.toolParallelism))
 	}
 	if m.rounds > 0 {
 		parts = append(parts, fmt.Sprintf("r%d", m.rounds))

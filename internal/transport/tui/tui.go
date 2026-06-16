@@ -25,7 +25,9 @@ func init() {
 			showThinking = v
 		}
 		workmode, _ := cfg["workmode"].(string)
-		return NewTUI(modelName, showTools, showThinking, workmode), nil
+		poolSize, _ := cfg["pool_size"].(int)
+		toolParallelism, _ := cfg["tool_parallelism"].(int)
+		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism), nil
 	})
 }
 
@@ -43,11 +45,13 @@ type TUI struct {
 	username     string
 	showTools    bool
 	showThinking bool
-	workmode     string
-	limiter      *limit.Limiter
+	workmode         string
+	poolSize         int
+	toolParallelism  int
+	limiter          *limit.Limiter
 }
 
-func NewTUI(modelName string, showTools, showThinking bool, workmode string) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
@@ -61,7 +65,9 @@ func NewTUI(modelName string, showTools, showThinking bool, workmode string) *TU
 		username:      username,
 		showTools:     showTools,
 		showThinking:  showThinking,
-		workmode:      workmode,
+		workmode:         workmode,
+		poolSize:         poolSize,
+		toolParallelism:  toolParallelism,
 	}
 }
 
@@ -100,6 +106,8 @@ func (t *TUI) Start(_ context.Context) error {
 	m.showTools = t.showTools
 	m.showThinking = t.showThinking
 	m.workmode = t.workmode
+	m.poolSize = t.poolSize
+	m.toolParallelism = t.toolParallelism
 
 	// Set up preference persistence callback.
 	m.savePrefs = func() {

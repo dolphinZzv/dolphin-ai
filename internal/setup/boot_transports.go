@@ -222,9 +222,11 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 					"agent_name":    agentName,
 					"theme":         cfg.GetString("tui.theme"),
 					"model":         cfg.GetString("llm.use"),
-					"show_tools":    cfg.GetBool("tui.show_tools"),
-					"show_thinking": cfg.GetBool("tui.show_thinking"),
-					"workmode":      cfg.GetString("agent.workmode"),
+					"show_tools":       cfg.GetBool("tui.show_tools"),
+					"show_thinking":    cfg.GetBool("tui.show_thinking"),
+					"workmode":         cfg.GetString("agent.workmode"),
+					"pool_size":        cfg.GetInt("agent.pool_size"),
+					"tool_parallelism": cfg.GetInt("agent.tool_parallelism"),
 				},
 			})
 		}
