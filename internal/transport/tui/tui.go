@@ -12,6 +12,7 @@ import (
 	"dolphin/internal/types"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"go.uber.org/zap"
 )
 
 func init() {
@@ -28,7 +29,11 @@ func init() {
 		workmode, _ := cfg["workmode"].(string)
 		poolSize, _ := cfg["pool_size"].(int)
 		toolParallelism, _ := cfg["tool_parallelism"].(int)
-		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism), nil
+		var logger *zap.Logger
+		if l, ok := cfg["logger"].(*zap.Logger); ok {
+			logger = l
+		}
+		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, logger), nil
 	})
 }
 
@@ -53,9 +58,10 @@ type TUI struct {
 	poolSize        int
 	toolParallelism int
 	limiter         *limit.Limiter
+	logger          *zap.Logger
 }
 
-func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, logger *zap.Logger) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
@@ -73,6 +79,7 @@ func NewTUI(modelName string, showTools, showThinking bool, workmode string, poo
 		workmode:        workmode,
 		poolSize:        poolSize,
 		toolParallelism: toolParallelism,
+		logger:          logger,
 	}
 }
 
@@ -128,7 +135,7 @@ func (t *TUI) Start(_ context.Context) error {
 		})
 	}
 
-	t.program = tea.NewProgram(m, tea.WithContext(t.ctx))
+	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithInputTTY())
 
 	// Deferred: SetAgentIO may have been called before Start() when program was nil.
 	t.mu.Lock()
@@ -139,7 +146,10 @@ func (t *TUI) Start(_ context.Context) error {
 	t.mu.Unlock()
 
 	go func() {
-		_, _ = t.program.Run()
+		_, err := t.program.Run()
+		if err != nil && t.logger != nil {
+			t.logger.Error("tui program exited with error", zap.Error(err))
+		}
 	}()
 
 	return nil
