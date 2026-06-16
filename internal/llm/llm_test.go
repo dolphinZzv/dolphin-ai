@@ -1373,3 +1373,246 @@ func TestDiscoverModels_anthropicFallback(t *testing.T) {
 		t.Errorf("unexpected models: %+v", models)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Non-streaming tests
+// ---------------------------------------------------------------------------
+
+func TestCompleteOpenAI(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(200).
+		JSON(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"content": "Hello from OpenAI",
+				},
+			}},
+			"usage": map[string]any{
+				"prompt_tokens":     10,
+				"completion_tokens": 20,
+				"total_tokens":      30,
+			},
+		})
+
+	body, _ := BuildOpenAIRequest("gpt-4", nil, Config{Temperature: 1.0}, LLMRequest{Model: "gpt-4", MaxTokens: 100})
+	ch, err := CompleteOpenAI(context.Background(), "https://api.openai.com/v1/chat/completions", "sk-key", nil, body, 30*time.Second, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error != nil {
+		t.Fatal(chunk.Error)
+	}
+	if !chunk.Done {
+		t.Error("expected Done=true")
+	}
+	if chunk.Content != "Hello from OpenAI" {
+		t.Errorf("expected 'Hello from OpenAI', got %q", chunk.Content)
+	}
+	if chunk.InputTokens != 10 || chunk.OutputTokens != 20 || chunk.TotalTokens != 30 {
+		t.Errorf("unexpected tokens: in=%d out=%d total=%d", chunk.InputTokens, chunk.OutputTokens, chunk.TotalTokens)
+	}
+}
+
+func TestCompleteOpenAI_WithToolCalls(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(200).
+		JSON(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{
+					"content":           "",
+					"reasoning_content": "thinking...",
+					"tool_calls": []map[string]any{{
+						"id":   "call_1",
+						"type": "function",
+						"function": map[string]any{
+							"name":      "get_weather",
+							"arguments": `{"city":"SF"}`,
+						},
+					}},
+				},
+			}},
+			"usage": map[string]any{
+				"prompt_tokens":            5,
+				"completion_tokens":        15,
+				"prompt_tokens_details":    map[string]any{"cached_tokens": 3},
+				"prompt_cache_hit_tokens":  2,
+				"prompt_cache_miss_tokens": 8,
+			},
+		})
+
+	body, _ := BuildOpenAIRequest("gpt-4", nil, Config{Temperature: 1.0}, LLMRequest{Model: "gpt-4", MaxTokens: 100})
+	ch, err := CompleteOpenAI(context.Background(), "https://api.openai.com/v1/chat/completions", "sk-key", nil, body, 30*time.Second, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error != nil {
+		t.Fatal(chunk.Error)
+	}
+	if chunk.Thinking != "thinking..." {
+		t.Errorf("expected thinking 'thinking...', got %q", chunk.Thinking)
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(chunk.ToolCalls))
+	}
+	if chunk.ToolCalls[0].Name != "get_weather" {
+		t.Errorf("expected 'get_weather', got %q", chunk.ToolCalls[0].Name)
+	}
+	if chunk.ToolCalls[0].Arguments != `{"city":"SF"}` {
+		t.Errorf("unexpected arguments: %q", chunk.ToolCalls[0].Arguments)
+	}
+	if chunk.PromptCachedTokens != 3 {
+		t.Errorf("expected 3 cached tokens, got %d", chunk.PromptCachedTokens)
+	}
+	if chunk.PromptCacheHitTokens != 2 {
+		t.Errorf("expected 2 cache hit, got %d", chunk.PromptCacheHitTokens)
+	}
+	if chunk.PromptCacheMissTokens != 8 {
+		t.Errorf("expected 8 cache miss, got %d", chunk.PromptCacheMissTokens)
+	}
+}
+
+func TestCompleteOpenAI_Error(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.openai.com").
+		Post("/v1/chat/completions").
+		Reply(401).
+		JSON(map[string]any{"error": map[string]any{"message": "Invalid API key"}})
+
+	body, _ := BuildOpenAIRequest("gpt-4", nil, Config{Temperature: 1.0}, LLMRequest{Model: "gpt-4", MaxTokens: 100})
+	ch, err := CompleteOpenAI(context.Background(), "https://api.openai.com/v1/chat/completions", "bad-key", nil, body, 30*time.Second, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error chunk")
+	}
+	if !strings.Contains(chunk.Error.Error(), "Invalid API key") {
+		t.Errorf("unexpected error: %v", chunk.Error)
+	}
+}
+
+func TestCompleteAnthropic(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(200).
+		JSON(map[string]any{
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]any{
+				{"type": "text", "text": "Hello from Claude"},
+			},
+			"usage": map[string]any{
+				"input_tokens":                10,
+				"output_tokens":               25,
+				"cache_creation_input_tokens": 5,
+				"cache_read_input_tokens":     3,
+			},
+		})
+
+	body, _ := BuildAnthropicRequest("claude-3", nil, Config{Temperature: 1.0}, LLMRequest{Model: "claude-3", MaxTokens: 100})
+	ch, err := CompleteAnthropic(context.Background(), "https://api.anthropic.com/v1/messages", "ant-key", nil, body, 30*time.Second, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error != nil {
+		t.Fatal(chunk.Error)
+	}
+	if !chunk.Done {
+		t.Error("expected Done=true")
+	}
+	if chunk.Content != "Hello from Claude" {
+		t.Errorf("expected 'Hello from Claude', got %q", chunk.Content)
+	}
+	if chunk.InputTokens != 10 || chunk.OutputTokens != 25 {
+		t.Errorf("unexpected tokens: in=%d out=%d", chunk.InputTokens, chunk.OutputTokens)
+	}
+	if chunk.CacheCreationInputTokens != 5 {
+		t.Errorf("expected 5 cache creation, got %d", chunk.CacheCreationInputTokens)
+	}
+	if chunk.CacheReadInputTokens != 3 {
+		t.Errorf("expected 3 cache read, got %d", chunk.CacheReadInputTokens)
+	}
+}
+
+func TestCompleteAnthropic_WithToolUse(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(200).
+		JSON(map[string]any{
+			"type": "message",
+			"role": "assistant",
+			"content": []map[string]any{
+				{"type": "thinking", "thinking": "Let me check...", "signature": "sig123"},
+				{"type": "tool_use", "id": "toolu_1", "name": "get_weather", "input": map[string]any{"location": "NYC"}},
+			},
+			"usage": map[string]any{
+				"input_tokens":  5,
+				"output_tokens": 15,
+			},
+		})
+
+	body, _ := BuildAnthropicRequest("claude-3", nil, Config{Temperature: 1.0}, LLMRequest{Model: "claude-3", MaxTokens: 100})
+	ch, err := CompleteAnthropic(context.Background(), "https://api.anthropic.com/v1/messages", "ant-key", nil, body, 30*time.Second, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error != nil {
+		t.Fatal(chunk.Error)
+	}
+	if chunk.Thinking != "Let me check..." {
+		t.Errorf("expected thinking 'Let me check...', got %q", chunk.Thinking)
+	}
+	if chunk.ThinkingSignature != "sig123" {
+		t.Errorf("expected signature 'sig123', got %q", chunk.ThinkingSignature)
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(chunk.ToolCalls))
+	}
+	if chunk.ToolCalls[0].Name != "get_weather" {
+		t.Errorf("expected 'get_weather', got %q", chunk.ToolCalls[0].Name)
+	}
+}
+
+func TestCompleteAnthropic_Error(t *testing.T) {
+	defer gock.Off()
+
+	gock.New("https://api.anthropic.com").
+		Post("/v1/messages").
+		Reply(400).
+		JSON(map[string]any{"error": map[string]any{"message": "bad request"}})
+
+	body, _ := BuildAnthropicRequest("claude-3", nil, Config{Temperature: 1.0}, LLMRequest{Model: "claude-3", MaxTokens: 100})
+	ch, err := CompleteAnthropic(context.Background(), "https://api.anthropic.com/v1/messages", "bad-key", nil, body, 30*time.Second, zap.NewNop())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunk := <-ch
+	if chunk.Error == nil {
+		t.Fatal("expected error chunk")
+	}
+	if !strings.Contains(chunk.Error.Error(), "bad request") {
+		t.Errorf("unexpected error: %v", chunk.Error)
+	}
+}

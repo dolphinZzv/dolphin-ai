@@ -81,3 +81,4 @@ All notable changes to Dolphin will be documented in this file.
 	- gofmt formatting fixes across changed files.
 	- Add test coverage for temperature and topP display in `/status` command.
 	- Add test coverage for LLM request hook registration and dispatch.
+	- Add test coverage for non-streaming OpenAI and Anthropic HTTP completion paths.
