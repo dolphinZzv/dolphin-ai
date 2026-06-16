@@ -1193,35 +1193,35 @@ func TestRegisterSession(t *testing.T) {
 			}
 		})
 
-			Convey("/session stop sends pause to active session", func() {
-				sess := mgr.Create(context.Background())
-				sigCh := sb.Subscribe(sess.ID)
-				defer sb.Unsubscribe(sess.ID, sigCh)
+		Convey("/session stop sends pause to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
 
-				r.Execute(context.Background(), "session stop", "")
+			r.Execute(context.Background(), "session stop", "")
 
-				select {
-				case sig := <-sigCh:
-					So(sig, ShouldEqual, signal.Pause)
-				default:
-					So("expected pause signal", ShouldBeNil)
-				}
-			})
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Pause)
+			default:
+				So("expected pause signal", ShouldBeNil)
+			}
+		})
 
-			Convey("/session continue sends resume to active session", func() {
-				sess := mgr.Create(context.Background())
-				sigCh := sb.Subscribe(sess.ID)
-				defer sb.Unsubscribe(sess.ID, sigCh)
+		Convey("/session continue sends resume to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
 
-				r.Execute(context.Background(), "session continue", "")
+			r.Execute(context.Background(), "session continue", "")
 
-				select {
-				case sig := <-sigCh:
-					So(sig, ShouldEqual, signal.Resume)
-				default:
-					So("expected resume signal", ShouldBeNil)
-				}
-			})
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Resume)
+			default:
+				So("expected resume signal", ShouldBeNil)
+			}
+		})
 	})
 
 }
