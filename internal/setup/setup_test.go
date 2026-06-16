@@ -452,11 +452,11 @@ func TestTransportsBootstrapperBootstrap(t *testing.T) {
 
 func TestLoadTransportConfigs_TUIConfig(t *testing.T) {
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"tui.enabled":           true,
-		"tui.show_tools":        true,
-		"tui.show_thinking":     true,
-		"agent.workmode":        "yolo",
-		"agent.pool_size":       4,
+		"tui.enabled":            true,
+		"tui.show_tools":         true,
+		"tui.show_thinking":      true,
+		"agent.workmode":         "yolo",
+		"agent.pool_size":        4,
 		"agent.tool_parallelism": 2,
 	})
 	tcs, err := loadTransportConfigs(cfg, "test-agent")

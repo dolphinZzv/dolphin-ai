@@ -218,10 +218,10 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 			tcs = append(tcs, transportConfig{
 				Type: "tui",
 				Config: map[string]any{
-					"type":          "tui",
-					"agent_name":    agentName,
-					"theme":         cfg.GetString("tui.theme"),
-					"model":         cfg.GetString("llm.use"),
+					"type":             "tui",
+					"agent_name":       agentName,
+					"theme":            cfg.GetString("tui.theme"),
+					"model":            cfg.GetString("llm.use"),
 					"show_tools":       cfg.GetBool("tui.show_tools"),
 					"show_thinking":    cfg.GetBool("tui.show_thinking"),
 					"workmode":         cfg.GetString("agent.workmode"),

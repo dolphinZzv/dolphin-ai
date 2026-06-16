@@ -42,39 +42,39 @@ type renderEntry struct {
 }
 
 type model struct {
-	viewport     viewport.Model
-	textarea     textarea.Model
-	messages     []renderEntry
-	permDialog   *permDialog
-	width        int
-	height       int
-	ready        bool
-	thinking     string
-	inThinking   bool
-	msgChan      chan string
-	permCh       chan string
-	username     string
-	agentName    string
-	modelName    string
-	newReply     bool
-	closeBlock   bool
-	showTools    bool
-	showThinking bool
-	workmode         string
-	poolSize         int
-	toolParallelism  int
-	sessionID        string
-	inputTokens  int
-	outputTokens int
-	rounds       int
-	hardReqs     int64
-	reqs         int64
-	hardTokens   int64
-	tokens       int64
-	toolCalls    int
-	savePrefs    func()
-	currentMsg   string // user message currently being processed
-	msgStatus    string // "pending", "success", "error"
+	viewport        viewport.Model
+	textarea        textarea.Model
+	messages        []renderEntry
+	permDialog      *permDialog
+	width           int
+	height          int
+	ready           bool
+	thinking        string
+	inThinking      bool
+	msgChan         chan string
+	permCh          chan string
+	username        string
+	agentName       string
+	modelName       string
+	newReply        bool
+	closeBlock      bool
+	showTools       bool
+	showThinking    bool
+	workmode        string
+	poolSize        int
+	toolParallelism int
+	sessionID       string
+	inputTokens     int
+	outputTokens    int
+	rounds          int
+	hardReqs        int64
+	reqs            int64
+	hardTokens      int64
+	tokens          int64
+	toolCalls       int
+	savePrefs       func()
+	currentMsg      string // user message currently being processed
+	msgStatus       string // "pending", "success", "error"
 
 	// Incremental rendering state.
 	renderedContent string

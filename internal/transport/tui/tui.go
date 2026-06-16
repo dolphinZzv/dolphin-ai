@@ -33,41 +33,41 @@ func init() {
 
 type TUI struct {
 	*transport.SessionHolder
-	id           string
-	program      *tea.Program
-	msgChan      chan string
-	permCh       chan string
-	ctx          context.Context
-	cancel       context.CancelFunc
-	mu           sync.Mutex
-	agentName    string
-	modelName    string
-	username     string
-	showTools    bool
-	showThinking bool
-	workmode         string
-	poolSize         int
-	toolParallelism  int
-	limiter          *limit.Limiter
+	id              string
+	program         *tea.Program
+	msgChan         chan string
+	permCh          chan string
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.Mutex
+	agentName       string
+	modelName       string
+	username        string
+	showTools       bool
+	showThinking    bool
+	workmode        string
+	poolSize        int
+	toolParallelism int
+	limiter         *limit.Limiter
 }
 
 func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
-		SessionHolder: transport.NewSessionHolder(nil),
-		id:            "tui",
-		msgChan:       make(chan string, 1),
-		ctx:           ctx,
-		cancel:        cancel,
-		agentName:     "Dolphin",
-		modelName:     modelName,
-		username:      username,
-		showTools:     showTools,
-		showThinking:  showThinking,
-		workmode:         workmode,
-		poolSize:         poolSize,
-		toolParallelism:  toolParallelism,
+		SessionHolder:   transport.NewSessionHolder(nil),
+		id:              "tui",
+		msgChan:         make(chan string, 1),
+		ctx:             ctx,
+		cancel:          cancel,
+		agentName:       "Dolphin",
+		modelName:       modelName,
+		username:        username,
+		showTools:       showTools,
+		showThinking:    showThinking,
+		workmode:        workmode,
+		poolSize:        poolSize,
+		toolParallelism: toolParallelism,
 	}
 }
 
