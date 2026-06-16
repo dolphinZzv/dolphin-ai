@@ -1081,3 +1081,90 @@ func TestSetAgentIOMsg(t *testing.T) {
 		t.Error("SetAgentIO should store agentIO on model")
 	}
 }
+
+func TestTUI_IsPriority_ResetPriority(t *testing.T) {
+	tui := NewTUI("", true, true, "", 0, 0)
+	if tui.IsPriority() {
+		t.Error("expected priority to be false initially")
+	}
+
+	tui.mu.Lock()
+	tui.priority = true
+	tui.mu.Unlock()
+
+	if !tui.IsPriority() {
+		t.Error("expected priority to be true after setting")
+	}
+
+	tui.ResetPriority()
+	if tui.IsPriority() {
+		t.Error("expected priority to be false after reset")
+	}
+}
+
+func TestTUI_SetAgentIO_NilProgram(t *testing.T) {
+	tui := NewTUI("", true, true, "", 0, 0)
+	aio := newTestAgentIO(t)
+	tui.SetAgentIO(aio)
+	if tui.pendingAgentIO != aio {
+		t.Error("SetAgentIO should store agentIO")
+	}
+}
+
+func TestTUI_SetAgentIO_WithProgram(t *testing.T) {
+	tui := NewTUI("", true, true, "", 0, 0)
+	_ = tui.Start(context.Background())
+	defer func() { _ = tui.Close() }()
+	aio := newTestAgentIO(t)
+	tui.SetAgentIO(aio)
+	if tui.pendingAgentIO != aio {
+		t.Error("SetAgentIO should store agentIO")
+	}
+}
+
+func TestModelUpdate_PrioritySubmitMsg(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.msgChan = make(chan string, 1)
+	m.closeBlock = true
+	msg := prioritySubmitMsg{text: "priority message"}
+
+	newM, _ := m.Update(msg)
+	m = newM.(model)
+	if !m.newReply {
+		t.Error("newReply should be true after prioritySubmitMsg")
+	}
+	if m.currentMsg != "priority message" {
+		t.Errorf("expected currentMsg='priority message', got %q", m.currentMsg)
+	}
+	if m.msgStatus != "pending" {
+		t.Errorf("expected msgStatus='pending', got %q", m.msgStatus)
+	}
+	select {
+	case txt := <-m.msgChan:
+		if txt != "priority message" {
+			t.Errorf("expected 'priority message' on channel, got %q", txt)
+		}
+	default:
+	}
+}
+
+func TestModelUpdate_PrioritySubmitMsg_SetPriority(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.msgChan = make(chan string, 1)
+
+	priorityCalled := false
+	m.setPriority = func() {
+		priorityCalled = true
+	}
+
+	_, _ = m.Update(prioritySubmitMsg{text: "test"})
+	if !priorityCalled {
+		t.Error("setPriority callback should have been called")
+	}
+}
