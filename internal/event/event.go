@@ -29,6 +29,7 @@ const (
 	EventToolError            Type = "tool.error"
 	EventMemoryWriteStart     Type = "memory.write.start"
 	EventMemoryWriteComplete  Type = "memory.write.complete"
+	EventCompaction           Type = "memory.compaction"
 	EventContextStart         Type = "context.start"
 	EventContextComplete      Type = "context.complete"
 	EventContextBuildStart    Type = "context.build.start"

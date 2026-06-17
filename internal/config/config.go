@@ -76,6 +76,15 @@ func defaultConfig() *Config {
 			"llm.max_tokens":            4096,
 			"llm.max_retries":           3,
 			"llm.timeout":               "120s",
+			// Context compaction: summarize oldest messages when the
+			// estimated token count exceeds compaction.max_tokens,
+			// keeping the most recent keep_rounds rounds verbatim.
+			"compaction.enabled":            true,
+			"compaction.max_tokens":         60000,
+			"compaction.keep_rounds":        6,
+			"compaction.model":              "",
+			"compaction.summary_max_tokens": 512,
+			"compaction.token_ratio":        4,
 		},
 	}
 }

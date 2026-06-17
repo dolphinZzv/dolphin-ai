@@ -1152,3 +1152,257 @@ func truncateStr(s string, max int) string {
 	}
 	return s[:max]
 }
+
+// CompactionStage summarizes the oldest messages when the conversation
+// approaches the model's context window, replacing them with a single
+// summary message kept at the head of Messages. It runs once per turn
+// (an init stage), after MemoryReadStage has assembled state.Messages
+// from history plus the new user input.
+//
+// Design:
+//   - Synchronous: compaction finishes before the main LLM call so the
+//     current request already uses a trimmed context.
+//   - Durable: the compacted [summary + tail] list is written back via
+//     Memory.Replace so subsequent turns (and restarts) read the
+//     compacted history without re-summarizing.
+//   - Tail-preserving: the most recent keepRounds rounds are kept
+//     verbatim; only older messages are summarized.
+//
+// The summary is emitted as a user-role message flagged IsSummary so the
+// provider adapters send it unchanged while application code can tell it
+// apart from real user input.
+type CompactionStage struct {
+	Provider     llm.Provider // used to generate the summary (typically the Manager)
+	Memory       memory.Memory
+	Model        string // optional: model for the summary call; empty = active
+	MaxTokens    int    // summary output cap (e.g. 512)
+	MaxThreshold int    // estimated-token trigger threshold
+	KeepRounds   int    // recent rounds preserved verbatim (1 round = user+assistant)
+	TokenRatio   int    // runes per estimated token
+	EventBus     *event.Bus
+	Logger       *zap.Logger
+}
+
+func (s *CompactionStage) Name() string { return "compaction" }
+
+// Clone shares all fields (providers/memory/bus are concurrency-safe).
+func (s *CompactionStage) Clone() Stage {
+	return &CompactionStage{
+		Provider:     s.Provider,
+		Memory:       s.Memory,
+		Model:        s.Model,
+		MaxTokens:    s.MaxTokens,
+		MaxThreshold: s.MaxThreshold,
+		KeepRounds:   s.KeepRounds,
+		TokenRatio:   s.TokenRatio,
+		EventBus:     s.EventBus,
+		Logger:       s.Logger,
+	}
+}
+
+func (s *CompactionStage) activeModel() string {
+	if s.Model != "" {
+		return s.Model
+	}
+	if a, ok := s.Provider.(interface{ ActiveModel() string }); ok {
+		return a.ActiveModel()
+	}
+	return ""
+}
+
+// estimateTokens gives a rough token count for a message slice. It uses
+// rune length divided by TokenRatio — imprecise but sufficient for
+// triggering compaction with a safety margin. Thinking and tool content
+// are included since they consume context too.
+func (s *CompactionStage) estimateTokens(msgs []types.Message) int {
+	ratio := s.TokenRatio
+	if ratio <= 0 {
+		ratio = 4
+	}
+	var runes int
+	for _, m := range msgs {
+		runes += len([]rune(m.Content))
+		runes += len([]rune(m.Thinking))
+		for _, tc := range m.ToolCalls {
+			runes += len([]rune(tc.Arguments))
+		}
+	}
+	return runes / ratio
+}
+
+func (s *CompactionStage) Process(ctx context.Context, state *State) error {
+	if s == nil || s.Provider == nil || s.Memory == nil {
+		return nil
+	}
+	if s.MaxThreshold <= 0 || s.KeepRounds <= 0 {
+		return nil
+	}
+	// Need at least keepRounds*2 + 1 messages (history + new input) for
+	// compaction to make sense; otherwise there's nothing old to summarize.
+	minNeeded := s.KeepRounds*2 + 1
+	if len(state.Messages) < minNeeded {
+		return nil
+	}
+	if s.estimateTokens(state.Messages) < s.MaxThreshold {
+		return nil
+	}
+
+	compacted, err := s.compact(ctx, state.Messages)
+	if err != nil {
+		// Compaction is best-effort: on failure, fall back to the
+		// un-compacted messages so the turn can still proceed. Log and
+		// continue rather than blocking the conversation.
+		if s.Logger != nil {
+			s.Logger.Warn("compaction failed, proceeding with full context",
+				zap.Error(err))
+		}
+		return nil
+	}
+
+	// state.Messages is [history... + current user input]. After
+	// compaction it becomes [summary + tail... + current user input].
+	// The current user input is the last message and is always kept.
+	state.Messages = compacted
+	// Re-align state.History so MemoryWriteStage's writeIdx boundary
+	// (len(state.History)) reflects the compacted list. Otherwise the
+	// write stage would re-append already-compacted history.
+	// History is everything except the current user input (last msg).
+	state.History = compacted[:len(compacted)-1]
+
+	// Persist the compacted history (excluding the not-yet-sent current
+	// user input) so future turns read the compacted version.
+	if err := s.Memory.Replace(ctx, state.SessionID, state.History); err != nil {
+		if s.Logger != nil {
+			s.Logger.Warn("compaction persist failed",
+				zap.Error(err))
+		}
+	}
+
+	if s.EventBus != nil {
+		s.EventBus.Publish(ctx, event.Event{
+			Type:      event.EventCompaction,
+			Timestamp: time.Now(),
+			SessionID: state.SessionID,
+			Payload: map[string]any{
+				"summary_tokens": s.estimateTokens([]types.Message{compacted[0]}),
+				"kept_messages":  len(compacted),
+			},
+		})
+	}
+	return nil
+}
+
+// compact splits msgs into [old...] and [tail...] where tail holds the
+// most recent keepRounds rounds (plus the trailing current user input),
+// summarizes old into a single IsSummary message, and returns
+// [summary + tail]. It never orphans a tool_result: the split point
+// walks back past RoleTool messages so every tool_result in tail has
+// its matching tool_use.
+func (s *CompactionStage) compact(ctx context.Context, msgs []types.Message) ([]types.Message, error) {
+	// tail keeps keepRounds rounds (user+assistant pairs) from the end,
+	// but the very last message (current user input) is always part of
+	// tail regardless. Work back from the end counting rounds.
+	keepMsgs := s.KeepRounds * 2
+	// Reserve room for the trailing current input (1 message).
+	split := len(msgs) - keepMsgs - 1
+	if split < 0 {
+		split = 0
+	}
+	// Don't orphan tool_results: walk the split point back while it
+	// lands on a tool message, so tail begins at a user/assistant msg.
+	for split > 0 && msgs[split].Role == types.RoleTool {
+		split--
+	}
+	if split <= 0 {
+		// Nothing old enough to summarize; leave as-is.
+		return msgs, nil
+	}
+
+	oldMsgs := msgs[:split]
+	tail := msgs[split:]
+
+	summaryText, err := s.summarize(ctx, oldMsgs)
+	if err != nil {
+		return nil, err
+	}
+
+	summary := types.Message{
+		Role:      types.RoleUser,
+		Content:   "[Conversation summary of earlier turns]\n\n" + summaryText,
+		IsSummary: true,
+		// Timestamp earlier than the tail so ordering is unambiguous.
+		Timestamp: tail[0].Timestamp,
+	}
+
+	out := make([]types.Message, 0, len(tail)+1)
+	out = append(out, summary)
+	out = append(out, tail...)
+	return out, nil
+}
+
+// summarize calls the LLM to produce a concise summary of oldMsgs. Any
+// existing IsSummary message in oldMsgs is folded in as prior context so
+// earlier summaries are not lost (summarize-on-summarize).
+func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message) (string, error) {
+	var b strings.Builder
+	b.WriteString("Summarize the conversation below. Capture: key facts, decisions made, pending tasks, and any important context the assistant needs to continue. Be concise and factual; do not invent details. If a prior summary is included, integrate it.\n\n")
+
+	for _, m := range oldMsgs {
+		switch m.Role {
+		case types.RoleUser:
+			if m.IsSummary {
+				b.WriteString("[Prior summary]\n")
+			}
+			b.WriteString("User: ")
+			b.WriteString(m.Content)
+			b.WriteString("\n\n")
+		case types.RoleAssistant:
+			b.WriteString("Assistant: ")
+			b.WriteString(m.Content)
+			if m.Thinking != "" {
+				b.WriteString("\n(thought: ")
+				b.WriteString(truncateStr(m.Thinking, 500))
+				b.WriteString(")")
+			}
+			b.WriteString("\n\n")
+		case types.RoleTool:
+			b.WriteString("[Tool result ")
+			b.WriteString(m.ToolCallID)
+			b.WriteString(": ")
+			b.WriteString(truncateStr(m.Content, 300))
+			b.WriteString("]\n\n")
+		}
+	}
+
+	maxTokens := s.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = 512
+	}
+
+	req := llm.LLMRequest{
+		Messages: []types.Message{
+			{Role: types.RoleUser, Content: b.String(), Timestamp: time.Now()},
+		},
+		Model:     s.activeModel(),
+		MaxTokens: maxTokens,
+		Stream:    true,
+		Timeout:   60 * time.Second,
+	}
+
+	ch, err := s.Provider.CompleteStream(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("compaction: start summary: %w", err)
+	}
+	var content strings.Builder
+	for chunk := range ch {
+		if chunk.Error != nil {
+			return "", fmt.Errorf("compaction: summary stream: %w", chunk.Error)
+		}
+		content.WriteString(chunk.Content)
+	}
+	out := strings.TrimSpace(content.String())
+	if out == "" {
+		return "", fmt.Errorf("compaction: summary produced empty output")
+	}
+	return out, nil
+}

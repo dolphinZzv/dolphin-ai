@@ -31,11 +31,24 @@ func (m *DroppingMemory) Read(ctx context.Context, sessionID string) ([]types.Me
 		for start > 0 && msgs[start].Role == types.RoleTool {
 			start--
 		}
-		msgs = msgs[start:]
+		// Keep a leading summary message (produced by compaction) even if
+		// it falls before the window start: it carries the compressed
+		// history and must not be dropped.
+		if start > 0 && msgs[0].IsSummary {
+			msgs = append([]types.Message{msgs[0]}, msgs[start:]...)
+		} else {
+			msgs = msgs[start:]
+		}
 	}
 	return msgs, nil
 }
 
 func (m *DroppingMemory) Write(ctx context.Context, sessionID string, msg types.Message) error {
 	return m.inner.Write(ctx, sessionID, msg)
+}
+
+// Replace delegates to the inner memory so compaction's atomic overwrite
+// reaches the durable store.
+func (m *DroppingMemory) Replace(ctx context.Context, sessionID string, msgs []types.Message) error {
+	return m.inner.Replace(ctx, sessionID, msgs)
 }

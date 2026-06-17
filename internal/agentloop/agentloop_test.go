@@ -1130,6 +1130,9 @@ func (m *countingMemory) Read(ctx context.Context, sid string) ([]types.Message,
 func (m *countingMemory) Write(ctx context.Context, sid string, msg types.Message) error {
 	return m.inner.Write(ctx, sid, msg)
 }
+func (m *countingMemory) Replace(ctx context.Context, sid string, msgs []types.Message) error {
+	return m.inner.Replace(ctx, sid, msgs)
+}
 
 type incrementStage struct {
 	count *int

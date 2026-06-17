@@ -63,11 +63,26 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	}
 	c.ContextReg = ctxBuilder.Registry()
 
+	initStages := []agentloop.Stage{
+		&agentloop.MemoryReadStage{Memory: c.Mem},
+		ctxBuilder,
+	}
+	if c.Config.GetBool("compaction.enabled") {
+		initStages = append(initStages, &agentloop.CompactionStage{
+			Provider:     c.LLMProvider,
+			Memory:       c.Mem,
+			Model:        c.Config.GetString("compaction.model"),
+			MaxTokens:    c.Config.GetInt("compaction.summary_max_tokens"),
+			MaxThreshold: c.Config.GetInt("compaction.max_tokens"),
+			KeepRounds:   c.Config.GetInt("compaction.keep_rounds"),
+			TokenRatio:   c.Config.GetInt("compaction.token_ratio"),
+			EventBus:     c.EventBus,
+			Logger:       c.Logger,
+		})
+	}
+
 	compositor := agentloop.NewCompositor(
-		[]agentloop.Stage{
-			&agentloop.MemoryReadStage{Memory: c.Mem},
-			ctxBuilder,
-		},
+		initStages,
 		[]agentloop.Stage{
 			&agentloop.LLMStage{
 				Provider:     c.LLMProvider,

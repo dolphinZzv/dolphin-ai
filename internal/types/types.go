@@ -23,7 +23,11 @@ type Message struct {
 	ToolCalls         []ToolCall `json:"tool_calls,omitempty"`
 	IsError           bool       `json:"is_error,omitempty"`
 	IsPartial         bool       `json:"is_partial,omitempty"`
-	Timestamp         time.Time  `json:"timestamp"`
+	// IsSummary marks a synthetic user message that summarizes earlier
+	// turns after context compaction. It sits at the head of Messages so
+	// downstream code can tell it apart from real user input.
+	IsSummary bool      `json:"is_summary,omitempty"`
+	Timestamp time.Time `json:"timestamp"`
 }
 
 type ToolDef struct {

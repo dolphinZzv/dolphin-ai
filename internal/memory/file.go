@@ -78,6 +78,24 @@ func (m *FileMemory) Write(ctx context.Context, sessionID string, msg types.Mess
 	return nil
 }
 
+// Replace overwrites the entire message list for a session with msgs.
+// Used by context compaction to atomically substitute a compacted
+// [summary + tail] list for the prior full history.
+func (m *FileMemory) Replace(ctx context.Context, sessionID string, msgs []types.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sess := m.sessions.Get(sessionID)
+	if sess == nil {
+		return nil
+	}
+	if msgs == nil {
+		msgs = []types.Message{}
+	}
+	sess.Set(memoryKey, msgs)
+	return nil
+}
+
 func decodeMessages(raw []interface{}) ([]types.Message, error) {
 	data, err := json.Marshal(raw)
 	if err != nil {

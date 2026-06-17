@@ -408,3 +408,90 @@ func TestDecodeMessagesInvalidJSON(t *testing.T) {
 		t.Fatal("expected error for non-marshalable value")
 	}
 }
+
+func TestFileMemoryReplace(t *testing.T) {
+	store := newTestStore("sess1")
+	m := NewFileMemory(store)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	// Seed with a few messages.
+	for i := 0; i < 3; i++ {
+		_ = m.Write(ctx, "sess1", types.Message{
+			Role: types.RoleUser, Content: "old", Timestamp: now,
+		})
+	}
+	before, _ := m.Read(ctx, "sess1")
+	if len(before) != 3 {
+		t.Fatalf("seed: expected 3 messages, got %d", len(before))
+	}
+
+	// Replace with a compacted [summary + tail] list.
+	replaced := []types.Message{
+		{Role: types.RoleUser, Content: "summary", IsSummary: true, Timestamp: now},
+		{Role: types.RoleUser, Content: "tail", Timestamp: now},
+	}
+	if err := m.Replace(ctx, "sess1", replaced); err != nil {
+		t.Fatal(err)
+	}
+
+	after, err := m.Read(ctx, "sess1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 2 {
+		t.Fatalf("expected 2 messages after replace, got %d", len(after))
+	}
+	if !after[0].IsSummary || after[0].Content != "summary" {
+		t.Errorf("first msg = %+v, want summary", after[0])
+	}
+	if after[1].Content != "tail" {
+		t.Errorf("second msg = %+v, want tail", after[1])
+	}
+}
+
+func TestDroppingMemoryReplaceDelegates(t *testing.T) {
+	inner := NewFileMemory(newTestStore("s1"))
+	dm := NewDroppingMemory(inner, 5)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	replaced := []types.Message{
+		{Role: types.RoleUser, Content: "summary", IsSummary: true, Timestamp: now},
+	}
+	if err := dm.Replace(ctx, "s1", replaced); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := dm.Read(ctx, "s1")
+	if len(msgs) != 1 || !msgs[0].IsSummary {
+		t.Fatalf("replace did not delegate to inner: %+v", msgs)
+	}
+}
+
+func TestDroppingMemoryKeepsSummaryHead(t *testing.T) {
+	// When the window would drop the leading summary, it must be kept.
+	inner := NewFileMemory(newTestStore("s1"))
+	dm := NewDroppingMemory(inner, 1) // window=1 => max 2 messages
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Second)
+
+	msgs := []types.Message{
+		{Role: types.RoleUser, Content: "summary", IsSummary: true, Timestamp: now},
+		{Role: types.RoleUser, Content: "u1", Timestamp: now},
+		{Role: types.RoleAssistant, Content: "a1", Timestamp: now},
+		{Role: types.RoleUser, Content: "u2", Timestamp: now},
+		{Role: types.RoleAssistant, Content: "a2", Timestamp: now},
+	}
+	if err := inner.Replace(ctx, "s1", msgs); err != nil {
+		t.Fatal(err)
+	}
+
+	got, _ := dm.Read(ctx, "s1")
+	// window=1 keeps 2 messages, but the summary head is preserved.
+	if len(got) != 3 {
+		t.Fatalf("expected 3 messages (summary + 2 tail), got %d", len(got))
+	}
+	if !got[0].IsSummary {
+		t.Errorf("first message must be the summary, got %+v", got[0])
+	}
+}
