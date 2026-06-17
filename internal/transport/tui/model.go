@@ -999,8 +999,7 @@ func (m model) View() string {
 		leftParts = append(leftParts, fmt.Sprintf("pool:%d", m.poolSize))
 	} else {
 		// Wide mode: model lives in the side panel, so the bottom bar
-		// keeps only identity + the exit hint.
-		leftParts = append(leftParts, "/exit")
+		// keeps only identity.
 	}
 	statusBar := renderStatusBar(leftParts, rightParts, m.width)
 

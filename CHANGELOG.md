@@ -26,6 +26,7 @@ All notable changes to Dolphin will be documented in this file.
 - TUI: permission dialog is now a true modal — captures all keys (no stray textarea typing), supports `y/Y a/A n/N`, arrow-key + Enter navigation, and is centered on screen
 - TUI: fix permission dialog being unresolvable — the response channel is now delivered with the prompt message instead of a stale nil copy
 - Agent loop: feeds the idle watchdog while a permission prompt waits for user input, so a slow reader no longer trips `llm_idle_timeout` and cancels the turn mid-prompt
+- TUI: drop the redundant `/exit` hint from the wide-mode bottom status bar
 
 ### Changed
 

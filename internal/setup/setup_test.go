@@ -2093,3 +2093,74 @@ func TestWorkflowBootstrapper(t *testing.T) {
 		})
 	})
 }
+
+// stubProvider is a minimal llm.Provider for lookupTemperature tests,
+// returning a fixed model list (or an error).
+type stubProvider struct {
+	name   string
+	models []llm.ModelConfig
+	err    error
+}
+
+func (s *stubProvider) Name() string { return s.name }
+func (s *stubProvider) CompleteStream(ctx context.Context, req llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+func (s *stubProvider) Models(ctx context.Context) ([]llm.ModelConfig, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.models, nil
+}
+
+func TestLookupTemperature(t *testing.T) {
+	Convey("lookupTemperature", t, func() {
+		Convey("nil provider or empty model returns 0", func() {
+			So(lookupTemperature(nil, "gpt"), ShouldEqual, 0)
+			So(lookupTemperature(&stubProvider{}, ""), ShouldEqual, 0)
+		})
+
+		Convey("provider error returns 0", func() {
+			p := &stubProvider{err: fmt.Errorf("boom")}
+			So(lookupTemperature(p, "gpt"), ShouldEqual, 0)
+		})
+
+		Convey("matches by exact name", func() {
+			p := &stubProvider{models: []llm.ModelConfig{
+				{Name: "gpt-4o", Temperature: 0.7},
+				{Name: "claude", Temperature: 0.5},
+			}}
+			So(lookupTemperature(p, "gpt-4o"), ShouldEqual, 0.7)
+		})
+
+		Convey("matches by short name after provider/ prefix", func() {
+			p := &stubProvider{models: []llm.ModelConfig{
+				{Name: "sonnet", Temperature: 0.9},
+			}}
+			// "anthropic/sonnet" should match the short "sonnet".
+			So(lookupTemperature(p, "anthropic/sonnet"), ShouldEqual, 0.9)
+		})
+
+		Convey("unknown model returns 0", func() {
+			p := &stubProvider{models: []llm.ModelConfig{
+				{Name: "gpt-4o", Temperature: 0.7},
+			}}
+			So(lookupTemperature(p, "nope"), ShouldEqual, 0)
+		})
+	})
+}
+
+func TestConfigHasKey(t *testing.T) {
+	Convey("configHasKey", t, func() {
+		Convey("true when key present", func() {
+			cfg := config.LoadConfigFromMap(map[string]any{
+				"agent.workmode": "yolo",
+			})
+			So(configHasKey(cfg, "agent.workmode"), ShouldBeTrue)
+		})
+		Convey("false when key absent", func() {
+			cfg := config.LoadConfigFromMap(nil)
+			So(configHasKey(cfg, "agent.workmode"), ShouldBeFalse)
+		})
+	})
+}
