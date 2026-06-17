@@ -3,9 +3,22 @@ CONFIG ?= config.yaml
 GIT_HASH ?= $(shell git rev-parse --short HEAD)
 LDFLAGS ?= -X dolphin/internal/common.Version=$(GIT_HASH)
 
+RACE ?= 0
+
+# go-build appends the race flag only when RACE=1, keeping daily builds fast.
+define go-build
+	mkdir -p bin && go build $(if $(filter 1,$(RACE)),-race) -ldflags "$(LDFLAGS)" -o bin/$(1) $(2)
+endef
+
 .PHONY: build
 build:
-	mkdir -p bin && go build -race -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/dolphin
+	$(call go-build,$(BINARY),./cmd/dolphin)
+
+# build-race enables the race detector for diagnosing concurrency issues.
+.PHONY: build-race
+build-race: RACE = 1
+build-race:
+	$(call go-build,$(BINARY),./cmd/dolphin)
 
 .PHONY: build-mail
 build-mail:

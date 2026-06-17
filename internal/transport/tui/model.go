@@ -1253,12 +1253,36 @@ func (m model) renderSideStatus() string {
 		targetHeight = 4
 	}
 
+	// lipgloss Width/Height set the *content* area; the border draws
+	// outside it, adding 2 cols (left+right) and 2 rows (top+bottom) —
+	// even when the border's Top/Bottom edges are empty strings. The
+	// layout reserves `innerWidth` cols and `targetHeight` rows for the
+	// panel's OUTER footprint, so subtract 2 on each axis. Otherwise the
+	// panel overshoots by 2 in both directions: the 2-row vertical
+	// overflow scrolls the top of the whole view off-screen (hiding the
+	// "Status" header and the top of the message viewport).
+	contentWidth := innerWidth - 2
+	if contentWidth < 4 {
+		contentWidth = 4
+	}
+	contentHeight := targetHeight - 2
+	if contentHeight < 3 {
+		contentHeight = 3
+	}
+	// Height pads short content but never truncates, so trim overflowing
+	// lines ourselves to keep the box exactly targetHeight tall.
+	bodyLines := strings.Split(body, "\n")
+	if len(bodyLines) > contentHeight {
+		bodyLines = bodyLines[:contentHeight]
+	}
+	body = strings.Join(bodyLines, "\n")
+
 	boxStyle := lipgloss.NewStyle().
 		Border(sidePanelBorder).
 		BorderForeground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
 		Padding(0, 2).
-		Width(innerWidth).
-		Height(targetHeight)
+		Width(contentWidth).
+		Height(contentHeight)
 	return boxStyle.Render(body)
 }
 

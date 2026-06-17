@@ -3,7 +3,10 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
-- Add version.go for build-time version injection
+- Makefile gates `-race` behind `RACE=1` / `make build-race`; the default `make build` no longer links ThreadSanitizer, cutting idle CPU from ~8% to ~0
+- Fix TUI side-panel overflow: `renderSideStatus` passed inner dimensions to lipgloss `Width`/`Height` (content area), but the border adds 2 rows/cols outside it, so the panel overshot by 2 rows and scrolled the top of the view off-screen (hiding the Status header and the top of the message viewport, including the user's own echo)
+- Add context compaction: when the estimated token count exceeds `compaction.max_tokens`, the oldest messages are summarized into a single `IsSummary` message kept at the head of Messages, while the most recent `compaction.keep_rounds` rounds are preserved verbatim; the compacted history is persisted via a new `Memory.Replace` so subsequent turns (and restarts) use the trimmed context without re-summarizing
+
 - /context list uses 1-based numbered format (1) base, 2) soul, ...)
 - Add /session stop and /session continue to pause and resume turn processing
 - Add test coverage for pause/resume paths in LLMStage, ToolStage serial, and processParallel
