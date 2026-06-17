@@ -1,13 +1,18 @@
 package command
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 )
 
-const defaultConfigYAML = `# yaml-language-server: $schema=https://raw.githubusercontent.com/dolphinZzv/dolphin-ai/main/config.schema.json
+//go:embed config.schema.json
+var defaultConfigSchema []byte
+
+const defaultConfigYAML = `# yaml-language-server: $schema=config.schema.json
 
 # --- Language (en, zh) ---
 lang: en
@@ -160,6 +165,7 @@ func NewConfigInitCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			outputPath, _ := cmd.Flags().GetString("output")
 			force, _ := cmd.Flags().GetBool("force")
+			skipSchema, _ := cmd.Flags().GetBool("skip-schema")
 
 			if !force {
 				if _, err := os.Stat(outputPath); err == nil {
@@ -171,14 +177,29 @@ func NewConfigInitCmd() *cobra.Command {
 			if err := os.WriteFile(outputPath, []byte(defaultConfigYAML), 0644); err != nil {
 				return fmt.Errorf("write config: %w", err)
 			}
-
 			cmd.Printf("created default config at %s\n", outputPath)
+
+			if !skipSchema {
+				schemaPath := filepath.Join(filepath.Dir(outputPath), "config.schema.json")
+				if !force {
+					if _, err := os.Stat(schemaPath); err == nil {
+						cmd.Printf("config.schema.json already exists at %s. Use --force to overwrite.\n", schemaPath)
+						return nil
+					}
+				}
+				if err := os.WriteFile(schemaPath, defaultConfigSchema, 0644); err != nil {
+					return fmt.Errorf("write schema: %w", err)
+				}
+				cmd.Printf("created default schema at %s\n", schemaPath)
+			}
+
 			return nil
 		},
 	}, "command.config_init_desc")
 
 	initCmd.Flags().StringP("output", "o", "config.yaml", "output path for the generated config file")
 	initCmd.Flags().BoolP("force", "f", false, "overwrite existing config file")
+	initCmd.Flags().Bool("skip-schema", false, "do not generate config.schema.json alongside config.yaml")
 	return initCmd
 }
 

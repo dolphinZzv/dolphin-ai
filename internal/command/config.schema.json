@@ -1,0 +1,288 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Dolphin Configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "lang": {
+      "description": "Language for UI and messages",
+      "type": "string",
+      "default": "en"
+    },
+    "llm": {
+      "description": "LLM provider and model configuration. Known fields listed below; any other key is treated as a provider section (e.g. deepseek_anthropic, deepseek_openai).",
+      "type": "object",
+      "properties": {
+        "use": { "type": "string", "description": "Active model name (references a model from any provider's model list)" },
+        "max_tokens": { "type": "integer", "minimum": 1, "default": 4096 },
+        "max_retries": { "type": "integer", "minimum": 0, "default": 3 },
+        "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Request timeout, e.g. 30s, 5m" },
+        "limit": {
+          "type": "object",
+          "description": "Global usage limits",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "max_requests": { "$ref": "#/definitions/limitValue", "description": "Max LLM requests per cycle" },
+            "max_total_tokens": { "$ref": "#/definitions/limitValue", "description": "Max total tokens per cycle" },
+            "max_input_tokens": { "$ref": "#/definitions/limitValue", "description": "Max input tokens per cycle" },
+            "max_output_tokens": { "$ref": "#/definitions/limitValue", "description": "Max output tokens per cycle" },
+            "reset_cron": { "type": "string", "description": "Cron expression for counter reset, e.g. 0 0 * * *" }
+          }
+        }
+      },
+      "additionalProperties": { "$ref": "#/definitions/providerSection" }
+    },
+    "log": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "level": { "type": "string", "enum": ["debug", "info", "warn", "error"], "default": "info" },
+        "file": { "type": "string", "description": "Log file path" },
+        "max_size": { "type": "integer", "description": "Max log file size in MB", "default": 100 },
+        "max_backups": { "type": "integer", "default": 30 },
+        "max_age": { "type": "integer", "description": "Max days to retain logs", "default": 30 },
+        "compress": { "type": "boolean", "default": true },
+        "rotate_interval": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Log rotation interval, e.g. 24h" }
+      }
+    },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "30s" }
+      }
+    },
+    "memory": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": ".dolphin/memory" }
+      }
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": ".dolphin/sessions" },
+        "window": { "type": "integer", "minimum": 1, "default": 40 }
+      }
+    },
+    "agent": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "default": "Dolphin" },
+        "max_rounds": { "type": "integer", "minimum": 1, "default": 100 },
+        "pool_size": { "type": "integer", "minimum": 1, "default": 1 },
+        "tool_parallelism": { "type": "integer", "minimum": 1, "default": 1, "description": "Max parallel tool calls per turn" },
+        "buffer_size": { "type": "integer", "default": 1024 },
+        "turn_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "120s", "description": "Per-round hard cap. Each loop round (LLM + tools) gets a fresh budget of this size." },
+        "llm_idle_timeout": { "type": "string", "pattern": "^(0|\\d+[smh])$", "default": "60s", "description": "Watchdog idle window. The turn is cancelled if no LLM chunk or tool result arrives within this window. 0 disables the watchdog." },
+        "feed_min_interval": { "type": "string", "pattern": "^(0|\\d+(ns|us|µs|ms|s|m|h))$", "default": "100ms", "description": "Throttle window for watchdog Feed calls. Feed calls closer than this to the previous effective feed are no-ops, so hot paths (per-chunk, per-line) can call Feed freely. 0 disables throttling." },
+        "workspace": { "type": "string", "default": "." },
+        "workmode": { "type": "string", "enum": ["default", "yolo"], "default": "default" },
+        "webhook": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "type": { "type": "string", "enum": ["http", "dingtalk", "wework"], "default": "http" },
+            "url": { "type": "string", "format": "uri", "description": "Webhook URL for limit alerts" }
+          }
+        }
+      }
+    },
+    "brain": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "dir": { "type": "string", "default": ".dolphin/brain" }
+      }
+    },
+    "otel": {
+      "type": "object",
+      "description": "OpenTelemetry configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "endpoint": { "type": "string", "format": "uri" },
+        "headers": { "type": "object", "additionalProperties": { "type": "string" } }
+      }
+    },
+    "a2a": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "addr": { "type": "string", "default": ":8100", "description": "Listen address for A2A HTTP server" },
+        "name": { "type": "string", "description": "Agent name (defaults to agent.name)" },
+        "description": { "type": "string", "description": "Agent description for the agent card" },
+        "url": { "type": "string", "description": "Agent URL for the agent card" },
+        "version": { "type": "string", "description": "Agent version" }
+      }
+    },
+    "dingtalk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "agent_id": { "type": "string" },
+        "app_id": { "type": "string" },
+        "client_id": { "type": "string" },
+        "client_secret": { "type": "string" },
+        "webhook_url": { "type": "string", "format": "uri" },
+        "allow_users": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "wework": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "bot_id": { "type": "string" },
+        "bot_secret": { "type": "string" },
+        "allow_users": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "panda": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "server": { "type": "string", "format": "uri" },
+        "account": { "type": "string" },
+        "password": { "type": "string" },
+        "allow_users": { "type": "array", "items": { "type": "string" } },
+        "allow_convs": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "prometheus": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "mode": { "type": "string", "enum": ["pull", "push", "both"], "default": "pull", "description": "pull = /metrics endpoint, push = Remote Write, both = both modes" },
+        "addr": { "type": "string", "default": ":9090", "description": "Listen address for /metrics endpoint (pull mode)" },
+        "remote_url": { "type": "string", "description": "Prometheus Remote Write URL (push mode)" },
+        "push_job": { "type": "string", "default": "dolphin", "description": "Job name for Pushgateway" }
+      }
+    },
+    "pprof": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "addr": { "type": "string", "description": "Listen address for pprof HTTP server, e.g. :6060" }
+      }
+    },
+    "stdio": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "Enable stdio transport. Set to false when using tui." }
+      }
+    },
+    "tui": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "theme": { "type": "string", "enum": ["auto", "dark", "light"], "default": "auto" },
+        "show_tools": { "type": "boolean", "default": false },
+        "show_thinking": { "type": "boolean", "default": false },
+        "history_file": { "type": "string", "description": "Path to input history file" }
+      }
+    },
+    "email": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "address": { "type": "string", "description": "Email address for sending" },
+        "password": { "type": "string" },
+        "imap_server": { "type": "string" },
+        "imap_port": { "type": "string" },
+        "smtp_server": { "type": "string" },
+        "smtp_port": { "type": "string" },
+        "allow_senders": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "mcp_servers": {
+      "type": "array",
+      "description": "MCP server configurations",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "type": { "type": "string", "description": "builtin, stdio, or http" },
+          "enabled": { "type": "boolean", "default": true },
+          "url": { "type": "string", "format": "uri", "description": "URL for http transport (SSE endpoint)" },
+          "command": { "type": "string", "description": "Command for stdio transport" },
+          "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments for stdio transport" }
+        },
+        "required": ["name", "type"]
+      }
+    }
+  },
+  "definitions": {
+    "limitValue": {
+      "description": "Limit can be a scalar (hard only) or {hard, soft} object",
+      "oneOf": [
+        { "type": "integer", "minimum": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "hard": { "type": "integer", "minimum": 0 },
+            "soft": { "type": "integer", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "providerSection": {
+      "description": "Dynamic LLM provider section (e.g. deepseek_anthropic, deepseek_openai)",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "description": "Vendor name, e.g. deepseek, openai, anthropic" },
+        "api_type": { "type": "string", "description": "API protocol type, e.g. openai, anthropic" },
+        "api_key": { "type": "string", "description": "API key for the provider" },
+        "base_url": { "type": "string", "format": "uri", "description": "API base URL" },
+        "model_discover": { "type": "boolean", "default": false, "description": "Auto-fetch model list from the vendor API. When enabled, the models list is populated automatically, but manually defined models still take precedence." },
+        "models": {
+          "type": "array",
+          "description": "List of models available from this provider",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": { "type": "string", "description": "Model name" },
+              "disabled": { "type": "boolean", "default": false, "description": "When true, the model is excluded from the available models list" },
+              "reasoning_effort": { "type": "string", "enum": ["high", "max"], "description": "DeepSeek reasoning effort level" },
+              "stream": { "type": "boolean", "default": true, "description": "Enable SSE streaming for this model" },
+              "max_tokens": { "type": "integer", "minimum": 1 },
+              "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },
+              "top_p": { "type": "number", "minimum": 0, "maximum": 1 },
+              "max_retries": { "type": "integer", "minimum": 0 },
+              "timeout": { "type": "string", "pattern": "^\\d+[smh]$", "description": "Request timeout, e.g. 30s, 5m" },
+              "limit": {
+                "type": "object",
+                "description": "Per-model usage limits",
+                "additionalProperties": false,
+                "properties": {
+                  "max_requests": { "$ref": "#/definitions/limitValue" },
+                  "max_total_tokens": { "$ref": "#/definitions/limitValue" },
+                  "max_input_tokens": { "$ref": "#/definitions/limitValue" },
+                  "max_output_tokens": { "$ref": "#/definitions/limitValue" },
+                  "max_concurrency": { "type": "integer", "minimum": 1, "description": "Max concurrent LLM streams for this model" }
+                }
+              }
+            },
+            "required": ["name"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -13,6 +13,7 @@ All notable changes to Dolphin will be documented in this file.
 - Add checkpoint recovery: on recoverable failures the unflushed memory tail is written with IsPartial markers, enabling future /continue resume
 - Add internal/progress package: nil-safe context-attached feed point that breaks the agentloop<->tool import cycle
 - Shell tool now streams stdout line-by-line and feeds the watchdog per line, so long builds/commands aren't misjudged as stalls
+- `config init` now also writes config.schema.json (embedded in binary) alongside config.yaml; default config.yaml references it via $schema for editor validation
 
 ### Changed
 
