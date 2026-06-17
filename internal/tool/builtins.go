@@ -1,14 +1,18 @@
 package tool
 
 import (
+	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 
+	"dolphin/internal/progress"
 	"dolphin/internal/types"
 )
 
@@ -47,7 +51,7 @@ func shellHandler(binDirs []string) BuiltinHandler {
 			return &types.ToolResult{Content: "command is required", IsError: true}, nil
 		}
 
-		execCtx := context.Background()
+		execCtx := ctx
 		var cancel func()
 		if req.Timeout > 0 {
 			execCtx, cancel = context.WithTimeout(ctx, time.Duration(req.Timeout*float64(time.Second)))
@@ -59,13 +63,55 @@ func shellHandler(binDirs []string) BuiltinHandler {
 			extra := strings.Join(binDirs, ":")
 			cmd.Env = append(os.Environ(), "PATH="+extra+":"+os.Getenv("PATH"))
 		}
-		out, err := cmd.CombinedOutput()
-		if err != nil {
+
+		// Stream stdout+stderr line-by-line into a buffer, feeding the
+		// watchdog on each line. A long-running command that emits
+		// progress (build, test suite) keeps the turn alive naturally;
+		// a silent stall (sleep 300, hung network) is correctly detected
+		// by the idle watchdog. Feed is nil-safe and throttled, so
+		// per-line calls are cheap.
+		pr, pw := io.Pipe()
+		cmd.Stdout = pw
+		cmd.Stderr = pw
+
+		if err := cmd.Start(); err != nil {
+			pw.Close()
 			return &types.ToolResult{
-				Content: fmt.Sprintf("error: %v\noutput: %s", err, string(out)),
+				Content: fmt.Sprintf("error: %v", err),
 				IsError: true,
 			}, nil
 		}
-		return &types.ToolResult{Content: string(out)}, nil
+
+		var buf bytes.Buffer
+		copyDone := make(chan struct{})
+		go func() {
+			defer close(copyDone)
+			reader := bufio.NewReader(pr)
+			for {
+				line, err := reader.ReadString('\n')
+				if len(line) > 0 {
+					buf.WriteString(line)
+					progress.Feed(ctx)
+				}
+				if err != nil {
+					if err != io.EOF {
+						fmt.Fprintf(&buf, "\n[read error: %v]\n", err)
+					}
+					break
+				}
+			}
+		}()
+
+		waitErr := cmd.Wait()
+		pw.Close()
+		<-copyDone
+
+		if waitErr != nil {
+			return &types.ToolResult{
+				Content: fmt.Sprintf("error: %v\noutput: %s", waitErr, buf.String()),
+				IsError: true,
+			}, nil
+		}
+		return &types.ToolResult{Content: buf.String()}, nil
 	}
 }

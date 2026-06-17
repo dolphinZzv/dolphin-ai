@@ -12,6 +12,7 @@ All notable changes to Dolphin will be documented in this file.
 - Add idle-timeout watchdog (llm_idle_timeout) with throttled per-chunk/per-line feed (feed_min_interval) so stalled LLM/tool calls fail fast instead of hanging the turn
 - Add checkpoint recovery: on recoverable failures the unflushed memory tail is written with IsPartial markers, enabling future /continue resume
 - Add internal/progress package: nil-safe context-attached feed point that breaks the agentloop<->tool import cycle
+- Shell tool now streams stdout line-by-line and feeds the watchdog per line, so long builds/commands aren't misjudged as stalls
 
 ### Changed
 
