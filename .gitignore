@@ -55,3 +55,4 @@ todo.md
 *.result.yaml
 .workflow.yaml
 __pycache__
+coverage.html

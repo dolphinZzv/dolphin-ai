@@ -29,11 +29,16 @@ func init() {
 		workmode, _ := cfg["workmode"].(string)
 		poolSize, _ := cfg["pool_size"].(int)
 		toolParallelism, _ := cfg["tool_parallelism"].(int)
+		temperature, _ := cfg["temperature"].(float64)
+		var tempFor func(string) float64
+		if f, ok := cfg["temp_for"].(func(string) float64); ok {
+			tempFor = f
+		}
 		var logger *zap.Logger
 		if l, ok := cfg["logger"].(*zap.Logger); ok {
 			logger = l
 		}
-		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, logger), nil
+		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, logger), nil
 	})
 }
 
@@ -57,11 +62,13 @@ type TUI struct {
 	version         string
 	poolSize        int
 	toolParallelism int
+	temperature     float64
+	tempFor         func(string) float64
 	limiter         *limit.Limiter
 	logger          *zap.Logger
 }
 
-func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, logger *zap.Logger) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, temperature float64, tempFor func(string) float64, logger *zap.Logger) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
@@ -79,6 +86,8 @@ func NewTUI(modelName string, showTools, showThinking bool, workmode string, poo
 		workmode:        workmode,
 		poolSize:        poolSize,
 		toolParallelism: toolParallelism,
+		temperature:     temperature,
+		tempFor:         tempFor,
 		logger:          logger,
 	}
 }
@@ -119,6 +128,8 @@ func (t *TUI) Start(_ context.Context) error {
 	m.showThinking = t.showThinking
 	m.workmode = t.workmode
 	m.poolSize = t.poolSize
+	m.temperature = t.temperature
+	m.tempFor = t.tempFor
 	m.version = t.version
 	m.toolParallelism = t.toolParallelism
 
@@ -135,22 +146,23 @@ func (t *TUI) Start(_ context.Context) error {
 		})
 	}
 
-	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithInputTTY())
+	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithAltScreen())
 
-	// Deferred: SetAgentIO may have been called before Start() when program was nil.
-	t.mu.Lock()
-	if t.pendingAgentIO != nil {
-		t.program.Send(setAgentIOMsg{a: t.pendingAgentIO})
-		t.pendingAgentIO = nil
-	}
-	t.mu.Unlock()
-
+	// Start the event loop first — Send() blocks until Run() consumes.
 	go func() {
 		_, err := t.program.Run()
 		if err != nil && t.logger != nil {
 			t.logger.Error("tui program exited with error", zap.Error(err))
 		}
 	}()
+
+	// Now that Run() is consuming, it's safe to send deferred messages.
+	t.mu.Lock()
+	if t.pendingAgentIO != nil {
+		t.program.Send(setAgentIOMsg{a: t.pendingAgentIO})
+		t.pendingAgentIO = nil
+	}
+	t.mu.Unlock()
 
 	return nil
 }

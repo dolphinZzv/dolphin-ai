@@ -14,6 +14,9 @@ All notable changes to Dolphin will be documented in this file.
 - Add internal/progress package: nil-safe context-attached feed point that breaks the agentloop<->tool import cycle
 - Shell tool now streams stdout line-by-line and feeds the watchdog per line, so long builds/commands aren't misjudged as stalls
 - `config init` now also writes config.schema.json (embedded in binary) alongside config.yaml; default config.yaml references it via $schema for editor validation
+- TUI gains a right-hand side status panel (~20% width, min 16 cols) showing model, temperature, pool size, workmode, turn/req/tok/tools usage with k/m/b/t suffixes; long values truncate with ellipsis instead of wrapping
+- Side panel uses dashed open-bottom border (left/right `┊` extend to the queue separator); viewport and side panel resize dynamically with textarea/queue/statusbar heights so borders stay aligned
+- Narrow terminals fall back to a full bottom status bar; wide terminals keep a compact bottom bar (identity + model + /exit) alongside the side panel
 
 ### Changed
 

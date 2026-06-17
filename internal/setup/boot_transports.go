@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/config"
 	"dolphin/internal/limit"
+	"dolphin/internal/llm"
 	"dolphin/internal/mcp"
 	"dolphin/internal/session"
 	"dolphin/internal/tool"
@@ -33,6 +35,16 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 	}
 	for _, tc := range transportCfgs {
 		tc.Config["logger"] = c.Logger
+		// For TUI, inject the active model's temperature and a lookup
+		// callback so the status bar can display temperature and refresh
+		// it when the user switches models via /models use.
+		if tc.Type == "tui" && c.LLMProvider != nil {
+			activeModel, _ := tc.Config["model"].(string)
+			tc.Config["temperature"] = lookupTemperature(c.LLMProvider, activeModel)
+			tc.Config["temp_for"] = func(name string) float64 {
+				return lookupTemperature(c.LLMProvider, name)
+			}
+		}
 		tio, err := transport.Build(ctx, tc.Type, tc.Config)
 		if err != nil {
 			c.Logger.Fatal("transport build failed", zap.String("type", tc.Type), zap.Error(err))
@@ -251,6 +263,30 @@ func hasTransportType(tcs []transportConfig, typ string) bool {
 		}
 	}
 	return false
+}
+
+// lookupTemperature returns the configured temperature for the model,
+// matching by exact name or by the short name (after a "provider/" prefix).
+// Returns 0 if the model is not found or has no temperature set, which
+// the TUI renders as "temp:0.0".
+func lookupTemperature(provider llm.Provider, modelName string) float64 {
+	if provider == nil || modelName == "" {
+		return 0
+	}
+	models, err := provider.Models(context.Background())
+	if err != nil {
+		return 0
+	}
+	short := modelName
+	if _, after, found := strings.Cut(modelName, "/"); found {
+		short = after
+	}
+	for _, mc := range models {
+		if mc.Name == modelName || mc.Name == short {
+			return mc.Temperature
+		}
+	}
+	return 0
 }
 
 // configHasKey returns true if the config key exists (was explicitly set).

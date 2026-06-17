@@ -48,6 +48,12 @@ type renderEntry struct {
 	style   string // "text", "user", "thinking", "tool_call", "tool_result", "system"
 }
 
+type completedItem struct {
+	input    string
+	ago      string
+	duration time.Duration
+}
+
 type model struct {
 	viewport        viewport.Model
 	textarea        textarea.Model
@@ -71,6 +77,8 @@ type model struct {
 	workmode        string
 	poolSize        int
 	toolParallelism int
+	temperature     float64
+	tempFor         func(modelName string) float64
 	sessionID       string
 	inputTokens     int
 	outputTokens    int
@@ -84,7 +92,9 @@ type model struct {
 	savePrefs       func()
 	currentMsg      string // user message currently being processed
 	msgStatus       string // "pending", "success", "error"
+	msgStartedAt    time.Time
 	agentIO         *agentio.AgentIO
+	completedItems  []completedItem // recently finished turns
 
 	// Incremental rendering state.
 	renderedContent string
@@ -130,8 +140,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ready = true
 		}
 		m.viewport.Width = msg.Width
-		m.viewport.Height = msg.Height - 7
-		m.textarea.SetWidth(msg.Width - 1)
+		m.updateViewportHeight()
+		m.textarea.SetWidth(m.viewportWidth() - 1)
 		cmds = append(cmds, tea.ClearScreen)
 
 	case tea.KeyMsg:
@@ -146,7 +156,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			})
 			m.textarea = ta
 
-		case "ctrl+enter":
+		case "ctrl+p":
 			if m.permDialog == nil {
 				input := strings.TrimSpace(m.textarea.Value())
 				cmds = append(cmds, func() tea.Msg { return prioritySubmitMsg{text: input} })
@@ -241,6 +251,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case flushMsg:
 		m.msgStatus = "success"
+		if m.currentMsg != "" {
+			m.completedItems = append(m.completedItems, completedItem{
+				input:    m.currentMsg,
+				ago:      time.Now().Round(time.Second).Format("15:04:05"),
+				duration: time.Since(m.msgStartedAt).Round(time.Second),
+			})
+			if len(m.completedItems) > 10 {
+				m.completedItems = m.completedItems[len(m.completedItems)-10:]
+			}
+		}
+		m.updateViewportHeight()
 		if m.textBlockDirty {
 			m.renderIncremental()
 			m.textBlockDirty = false
@@ -248,13 +269,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case queueTickMsg:
-		if m.agentIO != nil {
-			m.viewport.Height = m.height - 7 - queueLineCount(m.agentIO)
-		}
+		m.updateViewportHeight()
 		cmds = append(cmds, queueTick)
 
 	case setAgentIOMsg:
 		m.agentIO = msg.a
+		m.updateViewportHeight()
 
 	case sessionMsg:
 		m.sessionID = msg.id
@@ -271,6 +291,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case modelChangeMsg:
 		m.modelName = msg.name
+		if m.tempFor != nil {
+			if t := m.tempFor(msg.name); t > 0 {
+				m.temperature = t
+			}
+		}
 		m.rebuildViewport()
 
 	case permRequestMsg:
@@ -290,6 +315,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.newReply = true
 		m.currentMsg = msg.text
 		m.msgStatus = "pending"
+		m.msgStartedAt = time.Now()
 		m.closeBlock = false
 		if m.msgChan != nil {
 			select {
@@ -358,6 +384,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		lines = 5
 	}
 	m.textarea.SetHeight(lines)
+	// Input height changed → viewport (and side panel) must resize so the
+	// bottom border stays aligned with the queue separator.
+	m.updateViewportHeight()
 
 	vp, vpCmd := m.viewport.Update(msg)
 	m.viewport = vp
@@ -609,7 +638,7 @@ func (m *model) fullRebuild() {
 }
 
 func padThinkingCont(s string) string {
-	return strings.ReplaceAll(s, "\n", "\n ")
+	return strings.ReplaceAll(s, "\n", "\n   ")
 }
 
 func onOff(v bool) string {
@@ -617,6 +646,56 @@ func onOff(v bool) string {
 		return "on"
 	}
 	return "off"
+}
+
+func (m *model) updateViewportHeight() {
+	if m.height == 0 {
+		return
+	}
+	// Keep viewport width in sync with the current main-column width
+	// (terminal width minus side panel when visible).
+	m.viewport.Width = m.viewportWidth()
+	// Textarea grows 1-5 lines as the user types multi-line input.
+	taLines := strings.Count(m.textarea.Value(), "\n") + 1
+	if taLines < 1 {
+		taLines = 1
+	}
+	if taLines > 5 {
+		taLines = 5
+	}
+	// Fixed bottom rows: separator + textarea + separator + status bar.
+	fixed := taLines + 3
+	// Queue area: header + items (capped at 5), plus separator above queue
+	qLines := queueLineCount(m.agentIO)
+	completedLines := min(len(m.completedItems), 5)
+	if qLines > 0 || completedLines > 0 {
+		total := min(qLines+completedLines+1, 7) // +1 for separator, capped
+		fixed += total
+	}
+	// Current message floating bar
+	if m.currentMsg != "" && !m.viewport.AtBottom() {
+		fixed++
+	}
+	h := m.height - fixed
+	if h < 3 {
+		h = 3
+	}
+	m.viewport.Height = h
+}
+
+// viewportWidth returns the width available to the message viewport.
+// When the side status panel is visible (terminal wide enough), the
+// viewport takes the remaining ~80%; otherwise it gets the full width.
+func (m model) viewportWidth() int {
+	sw := sideStatusWidth(m.width)
+	if sw == 0 {
+		return m.width
+	}
+	w := m.width - sw - 1 // 1 col gap between viewport and side panel
+	if w < 10 {
+		w = 10
+	}
+	return w
 }
 
 func queueLineCount(aio *agentio.AgentIO) int {
@@ -632,13 +711,13 @@ func queueLineCount(aio *agentio.AgentIO) int {
 	return n + 1 // header
 }
 
-func renderQueue(aio *agentio.AgentIO, width int) string {
+func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) string {
 	if aio == nil {
 		return ""
 	}
 	active := aio.ActiveSnapshot()
 	pending, _, _ := aio.QueueSnapshot()
-	if len(active)+len(pending) == 0 {
+	if len(active)+len(pending)+len(completed) == 0 {
 		return ""
 	}
 
@@ -649,24 +728,59 @@ func renderQueue(aio *agentio.AgentIO, width int) string {
 		Render("📋 Queue")
 	lines = append(lines, header)
 
+	maxItems := 5
+
+	renderLine := func(icon, input, timeStr string) string {
+		// 2 spaces indent + icon + space + separator " — " + time
+		iconWidth := lipgloss.Width(icon)
+		fixedOverhead := 2 + iconWidth + 1 + 3 + lipgloss.Width(timeStr) + 1
+		inputMax := width - fixedOverhead
+		if inputMax < 10 {
+			inputMax = 10
+		}
+		input = truncateInput(input, inputMax)
+		// Pad input to fill available width.
+		inputPad := inputMax - lipgloss.Width(input)
+		if inputPad < 0 {
+			inputPad = 0
+		}
+		return fmt.Sprintf("  %s %s%s — %s", icon, input, strings.Repeat(" ", inputPad), timeStr)
+	}
+
 	for _, id := range sortedKeys(active) {
 		t := active[id]
+		icon := styleQueueActive.Render("▶")
 		elapsed := time.Since(t.StartedAt).Round(time.Second)
-		line := fmt.Sprintf("  %s %s — %s",
-			styleQueueActive.Render("▶"),
-			truncateInput(t.Input, width-25),
-			styleQueueTime.Render(elapsed.String()),
-		)
-		lines = append(lines, line)
+		timeStr := elapsed.String()
+		if t.CurrentActivity != "" {
+			timeStr += " " + t.CurrentActivity
+		}
+		timeStr = styleQueueTime.Render(timeStr)
+		lines = append(lines, renderLine(icon, t.Input, timeStr))
+		maxItems--
 	}
-	for i, t := range pending {
+	start := 0
+	if len(pending) > maxItems {
+		start = len(pending) - maxItems
+	}
+	for i := start; i < len(pending); i++ {
+		t := pending[i]
+		icon := styleQueueWait.Render(fmt.Sprintf("#%d", i+1))
 		wait := time.Since(t.EnqueuedAt).Round(time.Second)
-		line := fmt.Sprintf("  %s %s — %s",
-			styleQueueWait.Render(fmt.Sprintf("#%d", i+1)),
-			truncateInput(t.Input, width-25),
-			styleQueueTime.Render(wait.String()),
-		)
-		lines = append(lines, line)
+		timeStr := styleQueueTime.Render(wait.String())
+		lines = append(lines, renderLine(icon, t.Input, timeStr))
+		maxItems--
+	}
+	// Show recently completed items if there's room.
+	cstart := 0
+	if len(completed) > maxItems {
+		cstart = len(completed) - maxItems
+	}
+	for i := cstart; i < len(completed); i++ {
+		c := completed[i]
+		icon := styleQueueWait.Render("✓")
+		timeStr := styleQueueTime.Render(c.ago + " " + c.duration.String())
+		lines = append(lines, renderLine(icon, c.input, timeStr))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -709,69 +823,86 @@ func (m model) View() string {
 		return "Initializing..."
 	}
 
-	toggles := fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking))
+	// Side status panel shows on the right when the terminal is wide
+	// enough (~20% of width, min 16 cols). Narrow terminals fall back
+	// to a fuller bottom status bar.
+	sideStatus := m.renderSideStatus()
 
-	// Build status parts ordered by priority: left = essential, right = droppable.
-	var parts []string
-	parts = append(parts, "🐬 "+m.agentName+" "+m.version)
+	// Bottom status bar: compact. When the side panel is visible, it
+	// carries model/turn/usage, so the bar only needs identity + hints.
+	var barParts []string
+	barParts = append(barParts, "🐬 "+m.agentName+" "+m.version)
 	if m.sessionID != "" {
-		parts = append(parts, truncateSessionID(m.sessionID))
+		barParts = append(barParts, truncateSessionID(m.sessionID))
 	}
-	parts = append(parts, m.modelName)
-	if m.workmode != "" && m.workmode != "default" {
-		parts = append(parts, m.workmode)
-	}
-	if m.poolSize > 1 {
-		parts = append(parts, fmt.Sprintf("p%d", m.poolSize))
-	}
-	if m.toolParallelism > 1 {
-		parts = append(parts, fmt.Sprintf("∥%d", m.toolParallelism))
-	}
-	if m.rounds > 0 {
-		parts = append(parts, fmt.Sprintf("r%d", m.rounds))
-		if m.hardReqs > 0 {
-			pct := float64(m.reqs) / float64(m.hardReqs) * 100
-			parts = append(parts, fmt.Sprintf("req:%.1f%%", pct))
+	if sideStatus == "" {
+		// Narrow mode: put everything on the bottom bar.
+		barParts = append(barParts, m.modelName)
+		if m.workmode != "" && m.workmode != "default" {
+			barParts = append(barParts, m.workmode)
 		}
-		if m.hardTokens > 0 {
-			pct := float64(m.tokens) / float64(m.hardTokens) * 100
-			parts = append(parts, fmt.Sprintf("tok:%.1f%%", pct))
+		if m.toolParallelism > 1 {
+			barParts = append(barParts, fmt.Sprintf("parallel:%d", m.toolParallelism))
 		}
-		if m.toolCalls > 0 {
-			parts = append(parts, fmt.Sprintf("t%d", m.toolCalls))
+		if m.rounds > 0 {
+			barParts = append(barParts, fmt.Sprintf("turn:%d", m.rounds))
+			if m.hardReqs > 0 {
+				pct := float64(m.reqs) / float64(m.hardReqs) * 100
+				barParts = append(barParts, fmt.Sprintf("req:%s/%.1f%%", formatCount(m.reqs), pct))
+			}
+			if m.hardTokens > 0 {
+				pct := float64(m.tokens) / float64(m.hardTokens) * 100
+				barParts = append(barParts, fmt.Sprintf("tok:%s/%.1f%%", formatCount(m.tokens), pct))
+			}
+			if m.toolCalls > 0 {
+				barParts = append(barParts, fmt.Sprintf("tools:%d", m.toolCalls))
+			}
 		}
+		if m.inputTokens > 0 || m.outputTokens > 0 {
+			barParts = append(barParts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
+		}
+		barParts = append(barParts, fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking)))
+		barParts = append(barParts, fmt.Sprintf("temp:%.1f", m.temperature))
+		barParts = append(barParts, fmt.Sprintf("pool:%d", m.poolSize))
+	} else {
+		barParts = append(barParts, m.modelName)
+		barParts = append(barParts, "/exit")
 	}
-	if m.inputTokens > 0 || m.outputTokens > 0 {
-		parts = append(parts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
+	statusBar := renderStatusBar(barParts, m.width)
+
+	// === Row 1: viewport + side status panel (split horizontally) ===
+	viewWidth := m.viewportWidth()
+	viewportView := m.viewport.View()
+
+	var viewportElements []string
+	if m.currentMsg != "" && !m.viewport.AtBottom() {
+		viewportElements = append(viewportElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, viewWidth))
 	}
-	parts = append(parts, toggles)
-	parts = append(parts, "/exit")
+	viewportElements = append(viewportElements, viewportView)
+	viewportColumn := lipgloss.JoinVertical(lipgloss.Left, viewportElements...)
 
-	statusBar := renderStatusBar(parts, m.width)
+	var topRow string
+	if sideStatus != "" {
+		topRow = lipgloss.JoinHorizontal(lipgloss.Top, viewportColumn, " ", sideStatus)
+	} else {
+		topRow = viewportColumn
+	}
 
-	sep := styleSeparator.Render(strings.Repeat("-", m.width))
+	// === Row 2: full-width queue ===
+	fullSep := styleSeparator.Render(strings.Repeat("-", m.width))
+	var elements []string
+	elements = append(elements, topRow)
+	if q := renderQueue(m.agentIO, m.completedItems, m.width); q != "" {
+		elements = append(elements, fullSep, q)
+	}
 
+	// === Row 3..: full-width input + separator + status bar ===
 	inputLine := lipgloss.NewStyle().
 		Width(m.width).
 		Render(m.textarea.View())
+	elements = append(elements, fullSep, inputLine, fullSep, statusBar)
 
-	viewportView := m.viewport.View()
-
-	var topElements []string
-	if m.currentMsg != "" && !m.viewport.AtBottom() {
-		topElements = append(topElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, m.width))
-	}
-	topElements = append(topElements, viewportView)
-
-	if q := renderQueue(m.agentIO, m.width); q != "" {
-		topElements = append(topElements, q)
-	}
-	topElements = append(topElements, sep)
-
-	mainView := lipgloss.JoinVertical(
-		lipgloss.Left,
-		append(topElements, inputLine, sep, statusBar)...,
-	)
+	mainView := lipgloss.JoinVertical(lipgloss.Left, elements...)
 
 	if m.permDialog != nil {
 		dialog := renderPermDialog(*m.permDialog, m.width)
@@ -809,6 +940,167 @@ func renderStatusBar(parts []string, width int) string {
 		}
 	}
 	return s.Render(parts[0])
+}
+
+// formatCount renders an integer with k/m/b/t suffixes for compact display
+// in the status bar: 999 → "999", 1200 → "1.2k", 1.5m → "1.5m",
+// 2_300_000_000 → "2.3b", 4_000_000_000_000 → "4.0t".
+func formatCount(n int64) string {
+	switch {
+	case n < 1000:
+		return fmt.Sprintf("%d", n)
+	case n < 1_000_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1000)
+	case n < 1_000_000_000:
+		return fmt.Sprintf("%.1fm", float64(n)/1_000_000)
+	case n < 1_000_000_000_000:
+		return fmt.Sprintf("%.1fb", float64(n)/1_000_000_000)
+	default:
+		return fmt.Sprintf("%.1ft", float64(n)/1_000_000_000_000)
+	}
+}
+
+// sideStatusFraction is the fraction of terminal width reserved for the
+// right-hand status panel (the rest goes to the message viewport).
+// 0.2 = 20% right panel, 80% main column.
+const sideStatusFraction = 0.2
+
+// minSideStatusWidth is the minimum width the side panel needs to be
+// readable. Below this, the panel is hidden and the viewport takes
+// the full width (with all status info going to the bottom bar).
+const minSideStatusWidth = 16
+
+// sideStatusWidth returns the actual column width allocated to the
+// side panel given the terminal width, or 0 when the terminal is too
+// narrow.
+func sideStatusWidth(termWidth int) int {
+	w := int(float64(termWidth) * sideStatusFraction)
+	if w < minSideStatusWidth {
+		return 0
+	}
+	return w
+}
+
+// sideLabelWidth is the fixed label-column width inside the side panel.
+// Longest label is "thinking" (8 chars); pad shorter labels to this width
+// so values align in a tidy right column.
+const sideLabelWidth = 9
+
+// sidePanelBorder is the rounded box border with the bottom edge removed
+// and dashed left/right edges. The dashed borders extend down to the
+// panel's full height so they meet the full-width separator above the
+// queue — the panel reads as "open at the bottom" rather than a closed
+// box.
+var sidePanelBorder = lipgloss.Border{
+	Top:        "─",
+	Left:       "┊",
+	Right:      "┊",
+	Bottom:     "",
+	TopLeft:    "╭",
+	TopRight:   "╮",
+	BottomLeft: "",
+	BottomRight: "",
+}
+
+// renderSideStatus builds the vertical status panel shown to the right
+// of the message viewport. Returns an empty string when the terminal is
+// too narrow — in that case the panel is hidden and the viewport takes
+// the full width.
+//
+// The panel's total height (borders included) is set explicitly to fill
+// the viewport row, so its bottom border sits flush against the
+// full-width separator above the queue.
+//
+// Long values are truncated to fit; the label column is fixed-width so
+// values never wrap to a new line.
+func (m model) renderSideStatus() string {
+	innerWidth := sideStatusWidth(m.width)
+	if innerWidth == 0 {
+		return ""
+	}
+	boxInnerWidth := innerWidth - 2 // border on each side
+	sep := strings.Repeat("─", boxInnerWidth)
+	// Max value width: boxInner - label column - 1 space gap.
+	maxValWidth := boxInnerWidth - sideLabelWidth - 1
+	if maxValWidth < 4 {
+		maxValWidth = 4
+	}
+
+	rows := [][2]string{
+		{"model", m.modelName},
+		{"temp", fmt.Sprintf("%.1f", m.temperature)},
+		{"pool", fmt.Sprintf("%d", m.poolSize)},
+	}
+	if m.toolParallelism > 1 {
+		rows = append(rows, [2]string{"parallel", fmt.Sprintf("%d", m.toolParallelism)})
+	}
+	if m.workmode != "" && m.workmode != "default" {
+		rows = append(rows, [2]string{"workmode", m.workmode})
+	}
+	if m.rounds > 0 {
+		rows = append(rows, [2]string{"turn", fmt.Sprintf("%d", m.rounds)})
+		if m.hardReqs > 0 {
+			pct := float64(m.reqs) / float64(m.hardReqs) * 100
+			rows = append(rows, [2]string{"req", fmt.Sprintf("%s/%.1f%%", formatCount(m.reqs), pct)})
+		}
+		if m.hardTokens > 0 {
+			pct := float64(m.tokens) / float64(m.hardTokens) * 100
+			rows = append(rows, [2]string{"tok", fmt.Sprintf("%s/%.1f%%", formatCount(m.tokens), pct)})
+		}
+		if m.toolCalls > 0 {
+			rows = append(rows, [2]string{"tools", fmt.Sprintf("%d", m.toolCalls)})
+		}
+	}
+	if m.inputTokens > 0 || m.outputTokens > 0 {
+		rows = append(rows, [2]string{"in/out", fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)})
+	}
+	rows = append(rows, [2]string{"tools", onOff(m.showTools)})
+	rows = append(rows, [2]string{"thinking", onOff(m.showThinking)})
+
+	labelStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"}).
+		Width(sideLabelWidth)
+	valueStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+		MaxWidth(maxValWidth)
+
+	lines := []string{
+		lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+			Render("Status"),
+		sep,
+	}
+	for _, r := range rows {
+		label := labelStyle.Render(r[0])
+		value := valueStyle.Render(r[1]) // MaxWidth truncates with ellipsis
+		// Pad value to maxValWidth so each row has identical width and
+		// the right border stays aligned.
+		pad := maxValWidth - lipgloss.Width(value)
+		if pad < 0 {
+			pad = 0
+		}
+		lines = append(lines, label+" "+value+strings.Repeat(" ", pad))
+	}
+
+	body := strings.Join(lines, "\n")
+
+	// Total height = viewport row height (viewport.Height plus optional
+	// current-message bar). lipgloss pads the box with blank lines so
+	// its bottom border aligns with the separator above the queue.
+	targetHeight := m.viewport.Height
+	if m.currentMsg != "" && !m.viewport.AtBottom() {
+		targetHeight++
+	}
+	if targetHeight < 4 {
+		targetHeight = 4
+	}
+
+	boxStyle := lipgloss.NewStyle().
+		Border(sidePanelBorder).
+		BorderForeground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
+		Width(innerWidth).
+		Height(targetHeight)
+	return boxStyle.Render(body)
 }
 
 func renderCurrentMsg(msg, username, status string, width int) string {

@@ -37,11 +37,12 @@ type TurnResult struct {
 }
 
 type TurnInfo struct {
-	TurnID      string
-	SessionID   string
-	TransportID string
-	Input       string
-	StartedAt   time.Time
+	TurnID          string
+	SessionID       string
+	TransportID     string
+	Input           string
+	StartedAt       time.Time
+	CurrentActivity string // e.g. "call search_file"
 }
 
 type AgentIO struct {
@@ -258,6 +259,15 @@ func (a *AgentIO) SetActive(workerID string, turn *Turn) {
 func (a *AgentIO) ClearActive(workerID string) {
 	a.activeMu.Lock()
 	delete(a.activeTurns, workerID)
+	a.activeMu.Unlock()
+}
+
+// SetWorkerActivity updates the current activity description for a worker's active turn.
+func (a *AgentIO) SetWorkerActivity(workerID, activity string) {
+	a.activeMu.Lock()
+	if t, ok := a.activeTurns[workerID]; ok {
+		t.CurrentActivity = activity
+	}
 	a.activeMu.Unlock()
 }
 
