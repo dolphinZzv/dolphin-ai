@@ -274,3 +274,52 @@ func TestView_NoSpinnerWhenNotPending(t *testing.T) {
 		}
 	}
 }
+
+// renderCurrentMsg should show the username, the status icon, and — when
+// scrolled — a right-aligned scroll-position + jump hint.
+func TestRenderCurrentMsg(t *testing.T) {
+	out := renderCurrentMsg("doing work", "alice", "pending", 80, 0.42)
+	plain := ansiRe.ReplaceAllString(out, "")
+	if !strings.Contains(plain, "alice") {
+		t.Errorf("expected username, got: %s", plain)
+	}
+	if !strings.Contains(plain, "doing work") {
+		t.Errorf("expected message body, got: %s", plain)
+	}
+	if !strings.Contains(plain, "⏳") {
+		t.Errorf("expected pending icon, got: %s", plain)
+	}
+	if !strings.Contains(plain, "42%") {
+		t.Errorf("expected scroll percent, got: %s", plain)
+	}
+	if !strings.Contains(plain, "Ctrl+G") {
+		t.Errorf("expected Ctrl+G hint, got: %s", plain)
+	}
+}
+
+func TestRenderCurrentMsg_StatusIcons(t *testing.T) {
+	cases := []struct{ status, icon string }{
+		{"success", "✅"},
+		{"error", "❌"},
+		{"pending", "⏳"},
+	}
+	for _, c := range cases {
+		out := renderCurrentMsg("x", "u", c.status, 80, -1)
+		plain := ansiRe.ReplaceAllString(out, "")
+		if !strings.Contains(plain, c.icon) {
+			t.Errorf("status %q: expected icon %s, got: %s", c.status, c.icon, plain)
+		}
+	}
+}
+
+// renderScrollIndicator shows the position and the jump hint.
+func TestRenderScrollIndicator(t *testing.T) {
+	out := renderScrollIndicator(80, 0.1)
+	plain := ansiRe.ReplaceAllString(out, "")
+	if !strings.Contains(plain, "scrolled to 10%") {
+		t.Errorf("expected scroll percent text, got: %s", plain)
+	}
+	if !strings.Contains(plain, "Ctrl+G") {
+		t.Errorf("expected Ctrl+G hint, got: %s", plain)
+	}
+}
