@@ -1120,20 +1120,6 @@ func (m *mockActiveProvider) CompleteStream(_ context.Context, _ llm.LLMRequest)
 }
 func (m *mockActiveProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
 
-type countingMemory struct {
-	inner memory.Memory
-}
-
-func (m *countingMemory) Read(ctx context.Context, sid string) ([]types.Message, error) {
-	return m.inner.Read(ctx, sid)
-}
-func (m *countingMemory) Write(ctx context.Context, sid string, msg types.Message) error {
-	return m.inner.Write(ctx, sid, msg)
-}
-func (m *countingMemory) Replace(ctx context.Context, sid string, msgs []types.Message) error {
-	return m.inner.Replace(ctx, sid, msgs)
-}
-
 type incrementStage struct {
 	count *int
 }

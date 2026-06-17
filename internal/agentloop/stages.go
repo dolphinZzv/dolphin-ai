@@ -1348,6 +1348,7 @@ func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message
 	b.WriteString("Summarize the conversation below. Capture: key facts, decisions made, pending tasks, and any important context the assistant needs to continue. Be concise and factual; do not invent details. If a prior summary is included, integrate it.\n\n")
 
 	for _, m := range oldMsgs {
+		//nolint:exhaustive // RoleSystem never appears in Messages (it's a separate field); only user/assistant/tool reach here.
 		switch m.Role {
 		case types.RoleUser:
 			if m.IsSummary {

@@ -19,9 +19,11 @@ var errSimulated = errors.New("simulated summary failure")
 
 // summaryProvider returns a fixed summary string for any request.
 type summaryProvider struct {
-	content string
-	err     error
-	gotReq  llm.LLMRequest
+	content     string
+	err         error // returned before streaming starts
+	chunkErr    error // delivered inside the stream as a chunk error
+	emptyOutput bool  // stream completes with no content
+	gotReq      llm.LLMRequest
 }
 
 func (s *summaryProvider) Name() string        { return "summary-provider" }
@@ -36,7 +38,14 @@ func (s *summaryProvider) CompleteStream(_ context.Context, req llm.LLMRequest) 
 		close(ch)
 		return ch, s.err
 	}
-	ch <- llm.LLMChunk{Content: s.content, Done: true}
+	if s.chunkErr != nil {
+		ch <- llm.LLMChunk{Error: s.chunkErr}
+		close(ch)
+		return ch, nil
+	}
+	if !s.emptyOutput {
+		ch <- llm.LLMChunk{Content: s.content, Done: true}
+	}
 	close(ch)
 	return ch, nil
 }
@@ -174,7 +183,7 @@ func TestCompaction_TailDoesNotOrphanToolResult(t *testing.T) {
 
 		// The tool_result and its matching tool_use must both be in the
 		// compacted result (tail), adjacent and ID-linked.
-		var toolIdx int = -1
+		var toolIdx = -1
 		for i, m := range state.Messages {
 			if m.Role == types.RoleTool {
 				toolIdx = i
@@ -189,28 +198,58 @@ func TestCompaction_TailDoesNotOrphanToolResult(t *testing.T) {
 }
 
 func TestCompaction_FoldsPriorSummary(t *testing.T) {
-	Convey("an existing IsSummary in old messages is folded into the prompt", t, func() {
+	Convey("an existing summary in old messages is folded into the new summary", t, func() {
 		p := &summaryProvider{content: "integrated summary"}
 		mem := &memStore{}
-		s := newCompactionStage(p, mem, 100, 1)
+		s := newCompactionStage(p, mem, 100, 2)
 		big := strings.Repeat("x", 2000)
 		t0 := time.Now()
-		msgs := []types.Message{
-			{Role: types.RoleUser, Content: "PRIOR", IsSummary: true, Timestamp: t0},
-			{Role: types.RoleUser, Content: big, Timestamp: t0},
-			{Role: types.RoleAssistant, Content: big, Timestamp: t0},
-			{Role: types.RoleUser, Content: "current input", Timestamp: t0},
-		}
+		// A realistic post-compaction history: a leading summary from a
+		// prior compaction, then a few normal turns, then new input.
+		msgs := buildMessages(4, big)
+		msgs[0] = types.Message{Role: types.RoleUser, Content: "PRIOR", IsSummary: true, Timestamp: t0}
 		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
 
 		err := s.Process(context.Background(), state)
 		So(err, ShouldBeNil)
 
-		// The summary prompt should mention the prior summary marker.
+		// The prior summary is included in the summarizer's prompt so its
+		// content is not lost, and the new head is a fresh summary.
 		So(p.gotReq.Messages[0].Content, ShouldContainSubstring, "[Prior summary]")
-		// Result head is a fresh summary (not the old one verbatim).
 		So(state.Messages[0].IsSummary, ShouldBeTrue)
 		So(state.Messages[0].Content, ShouldContainSubstring, "integrated summary")
+	})
+}
+
+func TestCompaction_StreamErrorFallsBack(t *testing.T) {
+	Convey("an error delivered mid-stream leaves messages unchanged", t, func() {
+		p := &summaryProvider{chunkErr: errSimulated}
+		mem := &memStore{}
+		s := newCompactionStage(p, mem, 100, 2)
+		big := strings.Repeat("x", 2000)
+		msgs := buildMessages(5, big)
+		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
+
+		err := s.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(state.Messages[0].IsSummary, ShouldBeFalse)
+		So(len(mem.msgs), ShouldEqual, 0)
+	})
+}
+
+func TestCompaction_EmptySummaryFallsBack(t *testing.T) {
+	Convey("an empty summary output leaves messages unchanged", t, func() {
+		p := &summaryProvider{emptyOutput: true}
+		mem := &memStore{}
+		s := newCompactionStage(p, mem, 100, 2)
+		big := strings.Repeat("x", 2000)
+		msgs := buildMessages(5, big)
+		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
+
+		err := s.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(state.Messages[0].IsSummary, ShouldBeFalse)
+		So(len(mem.msgs), ShouldEqual, 0)
 	})
 }
 
