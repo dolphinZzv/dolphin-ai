@@ -32,6 +32,8 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	}
 
 	turnTimeout := c.Config.GetDuration("agent.turn_timeout")
+	idleTimeout := c.Config.GetDuration("agent.llm_idle_timeout")
+	feedMinInterval := c.Config.GetDuration("agent.feed_min_interval")
 
 	permFile := c.Config.GetString("permission.file")
 	workmode := c.Config.GetString("agent.workmode")
@@ -96,6 +98,9 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		maxRounds,
 	)
 	compositor.SetTurnTimeout(turnTimeout)
+	compositor.SetIdleTimeout(idleTimeout)
+	compositor.SetFeedMinInterval(feedMinInterval)
+	compositor.SetCheckpoint(agentloop.NewCheckpoint(c.Mem, c.EventBus))
 
 	c.AgentLoop = agentloop.NewAgentLoop(c.AgentIO.Queue(), compositor, c.Logger, c.EventBus, c.AgentIO, c.Config.GetInt("agent.pool_size"))
 	c.AgentLoop.SetSessionGcInterval(c.Config.GetDuration("agent.session_gc_interval"))

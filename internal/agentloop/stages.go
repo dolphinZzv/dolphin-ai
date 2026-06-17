@@ -45,6 +45,10 @@ type State struct {
 	Round            int
 	Done             bool
 	ToolsCalled      bool
+	// PersistedIdx tracks the index in Messages up to which content has
+	// been durably written by MemoryWriteStage. Checkpoint.Write uses it
+	// to flush only the not-yet-persisted tail when a turn fails.
+	PersistedIdx int
 
 	OnChunk      func(text string)
 	OnThinking   func(text string)
@@ -53,10 +57,13 @@ type State struct {
 }
 
 type Compositor struct {
-	initStages  []Stage
-	loopStages  []Stage
-	maxRounds   int
-	turnTimeout time.Duration // per-turn timeout, 0 = no timeout
+	initStages      []Stage
+	loopStages      []Stage
+	maxRounds       int
+	turnTimeout     time.Duration // per-round hard cap, 0 = no cap
+	idleTimeout     time.Duration // watchdog idle: cancels the whole turn if no Feed within this window, 0 = disabled
+	feedMinInterval time.Duration // throttle for Feed calls, 0 = use watchdog default
+	checkpoint      *Checkpoint   // optional: flushes partial state on recoverable failures
 }
 
 func NewCompositor(init, loop []Stage, maxRounds int) *Compositor {
@@ -69,6 +76,28 @@ func NewCompositor(init, loop []Stage, maxRounds int) *Compositor {
 
 func (c *Compositor) SetTurnTimeout(d time.Duration) {
 	c.turnTimeout = d
+}
+
+// SetIdleTimeout configures the watchdog idle window. When > 0, the
+// compositor wraps the turn context with a Watchdog that cancels the
+// turn if no Feed occurs within d. Stages and tools feed the watchdog
+// via agentloop.Feed(ctx) on meaningful progress (LLM chunks, tool
+// results). 0 disables the watchdog.
+func (c *Compositor) SetIdleTimeout(d time.Duration) {
+	c.idleTimeout = d
+}
+
+// SetFeedMinInterval sets the throttle window applied to Feed calls
+// inside the watchdog. 0 means use the watchdog's default (100ms).
+func (c *Compositor) SetFeedMinInterval(d time.Duration) {
+	c.feedMinInterval = d
+}
+
+// SetCheckpoint wires a Checkpoint used to flush partial state when a
+// turn fails with a recoverable error (context cancellation / deadline).
+// Pass nil to disable checkpointing (default).
+func (c *Compositor) SetCheckpoint(cp *Checkpoint) {
+	c.checkpoint = cp
 }
 
 // Clone creates a per-worker copy. Shared resources (providers, registries,
@@ -84,51 +113,84 @@ func (c *Compositor) Clone() *Compositor {
 		loopCopy[i] = s.Clone()
 	}
 	return &Compositor{
-		initStages:  initCopy,
-		loopStages:  loopCopy,
-		maxRounds:   c.maxRounds,
-		turnTimeout: c.turnTimeout,
+		initStages:      initCopy,
+		loopStages:      loopCopy,
+		maxRounds:       c.maxRounds,
+		turnTimeout:     c.turnTimeout,
+		idleTimeout:     c.idleTimeout,
+		feedMinInterval: c.feedMinInterval,
+		checkpoint:      c.checkpoint,
 	}
 }
 
 func (c *Compositor) Execute(ctx context.Context, state *State) error {
-	// Apply turn timeout to the entire turn (init + all rounds) so
-	// hung LLM calls or slow init stages can't block the worker forever.
-	execCtx := ctx
-	var turnCancel func()
-	if c.turnTimeout > 0 {
-		execCtx, turnCancel = context.WithTimeout(ctx, c.turnTimeout)
-		defer turnCancel()
+	// The outer context is cancellable but not deadline-bound: total
+	// turn duration is bounded by the watchdog (no-feed idle) and the
+	// per-round turnTimeout applied inside the loop, not by a single
+	// wall-clock budget. This lets multi-round turns run as long as
+	// each round stays within budget and continues making progress.
+	execCtx, turnCancel := context.WithCancel(ctx)
+	defer turnCancel()
+
+	// Idle watchdog: cancels execCtx if no Feed occurs within idleTimeout.
+	// Stages feed via agentloop.Feed(ctx) on LLM chunks and tool results.
+	wdCtx, wd := New(execCtx, c.idleTimeout)
+	if wd != nil && c.feedMinInterval > 0 {
+		wd.SetMinFeedInterval(c.feedMinInterval)
 	}
+	defer wd.Stop()
 
 	for _, stage := range c.initStages {
-		if err := stage.Process(execCtx, state); err != nil {
+		if err := stage.Process(wdCtx, state); err != nil {
+			c.checkpointOnFailure(wdCtx, state, "init stage "+stage.Name(), err)
 			return fmt.Errorf("init stage %s: %w", stage.Name(), err)
 		}
+		Feed(wdCtx)
 	}
 
 	for !state.Done && state.Round < c.maxRounds {
-		// Each round gets a fresh timeout so long-running tools in
+		// Each round gets a fresh hard timeout so long-running tools in
 		// previous rounds don't starve subsequent LLM calls.
-		roundCtx := execCtx
+		roundCtx := wdCtx
 		var cancel func()
 		if c.turnTimeout > 0 {
-			roundCtx, cancel = context.WithTimeout(execCtx, c.turnTimeout)
+			roundCtx, cancel = context.WithTimeout(wdCtx, c.turnTimeout)
 		}
 		for _, stage := range c.loopStages {
 			if err := stage.Process(roundCtx, state); err != nil {
 				if cancel != nil {
 					cancel()
 				}
+				c.checkpointOnFailure(wdCtx, state, "loop stage "+stage.Name(), err)
 				return fmt.Errorf(i18n.T("agentloop.stage_loop_failed"), stage.Name(), err)
 			}
 		}
 		if cancel != nil {
 			cancel()
 		}
+		Feed(roundCtx)
 		state.Round++
 	}
 	return nil
+}
+
+// checkpointOnFailure flushes partial state when err is a recoverable
+// failure (context cancellation or deadline). Non-recoverable errors
+// (permission, tool errors that already wrote their own tool_result)
+// skip the checkpoint. Write errors are logged but not returned — the
+// turn is already failing, a checkpoint failure shouldn't mask the
+// original cause.
+//
+// The flush runs on a context stripped of the turn's cancellation, so
+// that a watchdog-fired ctx doesn't prevent the local memory write
+// from completing.
+func (c *Compositor) checkpointOnFailure(ctx context.Context, state *State, where string, err error) {
+	if c.checkpoint == nil || !IsRecoverable(err) {
+		return
+	}
+	flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer cancel()
+	_ = c.checkpoint.Write(flushCtx, state, where+": "+err.Error())
 }
 
 // MemoryReadStage reads history from memory.
@@ -490,6 +552,12 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan s
 				}
 			}
 
+			// Any non-empty chunk is a heartbeat: feed the watchdog so a
+			// slow-but-healthy stream doesn't get cancelled by idle.
+			if chunk.Content != "" || chunk.Thinking != "" || len(chunk.ToolCalls) > 0 {
+				Feed(ctx)
+			}
+
 			if chunk.InputTokens > 0 {
 				inputTokens = chunk.InputTokens
 			}
@@ -694,6 +762,7 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			if cancel != nil {
 				cancel()
 			}
+			Feed(ctx)
 
 			if err != nil {
 				s.EventBus.Publish(ctx, event.Event{
@@ -726,6 +795,7 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			if state.OnToolResult != nil {
 				state.OnToolResult(*result)
 			}
+			Feed(ctx)
 		}
 		return nil
 	}
@@ -868,6 +938,7 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 			})
 
 			result, err := s.ToolRegistry.Execute(toolCtx, tc)
+			Feed(ctx)
 
 			mu.Lock()
 			if err != nil {
@@ -1023,6 +1094,7 @@ func (s *MemoryWriteStage) Process(ctx context.Context, state *State) error {
 		}
 	}
 	s.writeIdx = len(state.Messages)
+	state.PersistedIdx = s.writeIdx
 
 	if state.ToolsCalled {
 		state.ToolsCalled = false

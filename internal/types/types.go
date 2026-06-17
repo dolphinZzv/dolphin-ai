@@ -22,6 +22,7 @@ type Message struct {
 	ToolCallID        string     `json:"tool_call_id,omitempty"`
 	ToolCalls         []ToolCall `json:"tool_calls,omitempty"`
 	IsError           bool       `json:"is_error,omitempty"`
+	IsPartial         bool       `json:"is_partial,omitempty"`
 	Timestamp         time.Time  `json:"timestamp"`
 }
 

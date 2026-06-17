@@ -77,7 +77,9 @@
         "pool_size": { "type": "integer", "minimum": 1, "default": 1 },
         "tool_parallelism": { "type": "integer", "minimum": 1, "default": 1, "description": "Max parallel tool calls per turn" },
         "buffer_size": { "type": "integer", "default": 1024 },
-        "turn_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "120s" },
+        "turn_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "120s", "description": "Per-round hard cap. Each loop round (LLM + tools) gets a fresh budget of this size." },
+        "llm_idle_timeout": { "type": "string", "pattern": "^(0|\\d+[smh])$", "default": "60s", "description": "Watchdog idle window. The turn is cancelled if no LLM chunk or tool result arrives within this window. 0 disables the watchdog." },
+        "feed_min_interval": { "type": "string", "pattern": "^(0|\\d+(ns|us|µs|ms|s|m|h))$", "default": "100ms", "description": "Throttle window for watchdog Feed calls. Feed calls closer than this to the previous effective feed are no-ops, so hot paths (per-chunk, per-line) can call Feed freely. 0 disables throttling." },
         "workspace": { "type": "string", "default": "." },
         "workmode": { "type": "string", "enum": ["default", "yolo"], "default": "default" },
         "webhook": {

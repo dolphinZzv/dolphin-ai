@@ -222,6 +222,9 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	}
 
 	state.OnToolCall = func(tc types.ToolCall) {
+		if a.agentIO != nil {
+			a.agentIO.SetWorkerActivity(workerID, "call "+tc.Name)
+		}
 		if a.onResult != nil {
 			a.onResult(agentio.TurnResult{
 				TurnID:      turn.TurnID,
@@ -233,6 +236,9 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	}
 
 	state.OnToolResult = func(tr types.ToolResult) {
+		if a.agentIO != nil {
+			a.agentIO.SetWorkerActivity(workerID, "")
+		}
 		if a.onResult != nil {
 			a.onResult(agentio.TurnResult{
 				TurnID:      turn.TurnID,
