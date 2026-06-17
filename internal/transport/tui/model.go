@@ -992,13 +992,13 @@ const sideLabelWidth = 9
 // queue — the panel reads as "open at the bottom" rather than a closed
 // box.
 var sidePanelBorder = lipgloss.Border{
-	Top:        "─",
-	Left:       "┊",
-	Right:      "┊",
-	Bottom:     "",
-	TopLeft:    "╭",
-	TopRight:   "╮",
-	BottomLeft: "",
+	Top:         "─",
+	Left:        "┊",
+	Right:       "┊",
+	Bottom:      "",
+	TopLeft:     "╭",
+	TopRight:    "╮",
+	BottomLeft:  "",
 	BottomRight: "",
 }
 
