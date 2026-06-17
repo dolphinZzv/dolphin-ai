@@ -120,7 +120,6 @@ func (t *TUI) Start(_ context.Context) error {
 
 	m := newModel()
 	m.msgChan = t.msgChan
-	m.permCh = t.permCh
 	m.username = t.username
 	m.agentName = t.agentName
 	m.modelName = t.modelName
@@ -285,7 +284,7 @@ func (t *TUI) RequestPermission(ctx context.Context, prompt string) (transport.P
 	t.mu.Unlock()
 
 	if t.program != nil {
-		t.program.Send(permRequestMsg{prompt: prompt})
+		t.program.Send(permRequestMsg{prompt: prompt, ch: ch})
 	}
 
 	var reply string

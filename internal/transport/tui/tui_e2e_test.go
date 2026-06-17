@@ -128,30 +128,27 @@ func TestE2E_StreamingConversation(t *testing.T) {
 func TestE2E_PermissionFlow(t *testing.T) {
 	sim := newSim(80, 24)
 	permCh := make(chan string, 1)
-	sim.m.permCh = permCh
 
-	// Trigger permission dialog.
-	sim.send(permRequestMsg{prompt: "Allow tool execution?"})
+	// Trigger permission dialog, delivering the response channel via the
+	// message (the real flow — the model must reply on THIS channel).
+	sim.send(permRequestMsg{prompt: "Allow tool execution?", ch: permCh})
 	sim.stepAll()
 
 	if sim.m.permDialog == nil {
 		t.Fatal("expected permission dialog to be active")
 	}
+	if sim.m.permCh != permCh {
+		t.Fatal("model should hold the request's response channel")
+	}
 
-	// Test 'a' key dismisses dialog and sends permResponseMsg via Cmd.
-	// We can't easily process tea.Batch-wrapped cmds, so verify the inline
-	// dialog clear and test the response path separately.
-	newM, _ := sim.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	sim.m = newM.(model)
+	// Pressing 'a' resolves the modal: the dialog closes and the returned
+	// cmd delivers permResponseMsg, which replies on permCh.
+	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	sim.stepAll()
 
 	if sim.m.permDialog != nil {
 		t.Error("permission dialog should be dismissed after 'a' key")
 	}
-
-	// Send permResponseMsg directly to test the channel path.
-	sim.send(permResponseMsg{choice: "always"})
-	sim.stepAll()
 
 	select {
 	case choice := <-permCh:
@@ -258,33 +255,72 @@ func TestE2E_ToggleToolsAndThinking(t *testing.T) {
 func TestE2E_PermissionDialogDismissal(t *testing.T) {
 	sim := newSim(80, 24)
 	permCh := make(chan string, 1)
-	sim.m.permCh = permCh
 
-	// Trigger permission dialog.
-	sim.send(permRequestMsg{prompt: "Allow?"})
+	// Trigger permission dialog with the response channel.
+	sim.send(permRequestMsg{prompt: "Allow?", ch: permCh})
 	sim.stepAll()
 
 	if sim.m.permDialog == nil {
 		t.Fatal("expected permission dialog to be active")
 	}
 
-	// Press 'n' key dismisses the dialog.
-	newM, _ := sim.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
-	sim.m = newM.(model)
+	// Press 'n' to deny — modal closes and replies on the channel.
+	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
 	sim.stepAll()
 
 	if sim.m.permDialog != nil {
 		t.Error("permission dialog should be dismissed after 'n' key")
 	}
 
-	// Send permResponseMsg directly to verify channel path.
-	sim.send(permResponseMsg{choice: "deny"})
-	sim.stepAll()
-
 	select {
 	case choice := <-permCh:
 		if choice != "deny" {
 			t.Errorf("expected 'deny', got %q", choice)
+		}
+	default:
+		t.Error("expected permission choice to be received")
+	}
+}
+
+// The permission dialog is modal: pressing ordinary keys (e.g. letters that
+// aren't y/a/n) must NOT type into the textarea while the dialog is open.
+func TestE2E_PermissionDialogSwallowsOtherKeys(t *testing.T) {
+	sim := newSim(80, 24)
+	permCh := make(chan string, 1)
+	sim.send(permRequestMsg{prompt: "Allow?", ch: permCh})
+	sim.stepAll()
+
+	// A random letter neither resolves the dialog nor reaches the textarea.
+	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	sim.stepAll()
+
+	if sim.m.permDialog == nil {
+		t.Error("dialog should still be open after unrelated key")
+	}
+	if sim.m.textarea.Value() != "" {
+		t.Errorf("textarea should be empty (modal swallows keys), got %q", sim.m.textarea.Value())
+	}
+
+	// Arrow-key navigation moves the active choice without resolving.
+	sim.send(tea.KeyMsg{Type: tea.KeyRight})
+	sim.stepAll()
+	if sim.m.permDialog == nil {
+		t.Fatal("dialog should still be open after right arrow")
+	}
+	if sim.m.permDialog.active != 1 {
+		t.Errorf("right arrow should move active to index 1, got %d", sim.m.permDialog.active)
+	}
+
+	// Enter confirms the highlighted choice (index 1 → always).
+	sim.send(tea.KeyMsg{Type: tea.KeyEnter})
+	sim.stepAll()
+	if sim.m.permDialog != nil {
+		t.Error("dialog should be dismissed after enter")
+	}
+	select {
+	case choice := <-permCh:
+		if choice != "always" {
+			t.Errorf("expected 'always' from enter on index 1, got %q", choice)
 		}
 	default:
 		t.Error("expected permission choice to be received")

@@ -3,6 +3,10 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestFormatCount(t *testing.T) {
@@ -30,10 +34,10 @@ func TestFormatCount(t *testing.T) {
 	}
 }
 
-// renderStatusBar drops parts from the right until they fit.
+// renderStatusBar drops left parts from the right until they fit.
 func TestRenderStatusBar_DropsParts(t *testing.T) {
 	parts := []string{"🐬 Dolphin v1.0.0", "minimax-m3", "yolo", "turn:5", "tools:3", "/exit"}
-	out := renderStatusBar(parts, 40)
+	out := renderStatusBar(parts, nil, 40)
 	// Should render something non-empty even if it can't fit all parts.
 	if out == "" {
 		t.Fatal("expected non-empty status bar")
@@ -46,9 +50,28 @@ func TestRenderStatusBar_DropsParts(t *testing.T) {
 
 func TestRenderStatusBar_FitsAll(t *testing.T) {
 	parts := []string{"Dolphin", "minimax-m3", "/exit"}
-	out := renderStatusBar(parts, 80)
+	out := renderStatusBar(parts, nil, 80)
 	if !strings.Contains(out, "Dolphin") || !strings.Contains(out, "minimax-m3") || !strings.Contains(out, "/exit") {
 		t.Errorf("expected all parts in output, got: %s", out)
+	}
+}
+
+// The right-side parts (e.g. session id) should be pinned to the right
+// edge of the bar.
+func TestRenderStatusBar_RightPinned(t *testing.T) {
+	left := []string{"Dolphin", "/exit"}
+	right := []string{"abc12345"}
+	out := renderStatusBar(left, right, 80)
+	if !strings.Contains(out, "Dolphin") {
+		t.Errorf("expected left part, got: %s", out)
+	}
+	if !strings.Contains(out, "abc12345") {
+		t.Errorf("expected right part, got: %s", out)
+	}
+	// The session id should sit at the right edge (last visible chars).
+	trimmed := strings.TrimRight(ansiRe.ReplaceAllString(out, ""), " ")
+	if !strings.HasSuffix(trimmed, "abc12345") {
+		t.Errorf("expected right part at right edge, got: %q", trimmed)
 	}
 }
 
@@ -152,5 +175,102 @@ func TestView_WithSidePanel(t *testing.T) {
 	}
 	if !strings.Contains(out, "temp") {
 		t.Errorf("expected temp in side panel, got: %s", out)
+	}
+}
+
+// When the viewport is scrolled up (and nothing is being processed), a
+// scroll-position indicator should appear with a jump-to-bottom hint.
+func TestView_ScrollIndicatorWhenScrolledUp(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.viewport = viewport.New(80, 5)
+	// Fill enough content that scrolling is possible, then scroll up.
+	m.viewport.SetContent(strings.Repeat("line\n", 50))
+	m.viewport.GotoBottom()
+	m.viewport.ScrollUp(10) // scroll away from the bottom
+
+	out := m.View()
+	if !strings.Contains(out, "scrolled to") {
+		t.Errorf("expected scroll indicator, got: %s", out)
+	}
+	if !strings.Contains(out, "Ctrl+G") {
+		t.Errorf("expected Ctrl+G hint, got: %s", out)
+	}
+}
+
+// Ctrl+G jumps the viewport back to the bottom.
+func TestCtrlG_JumpsToBottom(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.viewport = viewport.New(80, 5)
+	m.viewport.SetContent(strings.Repeat("line\n", 50))
+	m.viewport.GotoBottom()
+	m.viewport.ScrollUp(10)
+	if m.viewport.AtBottom() {
+		t.Fatal("expected to be scrolled up before Ctrl+G")
+	}
+
+	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	m = newM.(model)
+	if !m.viewport.AtBottom() {
+		t.Errorf("expected viewport at bottom after Ctrl+G")
+	}
+}
+
+// While a turn is pending, the status bar should show a working spinner
+// with elapsed time so the user gets live feedback.
+func TestView_SpinnerShownWhilePending(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.viewport = viewport.New(80, 10)
+	m.viewport.SetContent("hello")
+	m.currentMsg = "do something"
+	m.msgStatus = "pending"
+	m.msgStartedAt = time.Now().Add(-3 * time.Second)
+
+	out := m.View()
+	plain := ansiRe.ReplaceAllString(out, "")
+	// A spinner frame and an elapsed "3s" should appear in the status bar.
+	matched := false
+	for _, f := range spinnerFrames {
+		if strings.Contains(plain, f) {
+			matched = true
+			break
+		}
+	}
+	if !matched {
+		t.Errorf("expected a spinner frame in status bar, got: %s", plain)
+	}
+	if !strings.Contains(plain, "3s") {
+		t.Errorf("expected elapsed '3s' in status bar, got: %s", plain)
+	}
+}
+
+// The spinner should not appear once the turn has finished.
+func TestView_NoSpinnerWhenNotPending(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.viewport = viewport.New(80, 10)
+	m.viewport.SetContent("hello")
+	m.msgStatus = "success"
+
+	out := m.View()
+	plain := ansiRe.ReplaceAllString(out, "")
+	for _, f := range spinnerFrames {
+		if strings.Contains(plain, f) {
+			t.Errorf("spinner should not show when not pending, got: %s", plain)
+			break
+		}
 	}
 }

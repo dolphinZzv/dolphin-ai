@@ -18,6 +18,11 @@ import (
 
 const maxMessages = 500
 
+// spinnerFrames is the braille spinner shown in the status bar while a turn
+// is in progress, so the user gets live feedback even when tool/thinking
+// output is hidden.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
 // Message types sent via tea.Program.Send.
 type contentMsg struct{ text string }
 type thinkingMsg struct{ text string }
@@ -26,7 +31,10 @@ type toolResultMsg struct{ result types.ToolResult }
 type flushMsg struct{}
 type queueTickMsg struct{}
 type setAgentIOMsg struct{ a *agentio.AgentIO }
-type permRequestMsg struct{ prompt string }
+type permRequestMsg struct {
+	prompt string
+	ch     chan string // response channel; the model replies here on resolve
+}
 type userSubmitMsg struct{ text string }
 type prioritySubmitMsg struct{ text string }
 type modelChangeMsg struct{ name string }
@@ -93,6 +101,7 @@ type model struct {
 	currentMsg      string // user message currently being processed
 	msgStatus       string // "pending", "success", "error"
 	msgStartedAt    time.Time
+	spinFrame       int // rotating spinner frame, advanced each tick while pending
 	agentIO         *agentio.AgentIO
 	completedItems  []completedItem // recently finished turns
 
@@ -145,10 +154,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, tea.ClearScreen)
 
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c":
+		// ctrl+c always force-quits, even while a permission dialog is open.
+		if msg.String() == "ctrl+c" {
 			return m, tea.Quit
-
+		}
+		// The permission dialog is modal: it captures every keystroke and
+		// returns early so nothing is typed into the textarea or routed to
+		// the viewport. Only ctrl+c (above) escapes it.
+		if m.permDialog != nil {
+			return m.handlePermKey(msg)
+		}
+		switch msg.String() {
 		case "alt+enter":
 			ta, _ := m.textarea.Update(tea.KeyMsg{
 				Type:  tea.KeyRunes,
@@ -157,39 +173,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.textarea = ta
 
 		case "ctrl+p":
-			if m.permDialog == nil {
-				input := strings.TrimSpace(m.textarea.Value())
-				cmds = append(cmds, func() tea.Msg { return prioritySubmitMsg{text: input} })
-				m.textarea.Reset()
-				m.textarea.SetHeight(1)
-				return m, tea.Batch(cmds...)
-			}
+			input := strings.TrimSpace(m.textarea.Value())
+			cmds = append(cmds, func() tea.Msg { return prioritySubmitMsg{text: input} })
+			m.textarea.Reset()
+			m.textarea.SetHeight(1)
+			return m, tea.Batch(cmds...)
+
+		case "ctrl+g":
+			// Jump to the bottom of the conversation. Returns early so the
+			// keystroke is not inserted into the textarea; textarea.Blink
+			// keeps the cursor blinking.
+			m.viewport.GotoBottom()
+			m.updateViewportHeight()
+			return m, textarea.Blink
 
 		case "enter":
-			if m.permDialog == nil {
-				input := strings.TrimSpace(m.textarea.Value())
-				m.textarea.Reset()
-				m.textarea.SetHeight(1)
-				if input == "exit" || input == "/exit" {
-					return m, tea.Quit
-				}
-				if input == "/tools" {
-					m.showTools = !m.showTools
-					m.appendEntry(renderEntry{content: fmt.Sprintf("Tool calls: %s", onOff(m.showTools)), style: "system"})
-					m.notifyPrefsChanged()
-					return m, tea.Batch(cmds...)
-				}
-				if input == "/thinking" {
-					m.showThinking = !m.showThinking
-					m.appendEntry(renderEntry{content: fmt.Sprintf("Thinking: %s", onOff(m.showThinking)), style: "system"})
-					m.notifyPrefsChanged()
-					return m, tea.Batch(cmds...)
-				}
-				if input != "" {
-					cmds = append(cmds, func() tea.Msg { return userSubmitMsg{text: input} })
-				}
+			input := strings.TrimSpace(m.textarea.Value())
+			m.textarea.Reset()
+			m.textarea.SetHeight(1)
+			if input == "exit" || input == "/exit" {
+				return m, tea.Quit
+			}
+			if input == "/tools" {
+				m.showTools = !m.showTools
+				m.appendEntry(renderEntry{content: fmt.Sprintf("Tool calls: %s", onOff(m.showTools)), style: "system"})
+				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
+			if input == "/thinking" {
+				m.showThinking = !m.showThinking
+				m.appendEntry(renderEntry{content: fmt.Sprintf("Thinking: %s", onOff(m.showThinking)), style: "system"})
+				m.notifyPrefsChanged()
+				return m, tea.Batch(cmds...)
+			}
+			if input != "" {
+				cmds = append(cmds, func() tea.Msg { return userSubmitMsg{text: input} })
+			}
+			return m, tea.Batch(cmds...)
 		}
 
 	case contentMsg:
@@ -236,15 +256,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case toolResultMsg:
+		// Tool errors are always surfaced — even when showTools is off —
+		// so a failed tool call is never silently invisible. Non-error
+		// results stay gated behind the showTools toggle.
+		if msg.result.IsError {
+			m.msgStatus = "error"
+			m.appendEntry(renderEntry{
+				content: fmt.Sprintf("❌ %s", strings.TrimRight(msg.result.Content, "\n")),
+				style:   "tool_error",
+			})
+			m.viewport.GotoBottom()
+			break
+		}
 		if !m.showTools {
 			break
 		}
-		prefix := ""
-		if msg.result.IsError {
-			prefix = "❌ "
-		}
 		m.appendEntry(renderEntry{
-			content: fmt.Sprintf("%s%s", prefix, strings.TrimRight(msg.result.Content, "\n")),
+			content: strings.TrimRight(msg.result.Content, "\n"),
 			style:   "tool_result",
 		})
 		m.viewport.GotoBottom()
@@ -270,6 +298,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case queueTickMsg:
 		m.updateViewportHeight()
+		// Advance the working spinner each tick so the user sees live
+		// feedback (spinner + elapsed) while a turn is in progress.
+		if m.msgStatus == "pending" {
+			m.spinFrame++
+		}
 		cmds = append(cmds, queueTick)
 
 	case setAgentIOMsg:
@@ -304,6 +337,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			choices: []string{"y (once)", "a (always)", "n (deny)"},
 			active:  0,
 		}
+		// Capture this request's response channel so the model can reply
+		// when the user resolves the modal. (Each RequestPermission call
+		// creates a fresh channel; the model must not hold a stale one.)
+		m.permCh = msg.ch
 
 	case userSubmitMsg:
 		if m.closeBlock {
@@ -354,23 +391,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// If permission dialog is active, handle its input.
-	if m.permDialog != nil {
-		if keyMsg, ok := msg.(tea.KeyMsg); ok {
-			switch keyMsg.String() {
-			case "y":
-				cmds = append(cmds, func() tea.Msg { return permResponseMsg{choice: "once"} })
-				m.permDialog = nil
-			case "a":
-				cmds = append(cmds, func() tea.Msg { return permResponseMsg{choice: "always"} })
-				m.permDialog = nil
-			case "n", "esc":
-				cmds = append(cmds, func() tea.Msg { return permResponseMsg{choice: "deny"} })
-				m.permDialog = nil
-			}
-		}
-	}
-
 	// Update components.
 	ta, taCmd := m.textarea.Update(msg)
 	m.textarea = ta
@@ -393,6 +413,53 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, vpCmd)
 
 	return m, tea.Batch(cmds...)
+}
+
+// permChoiceMap maps the dialog's choice index to the response string the
+// transport expects: 0 = once, 1 = always, 2 = deny.
+var permChoiceMap = []string{"once", "always", "deny"}
+
+// handlePermKey processes a keystroke while the permission dialog is open.
+// The dialog is modal: every key is captured here and the method returns
+// early, so keys never reach the textarea (no stray typing) or the viewport.
+// ctrl+c is handled before this in Update and force-quits.
+func (m model) handlePermKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.permDialog == nil {
+		return m, nil
+	}
+	choices := m.permDialog.choices
+	switch msg.String() {
+	case "y", "Y":
+		return m.resolvePerm(0)
+	case "a", "A":
+		return m.resolvePerm(1)
+	case "n", "N", "esc":
+		return m.resolvePerm(2)
+	case "left", "h":
+		m.permDialog.active = (m.permDialog.active - 1 + len(choices)) % len(choices)
+		return m, nil
+	case "right", "l":
+		m.permDialog.active = (m.permDialog.active + 1) % len(choices)
+		return m, nil
+	case "enter", " ":
+		idx := m.permDialog.active
+		if idx < 0 || idx >= len(permChoiceMap) {
+			idx = 2 // deny
+		}
+		return m.resolvePerm(idx)
+	}
+	// Any other key is swallowed by the modal.
+	return m, nil
+}
+
+// resolvePerm closes the dialog and emits the chosen permission response.
+func (m model) resolvePerm(idx int) (tea.Model, tea.Cmd) {
+	if idx < 0 || idx >= len(permChoiceMap) {
+		idx = 2
+	}
+	choice := permChoiceMap[idx]
+	m.permDialog = nil
+	return m, func() tea.Msg { return permResponseMsg{choice: choice} }
 }
 
 func (m *model) appendEntry(e renderEntry) {
@@ -665,15 +732,16 @@ func (m *model) updateViewportHeight() {
 	}
 	// Fixed bottom rows: separator + textarea + separator + status bar.
 	fixed := taLines + 3
-	// Queue area: header + items (capped at 5), plus separator above queue
-	qLines := queueLineCount(m.agentIO)
-	completedLines := min(len(m.completedItems), 5)
-	if qLines > 0 || completedLines > 0 {
-		total := min(qLines+completedLines+1, 7) // +1 for separator, capped
-		fixed += total
+	// Queue area: header + body lines (capped per category) + separator
+	// above the queue. queueBodyLines matches renderQueue exactly.
+	active, pending := queueCounts(m.agentIO)
+	body := queueBodyLines(active, pending, len(m.completedItems))
+	if body > 0 {
+		fixed += body + 2 // +1 header, +1 separator
 	}
-	// Current message floating bar
-	if m.currentMsg != "" && !m.viewport.AtBottom() {
+	// Floating bar — the current-message bar and/or a scroll indicator —
+	// shown whenever the viewport is scrolled away from the bottom.
+	if !m.viewport.AtBottom() {
 		fixed++
 	}
 	h := m.height - fixed
@@ -698,17 +766,51 @@ func (m model) viewportWidth() int {
 	return w
 }
 
-func queueLineCount(aio *agentio.AgentIO) int {
+// queueCounts returns the active and pending populations of the agent IO,
+// or zeros when no agent IO is attached.
+func queueCounts(aio *agentio.AgentIO) (active, pending int) {
 	if aio == nil {
+		return 0, 0
+	}
+	a := aio.ActiveSnapshot()
+	p, _, _ := aio.QueueSnapshot()
+	return len(a), len(p)
+}
+
+// Per-category display caps for the queue area. Each category shows its
+// most relevant slice and a "+N more" indicator when truncated, instead of
+// silently dropping items.
+const (
+	queueMaxActive    = 5 // running agents — show all up to this
+	queueMaxPending   = 3 // show the head (what runs next)
+	queueMaxCompleted = 3 // show the tail (most recent)
+)
+
+// queueBodyLines returns the number of item/indicator lines the queue
+// renderer will emit (excluding the "📋 Queue" header) for the given
+// populations. updateViewportHeight uses this so the reserved height
+// matches renderQueue exactly — no overflow, no clipping.
+func queueBodyLines(active, pending, completed int) int {
+	if active+pending+completed == 0 {
 		return 0
 	}
-	active := aio.ActiveSnapshot()
-	pending, _, _ := aio.QueueSnapshot()
-	n := len(active) + len(pending)
-	if n == 0 {
-		return 0
+	n := 0
+	if active > queueMaxActive {
+		n += queueMaxActive + 1
+	} else {
+		n += active
 	}
-	return n + 1 // header
+	pShown := min(pending, queueMaxPending)
+	n += pShown
+	if pending > pShown {
+		n++ // "+N queued"
+	}
+	cShown := min(completed, queueMaxCompleted)
+	n += cShown
+	if completed > cShown {
+		n++ // "+N done"
+	}
+	return n
 }
 
 func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) string {
@@ -728,8 +830,6 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		Render("📋 Queue")
 	lines = append(lines, header)
 
-	maxItems := 5
-
 	renderLine := func(icon, input, timeStr string) string {
 		// 2 spaces indent + icon + space + separator " — " + time
 		iconWidth := lipgloss.Width(icon)
@@ -747,7 +847,20 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		return fmt.Sprintf("  %s %s%s — %s", icon, input, strings.Repeat(" ", inputPad), timeStr)
 	}
 
-	for _, id := range sortedKeys(active) {
+	moreStyle := lipgloss.NewStyle().
+		Foreground(adaptiveFaint).
+		Italic(true)
+	moreLine := func(text string) string {
+		return "  " + moreStyle.Render(text)
+	}
+
+	// Active (running) agents — show all up to the cap.
+	activeIDs := sortedKeys(active)
+	aShown := activeIDs
+	if len(aShown) > queueMaxActive {
+		aShown = aShown[:queueMaxActive]
+	}
+	for _, id := range aShown {
 		t := active[id]
 		icon := styleQueueActive.Render("▶")
 		elapsed := time.Since(t.StartedAt).Round(time.Second)
@@ -757,30 +870,40 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		}
 		timeStr = styleQueueTime.Render(timeStr)
 		lines = append(lines, renderLine(icon, t.Input, timeStr))
-		maxItems--
 	}
-	start := 0
-	if len(pending) > maxItems {
-		start = len(pending) - maxItems
+	if len(activeIDs) > len(aShown) {
+		lines = append(lines, moreLine(fmt.Sprintf("… +%d more active", len(activeIDs)-len(aShown))))
 	}
-	for i := start; i < len(pending); i++ {
-		t := pending[i]
+
+	// Pending — show the head (what runs next) up to the cap, then a
+	// "+N queued" indicator for the rest. Earlier the tail was shown and
+	// early queue items were invisible.
+	pShown := pending
+	if len(pShown) > queueMaxPending {
+		pShown = pShown[:queueMaxPending]
+	}
+	for i, t := range pShown {
 		icon := styleQueueWait.Render(fmt.Sprintf("#%d", i+1))
 		wait := time.Since(t.EnqueuedAt).Round(time.Second)
 		timeStr := styleQueueTime.Render(wait.String())
 		lines = append(lines, renderLine(icon, t.Input, timeStr))
-		maxItems--
 	}
-	// Show recently completed items if there's room.
-	cstart := 0
-	if len(completed) > maxItems {
-		cstart = len(completed) - maxItems
+	if len(pending) > len(pShown) {
+		lines = append(lines, moreLine(fmt.Sprintf("… +%d queued", len(pending)-len(pShown))))
 	}
-	for i := cstart; i < len(completed); i++ {
-		c := completed[i]
+
+	// Recently completed — show the tail (most recent) up to the cap.
+	cShown := completed
+	if len(cShown) > queueMaxCompleted {
+		cShown = cShown[len(cShown)-queueMaxCompleted:]
+	}
+	for _, c := range cShown {
 		icon := styleQueueWait.Render("✓")
 		timeStr := styleQueueTime.Render(c.ago + " " + c.duration.String())
 		lines = append(lines, renderLine(icon, c.input, timeStr))
+	}
+	if len(completed) > len(cShown) {
+		lines = append(lines, moreLine(fmt.Sprintf("… +%d done", len(completed)-len(cShown))))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -830,53 +953,67 @@ func (m model) View() string {
 
 	// Bottom status bar: compact. When the side panel is visible, it
 	// carries model/turn/usage, so the bar only needs identity + hints.
-	var barParts []string
-	barParts = append(barParts, "🐬 "+m.agentName+" "+m.version)
+	// Left side holds identity and hints; the session id is pinned to the
+	// right edge.
+	var leftParts []string
+	leftParts = append(leftParts, "🐬 "+m.agentName+" "+m.version)
+	var rightParts []string
+	if m.msgStatus == "pending" {
+		frame := spinnerFrames[m.spinFrame%len(spinnerFrames)]
+		elapsed := time.Since(m.msgStartedAt).Round(time.Second)
+		rightParts = append(rightParts, lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+			Render(frame+" "+elapsed.String()))
+	}
 	if m.sessionID != "" {
-		barParts = append(barParts, truncateSessionID(m.sessionID))
+		rightParts = append(rightParts, truncateSessionID(m.sessionID))
 	}
 	if sideStatus == "" {
 		// Narrow mode: put everything on the bottom bar.
-		barParts = append(barParts, m.modelName)
+		leftParts = append(leftParts, m.modelName)
 		if m.workmode != "" && m.workmode != "default" {
-			barParts = append(barParts, m.workmode)
+			leftParts = append(leftParts, m.workmode)
 		}
 		if m.toolParallelism > 1 {
-			barParts = append(barParts, fmt.Sprintf("parallel:%d", m.toolParallelism))
+			leftParts = append(leftParts, fmt.Sprintf("parallel:%d", m.toolParallelism))
 		}
 		if m.rounds > 0 {
-			barParts = append(barParts, fmt.Sprintf("turn:%d", m.rounds))
+			leftParts = append(leftParts, fmt.Sprintf("turn:%d", m.rounds))
 			if m.hardReqs > 0 {
 				pct := float64(m.reqs) / float64(m.hardReqs) * 100
-				barParts = append(barParts, fmt.Sprintf("req:%s/%.1f%%", formatCount(m.reqs), pct))
+				leftParts = append(leftParts, fmt.Sprintf("req:%s/%.1f%%", formatCount(m.reqs), pct))
 			}
 			if m.hardTokens > 0 {
 				pct := float64(m.tokens) / float64(m.hardTokens) * 100
-				barParts = append(barParts, fmt.Sprintf("tok:%s/%.1f%%", formatCount(m.tokens), pct))
+				leftParts = append(leftParts, fmt.Sprintf("tok:%s/%.1f%%", formatCount(m.tokens), pct))
 			}
 			if m.toolCalls > 0 {
-				barParts = append(barParts, fmt.Sprintf("tools:%d", m.toolCalls))
+				leftParts = append(leftParts, fmt.Sprintf("tools:%d", m.toolCalls))
 			}
 		}
 		if m.inputTokens > 0 || m.outputTokens > 0 {
-			barParts = append(barParts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
+			leftParts = append(leftParts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
 		}
-		barParts = append(barParts, fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking)))
-		barParts = append(barParts, fmt.Sprintf("temp:%.1f", m.temperature))
-		barParts = append(barParts, fmt.Sprintf("pool:%d", m.poolSize))
+		leftParts = append(leftParts, fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking)))
+		leftParts = append(leftParts, fmt.Sprintf("temp:%.1f", m.temperature))
+		leftParts = append(leftParts, fmt.Sprintf("pool:%d", m.poolSize))
 	} else {
-		barParts = append(barParts, m.modelName)
-		barParts = append(barParts, "/exit")
+		// Wide mode: model lives in the side panel, so the bottom bar
+		// keeps only identity + the exit hint.
+		leftParts = append(leftParts, "/exit")
 	}
-	statusBar := renderStatusBar(barParts, m.width)
+	statusBar := renderStatusBar(leftParts, rightParts, m.width)
 
 	// === Row 1: viewport + side status panel (split horizontally) ===
 	viewWidth := m.viewportWidth()
 	viewportView := m.viewport.View()
 
 	var viewportElements []string
-	if m.currentMsg != "" && !m.viewport.AtBottom() {
-		viewportElements = append(viewportElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, viewWidth))
+	scrolled := !m.viewport.AtBottom()
+	if m.currentMsg != "" && scrolled {
+		viewportElements = append(viewportElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, viewWidth, m.viewport.ScrollPercent()))
+	} else if scrolled {
+		viewportElements = append(viewportElements, renderScrollIndicator(viewWidth, m.viewport.ScrollPercent()))
 	}
 	viewportElements = append(viewportElements, viewportView)
 	viewportColumn := lipgloss.JoinVertical(lipgloss.Left, viewportElements...)
@@ -909,10 +1046,17 @@ func (m model) View() string {
 		lines := strings.Split(mainView, "\n")
 		mid := len(lines) / 2
 		dialogLines := strings.Split(dialog, "\n")
+		// Center the dialog horizontally: left-pad every line so the box
+		// sits in the middle of the terminal rather than at the left edge.
+		leftPad := (m.width - lipgloss.Width(dialog)) / 2
+		if leftPad < 0 {
+			leftPad = 0
+		}
+		pad := strings.Repeat(" ", leftPad)
 		for i, dl := range dialogLines {
 			idx := mid - len(dialogLines)/2 + i
 			if idx >= 0 && idx < len(lines) {
-				lines[idx] = dl
+				lines[idx] = pad + dl
 			}
 		}
 		return strings.Join(lines, "\n")
@@ -921,7 +1065,7 @@ func (m model) View() string {
 	return mainView
 }
 
-func renderStatusBar(parts []string, width int) string {
+func renderStatusBar(leftParts, rightParts []string, width int) string {
 	s := lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
 		Background(adaptiveStatusBg).
@@ -933,13 +1077,24 @@ func renderStatusBar(parts []string, width int) string {
 		avail = 10
 	}
 
-	// Drop parts from right to left until it fits on one line.
-	for i := len(parts); i >= 1; i-- {
-		if lipgloss.Width(strings.Join(parts[:i], " | ")) <= avail {
-			return s.Render(strings.Join(parts[:i], " | "))
+	right := ""
+	if len(rightParts) > 0 {
+		right = strings.Join(rightParts, " | ")
+	}
+	rightW := lipgloss.Width(right)
+
+	// Drop left parts from right to left until left+right fits on one line.
+	for i := len(leftParts); i >= 1; i-- {
+		left := strings.Join(leftParts[:i], " | ")
+		if lipgloss.Width(left)+rightW <= avail {
+			pad := avail - lipgloss.Width(left) - rightW
+			if pad < 0 {
+				pad = 0
+			}
+			return s.Render(left + strings.Repeat(" ", pad) + right)
 		}
 	}
-	return s.Render(parts[0])
+	return s.Render(leftParts[0])
 }
 
 // formatCount renders an integer with k/m/b/t suffixes for compact display
@@ -986,18 +1141,18 @@ func sideStatusWidth(termWidth int) int {
 // so values align in a tidy right column.
 const sideLabelWidth = 9
 
-// sidePanelBorder is the rounded box border with the bottom edge removed
-// and dashed left/right edges. The dashed borders extend down to the
-// panel's full height so they meet the full-width separator above the
-// queue — the panel reads as "open at the bottom" rather than a closed
-// box.
+// sidePanelBorder is the rounded box border with the top and bottom edges
+// removed and dashed left/right edges. The dashed borders extend down to
+// the panel's full height so the right edge meets the full-width separator
+// above the queue — the panel reads as "open at top and bottom" rather
+// than a closed box.
 var sidePanelBorder = lipgloss.Border{
-	Top:         "─",
+	Top:         "",
 	Left:        "┊",
 	Right:       "┊",
 	Bottom:      "",
-	TopLeft:     "╭",
-	TopRight:    "╮",
+	TopLeft:     "",
+	TopRight:    "",
 	BottomLeft:  "",
 	BottomRight: "",
 }
@@ -1018,7 +1173,7 @@ func (m model) renderSideStatus() string {
 	if innerWidth == 0 {
 		return ""
 	}
-	boxInnerWidth := innerWidth - 2 // border on each side
+	boxInnerWidth := innerWidth - 2 - 4 // border on each side + horizontal padding 2
 	sep := strings.Repeat("─", boxInnerWidth)
 	// Max value width: boxInner - label column - 1 space gap.
 	maxValWidth := boxInnerWidth - sideLabelWidth - 1
@@ -1039,6 +1194,18 @@ func (m model) renderSideStatus() string {
 	}
 	if m.rounds > 0 {
 		rows = append(rows, [2]string{"turn", fmt.Sprintf("%d", m.rounds)})
+		if m.toolCalls > 0 {
+			rows = append(rows, [2]string{"calls", fmt.Sprintf("%d", m.toolCalls)})
+		}
+	}
+	if m.inputTokens > 0 || m.outputTokens > 0 {
+		rows = append(rows, [2]string{"in/out", fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)})
+	}
+	rows = append(rows, [2]string{"tools", onOff(m.showTools)})
+	rows = append(rows, [2]string{"thinking", onOff(m.showThinking)})
+	// Limit rows pinned to the bottom so they stay visible at the panel's
+	// foot regardless of how many status rows appear above.
+	if m.rounds > 0 {
 		if m.hardReqs > 0 {
 			pct := float64(m.reqs) / float64(m.hardReqs) * 100
 			rows = append(rows, [2]string{"req", fmt.Sprintf("%s/%.1f%%", formatCount(m.reqs), pct)})
@@ -1047,15 +1214,7 @@ func (m model) renderSideStatus() string {
 			pct := float64(m.tokens) / float64(m.hardTokens) * 100
 			rows = append(rows, [2]string{"tok", fmt.Sprintf("%s/%.1f%%", formatCount(m.tokens), pct)})
 		}
-		if m.toolCalls > 0 {
-			rows = append(rows, [2]string{"tools", fmt.Sprintf("%d", m.toolCalls)})
-		}
 	}
-	if m.inputTokens > 0 || m.outputTokens > 0 {
-		rows = append(rows, [2]string{"in/out", fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)})
-	}
-	rows = append(rows, [2]string{"tools", onOff(m.showTools)})
-	rows = append(rows, [2]string{"thinking", onOff(m.showThinking)})
 
 	labelStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"}).
@@ -1098,12 +1257,13 @@ func (m model) renderSideStatus() string {
 	boxStyle := lipgloss.NewStyle().
 		Border(sidePanelBorder).
 		BorderForeground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
+		Padding(0, 2).
 		Width(innerWidth).
 		Height(targetHeight)
 	return boxStyle.Render(body)
 }
 
-func renderCurrentMsg(msg, username, status string, width int) string {
+func renderCurrentMsg(msg, username, status string, width int, scrollPct float64) string {
 	icon := "⏳"
 	if status == "success" {
 		icon = "✅"
@@ -1113,14 +1273,49 @@ func renderCurrentMsg(msg, username, status string, width int) string {
 	label := lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
 		Render(icon + " " + username + ":")
+	// When scrolled up, append a scroll-position + jump hint on the right
+	// so the user knows how far up they are and how to return.
+	scrollSuffix := ""
+	if scrollPct >= 0 {
+		scrollSuffix = lipgloss.NewStyle().
+			Foreground(adaptiveFaint).
+			Render(fmt.Sprintf("↑ %d%% · Ctrl+G", int(scrollPct*100+0.5)))
+	}
+	avail := width - lipgloss.Width(label) - 3 - lipgloss.Width(scrollSuffix)
+	if avail < 4 {
+		avail = 4
+	}
 	body := lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
-		MaxWidth(width - lipgloss.Width(label) - 3).
+		MaxWidth(avail).
 		Render(msg)
+	// Pad body so the scroll suffix right-aligns.
+	pad := avail - lipgloss.Width(body)
+	if pad < 0 {
+		pad = 0
+	}
+	content := label + " " + body + strings.Repeat(" ", pad)
+	if scrollSuffix != "" {
+		content += " " + scrollSuffix
+	}
 	return lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(adaptiveFaint).
 		Padding(0, 1).
 		Width(width).
-		Render(label + " " + body)
+		Render(content)
+}
+
+// renderScrollIndicator is the floating bar shown when the user has scrolled
+// up but no message is currently being processed. It reports scroll position
+// and the key to jump back to the latest output.
+func renderScrollIndicator(width int, scrollPct float64) string {
+	text := fmt.Sprintf("↑ scrolled to %d%% — Ctrl+G or PgDn to jump to bottom", int(scrollPct*100+0.5))
+	return lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(adaptiveFaint).
+		Foreground(adaptiveFaint).
+		Padding(0, 1).
+		Width(width).
+		Render(text)
 }

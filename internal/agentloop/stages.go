@@ -1037,7 +1037,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 		}
 
 		prompt := fmt.Sprintf(i18n.T("agentloop.tool_permission_request"), call.Name, call.Arguments)
-		permResult, err := tio.RequestPermission(ctx, prompt)
+		permResult, err := requestPermissionFeeding(ctx, tio, prompt)
 		if err != nil {
 			return fmt.Errorf(i18n.T("agentloop.tool_permission_failed"), call.Name, err)
 		}
@@ -1055,6 +1055,40 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 		}
 	}
 	return nil
+}
+
+// permFeedInterval is how often requestPermissionFeeding strokes the idle
+// watchdog while waiting for the user to answer a permission prompt. The
+// wait is user-bound (not a stuck LLM), so we keep the watchdog alive until
+// the user responds — otherwise a slow reader can exceed llm_idle_timeout
+// (default 60s) and get the turn cancelled mid-prompt. A var (not const)
+// so tests can shrink it.
+var permFeedInterval = 5 * time.Second
+
+// requestPermissionFeeding wraps transport.RequestPermission, feeding the
+// idle watchdog on a ticker until the user answers (or the context is
+// cancelled). Feed is nil-safe once the watchdog has fired, so a late tick
+// after cancellation is harmless.
+func requestPermissionFeeding(ctx context.Context, tio transport.IO, prompt string) (transport.PermissionResult, error) {
+	Feed(ctx) // immediate feed so the prompt display itself doesn't trip the watchdog
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(permFeedInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				Feed(ctx)
+			}
+		}
+	}()
+	result, err := tio.RequestPermission(ctx, prompt)
+	close(done)
+	return result, err
 }
 
 // MemoryWriteStage writes the completed turn to memory.

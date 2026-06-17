@@ -708,6 +708,31 @@ func TestModelUpdate_ToolResultMsg_Error(t *testing.T) {
 	if len(m.messages) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(m.messages))
 	}
+	if m.messages[0].style != "tool_error" {
+		t.Errorf("expected tool_error style, got %q", m.messages[0].style)
+	}
+	if m.msgStatus != "error" {
+		t.Errorf("expected msgStatus='error', got %q", m.msgStatus)
+	}
+}
+
+// Tool errors must surface even when showTools is off — otherwise a
+// failed tool call is silently invisible.
+func TestModelUpdate_ToolResultMsg_ErrorWhenToolsHidden(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(80, 20)
+	m.viewport.SetContent("")
+	m.width = 80
+	m.showTools = false
+
+	newM, _ := m.Update(toolResultMsg{result: types.ToolResult{Content: "boom", IsError: true}})
+	m = newM.(model)
+	if len(m.messages) != 1 {
+		t.Fatalf("expected error shown even with tools hidden, got %d messages", len(m.messages))
+	}
+	if m.messages[0].style != "tool_error" {
+		t.Errorf("expected tool_error style, got %q", m.messages[0].style)
+	}
 }
 
 func TestModelUpdate_FlushMsg(t *testing.T) {
@@ -988,26 +1013,44 @@ func newTestAgentIO(t *testing.T) *agentio.AgentIO {
 	return agentio.NewAgentIO(1, mgr, nil, nil, "test")
 }
 
-func TestQueueLineCount(t *testing.T) {
-	t.Run("nil agentIO", func(t *testing.T) {
-		if n := queueLineCount(nil); n != 0 {
-			t.Errorf("expected 0 for nil, got %d", n)
-		}
-	})
-
-	t.Run("empty queue", func(t *testing.T) {
-		aio := newTestAgentIO(t)
-		if n := queueLineCount(aio); n != 0 {
+func TestQueueBodyLines(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		if n := queueBodyLines(0, 0, 0); n != 0 {
 			t.Errorf("expected 0 for empty, got %d", n)
 		}
 	})
 
-	t.Run("with active and pending", func(t *testing.T) {
+	t.Run("active and pending under caps", func(t *testing.T) {
+		// 1 active + 1 pending → 2 body lines, no indicators.
+		if n := queueBodyLines(1, 1, 0); n != 2 {
+			t.Errorf("expected 2, got %d", n)
+		}
+	})
+
+	t.Run("pending overflow adds indicator", func(t *testing.T) {
+		// 3 shown + 1 "+N queued" indicator.
+		if n := queueBodyLines(0, 5, 0); n != 4 {
+			t.Errorf("expected 4 (3 shown + 1 indicator), got %d", n)
+		}
+	})
+
+	t.Run("completed overflow adds indicator", func(t *testing.T) {
+		if n := queueBodyLines(0, 0, 10); n != 4 {
+			t.Errorf("expected 4 (3 shown + 1 indicator), got %d", n)
+		}
+	})
+
+	t.Run("matches renderQueue line count", func(t *testing.T) {
 		aio := newTestAgentIO(t)
 		aio.SetActive("worker-1", &agentio.Turn{TurnID: "t1", SessionID: "s1", Input: "hi"})
 		aio.SendTurn(context.Background(), &agentio.Turn{Input: "next"})
-		if n := queueLineCount(aio); n != 3 { // header + 1 active + 1 pending
-			t.Errorf("expected 3, got %d", n)
+		active, pending := queueCounts(aio)
+		want := queueBodyLines(active, pending, 0)
+		s := renderQueue(aio, nil, 80)
+		// renderQueue emits header + body lines; body = total lines - 1.
+		got := strings.Count(s, "\n") // header is line 0, so body lines == newline count
+		if got != want {
+			t.Errorf("body lines mismatch: queueBodyLines=%d renderQueue body=%d", want, got)
 		}
 	})
 }

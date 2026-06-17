@@ -348,6 +348,79 @@ type mockTransport struct {
 	permResult transport.PermissionResult
 }
 
+// blockingPermTransport wraps mockTransport but blocks RequestPermission
+// until its release channel is closed (or the context is cancelled), so we
+// can observe the watchdog's behaviour during a user-bound permission wait.
+type blockingPermTransport struct {
+	mockTransport
+	release chan struct{}
+}
+
+func (m *blockingPermTransport) RequestPermission(ctx context.Context, _ string) (transport.PermissionResult, error) {
+	select {
+	case <-m.release:
+		return m.permResult, nil
+	case <-ctx.Done():
+		return transport.PermissionDenied, ctx.Err()
+	}
+}
+
+// TestRequestPermissionFeedingKeepsWatchdogAlive verifies that while a
+// permission prompt is blocking on user input, the idle watchdog is fed
+// often enough that it does NOT cancel the turn — the wait is user-bound,
+// not a stuck LLM.
+func TestRequestPermissionFeedingKeepsWatchdogAlive(t *testing.T) {
+	orig := permFeedInterval
+	permFeedInterval = 10 * time.Millisecond
+	t.Cleanup(func() { permFeedInterval = orig })
+
+	release := make(chan struct{})
+	bt := &blockingPermTransport{
+		mockTransport: mockTransport{permResult: transport.PermissionOnce},
+		release:       release,
+	}
+
+	wdCtx, wd := New(context.Background(), 200*time.Millisecond)
+	defer wd.Stop()
+	// Shrink the feed throttle so our 10ms ticker actually feeds each tick
+	// (default 100ms throttle would skip them). Must be set before the
+	// first Feed.
+	wd.SetMinFeedInterval(5 * time.Millisecond)
+
+	type result struct{ err error }
+	resCh := make(chan result, 1)
+	go func() {
+		_, err := requestPermissionFeeding(wdCtx, bt, "allow shell?")
+		resCh <- result{err}
+	}()
+
+	// Wait well past the idle window. Without feeding the watchdog would
+	// have fired by now.
+	time.Sleep(400 * time.Millisecond)
+	select {
+	case <-wdCtx.Done():
+		t.Fatalf("watchdog fired during permission wait despite feeding: %v", wdCtx.Err())
+	default:
+	}
+	if wd.Stats().Feeds < 2 {
+		t.Errorf("expected multiple feeds while waiting, got %d", wd.Stats().Feeds)
+	}
+
+	// Let the prompt resolve; the call should return cleanly.
+	close(release)
+	select {
+	case r := <-resCh:
+		if r.err != nil {
+			t.Errorf("unexpected error after release: %v", r.err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("requestPermissionFeeding did not return after release")
+	}
+	if wd.Stats().Fired {
+		t.Errorf("watchdog should not have fired")
+	}
+}
+
 func (m *mockTransport) ID() string                           { return "mock" }
 func (m *mockTransport) Context() string                      { return "" }
 func (m *mockTransport) Start(context.Context) error          { return nil }

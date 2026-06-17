@@ -15,6 +15,7 @@ var (
 	styleThinking       lipgloss.Style
 	styleToolCall       lipgloss.Style
 	styleToolResult     lipgloss.Style
+	styleToolError      lipgloss.Style
 	styleSystem         lipgloss.Style
 	styleSeparator      lipgloss.Style
 	styleSeparatorFaint lipgloss.Style
@@ -37,6 +38,9 @@ func init() {
 
 	styleToolResult = lipgloss.NewStyle().
 		Foreground(adaptiveToolResult)
+
+	styleToolError = lipgloss.NewStyle().
+		Foreground(adaptiveError)
 
 	styleSystem = lipgloss.NewStyle().
 		Foreground(adaptiveSystem)
@@ -77,6 +81,8 @@ func renderStyled(e renderEntry) string {
 		return styleToolCall.Render(e.content)
 	case "tool_result":
 		return styleToolResult.Render(padLines(e.content, 3))
+	case "tool_error":
+		return styleToolError.Render(padLines(e.content, 3))
 	case "system":
 		return styleSystem.Render(e.content)
 	case "user_text":

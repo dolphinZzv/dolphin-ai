@@ -18,6 +18,14 @@ All notable changes to Dolphin will be documented in this file.
 - Side panel uses dashed open-bottom border (left/right `┊` extend to the queue separator); viewport and side panel resize dynamically with textarea/queue/statusbar heights so borders stay aligned
 - Narrow terminals fall back to a full bottom status bar; wide terminals keep a compact bottom bar (identity + model + /exit) alongside the side panel
 - gofmt fix for side panel border struct alignment
+- TUI: bottom status bar shows a spinner + elapsed time while a turn is pending, so there is live feedback even with tool/thinking output hidden
+- TUI: scrolling away from the bottom shows a scroll-position indicator (`↑ 42%`) and `Ctrl+G` jumps back to the latest output
+- TUI: tool errors (`❌`) now always render even when tool-call display is off, using the previously-unused error color; failed tool calls are no longer silently invisible
+- TUI: queue shows `+N queued`/`+N done`/`+N more active` indicators instead of silently dropping items; pending list shows the head (next to run) rather than the tail
+- TUI: side panel renames the tool-call-count row to `calls` so it no longer collides with the `tools` on/off toggle
+- TUI: permission dialog is now a true modal — captures all keys (no stray textarea typing), supports `y/Y a/A n/N`, arrow-key + Enter navigation, and is centered on screen
+- TUI: fix permission dialog being unresolvable — the response channel is now delivered with the prompt message instead of a stale nil copy
+- Agent loop: feeds the idle watchdog while a permission prompt waits for user input, so a slow reader no longer trips `llm_idle_timeout` and cancels the turn mid-prompt
 
 ### Changed
 
