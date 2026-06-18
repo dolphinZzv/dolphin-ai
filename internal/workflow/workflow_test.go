@@ -40,7 +40,6 @@ func testConfig() *config.Config {
 
 // mockLLMProvider implements llm.Provider for testing.
 type mockLLMProvider struct {
-	mu       sync.Mutex
 	chunksFn func(req llm.LLMRequest) []llm.LLMChunk
 	name     string
 }

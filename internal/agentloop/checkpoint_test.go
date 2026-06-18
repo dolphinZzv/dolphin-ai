@@ -156,7 +156,8 @@ func TestCompositor_CheckpointOnFailure(t *testing.T) {
 		PersistedIdx: 1,
 	}
 	// Mirror the MemoryReadStage seeding of Messages = history + user input.
-	state.Messages = append(state.History, types.Message{
+	state.Messages = append([]types.Message{}, state.History...)
+	state.Messages = append(state.Messages, types.Message{
 		Role:      types.RoleUser,
 		Content:   "continue",
 		Timestamp: time.Now(),

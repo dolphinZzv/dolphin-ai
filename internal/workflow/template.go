@@ -71,8 +71,7 @@ func resolveResult(results map[string]*StepResult, stepID, field string) (any, e
 		return nil, fmt.Errorf("workflow: step %q has no result", stepID)
 	}
 
-	switch r := sr.Result.(type) {
-	case map[string]any:
+	if r, ok := sr.Result.(map[string]any); ok {
 		v, ok := r[field]
 		if !ok {
 			return nil, fmt.Errorf("workflow: step %q result has no field %q", stepID, field)
@@ -118,7 +117,9 @@ func buildTemplateData(rs *runState, stepID string) map[string]any {
 
 	for _, sr := range rs.results {
 		if sr.Status == StatusDone {
-			if len(sr.Instances) > 1 {
+			// Branches test different predicates (multi-instance vs single
+			// result vs single instance), not equality on one value.
+			if len(sr.Instances) > 1 { //nolint:gocritic // ifElseChain
 				// For foreach steps (multiple instances), expose a list of instance results.
 				instList := make([]map[string]any, 0, len(sr.Instances))
 				for _, inst := range sr.Instances {

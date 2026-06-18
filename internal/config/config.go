@@ -142,7 +142,7 @@ func (c *Config) GetString(key string) string {
 // For prefix "a.b", keys "a.b.c" → {"c": value}. Only single-level keys.
 func (c *Config) GetStringMap(prefix string) map[string]string {
 	result := make(map[string]string)
-	prefix = prefix + "."
+	prefix += "."
 	for _, key := range c.Keys() {
 		if !strings.HasPrefix(key, prefix) {
 			continue

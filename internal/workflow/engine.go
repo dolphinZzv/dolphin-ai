@@ -169,7 +169,9 @@ func (e *Engine) Run(ctx context.Context, spec *WorkflowSpec, transportID string
 				}
 
 				mu.Lock()
-				if allInstDone(instResults) {
+				// Each branch tests a different predicate (done/failed/partial);
+				// not equality on one value, so a switch would not read better.
+				if allInstDone(instResults) { //nolint:gocritic // ifElseChain
 					// For non-foreach steps, use the raw result.
 					var result any
 					if len(instResults) == 1 && instResults[0].Key == s.ID {

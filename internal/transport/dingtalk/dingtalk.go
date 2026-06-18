@@ -106,8 +106,6 @@ type DingTalk struct {
 	lastSenderID   string   // set on each incoming message, for session user_id
 	lastSenderNick string   // set on each incoming message, for session user_nick
 	lastConvID     string   // set on each incoming message, for chat/send API
-	ctx            context.Context
-	cancel         context.CancelFunc
 }
 
 func NewDingTalk(cfg DingTalkConfig, logger *zap.Logger, agentName string) *DingTalk {

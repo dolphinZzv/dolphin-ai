@@ -835,11 +835,10 @@ func TestRegisterSessionStatusWithTemperatureTopP(t *testing.T) {
 
 // mockStatusProvider implements both ActiveModel and Models for status tests.
 type mockStatusProvider struct {
-	models []llm.ModelConfig
-	name   string
-	model  string
-	temp   float64
-	tp     float64
+	name  string
+	model string
+	temp  float64
+	tp    float64
 }
 
 func (m *mockStatusProvider) ActiveModel() string { return m.name }
@@ -1014,7 +1013,7 @@ func TestAllRegistrationCommandsNoPanic(t *testing.T) {
 
 		mgr.Create(context.Background())
 
-		RegisterContext(r, func() *appctx.Registry { return appctx.NewRegistry() })
+		RegisterContext(r, appctx.NewRegistry)
 		RegisterLimit(r, nil)
 		RegisterScheduler(r, &mockSchedLister{})
 		skillStore, err := skill.NewFileStore(t.TempDir())

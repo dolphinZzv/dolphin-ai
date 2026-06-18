@@ -172,7 +172,9 @@ func globMatch(pattern, s string) bool {
 	nextSx := -1
 
 	for sx < len(s) {
-		if px < len(pattern) && pattern[px] == '*' {
+		// Conditions are compound and vary per branch (not equality on a
+		// single value), so an if/else chain reads better than a switch.
+		if px < len(pattern) && pattern[px] == '*' { //nolint:gocritic // ifElseChain
 			nextPx = px
 			nextSx = sx + 1
 			px++

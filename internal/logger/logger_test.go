@@ -94,25 +94,22 @@ func TestParseLevelEnabled(t *testing.T) {
 	infoLevel := parseLevel("info")
 	debugLevel := parseLevel("debug")
 
-	infoCore := infoLevel.(zapcore.LevelEnabler)
-	debugCore := debugLevel.(zapcore.LevelEnabler)
-
 	// Info level should enable Info and above
-	if !infoCore.Enabled(zapcore.InfoLevel) {
+	if !infoLevel.Enabled(zapcore.InfoLevel) {
 		t.Error("info level should enable InfoLevel")
 	}
-	if infoCore.Enabled(zapcore.DebugLevel) {
+	if infoLevel.Enabled(zapcore.DebugLevel) {
 		t.Error("info level should NOT enable DebugLevel")
 	}
-	if !infoCore.Enabled(zapcore.WarnLevel) {
+	if !infoLevel.Enabled(zapcore.WarnLevel) {
 		t.Error("info level should enable WarnLevel")
 	}
 
 	// Debug level should enable everything
-	if !debugCore.Enabled(zapcore.DebugLevel) {
+	if !debugLevel.Enabled(zapcore.DebugLevel) {
 		t.Error("debug level should enable DebugLevel")
 	}
-	if !debugCore.Enabled(zapcore.InfoLevel) {
+	if !debugLevel.Enabled(zapcore.InfoLevel) {
 		t.Error("debug level should enable InfoLevel")
 	}
 }

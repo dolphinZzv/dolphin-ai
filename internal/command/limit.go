@@ -9,12 +9,6 @@ import (
 	"dolphin/internal/limit"
 )
 
-// limitStore is the subset of Store needed for the /limit command.
-type limitStore interface {
-	Get(key string) (int64, error)
-	GetAll() (map[string]int64, error)
-}
-
 // RegisterLimit registers the /limit command for viewing usage and limits.
 func RegisterLimit(r *Registry, limiter *limit.Limiter) {
 	if limiter == nil {

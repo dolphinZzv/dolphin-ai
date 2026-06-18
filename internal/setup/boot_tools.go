@@ -68,15 +68,6 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 // Helpers
 // ---------------------------------------------------------------------------
 
-type mcpServerConfig struct {
-	Name    string   `yaml:"name"`
-	Type    string   `yaml:"type"`
-	Enabled bool     `yaml:"enabled"`
-	Command string   `yaml:"command"`
-	Args    []string `yaml:"args"`
-	URL     string   `yaml:"url"`
-}
-
 func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) {
 	builtinHandlers := tool.BuiltinMCPHandlers(nil)
 	builtinDescs := tool.BuiltinMCPDescriptions()

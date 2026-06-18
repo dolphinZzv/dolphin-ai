@@ -874,25 +874,6 @@ func TestSkillUpsertDelete(t *testing.T) {
 	}
 }
 
-// removed - covered by TestSkillUpsertInvalidArgs
-func _removed(t *testing.T) {
-	r := NewRegistry()
-	store := newMockSkillStore()
-	RegisterSkillTools(r, store)
-
-	result, err := r.Execute(context.Background(), types.ToolCall{
-		ID:        "call-6",
-		Name:      "skill_upsert",
-		Arguments: `not json`,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !result.IsError {
-		t.Fatal("expected IsError for invalid args")
-	}
-}
-
 func TestRegisterSessionTools(t *testing.T) {
 	r := NewRegistry()
 	mgr := session.NewManager(t.TempDir())

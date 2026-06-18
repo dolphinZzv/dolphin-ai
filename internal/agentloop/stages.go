@@ -211,7 +211,8 @@ func (s *MemoryReadStage) Process(ctx context.Context, state *State) error {
 		return err
 	}
 	state.History = history
-	state.Messages = append(history, types.Message{
+	state.Messages = append([]types.Message{}, history...)
+	state.Messages = append(state.Messages, types.Message{
 		Role:      types.RoleUser,
 		Content:   state.Input,
 		Timestamp: time.Now(),
@@ -665,9 +666,6 @@ type ToolStage struct {
 	Workmode        string
 	MaxParallel     int
 }
-
-// errPermissionDenied is a sentinel error for permission-denied tool calls.
-var errPermissionDenied = fmt.Errorf("permission denied")
 
 func (s *ToolStage) Clone() Stage {
 	// All fields are shared resources. No per-turn state.
