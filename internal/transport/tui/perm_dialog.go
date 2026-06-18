@@ -20,20 +20,20 @@ func renderPermDialog(d permDialog, width int) string {
 	dialogWidth := min(width-4, 60)
 	borderStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#ffd700")).
+		BorderForeground(adaptivePermBorder).
 		Width(dialogWidth).
 		Padding(0, 1)
 
 	promptStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#ffffff")).
+		Foreground(adaptivePermPrompt).
 		Bold(true)
 
 	choiceStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#87ceeb"))
+		Foreground(adaptivePermChoice)
 
 	activeStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#000000")).
-		Background(lipgloss.Color("#ffd700")).
+		Foreground(adaptivePermActiveFg).
+		Background(adaptivePermActiveBg).
 		Bold(true)
 
 	var b strings.Builder

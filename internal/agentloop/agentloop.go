@@ -187,6 +187,33 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	start := time.Now()
 	defer span.End()
 
+	// Catch panics raised by compositor stages so the turn is not silently
+	// dropped: convert the panic into an error result for this turn (so the
+	// transport/UI receives a Done signal instead of hanging forever), then
+	// re-panic so runWorker's recovery still drives exponential backoff and
+	// publishes EventWorkerPanic. This defer is registered after span.End so
+	// it runs first under LIFO unwinding, letting it mark the span as errored
+	// before span.End executes; the remaining defers (ClearActive, Unlock)
+	// still run during the re-panicked unwind.
+	defer func() {
+		if r := recover(); r != nil {
+			span.SetAttributes(attribute.Bool("error", true))
+			span.SetAttributes(attribute.String("panic", fmt.Sprintf("%v", r)))
+			err := fmt.Errorf("worker panic: %v", r)
+			if a.onResult != nil {
+				a.onResult(agentio.TurnResult{
+					TurnID:      turn.TurnID,
+					TransportID: turn.TransportID,
+					SessionID:   turn.SessionID,
+					Text:        "Error: " + err.Error(),
+					Done:        true,
+				})
+			}
+			a.publishTurnEvent(ctx, event.EventTurnError, turn.TurnID, turn.SessionID, start, err)
+			panic(r)
+		}
+	}()
+
 	a.publishTurnEvent(ctx, event.EventTurnStart, turn.TurnID, turn.SessionID, start, nil)
 
 	var output strings.Builder

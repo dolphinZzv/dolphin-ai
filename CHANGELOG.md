@@ -8,6 +8,8 @@ All notable changes to Dolphin will be documented in this file.
 - Add context compaction: when the estimated token count exceeds `compaction.max_tokens`, the oldest messages are summarized into a single `IsSummary` message kept at the head of Messages, while the most recent `compaction.keep_rounds` rounds are preserved verbatim; the compacted history is persisted via a new `Memory.Replace` so subsequent turns (and restarts) use the trimmed context without re-summarizing
 - `Memory` interface gains `Replace`; `types.Message` gains `IsSummary`; new `EventCompaction` event; `compaction.enabled` switches the feature off
 - Compaction summarizer switch marked `//nolint:exhaustive` (system messages never flow through Messages); drop an unused test helper
+- Agent loop: catch panics raised by compositor stages — convert to a TurnResult with Done=true and re-panic so runWorker's recovery still drives backoff and publishes EventWorkerPanic; the turn is no longer silently dropped on a stage panic
+- TUI: permission dialog colors switched from hardcoded literals to adaptive theme colors (light/dark terminal support)
 
 - /context list uses 1-based numbered format (1) base, 2) soul, ...)
 - Add /session stop and /session continue to pause and resume turn processing
