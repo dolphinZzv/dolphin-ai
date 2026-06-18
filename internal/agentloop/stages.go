@@ -1071,9 +1071,15 @@ var permFeedInterval = 5 * time.Second
 // after cancellation is harmless.
 func requestPermissionFeeding(ctx context.Context, tio transport.IO, prompt string) (transport.PermissionResult, error) {
 	Feed(ctx) // immediate feed so the prompt display itself doesn't trip the watchdog
+	// Read the interval once here (in the caller's goroutine) rather than
+	// inside the spawned goroutine below: permFeedInterval is a test-mutable
+	// global, and reading it from a detached goroutine races with a later
+	// test's write to it (no happens-before edge between the two). Capturing
+	// the value keeps the global access on the synchronous call path.
+	interval := permFeedInterval
 	done := make(chan struct{})
 	go func() {
-		ticker := time.NewTicker(permFeedInterval)
+		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
 		for {
 			select {

@@ -32,6 +32,7 @@ All notable changes to Dolphin will be documented in this file.
 - TUI: fix permission dialog being unresolvable — the response channel is now delivered with the prompt message instead of a stale nil copy
 - Agent loop: feeds the idle watchdog while a permission prompt waits for user input, so a slow reader no longer trips `llm_idle_timeout` and cancels the turn mid-prompt
 - TUI: drop the redundant `/exit` hint from the wide-mode bottom status bar
+- Fix cross-test data race: `requestPermissionFeeding`'s detached goroutine read the test-mutable global `permFeedInterval` directly, racing with the next test's write to it under `-race`; the value is now read once on the caller's synchronous path and captured in the closure so no detached goroutine touches the global
 
 ### Changed
 
