@@ -1470,7 +1470,7 @@ func TestAgentLoopSessionLockGC(t *testing.T) {
 		// Acquire and release a session lock so it becomes uncontended.
 		mu := a.sessionLock("gc-test-session")
 		mu.Lock()
-		mu.Unlock()
+		mu.Unlock() //nolint:staticcheck // SA2001: the Lock has the side effect of registering the entry
 
 		So(len(a.sessionLocks), ShouldEqual, 1)
 
@@ -1634,7 +1634,7 @@ func TestStartSessionLockGC(t *testing.T) {
 		// Add a lock that will be uncontended.
 		mu := a.sessionLock("gc-real")
 		mu.Lock()
-		mu.Unlock()
+		mu.Unlock() //nolint:staticcheck // SA2001: Lock registers the entry as a side effect
 
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -1855,7 +1855,7 @@ func TestChaosContextCancelDuringSessionLock(t *testing.T) {
 		a2 := NewAgentLoop(q2, compositor, logger, eb, nil, 1)
 		mu := a2.sessionLock("chaos-session")
 		mu.Lock()
-		mu.Unlock()
+		mu.Unlock() //nolint:staticcheck // SA2001: Lock registers the entry as a side effect
 		// If we got here without deadlock, the test passes.
 	})
 }

@@ -1000,10 +1000,9 @@ func (m model) View() string {
 		leftParts = append(leftParts, fmt.Sprintf("tools %s thinking %s", onOff(m.showTools), onOff(m.showThinking)))
 		leftParts = append(leftParts, fmt.Sprintf("temp:%.1f", m.temperature))
 		leftParts = append(leftParts, fmt.Sprintf("pool:%d", m.poolSize))
-	} else {
-		// Wide mode: model lives in the side panel, so the bottom bar
-		// keeps only identity.
 	}
+	// Wide mode (sideStatus != ""): the model lives in the side panel,
+	// so the bottom bar keeps only identity (leftParts stays empty).
 	statusBar := renderStatusBar(leftParts, rightParts, m.width)
 
 	// === Row 1: viewport + side status panel (split horizontally) ===
@@ -1291,9 +1290,10 @@ func (m model) renderSideStatus() string {
 
 func renderCurrentMsg(msg, username, status string, width int, scrollPct float64) string {
 	icon := "⏳"
-	if status == "success" {
+	switch status {
+	case "success":
 		icon = "✅"
-	} else if status == "error" {
+	case "error":
 		icon = "❌"
 	}
 	label := lipgloss.NewStyle().

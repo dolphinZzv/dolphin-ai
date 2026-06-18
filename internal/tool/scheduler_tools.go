@@ -61,10 +61,10 @@ func RegisterSchedulerTools(r *Registry, sched *scheduler.Scheduler) {
 				if !t.Enabled {
 					enabled = "disabled"
 				}
-				sb.WriteString(fmt.Sprintf("- %s (%s) [%s] schedule: %s, command: %s, last: %s, runs: %d\n",
-					t.Name, t.ID, enabled, t.Schedule, t.Command, lastRun, t.RunCount))
+				fmt.Fprintf(&sb, "- %s (%s) [%s] schedule: %s, command: %s, last: %s, runs: %d\n",
+					t.Name, t.ID, enabled, t.Schedule, t.Command, lastRun, t.RunCount)
 				if t.LastStatus != "" {
-					sb.WriteString(fmt.Sprintf("  status: %s\n", status))
+					fmt.Fprintf(&sb, "  status: %s\n", status)
 				}
 			}
 			return &types.ToolResult{Content: sb.String()}, nil

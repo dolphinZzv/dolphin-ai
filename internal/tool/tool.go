@@ -465,7 +465,7 @@ func RegisterSessionTools(r *Registry, mgr *session.Manager) {
 			if s.Active {
 				active = " [active]"
 			}
-			sb.WriteString(fmt.Sprintf("- %s (created: %s)%s\n", s.ID, s.CreatedAt.Format("2006-01-02 15:04:05"), active))
+			fmt.Fprintf(&sb, "- %s (created: %s)%s\n", s.ID, s.CreatedAt.Format("2006-01-02 15:04:05"), active)
 		}
 		return &types.ToolResult{Content: sb.String()}, nil
 	})

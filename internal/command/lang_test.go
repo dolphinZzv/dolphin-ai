@@ -62,7 +62,7 @@ func TestLangListViaCobra(t *testing.T) {
 	var buf bytes.Buffer
 	r.root.SetOut(&buf)
 	r.root.SetArgs([]string{"lang"})
-	r.root.SetContext(nil)
+	r.root.SetContext(context.TODO())
 	_, err := r.root.ExecuteC()
 	if err != nil {
 		t.Fatalf("ExecuteC error: %v", err)

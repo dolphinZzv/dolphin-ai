@@ -333,7 +333,7 @@ func (e *Email) buildMessage(to, subject, body, messageID string, originalBody s
 	mw := multipart.NewWriter(&buf)
 	boundary := mw.Boundary()
 	buf.WriteString("MIME-Version: 1.0\r\n")
-	buf.WriteString(fmt.Sprintf("Content-Type: multipart/alternative; boundary=%q\r\n", boundary))
+	fmt.Fprintf(&buf, "Content-Type: multipart/alternative; boundary=%q\r\n", boundary)
 	buf.WriteString("\r\n")
 
 	// text/plain part

@@ -155,10 +155,10 @@ func (e *SubscriptionEngine) trigger(ctx context.Context, sub *Subscription, evt
 // buildTriggerInput wraps the subscription content with event context metadata.
 func (e *SubscriptionEngine) buildTriggerInput(sub *Subscription, evt event.Event) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("[Event: %s]\n", evt.Type))
+	fmt.Fprintf(&b, "[Event: %s]\n", evt.Type)
 	// Append payload key-value pairs for context.
 	for k, v := range evt.Payload {
-		b.WriteString(fmt.Sprintf("[%s: %v]\n", k, v))
+		fmt.Fprintf(&b, "[%s: %v]\n", k, v)
 	}
 	b.WriteString("\n---\n\n")
 	b.WriteString(sub.Content)

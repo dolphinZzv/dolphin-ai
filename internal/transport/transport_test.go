@@ -421,7 +421,8 @@ func TestGetInfoEmptyContext(t *testing.T) {
 }
 
 func TestGetInfoNilContext(t *testing.T) {
-	got := GetInfo(nil)
+	// Deliberately pass a nil context to exercise the ctx == nil guard.
+	got := GetInfo(nil) //nolint:staticcheck // SA1012: testing the nil-context branch on purpose
 	if got != nil {
 		t.Fatal("expected nil from nil context")
 	}
