@@ -9,16 +9,26 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
+// mustNewStore creates a FileStore in a temp dir, failing the test on error.
+func mustNewStore(t *testing.T, dir string) *FileStore {
+	t.Helper()
+	store, err := NewFileStore(dir)
+	if err != nil {
+		t.Fatalf("NewFileStore(%q): %v", dir, err)
+	}
+	return store
+}
+
 func TestNewFileStore(t *testing.T) {
 	Convey("NewFileStore", t, func() {
-		store := NewFileStore(t.TempDir())
+		store := mustNewStore(t, t.TempDir())
 		So(store, ShouldNotBeNil)
 	})
 }
 
 func TestFileStoreSaveAndGet(t *testing.T) {
 	Convey("FileStore Save and Get", t, func() {
-		store := NewFileStore(t.TempDir())
+		store := mustNewStore(t, t.TempDir())
 		ctx := context.Background()
 
 		Convey("saves and retrieves a skill", func() {
@@ -53,7 +63,7 @@ func TestFileStoreSaveAndGet(t *testing.T) {
 
 func TestFileStoreList(t *testing.T) {
 	Convey("FileStore List", t, func() {
-		store := NewFileStore(t.TempDir())
+		store := mustNewStore(t, t.TempDir())
 		ctx := context.Background()
 
 		Convey("returns empty list when no skills", func() {
@@ -75,7 +85,7 @@ func TestFileStoreList(t *testing.T) {
 
 func TestFileStoreDelete(t *testing.T) {
 	Convey("FileStore Delete", t, func() {
-		store := NewFileStore(t.TempDir())
+		store := mustNewStore(t, t.TempDir())
 		ctx := context.Background()
 
 		Convey("deletes an existing skill", func() {
@@ -91,7 +101,7 @@ func TestFileStoreDelete(t *testing.T) {
 
 func TestFileStoreSearch(t *testing.T) {
 	Convey("FileStore Search", t, func() {
-		store := NewFileStore(t.TempDir())
+		store := mustNewStore(t, t.TempDir())
 		ctx := context.Background()
 
 		Convey("finds skills matching query in name", func() {
@@ -140,7 +150,7 @@ func TestSkillStruct(t *testing.T) {
 }
 
 func TestSetAutoCommitter(t *testing.T) {
-	store := NewFileStore(t.TempDir())
+	store := mustNewStore(t, t.TempDir())
 	store.SetAutoCommitter(&mockCommitter{})
 	if store.committer == nil {
 		t.Error("expected committer to be set")
@@ -150,7 +160,7 @@ func TestSetAutoCommitter(t *testing.T) {
 func TestSeedDefaults(t *testing.T) {
 	Convey("SeedDefaults", t, func() {
 		ctx := context.Background()
-		store := NewFileStore(t.TempDir())
+		store := mustNewStore(t, t.TempDir())
 
 		SeedDefaults(ctx, store)
 

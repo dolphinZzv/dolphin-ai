@@ -111,7 +111,10 @@ func TestCompositor(t *testing.T) {
 		})
 
 		Convey("ContextBuilderStage injects skills", func() {
-			skStore := skill.NewFileStore(t.TempDir())
+			skStore, storeErr := skill.NewFileStore(t.TempDir())
+			if storeErr != nil {
+				t.Fatal(storeErr)
+			}
 			skStore.Save(context.Background(), skill.Skill{
 				Name:    "helper",
 				Prompt:  "you are a helper",

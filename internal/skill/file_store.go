@@ -3,6 +3,7 @@ package skill
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -40,12 +41,14 @@ func (s *FileStore) SetAutoCommitter(c AutoCommitter) {
 	s.committer = c
 }
 
-func NewFileStore(dir string) *FileStore {
-	os.MkdirAll(dir, 0o755)
+func NewFileStore(dir string) (*FileStore, error) {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return nil, fmt.Errorf("skill: create store dir %q: %w", dir, err)
+	}
 	s := &FileStore{dir: dir}
 	migrateFlatFiles(dir)
 	s.syncIndexLocked()
-	return s
+	return s, nil
 }
 
 func (s *FileStore) path(name string) string {

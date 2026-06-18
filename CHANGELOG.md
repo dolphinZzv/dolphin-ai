@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- Fix CI lint (`golangci-lint run ./... --new`): `skill.NewFileStore` now returns `(*FileStore, error)` instead of silently swallowing `os.MkdirAll` failures (mirrors `limit.NewFileStore`); `ToolsBootstrapper` propagates the error, test callers fail loudly via a `mustNewStore` helper
 - Tighten `.golangci.yml`: add `gci` formatter (import grouping std / 3rd-party / `dolphin` prefix), exclude `errcheck`/`gosec`/`noctx` in test files, declare default presets explicitly (v2 disables them when an `exclusions` block is present), raise timeout to 5m
 - Add high-value linters (`bodyclose`, `errorlint`, `noctx`, `unconvert`, `usestdlibvars`, `wastedassign`) and fix all their findings at net-zero issue count: close WebSocket dial response bodies; use `errors.Is` for sentinel comparisons; thread a real `context.Context` through the model-discovery chain (`Bootstrap` → `createProvider` → `discoverProviderModels` → `DiscoverModels` → `DiscoverAnthropic/OpenAIModels` → deepseek); use `ListenConfig`/`tls.Dialer.DialContext` for a2a/email; bound the Prometheus remote-write push with a 10s timeout context
 - Makefile gates `-race` behind `RACE=1` / `make build-race`; the default `make build` no longer links ThreadSanitizer, cutting idle CPU from ~8% to ~0

@@ -40,7 +40,11 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		c.ToolReg.RegisterBuiltin(name, desc, mt.Schema, mt.Handler)
 	}
 
-	c.SkillStore = skill.NewFileStore(c.Config.GetString("brain.dir") + "/skills")
+	skillStore, err := skill.NewFileStore(c.Config.GetString("brain.dir") + "/skills")
+	if err != nil {
+		return err
+	}
+	c.SkillStore = skillStore
 	c.CmdReg = command.NewRegistry(c.SessionMgr, c.SignalBus)
 	tool.RegisterSkillTools(c.ToolReg, tool.SkillAdapter{Store: c.SkillStore})
 	tool.RegisterSessionTools(c.ToolReg, c.SessionMgr)

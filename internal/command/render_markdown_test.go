@@ -78,8 +78,11 @@ func TestRenderMarkdown_Skills(t *testing.T) {
 		sb := signal.NewBus()
 		r := NewRegistry(mgr, sb)
 
-		skStore := skill.NewFileStore(t.TempDir())
-		err := skStore.Save(context.Background(), skill.Skill{Name: "helper", Description: "helper tool", Enabled: true})
+		skStore, err := skill.NewFileStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = skStore.Save(context.Background(), skill.Skill{Name: "helper", Description: "helper tool", Enabled: true})
 		So(err, ShouldBeNil)
 		RegisterSkills(r, skStore)
 

@@ -401,7 +401,10 @@ func TestRegisterSkills(t *testing.T) {
 		sb := signal.NewBus()
 		r := NewRegistry(mgr, sb)
 
-		skStore := skill.NewFileStore(t.TempDir())
+		skStore, err := skill.NewFileStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
 		ctx := context.Background()
 		skStore.Save(ctx, skill.Skill{Name: "helper", Description: "helper tool", Enabled: true})
 		skStore.Save(ctx, skill.Skill{Name: "disabled-one", Description: "not used", Enabled: false})
@@ -1014,7 +1017,11 @@ func TestAllRegistrationCommandsNoPanic(t *testing.T) {
 		RegisterContext(r, func() *appctx.Registry { return appctx.NewRegistry() })
 		RegisterLimit(r, nil)
 		RegisterScheduler(r, &mockSchedLister{})
-		RegisterSkills(r, skill.NewFileStore(t.TempDir()))
+		skillStore, err := skill.NewFileStore(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		RegisterSkills(r, skillStore)
 		RegisterSessionStatus(r, mgr, memory.NewFileMemory(mgr), "shared", nil)
 
 		So(func() { r.Execute(context.Background(), "context", "") }, ShouldNotPanic)
