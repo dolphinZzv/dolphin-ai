@@ -62,10 +62,10 @@ func newBrowserMCPServer(t testing.TB) *browserMCPServer {
 				case "tools/call":
 					handleCallSSE(w, r)
 				default:
-					http.Error(w, `{"jsonrpc":"2.0","error":{"code":-32601,"message":"method not found"}}`, 200)
+					http.Error(w, `{"jsonrpc":"2.0","error":{"code":-32601,"message":"method not found"}}`, http.StatusOK)
 				}
 			default:
-				http.Error(w, "Not Found", 404)
+				http.Error(w, "Not Found", http.StatusNotFound)
 			}
 		}),
 	}
@@ -133,7 +133,7 @@ func handleCallSSE(w http.ResponseWriter, r *http.Request) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", 500)
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 

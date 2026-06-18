@@ -3,10 +3,10 @@ package command
 import (
 	"sort"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/config"
 	"dolphin/internal/limit"
-
-	"github.com/spf13/cobra"
 )
 
 // limitStore is the subset of Store needed for the /limit command.

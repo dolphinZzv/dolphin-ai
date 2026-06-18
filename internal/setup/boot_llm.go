@@ -6,13 +6,13 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/llm"
 	_ "dolphin/internal/llm/custom"
 	"dolphin/internal/llm/deepseek"
 	_ "dolphin/internal/llm/models"
 	_ "dolphin/internal/llm/volcengine"
-
-	"go.uber.org/zap"
 )
 
 type LLMBootstrapper struct{}
@@ -29,7 +29,7 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	if len(providerNames) == 0 {
 		// Legacy single-provider mode.
 		c.Logger.Warn("no providers configured via llm.<name>.api_key, falling back to legacy")
-		provider := c.createProvider("openai", nil)
+		provider := c.createProvider(ctx, "openai", nil)
 		mgr.AddProvider("openai", provider)
 	} else {
 		for _, name := range providerNames {
@@ -38,7 +38,7 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 				zap.String("name", name),
 				zap.Int("models", len(models)),
 			)
-			provider := c.createProvider(name, models)
+			provider := c.createProvider(ctx, name, models)
 			mgr.AddProvider(name, provider)
 		}
 	}
@@ -56,7 +56,8 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 func discoverProviderNames(cfg interface {
 	GetString(string) string
 	Keys() []string
-}) []string {
+},
+) []string {
 	seen := make(map[string]bool)
 	var providers []string
 
@@ -99,7 +100,8 @@ func parseProviderModels(cfg interface {
 	GetDuration(string) time.Duration
 	GetBool(string) bool
 	Keys() []string
-}, provider string) []llm.ModelConfig {
+}, provider string,
+) []llm.ModelConfig {
 	var models []llm.ModelConfig
 	for i := 0; ; i++ {
 		prefix := "llm." + provider + ".models." + strconv.Itoa(i)
@@ -158,7 +160,7 @@ func parseProviderModels(cfg interface {
 	return models
 }
 
-func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Provider {
+func (c *Context) createProvider(ctx context.Context, name string, models []llm.ModelConfig) llm.Provider {
 	modelDiscover := c.Config.GetBool("llm." + name + ".model_discover")
 
 	cfg := llm.Config{
@@ -176,7 +178,7 @@ func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Prov
 	if len(models) > 0 {
 		cfg.Models = models
 	} else if modelDiscover {
-		discovered, err := discoverProviderModels(cfg)
+		discovered, err := discoverProviderModels(ctx, cfg)
 		if err != nil {
 			c.Logger.Warn("model discovery failed",
 				zap.String("provider", name),
@@ -195,11 +197,11 @@ func (c *Context) createProvider(name string, models []llm.ModelConfig) llm.Prov
 
 // discoverProviderModels dispatches model discovery to the vendor-specific
 // implementation, falling back to generic api_type-based discovery.
-func discoverProviderModels(cfg llm.Config) ([]llm.ModelConfig, error) {
+func discoverProviderModels(ctx context.Context, cfg llm.Config) ([]llm.ModelConfig, error) {
 	switch cfg.Vendor {
 	case "deepseek":
-		return deepseek.DiscoverModels(cfg)
+		return deepseek.DiscoverModels(ctx, cfg)
 	default:
-		return llm.DiscoverModels(cfg, nil)
+		return llm.DiscoverModels(ctx, cfg, nil)
 	}
 }

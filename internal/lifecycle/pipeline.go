@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
 	"dolphin/internal/brain"
@@ -17,8 +19,6 @@ import (
 	"dolphin/internal/transport"
 	"dolphin/internal/userio"
 	"dolphin/internal/watcher"
-
-	"go.uber.org/zap"
 )
 
 type Pipeline struct {
@@ -202,7 +202,6 @@ func (p *Pipeline) Start(ctx context.Context) {
 			}
 		}()
 	}
-
 }
 
 func (p *Pipeline) Shutdown() {

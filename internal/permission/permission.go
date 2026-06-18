@@ -131,7 +131,7 @@ func (s *Store) save() error {
 	if err != nil {
 		return fmt.Errorf("permission: marshal: %w", err)
 	}
-	if err := os.WriteFile(s.file, data, 0644); err != nil {
+	if err := os.WriteFile(s.file, data, 0o644); err != nil {
 		return fmt.Errorf("permission: write %s: %w", s.file, err)
 	}
 	return nil

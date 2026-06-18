@@ -1,9 +1,9 @@
 package command
 
 import (
-	"dolphin/internal/scheduler"
-
 	"github.com/spf13/cobra"
+
+	"dolphin/internal/scheduler"
 )
 
 // RegisterScheduler registers the /scheduler command.

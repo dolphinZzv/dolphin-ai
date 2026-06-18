@@ -41,7 +41,7 @@ func (s *FileStore) SetAutoCommitter(c AutoCommitter) {
 }
 
 func NewFileStore(dir string) *FileStore {
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(dir, 0o755)
 	s := &FileStore{dir: dir}
 	migrateFlatFiles(dir)
 	s.syncIndexLocked()
@@ -104,7 +104,7 @@ func (s *FileStore) Save(ctx context.Context, sk Skill) error {
 		verb = "update"
 	}
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 	if err := writeFile(s.skillFile(sk.Name), &sk); err != nil {
@@ -184,7 +184,7 @@ func (s *FileStore) syncIndexLocked() {
 	if !listed {
 		b.WriteString("No skills registered.\n")
 	}
-	os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0644)
+	os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o644)
 }
 
 // ---------------------------------------------------------------------------
@@ -207,7 +207,7 @@ func migrateFlatFiles(dir string) {
 			os.Remove(filepath.Join(dir, e.Name()))
 			continue
 		}
-		os.MkdirAll(skillDir, 0755)
+		os.MkdirAll(skillDir, 0o755)
 		oldPath := filepath.Join(dir, e.Name())
 		newPath := filepath.Join(skillDir, "SKILL.md")
 		os.Rename(oldPath, newPath)
@@ -276,7 +276,7 @@ func writeFile(path string, sk *Skill) error {
 		sb.WriteString("\n")
 	}
 
-	return os.WriteFile(path, []byte(sb.String()), 0644)
+	return os.WriteFile(path, []byte(sb.String()), 0o644)
 }
 
 func writeMetaFile(path string, sk *Skill) error {
@@ -284,5 +284,5 @@ func writeMetaFile(path string, sk *Skill) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0o644)
 }

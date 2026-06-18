@@ -6,11 +6,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	"dolphin/internal/i18n"
 	"dolphin/internal/lifecycle"
-	"github.com/spf13/cobra"
 )
 
 func main() {

@@ -59,7 +59,7 @@ func TestWatcherDetectsNewFile(t *testing.T) {
 
 	// Write a new file and wait for the next scan
 	time.Sleep(30 * time.Millisecond)
-	os.WriteFile(filepath.Join(dir, "new.md"), []byte("hello"), 0644)
+	os.WriteFile(filepath.Join(dir, "new.md"), []byte("hello"), 0o644)
 	time.Sleep(50 * time.Millisecond)
 
 	mu.Lock()
@@ -84,7 +84,7 @@ func TestWatcherDetectsNewFile(t *testing.T) {
 func TestWatcherDetectsUpdate(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "file.md")
-	os.WriteFile(filePath, []byte("v1"), 0644)
+	os.WriteFile(filePath, []byte("v1"), 0o644)
 
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
@@ -104,7 +104,7 @@ func TestWatcherDetectsUpdate(t *testing.T) {
 
 	// Wait for initial scan, then modify
 	time.Sleep(30 * time.Millisecond)
-	os.WriteFile(filePath, []byte("v2"), 0644)
+	os.WriteFile(filePath, []byte("v2"), 0o644)
 	time.Sleep(50 * time.Millisecond)
 
 	mu.Lock()
@@ -120,7 +120,7 @@ func TestWatcherDetectsUpdate(t *testing.T) {
 func TestWatcherDetectsDelete(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "delete.md")
-	os.WriteFile(filePath, []byte("bye"), 0644)
+	os.WriteFile(filePath, []byte("bye"), 0o644)
 
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
@@ -155,8 +155,8 @@ func TestWatcherDetectsDelete(t *testing.T) {
 func TestWatcherSkipsGit(t *testing.T) {
 	dir := t.TempDir()
 	// Create a .git directory with tracked content
-	os.MkdirAll(filepath.Join(dir, ".git", "objects"), 0755)
-	os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("ref"), 0644)
+	os.MkdirAll(filepath.Join(dir, ".git", "objects"), 0o755)
+	os.WriteFile(filepath.Join(dir, ".git", "HEAD"), []byte("ref"), 0o644)
 
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
@@ -209,8 +209,8 @@ func TestWatcherMultipleChanges(t *testing.T) {
 	time.Sleep(30 * time.Millisecond)
 
 	// Create two files
-	os.WriteFile(filepath.Join(dir, "a.md"), []byte("a"), 0644)
-	os.WriteFile(filepath.Join(dir, "b.md"), []byte("b"), 0644)
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("a"), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.md"), []byte("b"), 0o644)
 
 	time.Sleep(50 * time.Millisecond)
 
@@ -225,13 +225,13 @@ func TestWatcherMultipleChanges(t *testing.T) {
 	if createCount != 2 {
 		t.Errorf("expected 2 create events, got %d", createCount)
 	}
-
 }
+
 func TestWatcherIgnoreNegation(t *testing.T) {
 	dir := t.TempDir()
 	// .dolphinignore: ignore *.log, but NOT important.log
 	dolphinignore := filepath.Join(dir, ".dolphinignore")
-	os.WriteFile(dolphinignore, []byte("*.log\n!important.log\n"), 0644)
+	os.WriteFile(dolphinignore, []byte("*.log\n!important.log\n"), 0o644)
 
 	bus := event.NewBus()
 	w := NewWatcher(dir, bus, 10*time.Millisecond)
@@ -250,9 +250,9 @@ func TestWatcherIgnoreNegation(t *testing.T) {
 	time.Sleep(30 * time.Millisecond)
 
 	// Create a regular log file (should be ignored)
-	os.WriteFile(filepath.Join(dir, "debug.log"), []byte("debug"), 0644)
+	os.WriteFile(filepath.Join(dir, "debug.log"), []byte("debug"), 0o644)
 	// Create an "important" log file (should NOT be ignored)
-	os.WriteFile(filepath.Join(dir, "important.log"), []byte("important"), 0644)
+	os.WriteFile(filepath.Join(dir, "important.log"), []byte("important"), 0o644)
 	time.Sleep(50 * time.Millisecond)
 
 	mu.Lock()

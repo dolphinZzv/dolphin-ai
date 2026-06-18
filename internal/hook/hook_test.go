@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"dolphin/internal/event"
-
 	. "github.com/smartystreets/goconvey/convey"
+
+	"dolphin/internal/event"
 )
 
 type testHandler struct {

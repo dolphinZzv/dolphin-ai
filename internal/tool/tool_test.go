@@ -8,10 +8,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/h2non/gock"
+
 	"dolphin/internal/session"
 	"dolphin/internal/skill"
 	"dolphin/internal/types"
-	"github.com/h2non/gock"
 )
 
 // mockExecutor is a simple mock that returns predefined tool definitions.

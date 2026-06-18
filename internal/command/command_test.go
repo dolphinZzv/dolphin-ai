@@ -10,8 +10,14 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"github.com/spf13/cobra"
+	"go.uber.org/zap"
+
+	"dolphin/internal/agentio"
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
+	appctx "dolphin/internal/context"
 	"dolphin/internal/event"
 	"dolphin/internal/limit"
 	"dolphin/internal/llm"
@@ -22,14 +28,7 @@ import (
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
 	transport "dolphin/internal/transport"
-
-	"dolphin/internal/agentio"
-	appctx "dolphin/internal/context"
 	"dolphin/internal/types"
-
-	. "github.com/smartystreets/goconvey/convey"
-	"github.com/spf13/cobra"
-	"go.uber.org/zap"
 )
 
 func TestNewRegistry(t *testing.T) {
@@ -847,6 +846,7 @@ func (m *mockStatusProvider) Models(_ context.Context) ([]llm.ModelConfig, error
 		{Name: m.name, Model: m.model, Temperature: m.temp, TopP: m.tp},
 	}, nil
 }
+
 func (m *mockStatusProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	ch := make(chan llm.LLMChunk)
 	close(ch)
@@ -1040,9 +1040,11 @@ type mockMCPSource struct {
 func (m *mockMCPSource) List(_ context.Context) ([]types.ToolDef, error) {
 	return m.defs, nil
 }
+
 func (m *mockMCPSource) ListActiveSources(_ context.Context) []tool.SourceInfo {
 	return m.sources
 }
+
 func (m *mockMCPSource) DisableSource(name string) error {
 	for i, s := range m.sources {
 		if s.Name == name {
@@ -1052,6 +1054,7 @@ func (m *mockMCPSource) DisableSource(name string) error {
 	}
 	return fmt.Errorf("not found")
 }
+
 func (m *mockMCPSource) EnableSource(name string) error {
 	for i, s := range m.sources {
 		if s.Name == name {
@@ -1223,7 +1226,6 @@ func TestRegisterSession(t *testing.T) {
 			}
 		})
 	})
-
 }
 
 // testContextSection implements appctx.Section for context command tests.
@@ -1319,7 +1321,7 @@ func TestRegisterConfig(t *testing.T) {
 
 		Convey("refuses to overwrite without --force", func() {
 			tmpPath := filepath.Join(t.TempDir(), "existing.yaml")
-			_ = os.WriteFile(tmpPath, []byte("original"), 0644)
+			_ = os.WriteFile(tmpPath, []byte("original"), 0o644)
 			output := r.Execute(context.Background(),
 				"config init -o "+tmpPath, "")
 			So(output, ShouldContainSubstring, "already exists")
@@ -1329,7 +1331,7 @@ func TestRegisterConfig(t *testing.T) {
 
 		Convey("overwrites with --force", func() {
 			tmpPath := filepath.Join(t.TempDir(), "force-test.yaml")
-			_ = os.WriteFile(tmpPath, []byte("original"), 0644)
+			_ = os.WriteFile(tmpPath, []byte("original"), 0o644)
 			output := r.Execute(context.Background(),
 				"config init -o "+tmpPath+" --force", "")
 			So(output, ShouldContainSubstring, "created default config at")

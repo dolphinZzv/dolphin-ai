@@ -8,18 +8,20 @@ import (
 	"testing"
 	"time"
 
-	"dolphin/internal/config"
-	"dolphin/internal/event"
-	"dolphin/internal/hook"
-
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 	"go.uber.org/zap"
+
+	"dolphin/internal/config"
+	"dolphin/internal/event"
+	"dolphin/internal/hook"
 )
 
-var testHookOnce sync.Once
-var testHook *PrometheusHook
+var (
+	testHookOnce sync.Once
+	testHook     *PrometheusHook
+)
 
 // getTestHook returns a shared PrometheusHook instance. NewPrometheusHook calls
 // prometheus.MustRegister which panics on duplicate registration, so we must
@@ -873,6 +875,8 @@ func TestMetricToTimeSeries_NilCounter(t *testing.T) {
 }
 
 // Import guards — ensure these types are used.
-var _ = prompb.WriteRequest{}
-var _ = dto.MetricType_COUNTER
-var _ = http.StatusOK
+var (
+	_ = prompb.WriteRequest{}
+	_ = dto.MetricType_COUNTER
+	_ = http.StatusOK
+)

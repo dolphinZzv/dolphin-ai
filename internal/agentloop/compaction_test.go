@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/types"
-
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 var errSimulated = errors.New("simulated summary failure")
@@ -31,6 +31,7 @@ func (s *summaryProvider) ActiveModel() string { return "test-model" }
 func (s *summaryProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
 	return nil, nil
 }
+
 func (s *summaryProvider) CompleteStream(_ context.Context, req llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	s.gotReq = req
 	ch := make(chan llm.LLMChunk, 2)
@@ -59,10 +60,12 @@ type memStore struct {
 func (m *memStore) Read(_ context.Context, _ string) ([]types.Message, error) {
 	return m.msgs, nil
 }
+
 func (m *memStore) Write(_ context.Context, _ string, msg types.Message) error {
 	m.msgs = append(m.msgs, msg)
 	return nil
 }
+
 func (m *memStore) Replace(_ context.Context, _ string, msgs []types.Message) error {
 	m.msgs = append([]types.Message{}, msgs...)
 	return nil
@@ -183,7 +186,7 @@ func TestCompaction_TailDoesNotOrphanToolResult(t *testing.T) {
 
 		// The tool_result and its matching tool_use must both be in the
 		// compacted result (tail), adjacent and ID-linked.
-		var toolIdx = -1
+		toolIdx := -1
 		for i, m := range state.Messages {
 			if m.Role == types.RoleTool {
 				toolIdx = i

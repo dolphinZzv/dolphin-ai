@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"dolphin/internal/llm"
-	"dolphin/internal/types"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
+
+	"dolphin/internal/llm"
+	"dolphin/internal/types"
 )
 
 func TestVolcengineOpenAIInit(t *testing.T) {

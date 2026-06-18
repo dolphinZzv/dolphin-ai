@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"dolphin/internal/i18n"
 	"github.com/spf13/cobra"
+
+	"dolphin/internal/i18n"
 )
 
 func TestLangListOutput(t *testing.T) {

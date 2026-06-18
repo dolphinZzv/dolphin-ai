@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/config"
 	"dolphin/internal/event"
-	"go.uber.org/zap"
 )
 
 func TestMemoryStore(t *testing.T) {

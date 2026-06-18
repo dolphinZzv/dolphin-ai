@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"dolphin/internal/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"dolphin/internal/config"
 )
 
 func TestNew(t *testing.T) {

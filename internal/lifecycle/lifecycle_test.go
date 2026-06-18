@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+
 	"dolphin/internal/config"
 	"dolphin/internal/event"
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestPipeline(t *testing.T) {

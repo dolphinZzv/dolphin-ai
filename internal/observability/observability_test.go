@@ -5,13 +5,14 @@ import (
 	"os"
 	"testing"
 
-	"dolphin/internal/config"
-	"dolphin/internal/event"
-	"dolphin/internal/hook"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
+
+	"dolphin/internal/config"
+	"dolphin/internal/event"
+	"dolphin/internal/hook"
 )
 
 func TestNewOTelHook(t *testing.T) {
@@ -474,8 +475,10 @@ memory:
 `
 
 // Unused import guard — these types are used within the test helpers.
-var _ = trace.Span(nil)
-var _ = attribute.Bool("", false)
+var (
+	_ = trace.Span(nil)
+	_ = attribute.Bool("", false)
+)
 
 func TestTruncate(t *testing.T) {
 	tests := []struct {

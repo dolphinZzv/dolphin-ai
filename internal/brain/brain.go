@@ -58,7 +58,7 @@ func (b *Brain) IsInitialized() bool {
 // git.PlainInit is called. On first init, seed files from the embedded seed/
 // directory are written and committed.
 func (b *Brain) Init(ctx context.Context) error {
-	if err := os.MkdirAll(b.dir, 0755); err != nil {
+	if err := os.MkdirAll(b.dir, 0o755); err != nil {
 		return fmt.Errorf("brain: mkdir: %w", err)
 	}
 
@@ -84,7 +84,7 @@ func (b *Brain) Init(ctx context.Context) error {
 
 	// Write .gitignore.
 	gitignore := "# Brain gitignore\n*.log\n.env\ntokens\n"
-	if err := os.WriteFile(filepath.Join(b.dir, ".gitignore"), []byte(gitignore), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(b.dir, ".gitignore"), []byte(gitignore), 0o644); err != nil {
 		return fmt.Errorf("brain: write .gitignore: %w", err)
 	}
 
@@ -102,10 +102,10 @@ func (b *Brain) Init(ctx context.Context) error {
 		}
 		rel := strings.TrimPrefix(path, "seed/")
 		full := filepath.Join(b.dir, rel)
-		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return fmt.Errorf("brain: mkdir seed %s: %w", rel, err)
 		}
-		if err := os.WriteFile(full, data, 0644); err != nil {
+		if err := os.WriteFile(full, data, 0o644); err != nil {
 			return fmt.Errorf("brain: write seed %s: %w", rel, err)
 		}
 		return nil
@@ -187,7 +187,7 @@ func (b *Brain) Write(ctx context.Context, path, summary, content string) error 
 	}
 
 	parent := filepath.Dir(full)
-	if err := os.MkdirAll(parent, 0755); err != nil {
+	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return fmt.Errorf("brain: mkdir %s: %w", path, err)
 	}
 
@@ -196,7 +196,7 @@ func (b *Brain) Write(ctx context.Context, path, summary, content string) error 
 		exists = false
 	}
 
-	if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
 		return fmt.Errorf("brain: write %s: %w", path, err)
 	}
 
@@ -382,7 +382,7 @@ func (b *Brain) AutoCommit(ctx context.Context, msg string) {
 			When: time.Now(),
 		},
 	})
-	if err != nil && err != gogit.ErrEmptyCommit {
+	if err != nil && !errors.Is(err, gogit.ErrEmptyCommit) {
 		fmt.Fprintf(os.Stderr, "brain: auto-commit: %v\n", err)
 	}
 }
@@ -439,7 +439,7 @@ func (b *Brain) commitAll(msg string) error {
 			When: time.Now(),
 		},
 	})
-	if err != nil && err != gogit.ErrEmptyCommit {
+	if err != nil && !errors.Is(err, gogit.ErrEmptyCommit) {
 		return fmt.Errorf("brain: commit: %w", err)
 	}
 	return nil
@@ -463,7 +463,7 @@ func (b *Brain) commitPath(path, msg string) error {
 			When: time.Now(),
 		},
 	})
-	if err != nil && err != gogit.ErrEmptyCommit {
+	if err != nil && !errors.Is(err, gogit.ErrEmptyCommit) {
 		return fmt.Errorf("brain: commit: %w", err)
 	}
 	return nil

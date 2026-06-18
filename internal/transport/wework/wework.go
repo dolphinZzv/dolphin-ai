@@ -13,13 +13,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
+	"go.uber.org/zap"
+
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
 	transport "dolphin/internal/transport"
 	wemcp "dolphin/internal/transport/wework/mcp"
-
-	"github.com/gorilla/websocket"
-	"go.uber.org/zap"
 )
 
 type wsConn interface {
@@ -143,6 +143,7 @@ func (w *WeWork) Start(ctx context.Context) error { return nil }
 func (w *WeWork) Context() string {
 	return i18n.T("wework.context")
 }
+
 func (w *WeWork) Tools() []common.ToolDesc {
 	if w.cfg.BotID == "" || w.cfg.Secret == "" {
 		return nil

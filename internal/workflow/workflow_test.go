@@ -10,17 +10,16 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+	"gopkg.in/yaml.v3"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
 	"dolphin/internal/tool"
 	"dolphin/internal/types"
-
-	"gopkg.in/yaml.v3"
-
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -1101,7 +1100,7 @@ func TestEngineContinue(t *testing.T) {
 			os.WriteFile(path, []byte(`workflow: not_paused
 status: completed
 steps: []
-`), 0644)
+`), 0o644)
 			defer os.Remove(path)
 
 			spec := &WorkflowSpec{
@@ -1452,7 +1451,7 @@ steps:
       ok: true
   - id: b
     status: pending
-`), 0644)
+`), 0o644)
 		defer os.Remove(path)
 
 		mock := &mockLLMProvider{
@@ -1639,7 +1638,7 @@ func TestEngineContinueWithPausedFile(t *testing.T) {
 			},
 		}
 		data, _ := yaml.Marshal(paused)
-		_ = os.WriteFile(resumeFile, data, 0600)
+		_ = os.WriteFile(resumeFile, data, 0o600)
 		result, err := engine.Continue(context.Background(), spec, "")
 		So(err, ShouldBeNil)
 		So(result.Status, ShouldEqual, "completed")
@@ -1723,6 +1722,7 @@ func TestContinueWorkflowHandlerWithFile(t *testing.T) {
 		})
 	})
 }
+
 func TestCollectFieldSkipNilResult(t *testing.T) {
 	Convey("collectField skips instances with nil Result", t, func() {
 		results := map[string]*StepResult{
@@ -1781,7 +1781,7 @@ func TestContinueWorkflowHandlerFullPaths(t *testing.T) {
 				},
 			}
 			data, _ := yaml.Marshal(paused)
-			os.WriteFile(resumeFile, data, 0644)
+			os.WriteFile(resumeFile, data, 0o644)
 
 			yamlData := []byte("version: \"1\"\nname: " + specName + "\nsteps:\n  - id: a\n    prompt: a\n  - id: b\n    prompt: b\n    depends_on: [a]\n")
 			yf := writeTempFile(t, specName+".workflow.yaml", string(yamlData))
@@ -1806,7 +1806,7 @@ func TestContinueWorkflowHandlerFullPaths(t *testing.T) {
 				},
 			}
 			data, _ := yaml.Marshal(paused)
-			os.WriteFile(resumeFile, data, 0644)
+			os.WriteFile(resumeFile, data, 0o644)
 
 			yamlData := []byte("version: \"1\"\nname: " + specName + "\nsteps:\n  - id: a\n    prompt: a\n  - id: b\n    prompt: b\n    depends_on: [a]\n    checkpoint: true\n")
 			yf := writeTempFile(t, specName+".workflow.yaml", string(yamlData))
@@ -1830,7 +1830,7 @@ func TestContinueWorkflowHandlerFullPaths(t *testing.T) {
 				},
 			}
 			data, _ := yaml.Marshal(paused)
-			os.WriteFile(resumeFile, data, 0644)
+			os.WriteFile(resumeFile, data, 0o644)
 
 			yamlData := []byte("version: \"1\"\nname: " + specName + "\nsteps:\n  - id: b\n    prompt: b\n")
 			yf := writeTempFile(t, specName+".workflow.yaml", string(yamlData))
@@ -1944,7 +1944,7 @@ func TestHandlerStripsToolTimeout(t *testing.T) {
 func writeTempFile(t *testing.T, name, content string) string {
 	t.Helper()
 	path := "/tmp/" + name
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("writeTempFile: %v", err)
 	}
 	t.Cleanup(func() { os.Remove(path) })

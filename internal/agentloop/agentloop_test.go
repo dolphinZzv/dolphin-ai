@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/event"
@@ -24,8 +27,6 @@ import (
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 // testSessionStore is a lightweight SessionStore for tests.
@@ -432,6 +433,7 @@ func (m *mockTransport) Close() error                         { return nil }
 func (m *mockTransport) Capability() transport.Capability {
 	return transport.Capability{Interactive: true}
 }
+
 func (m *mockTransport) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
 	return m.permResult, nil
 }
@@ -572,6 +574,7 @@ func (s *delayStage) Name() string { return "delay" }
 func (s *delayStage) Clone() Stage {
 	return &delayStage{delay: s.delay, first: true}
 }
+
 func (s *delayStage) Process(ctx context.Context, _ *State) error {
 	if s.first {
 		s.first = false
@@ -1545,6 +1548,7 @@ func (m *mockLLMProvider) Name() string { return m.name }
 func (m *mockLLMProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+
 func (m *mockLLMProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
 	return nil, nil
 }
@@ -1786,7 +1790,6 @@ func TestAgentLoopWorkerPanicBackoff(t *testing.T) {
 			ms := e.Payload["backoff_ms"].(int64)
 			So(ms, ShouldBeLessThanOrEqualTo, int64(10))
 		}
-
 	})
 }
 
@@ -2009,6 +2012,7 @@ func (s *blockingStage) Clone() Stage {
 		blockUntilCancel: s.blockUntilCancel,
 	}
 }
+
 func (s *blockingStage) Process(ctx context.Context, _ *State) error {
 	close(s.blockStarted)
 	select {
@@ -2535,6 +2539,7 @@ func (e *errorThenSuccessProvider) CompleteStream(_ context.Context, _ llm.LLMRe
 	close(ch)
 	return ch, nil
 }
+
 func (e *errorThenSuccessProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
 	return nil, nil
 }

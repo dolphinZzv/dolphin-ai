@@ -5,11 +5,12 @@ import (
 	"sync"
 	"testing"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/transport"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 type writeRecorderTransport struct {

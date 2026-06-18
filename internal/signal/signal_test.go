@@ -2,6 +2,7 @@ package signal
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -150,7 +151,7 @@ func TestDelete(t *testing.T) {
 
 	// recvCh should be closed; Recv should return context.Canceled
 	_, err := Recv(context.Background(), recvCh)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled on deleted session, got %v", err)
 	}
 }
@@ -167,7 +168,7 @@ func TestRecvContextCancellation(t *testing.T) {
 
 	ch := make(chan Signal, 1)
 	_, err := Recv(ctx, ch)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled, got %v", err)
 	}
 }
@@ -177,7 +178,7 @@ func TestRecvClosedChannel(t *testing.T) {
 	close(ch)
 
 	_, err := Recv(context.Background(), ch)
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("expected context.Canceled for closed channel, got %v", err)
 	}
 }

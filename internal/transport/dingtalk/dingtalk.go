@@ -12,15 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"dolphin/internal/common"
-	"dolphin/internal/i18n"
-	transport "dolphin/internal/transport"
-	dtmcp "dolphin/internal/transport/dingtalk/mcp"
-
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	dtclient "github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 	dtlogger "github.com/open-dingtalk/dingtalk-stream-sdk-go/logger"
 	"go.uber.org/zap"
+
+	"dolphin/internal/common"
+	"dolphin/internal/i18n"
+	transport "dolphin/internal/transport"
+	dtmcp "dolphin/internal/transport/dingtalk/mcp"
 )
 
 // stdLogAdapter bridges DingTalk SDK logs to the application logger.
@@ -32,12 +32,15 @@ func (a *stdLogAdapter) Debugf(format string, args ...any) {}
 func (a *stdLogAdapter) Infof(format string, args ...any) {
 	a.logger.Info(fmt.Sprintf(format, args...))
 }
+
 func (a *stdLogAdapter) Warningf(format string, args ...any) {
 	a.logger.Warn(fmt.Sprintf(format, args...))
 }
+
 func (a *stdLogAdapter) Errorf(format string, args ...any) {
 	a.logger.Warn(fmt.Sprintf(format, args...))
 }
+
 func (a *stdLogAdapter) Fatalf(format string, args ...any) {
 	a.logger.Error(fmt.Sprintf(format, args...))
 }
@@ -157,6 +160,7 @@ func (d *DingTalk) Tools() []common.ToolDesc {
 		},
 	}
 }
+
 func (d *DingTalk) Start(ctx context.Context) error {
 	if d.cfg.WebhookURL != "" {
 		go d.sendStartupNotification(ctx)

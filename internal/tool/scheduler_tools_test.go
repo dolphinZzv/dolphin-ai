@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/scheduler"
 	"dolphin/internal/types"
-	"go.uber.org/zap"
 )
 
 // mockBrainWriter implements scheduler.BrainWriter for testing.

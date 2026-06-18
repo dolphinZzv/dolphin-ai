@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
-	"dolphin/internal/agentio"
-
 	"github.com/spf13/cobra"
+
+	"dolphin/internal/agentio"
 )
 
 // RegisterQueue registers the /queue command for viewing and managing the agent turn queue.

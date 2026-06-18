@@ -10,6 +10,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/h2non/gock"
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/brain"
 	"dolphin/internal/command"
@@ -23,10 +27,6 @@ import (
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/userio"
-
-	"github.com/h2non/gock"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 // ---------------------------------------------------------------------------
@@ -1326,6 +1326,7 @@ func (m *llmProviderMock) CompleteStream(_ context.Context, _ llm.LLMRequest) (<
 	close(ch)
 	return ch, nil
 }
+
 func (m *llmProviderMock) Models(_ context.Context) ([]llm.ModelConfig, error) {
 	return nil, nil
 }
@@ -1480,7 +1481,7 @@ func TestCreateProvider_withConfig(t *testing.T) {
 		"llm.max_tokens":      4096,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider("openai", nil)
+	provider := c.createProvider(context.Background(), "openai", nil)
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
 	}
@@ -1496,7 +1497,7 @@ func TestCreateProvider_withModels(t *testing.T) {
 		"llm.deepseek.models.0.temperature": 0.7,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider("deepseek", nil)
+	provider := c.createProvider(context.Background(), "deepseek", nil)
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
 	}
@@ -1696,7 +1697,7 @@ func TestCreateProvider_withModelDiscoverOpenAI(t *testing.T) {
 		"llm.openai.base_url":       "https://api.openai.com",
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider("openai", nil)
+	provider := c.createProvider(context.Background(), "openai", nil)
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
 	}
@@ -1722,7 +1723,7 @@ func TestCreateProvider_withModelDiscoverDeepSeek(t *testing.T) {
 		"llm.deepseek.base_url":       "https://api.deepseek.com",
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider("deepseek", nil)
+	provider := c.createProvider(context.Background(), "deepseek", nil)
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
 	}
@@ -1742,7 +1743,7 @@ func TestCreateProvider_withModelDiscoverError(t *testing.T) {
 		"llm.openai.base_url":       "https://api.openai.com",
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider("openai", nil)
+	provider := c.createProvider(context.Background(), "openai", nil)
 	if provider == nil {
 		t.Fatal("expected non-nil provider even on discovery error")
 	}
@@ -1759,7 +1760,7 @@ func TestCreateProvider_withModelsPreemptsDiscover(t *testing.T) {
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
 	models := []llm.ModelConfig{{Name: "manual-model", Model: "manual-model"}}
-	provider := c.createProvider("test", models)
+	provider := c.createProvider(context.Background(), "test", models)
 	if provider == nil {
 		t.Fatal("expected non-nil provider")
 	}
@@ -1787,7 +1788,7 @@ func TestDiscoverProviderModels_deepseek(t *testing.T) {
 		APIKey:  "sk-test",
 		BaseURL: "https://api.deepseek.com",
 	}
-	models, err := discoverProviderModels(cfg)
+	models, err := discoverProviderModels(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1814,7 +1815,7 @@ func TestDiscoverProviderModels_default(t *testing.T) {
 		APIKey:  "sk-test",
 		BaseURL: "https://api.openai.com",
 	}
-	models, err := discoverProviderModels(cfg)
+	models, err := discoverProviderModels(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2106,6 +2107,7 @@ func (s *stubProvider) Name() string { return s.name }
 func (s *stubProvider) CompleteStream(ctx context.Context, req llm.LLMRequest) (<-chan llm.LLMChunk, error) {
 	return nil, fmt.Errorf("not implemented")
 }
+
 func (s *stubProvider) Models(ctx context.Context) ([]llm.ModelConfig, error) {
 	if s.err != nil {
 		return nil, s.err

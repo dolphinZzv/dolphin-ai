@@ -4,10 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/llm"
 	"dolphin/internal/signal"
-
-	"github.com/spf13/cobra"
 )
 
 // modelsManager is the subset of *llm.Manager that the models command needs.

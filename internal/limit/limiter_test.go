@@ -6,8 +6,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"dolphin/internal/event"
 	"go.uber.org/zap"
+
+	"dolphin/internal/event"
 )
 
 func newTestLogger(t *testing.T) *zap.Logger {
@@ -85,14 +86,14 @@ func TestClearAlertedResetsSoftWarningState(t *testing.T) {
 
 func TestScanModelLimitsLoadsConfiguredEntries(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                       "k",
-		"llm.openai.models.0.name":                 "gpt-4",
-		"llm.openai.models.0.limit.max_requests":   "50",
-		"llm.openai.models.0.limit.max_total_tokens": "10000",
-		"llm.openai.models.1.name":                 "gpt-3.5",
+		"llm.openai.api_key":                          "k",
+		"llm.openai.models.0.name":                    "gpt-4",
+		"llm.openai.models.0.limit.max_requests":      "50",
+		"llm.openai.models.0.limit.max_total_tokens":  "10000",
+		"llm.openai.models.1.name":                    "gpt-3.5",
 		"llm.openai.models.1.limit.max_requests.hard": "100",
 		"llm.openai.models.1.limit.max_requests.soft": "80",
-		"llm.openai.models.2.name":                 "gpt-4-mini",
+		"llm.openai.models.2.name":                    "gpt-4-mini",
 	})
 	l := NewLimiter(NewMemoryStore(), cfg, event.NewBus(), newTestLogger(t))
 	limits := l.ModelLimits()
@@ -160,8 +161,8 @@ func TestGatherLimitsGlobal(t *testing.T) {
 
 func TestGatherLimitsQualifiedExactMatch(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                    "k",
-		"llm.openai.models.0.name":              "gpt-4",
+		"llm.openai.api_key":                     "k",
+		"llm.openai.models.0.name":               "gpt-4",
 		"llm.openai.models.0.limit.max_requests": "5",
 	})
 	l := NewLimiter(NewMemoryStore(), cfg, event.NewBus(), newTestLogger(t))
@@ -177,9 +178,9 @@ func TestGatherLimitsQualifiedExactMatch(t *testing.T) {
 
 func TestGatherLimitsShortNameSuffixMatch(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                       "k",
-		"llm.openai.models.0.name":                 "gpt-4",
-		"llm.openai.models.0.limit.max_requests":   "5",
+		"llm.openai.api_key":                         "k",
+		"llm.openai.models.0.name":                   "gpt-4",
+		"llm.openai.models.0.limit.max_requests":     "5",
 		"llm.openai.models.0.limit.max_total_tokens": "1000",
 	})
 	l := NewLimiter(NewMemoryStore(), cfg, event.NewBus(), newTestLogger(t))
@@ -191,9 +192,9 @@ func TestGatherLimitsShortNameSuffixMatch(t *testing.T) {
 
 func TestGatherLimitsPerModelSoftDefault(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                       "k",
-		"llm.openai.models.0.name":                 "gpt-4",
-		"llm.openai.models.0.limit.max_requests":   "100",
+		"llm.openai.api_key":                         "k",
+		"llm.openai.models.0.name":                   "gpt-4",
+		"llm.openai.models.0.limit.max_requests":     "100",
 		"llm.openai.models.0.limit.max_total_tokens": "1000",
 	})
 	l := NewLimiter(NewMemoryStore(), cfg, event.NewBus(), newTestLogger(t))
@@ -382,8 +383,8 @@ func TestRecordLLMZeroTokens(t *testing.T) {
 
 func TestRecordLLMQualifiedModelName(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                    "k",
-		"llm.openai.models.0.name":              "gpt-4",
+		"llm.openai.api_key":                     "k",
+		"llm.openai.models.0.name":               "gpt-4",
 		"llm.openai.models.0.limit.max_requests": "5",
 	})
 	store := NewMemoryStore()
@@ -396,8 +397,8 @@ func TestRecordLLMQualifiedModelName(t *testing.T) {
 
 func TestRecordLLMUnqualifiedMatchesProvider(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                    "k",
-		"llm.openai.models.0.name":              "gpt-4",
+		"llm.openai.api_key":                     "k",
+		"llm.openai.models.0.name":               "gpt-4",
 		"llm.openai.models.0.limit.max_requests": "5",
 	})
 	store := NewMemoryStore()
@@ -416,8 +417,8 @@ func TestRecordLLMUnqualifiedMatchesProvider(t *testing.T) {
 
 func TestRecordLLMUnqualifiedNoMatch(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                    "k",
-		"llm.openai.models.0.name":              "gpt-4",
+		"llm.openai.api_key":                     "k",
+		"llm.openai.models.0.name":               "gpt-4",
 		"llm.openai.models.0.limit.max_requests": "5",
 	})
 	store := NewMemoryStore()
@@ -436,8 +437,8 @@ func TestRecordLLMUnqualifiedNoMatch(t *testing.T) {
 
 func TestLimiterGetters(t *testing.T) {
 	cfg := cfgFromMap(map[string]any{
-		"llm.openai.api_key":                    "k",
-		"llm.openai.models.0.name":              "gpt-4",
+		"llm.openai.api_key":                     "k",
+		"llm.openai.models.0.name":               "gpt-4",
 		"llm.openai.models.0.limit.max_requests": "5",
 	})
 	store := NewMemoryStore()
@@ -497,10 +498,10 @@ func TestSoftDefaultEdges(t *testing.T) {
 
 type errStore struct{ err error }
 
-func (s *errStore) Get(string) (int64, error)               { return 0, s.err }
-func (s *errStore) Increment(string, int64) (int64, error)  { return 0, s.err }
-func (s *errStore) Reset(string) error                      { return s.err }
-func (s *errStore) GetAll() (map[string]int64, error)       { return nil, s.err }
+func (s *errStore) Get(string) (int64, error)              { return 0, s.err }
+func (s *errStore) Increment(string, int64) (int64, error) { return 0, s.err }
+func (s *errStore) Reset(string) error                     { return s.err }
+func (s *errStore) GetAll() (map[string]int64, error)      { return nil, s.err }
 
 var errBoom = &boomErr{}
 

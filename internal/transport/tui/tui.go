@@ -5,14 +5,14 @@ import (
 	"os"
 	"sync"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/limit"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	tea "github.com/charmbracelet/bubbletea"
-	"go.uber.org/zap"
 )
 
 func init() {
@@ -269,6 +269,7 @@ func (t *TUI) NotifySessionID(id string) {
 		t.program.Send(sessionMsg{id: id})
 	}
 }
+
 func (t *TUI) Close() error {
 	t.cancel()
 	if t.program != nil {

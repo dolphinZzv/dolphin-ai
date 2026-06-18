@@ -343,8 +343,10 @@ func TestMimeTextInvalidMultipart(t *testing.T) {
 // readMailsWithClient tests (integration via in-memory IMAP server)
 // ---------------------------------------------------------------------------
 
-const testUsername = "test@example.com"
-const testPassword = "pass"
+const (
+	testUsername = "test@example.com"
+	testPassword = "pass"
+)
 
 func newTestIMAPServer(t *testing.T) (net.Listener, *imapserver.Server) {
 	t.Helper()
@@ -406,8 +408,10 @@ func appendMsg(t *testing.T, client *imapclient.Client, raw string) {
 	}
 }
 
-const testMsg1 = "From: alice@example.com\r\nSubject: Hello\r\nDate: Mon, 02 Jun 2025 10:00:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nFirst message body\r\n"
-const testMsg2 = "From: bob@example.com\r\nSubject: Meeting\r\nDate: Tue, 03 Jun 2025 14:30:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nMeeting at 3pm\r\n"
+const (
+	testMsg1 = "From: alice@example.com\r\nSubject: Hello\r\nDate: Mon, 02 Jun 2025 10:00:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nFirst message body\r\n"
+	testMsg2 = "From: bob@example.com\r\nSubject: Meeting\r\nDate: Tue, 03 Jun 2025 14:30:00 +0000\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nMeeting at 3pm\r\n"
+)
 
 func TestReadMailsWithClient_EmptyInbox(t *testing.T) {
 	ln, srv := newTestIMAPServer(t)

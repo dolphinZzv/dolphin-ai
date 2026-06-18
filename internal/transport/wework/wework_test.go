@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	transport "dolphin/internal/transport"
 	"go.uber.org/zap"
+
+	transport "dolphin/internal/transport"
 )
 
 type mockWSConn struct {
@@ -1289,7 +1290,7 @@ func TestWeWorkRead(t *testing.T) {
 		if err == nil {
 			t.Fatal("expected error")
 		}
-		if err != context.Canceled {
+		if !errors.Is(err, context.Canceled) {
 			t.Errorf("expected Canceled, got %v", err)
 		}
 	})

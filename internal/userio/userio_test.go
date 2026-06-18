@@ -5,14 +5,15 @@ import (
 	"fmt"
 	"testing"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/brain"
 	"dolphin/internal/command"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/transport"
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 type captureWriteTransport struct {
@@ -245,8 +246,9 @@ func TestUserIOHandleMetadata(t *testing.T) {
 		uio := NewUserIO(aio, cmdReg, nil, mgr, "per_transport")
 
 		Convey("stores user_id, user_nick and conversation_id when transport exposes them", func() {
-			tio := &metaTransport{NullTransport: *transport.NewNullTransport("test"),
-				uid: "u1", nick: "Alice", cid: "conv-1",
+			tio := &metaTransport{
+				NullTransport: *transport.NewNullTransport("test"),
+				uid:           "u1", nick: "Alice", cid: "conv-1",
 			}
 			tio.SetSessionManager(mgr)
 			ctx := context.Background()
@@ -474,9 +476,11 @@ func (t *metaTransport) UserID() string         { return t.uid }
 func (t *metaTransport) UserNick() string       { return t.nick }
 func (t *metaTransport) ConversationID() string { return t.cid }
 
-var _ interface{ SetSession(*session.Session) } = (*setSessionTransport)(nil)
-var _ interface {
-	UserID() string
-	UserNick() string
-} = (*metaTransport)(nil)
+var (
+	_ interface{ SetSession(*session.Session) } = (*setSessionTransport)(nil)
+	_ interface {
+		UserID() string
+		UserNick() string
+	} = (*metaTransport)(nil)
+)
 var _ interface{ ConversationID() string } = (*metaTransport)(nil)

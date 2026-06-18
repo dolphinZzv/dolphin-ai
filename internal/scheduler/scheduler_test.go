@@ -689,7 +689,7 @@ func TestLoadTasksLocked(t *testing.T) {
 	t.Run("skips index.md", func(t *testing.T) {
 		dir := t.TempDir()
 		s := New(dir, logger, nil)
-		if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte("# index"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte("# index"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		s.loadTasksLocked()
@@ -701,7 +701,7 @@ func TestLoadTasksLocked(t *testing.T) {
 	t.Run("skips directories", func(t *testing.T) {
 		dir := t.TempDir()
 		s := New(dir, logger, nil)
-		if err := os.MkdirAll(filepath.Join(dir, "subdir"), 0755); err != nil {
+		if err := os.MkdirAll(filepath.Join(dir, "subdir"), 0o755); err != nil {
 			t.Fatal(err)
 		}
 		s.loadTasksLocked()
@@ -713,7 +713,7 @@ func TestLoadTasksLocked(t *testing.T) {
 	t.Run("skips non-.md files", func(t *testing.T) {
 		dir := t.TempDir()
 		s := New(dir, logger, nil)
-		if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("hello"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		s.loadTasksLocked()

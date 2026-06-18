@@ -4,14 +4,14 @@ import (
 	"context"
 	"strconv"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	appctx "dolphin/internal/context"
 	"dolphin/internal/mcp"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
-
-	"go.uber.org/zap"
 )
 
 type ToolsBootstrapper struct{}

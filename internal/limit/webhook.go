@@ -8,8 +8,9 @@ import (
 	"net/http"
 	"time"
 
-	"dolphin/internal/event"
 	"go.uber.org/zap"
+
+	"dolphin/internal/event"
 )
 
 // WebhookType defines the message format for the webhook notifier.
@@ -49,7 +50,7 @@ func (w *WebhookNotifier) Handle(ctx context.Context, e event.Event) {
 	}
 }
 
-func (w *WebhookNotifier) send(_ context.Context, e event.Event) {
+func (w *WebhookNotifier) send(ctx context.Context, e event.Event) {
 	body := w.formatMessage(e)
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -57,7 +58,13 @@ func (w *WebhookNotifier) send(_ context.Context, e event.Event) {
 		return
 	}
 
-	resp, err := w.client.Post(w.url, "application/json", bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, w.url, bytes.NewReader(data))
+	if err != nil {
+		w.logger.Warn("webhook: build request failed", zap.Error(err))
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := w.client.Do(req)
 	if err != nil {
 		w.logger.Warn("webhook: send failed", zap.Error(err))
 		return

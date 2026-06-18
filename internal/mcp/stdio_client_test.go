@@ -50,12 +50,12 @@ func main() {
 	projectRoot := filepath.Join(wd, "..", "..")
 
 	buildDir := filepath.Join(projectRoot, ".mcp-test-build")
-	if err := os.MkdirAll(buildDir, 0755); err != nil {
+	if err := os.MkdirAll(buildDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
 	mainPath := filepath.Join(buildDir, "main.go")
-	if err := os.WriteFile(mainPath, []byte(src), 0644); err != nil {
+	if err := os.WriteFile(mainPath, []byte(src), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	binaryPath := filepath.Join(buildDir, "test-server")

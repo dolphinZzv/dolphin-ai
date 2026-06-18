@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"dolphin/internal/types"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/types"
 )
 
 func (s *weworkSource) executeFileUpload(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {

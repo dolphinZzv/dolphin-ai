@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/session"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 func TestNewTUI(t *testing.T) {

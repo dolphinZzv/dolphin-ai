@@ -6,9 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"dolphin/internal/config"
-	"dolphin/internal/hook"
-
 	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,6 +14,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.uber.org/zap"
+
+	"dolphin/internal/config"
+	"dolphin/internal/hook"
 )
 
 func BuildObservability(cfg *config.Config, hr *hook.Registry, log ...*zap.Logger) (shutdown func()) {

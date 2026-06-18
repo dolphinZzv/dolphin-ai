@@ -13,6 +13,9 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
@@ -21,9 +24,6 @@ import (
 	_ "dolphin/internal/llm/volcengine"
 	"dolphin/internal/tool"
 	"dolphin/internal/types"
-
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 // loadConfig loads the project config.yaml. Falls back to env vars.

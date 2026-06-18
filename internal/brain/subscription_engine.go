@@ -10,8 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"dolphin/internal/event"
 	"go.uber.org/zap"
+
+	"dolphin/internal/event"
 )
 
 // SubscriptionEngine matches events against stored subscriptions and sends

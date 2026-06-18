@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
-	transport "dolphin/internal/transport"
 	dtclient "github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 	"go.uber.org/zap"
+
+	transport "dolphin/internal/transport"
 )
 
 func TestDingTalkCapability(t *testing.T) {

@@ -38,7 +38,7 @@ steps:
     depends_on: [test_baidu, test_google, test_bing]
 `
 
-	if err := os.WriteFile(workflowPath, []byte(yaml), 0600); err != nil {
+	if err := os.WriteFile(workflowPath, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -80,7 +80,7 @@ steps:
     output_schema:
       message: string
 `
-	if err := os.WriteFile(workflowPath, []byte(yaml), 0600); err != nil {
+	if err := os.WriteFile(workflowPath, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

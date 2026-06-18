@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 
-	"dolphin/internal/types"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/types"
 )
 
 func (s *pandaSource) executeMessage(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {

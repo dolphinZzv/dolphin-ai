@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	appctx "dolphin/internal/context"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
@@ -21,8 +23,6 @@ import (
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"go.uber.org/zap"
 )
 
 type Stage interface {

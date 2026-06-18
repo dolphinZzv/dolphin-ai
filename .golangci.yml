@@ -1,6 +1,7 @@
 version: "2"
 run:
-  timeout: 3m
+  timeout: 5m
+
 linters:
   default: none
   enable:
@@ -13,6 +14,34 @@ linters:
     - misspell
     - staticcheck
     - unused
+    # 高价值补充
+    - bodyclose
+    - errorlint
+    - noctx
+    - unconvert
+    - usestdlibvars
+    - wastedassign
+  exclusions:
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # 测试文件里忽略返回值、部分安全检查很常见，避免噪音盖住真正的非测试代码问题。
+      - linters: [errcheck, gosec, noctx]
+        path: _test\.go
+
 formatters:
   enable:
     - gofmt
+    - gci
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(dolphin)
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

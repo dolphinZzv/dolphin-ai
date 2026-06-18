@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
+
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"github.com/gorilla/websocket"
 )
 
 func TestPanda_ID(t *testing.T) {
@@ -626,7 +626,10 @@ func TestPanda_Write_Connected(t *testing.T) {
 	}, nil, "test")
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,7 +779,10 @@ func TestPanda_readLoop_ProcessesFrame(t *testing.T) {
 	p.allowUsers = []string{"*"}
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -832,7 +838,10 @@ func TestPanda_WriteContent_Image(t *testing.T) {
 	}, nil, "test")
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -932,7 +941,7 @@ func TestPanda_HandleMsgPush_HistoricalZeroTimestamp(t *testing.T) {
 
 func TestAutoUploadImages_LocalPathReplaced(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "screenshot.png")
-	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -976,7 +985,7 @@ func TestAutoUploadImages_NoToken(t *testing.T) {
 
 func TestAutoUploadImages_NonImagePath(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "document.pdf")
-	if err := os.WriteFile(tmpFile, []byte("pdf-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("pdf-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -991,7 +1000,7 @@ func TestAutoUploadImages_NonImagePath(t *testing.T) {
 
 func TestAutoUploadImages_UploadFails(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "fail.png")
-	if err := os.WriteFile(tmpFile, []byte("data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1013,7 +1022,7 @@ func TestAutoUploadImages_UploadFails(t *testing.T) {
 
 func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "write_test.png")
-	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("fake-png-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1049,7 +1058,10 @@ func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 	p.userID = "bot"
 
 	u := "ws://" + wsSrv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1085,7 +1097,7 @@ func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 
 func TestReplaceMarkdownLinks_AltTextLink(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "photo.png")
-	if err := os.WriteFile(tmpFile, []byte("png-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("png-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1118,7 +1130,7 @@ func TestReplaceMarkdownLinks_AltTextLink(t *testing.T) {
 
 func TestReplaceMarkdownLinks_ImageSyntax(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "img.jpg")
-	if err := os.WriteFile(tmpFile, []byte("jpg-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("jpg-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1174,7 +1186,7 @@ func TestReplaceMarkdownLinks_HTTPPathSkipped(t *testing.T) {
 
 func TestReplaceMarkdownLinks_UploadFails(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "fail.png")
-	if err := os.WriteFile(tmpFile, []byte("data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1196,7 +1208,7 @@ func TestReplaceMarkdownLinks_UploadFails(t *testing.T) {
 
 func TestReplaceMarkdownLinks_MixedContent(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "chart.png")
-	if err := os.WriteFile(tmpFile, []byte("chart-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("chart-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1240,7 +1252,7 @@ func TestReplaceBarePaths_NonExistentBarePath(t *testing.T) {
 
 func TestReplaceBarePaths_RelativePath(t *testing.T) {
 	tmpFile := filepath.Join(t.TempDir(), "rel_img.png")
-	if err := os.WriteFile(tmpFile, []byte("rel-data"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("rel-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1336,7 +1348,10 @@ func TestPanda_HandleFrame_SendAck_FlushesPending(t *testing.T) {
 	p.userID = "test"
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, _ := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	defer func() { _ = conn.Close() }()
 	p.connMu.Lock()
 	p.conn = conn
@@ -1373,7 +1388,7 @@ func TestPanda_HandleFrame_SendAck_FlushesPending(t *testing.T) {
 func newTestWSServer(t *testing.T, handler func([]byte) []byte) *httptest.Server {
 	t.Helper()
 
-	var upgrader = websocket.Upgrader{
+	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool { return true },
 	}
 
@@ -1457,7 +1472,10 @@ func TestPanda_AgentTimeline_ProgressiveSend_WithParentMsgID(t *testing.T) {
 	p.userID = "test"
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, err := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1582,7 +1600,10 @@ func TestPanda_AgentTimeline_Write_ResetsState(t *testing.T) {
 	p.userID = "test"
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, _ := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	defer func() { _ = conn.Close() }()
 	p.connMu.Lock()
 	p.conn = conn
@@ -1659,7 +1680,10 @@ func TestPanda_AgentTimeline_BufferBeforeAck(t *testing.T) {
 	p.userID = "test"
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, _ := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	defer func() { _ = conn.Close() }()
 	p.connMu.Lock()
 	p.conn = conn
@@ -1735,7 +1759,10 @@ func TestPanda_AgentTimeline_StaleAckIgnored(t *testing.T) {
 	p.userID = "test"
 
 	u := "ws://" + srv.Listener.Addr().String() + "/ws?token=fake"
-	conn, _, _ := websocket.DefaultDialer.Dial(u, nil)
+	conn, resp, _ := websocket.DefaultDialer.Dial(u, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	defer func() { _ = conn.Close() }()
 	p.connMu.Lock()
 	p.conn = conn

@@ -113,7 +113,10 @@ func TestPanda_Integration_AgentTimeline(t *testing.T) {
 	wsURL = strings.Replace(wsURL, "https://", "wss://", 1)
 	wsURL = wsURL + "/ws?token=" + token
 
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	conn, resp, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatalf("ws dial: %v", err)
 	}

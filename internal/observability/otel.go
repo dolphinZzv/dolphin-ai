@@ -6,10 +6,11 @@ import (
 	"sync"
 	"unicode"
 
-	"dolphin/internal/event"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
+
+	"dolphin/internal/event"
 )
 
 type OTelHook struct {

@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	appctx "dolphin/internal/context"
-
 	"github.com/spf13/cobra"
+
+	appctx "dolphin/internal/context"
 )
 
 // RegisterContext registers the /context command.

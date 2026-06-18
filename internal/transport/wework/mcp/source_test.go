@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
+	. "github.com/smartystreets/goconvey/convey"
+
 	transport "dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 // mockClient implements WeWorkClient for testing.

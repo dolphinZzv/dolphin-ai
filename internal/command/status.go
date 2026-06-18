@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
-
-	"github.com/spf13/cobra"
 )
 
 // RegisterSessionStatus registers the /session status subcommand.

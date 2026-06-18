@@ -5,9 +5,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/xid"
+
 	"dolphin/internal/session"
 	"dolphin/internal/types"
-	"github.com/rs/xid"
 )
 
 // SessionManager is the interface for session lifecycle.

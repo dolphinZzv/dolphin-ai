@@ -7,15 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"dolphin/internal/agentio"
+	"go.uber.org/zap"
 
+	"dolphin/internal/agentio"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
 	"dolphin/internal/i18n"
 	"dolphin/internal/llm"
 	"dolphin/internal/tool"
-
-	"go.uber.org/zap"
 )
 
 // Engine executes workflow YAML files, scheduling steps according to their DAG dependencies.

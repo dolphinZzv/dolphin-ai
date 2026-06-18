@@ -8,9 +8,6 @@ import (
 	"net/http"
 	"time"
 
-	"dolphin/internal/event"
-	"dolphin/internal/hook"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/snappy"
 	"github.com/prometheus/client_golang/prometheus"
@@ -18,6 +15,9 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/prometheus/prometheus/prompb"
 	"go.uber.org/zap"
+
+	"dolphin/internal/event"
+	"dolphin/internal/hook"
 )
 
 // PrometheusHook updates Prometheus metrics from lifecycle events.
@@ -128,8 +128,10 @@ func (h *PrometheusHook) Handle(ctx context.Context, e event.Event) error {
 		}
 
 		// Push via Remote Write after turn completes, if configured.
+		// pushMetrics runs detached from this request-scoped handler and
+		// applies its own bounded timeout, so it must not borrow `ctx`.
 		if h.remoteWriteURL != "" {
-			go h.pushMetrics()
+			go h.pushMetrics() //nolint:gosec // G118: detached push needs an independent context
 		}
 
 	case event.EventLLMComplete:
@@ -212,7 +214,12 @@ func (h *PrometheusHook) pushMetrics() {
 
 	compressed := snappy.Encode(nil, data)
 
-	req, err := http.NewRequest(http.MethodPost, h.remoteWriteURL+"/api/v1/write", bytes.NewReader(compressed))
+	// pushMetrics runs in a detached goroutine outliving the event handler,
+	// so it cannot borrow the request-scoped context. A bounded timeout
+	// prevents a hanging remote-write from leaking the goroutine.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, h.remoteWriteURL+"/api/v1/write", bytes.NewReader(compressed))
 	if err != nil {
 		if h.log != nil {
 			h.log.Error("prometheus http request creation failed", zap.Error(err))

@@ -3,10 +3,10 @@ package command
 import (
 	"context"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/brain"
 	"dolphin/internal/i18n"
-
-	"github.com/spf13/cobra"
 )
 
 // RegisterScripts registers the /script command for managing scripts.

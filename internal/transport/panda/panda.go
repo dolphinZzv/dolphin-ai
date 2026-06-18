@@ -17,15 +17,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gorilla/websocket"
+	"github.com/rs/xid"
+	"go.uber.org/zap"
+
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
 	"dolphin/internal/transport"
 	pandamcp "dolphin/internal/transport/panda/mcp"
 	"dolphin/internal/types"
-
-	"github.com/gorilla/websocket"
-	"github.com/rs/xid"
-	"go.uber.org/zap"
 )
 
 const (
@@ -985,13 +985,16 @@ func (p *Panda) connect() bool {
 	dialer := &websocket.Dialer{
 		HandshakeTimeout: 10 * time.Second,
 	}
-	conn, _, err := dialer.Dial(wsURL, nil)
+	conn, resp, err := dialer.Dial(wsURL, nil)
 	if err != nil {
 		if p.isClosed() {
 			return false
 		}
 		p.logger.Warn("panda: ws dial failed", zap.Error(err))
 		return false
+	}
+	if resp != nil {
+		resp.Body.Close()
 	}
 
 	// Set initial read deadline; ping/pong handlers extend it.

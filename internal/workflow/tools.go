@@ -3,15 +3,16 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+
+	"go.uber.org/zap"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/i18n"
 	"dolphin/internal/tool"
 	"dolphin/internal/types"
-
-	"go.uber.org/zap"
 )
 
 // RegisterTools registers run_workflow and continue_workflow as builtin tools.
@@ -72,7 +73,7 @@ func runWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHandler 
 		wfCtx := context.WithoutCancel(ctx)
 		result, err := engine.Run(wfCtx, spec, "")
 		if err != nil {
-			if err == ErrCheckpointReached {
+			if errors.Is(err, ErrCheckpointReached) {
 				return &types.ToolResult{
 					Content: "Workflow " + spec.Name + " paused at checkpoint. Review the .result.yaml and call continue_workflow to resume.",
 				}, nil
@@ -112,7 +113,7 @@ func continueWorkflowHandler(engine *Engine, logger *zap.Logger) tool.BuiltinHan
 		wfCtx := context.WithoutCancel(ctx)
 		result, err := engine.Continue(wfCtx, spec, "")
 		if err != nil {
-			if err == ErrCheckpointReached {
+			if errors.Is(err, ErrCheckpointReached) {
 				return &types.ToolResult{
 					Content: "Workflow " + spec.Name + " paused at next checkpoint. Review and call continue_workflow again.",
 				}, nil

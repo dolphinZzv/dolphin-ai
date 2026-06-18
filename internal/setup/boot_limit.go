@@ -4,9 +4,10 @@ import (
 	"context"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/event"
 	"dolphin/internal/limit"
-	"go.uber.org/zap"
 )
 
 type LimitBootstrapper struct{}

@@ -91,7 +91,7 @@ type FileStore struct {
 }
 
 func NewFileStore(dir string) (*FileStore, error) {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil, err
 	}
 	s := &FileStore{dir: dir}
@@ -146,7 +146,7 @@ func (s *FileStore) writeFile(cd counterData) error {
 		return err
 	}
 	tmp := s.filePath() + ".tmp"
-	if err := os.WriteFile(tmp, data, 0644); err != nil {
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
 	}
 	return os.Rename(tmp, s.filePath())

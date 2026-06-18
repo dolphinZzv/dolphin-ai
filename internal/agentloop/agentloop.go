@@ -8,14 +8,14 @@ import (
 	"time"
 	"unicode"
 
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/event"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/attribute"
-	"go.uber.org/zap"
 )
 
 type AgentLoop struct {

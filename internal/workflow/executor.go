@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/llm"
 	"dolphin/internal/types"
-
-	"go.uber.org/zap"
 )
 
 const maxToolRounds = 5

@@ -17,8 +17,10 @@ type Command struct {
 	Content     string // body after frontmatter
 }
 
-const commandDir = "commands"
-const frontmatterDelim = "---\n"
+const (
+	commandDir       = "commands"
+	frontmatterDelim = "---\n"
+)
 
 func commandPath(name string) string {
 	return filepath.Join(commandDir, name+".md")

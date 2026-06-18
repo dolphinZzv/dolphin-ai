@@ -3,9 +3,9 @@ package volcengine
 import (
 	"context"
 
-	"dolphin/internal/llm"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/llm"
 )
 
 func init() {
@@ -54,7 +54,6 @@ func (p *openAIProvider) CompleteStream(ctx context.Context, req llm.LLMRequest)
 	}
 	url := p.chatURL(p.cfg.BaseURL)
 	if req.Stream {
-
 		return llm.StreamOpenAI(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)
 	}
 	return llm.CompleteOpenAI(ctx, url, p.cfg.APIKey, p.cfg.Headers, body, req.Timeout, p.logger)

@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"go.uber.org/zap"
 )
 
 // NewFileUploadSource returns a tool source that provides FILE_UPLOAD and MESSAGE

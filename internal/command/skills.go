@@ -4,9 +4,9 @@ import (
 	"context"
 	"strings"
 
-	"dolphin/internal/skill"
-
 	"github.com/spf13/cobra"
+
+	"dolphin/internal/skill"
 )
 
 // RegisterSkills registers the /skills command group.
@@ -14,7 +14,8 @@ func RegisterSkills(r *Registry, skillStore interface {
 	List(ctx context.Context) ([]skill.Skill, error)
 	Get(ctx context.Context, name string) (*skill.Skill, error)
 	Save(ctx context.Context, sk skill.Skill) error
-}) {
+},
+) {
 	cmd := WithI18nShort(&cobra.Command{
 		Use: "skills",
 	}, "command.skills_manage")

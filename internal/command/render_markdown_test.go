@@ -5,6 +5,9 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
+
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
 	"dolphin/internal/event"
@@ -17,9 +20,6 @@ import (
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
 	"dolphin/internal/types"
-
-	. "github.com/smartystreets/goconvey/convey"
-	"go.uber.org/zap"
 )
 
 func TestRenderMarkdown_Lang(t *testing.T) {

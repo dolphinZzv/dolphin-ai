@@ -22,7 +22,7 @@ func TestLoad_FileNotExist(t *testing.T) {
 func TestLoad_MalformedJSON(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "permissions.json")
-	os.WriteFile(f, []byte("{bad json}"), 0644)
+	os.WriteFile(f, []byte("{bad json}"), 0o644)
 
 	_, err := Load(f)
 	if err == nil {
@@ -155,7 +155,7 @@ func TestCheck_LsScenarios(t *testing.T) {
 func TestAddAllow(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "permissions.json")
-	os.WriteFile(f, []byte(`{}`), 0644)
+	os.WriteFile(f, []byte(`{}`), 0o644)
 
 	s, err := Load(f)
 	if err != nil {
@@ -183,7 +183,7 @@ func TestAddAllow(t *testing.T) {
 func TestAddAllow_ConcurrentSave(t *testing.T) {
 	dir := t.TempDir()
 	f := filepath.Join(dir, "permissions.json")
-	os.WriteFile(f, []byte(`{}`), 0644)
+	os.WriteFile(f, []byte(`{}`), 0o644)
 
 	s, err := Load(f)
 	if err != nil {

@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"dolphin/internal/event"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/event"
 )
 
 func newTestBrain(t *testing.T) *Brain {

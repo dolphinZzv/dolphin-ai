@@ -375,6 +375,7 @@ func (a SkillAdapter) Save(ctx context.Context, sk skill.Skill) error { return a
 func (a SkillAdapter) Delete(ctx context.Context, name string) error {
 	return a.Store.Delete(ctx, name)
 }
+
 func (a SkillAdapter) Search(ctx context.Context, query string) ([]skill.Skill, error) {
 	return a.Store.Search(ctx, query)
 }

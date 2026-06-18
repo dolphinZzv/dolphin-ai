@@ -4,10 +4,11 @@ import (
 	"os"
 	"time"
 
-	"dolphin/internal/config"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/natefinch/lumberjack.v2"
+
+	"dolphin/internal/config"
 )
 
 func New(cfg *config.Config) *zap.Logger {

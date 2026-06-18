@@ -510,7 +510,7 @@ func TestAutoCommit(t *testing.T) {
 		}
 
 		// Write directly to disk (not through Brain.Write which auto-commits).
-		if err := os.WriteFile(filepath.Join(dir, "newfile.md"), []byte("content"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "newfile.md"), []byte("content"), 0o644); err != nil {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
 
@@ -553,7 +553,7 @@ func TestAutoCommit(t *testing.T) {
 			t.Fatalf("Init failed: %v", err)
 		}
 
-		if err := os.WriteFile(filepath.Join(dir, "another.md"), []byte("data"), 0644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "another.md"), []byte("data"), 0o644); err != nil {
 			t.Fatalf("WriteFile failed: %v", err)
 		}
 
@@ -574,14 +574,14 @@ func TestBrainTree(t *testing.T) {
 	b := New(dir)
 
 	// Create some .md files and subdirectories.
-	_ = os.WriteFile(filepath.Join(dir, "index.md"), []byte("index"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, "notes.md"), []byte("notes"), 0600)
-	_ = os.MkdirAll(filepath.Join(dir, "sub"), 0750)
-	_ = os.WriteFile(filepath.Join(dir, "sub", "child.md"), []byte("child"), 0600)
+	_ = os.WriteFile(filepath.Join(dir, "index.md"), []byte("index"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, "notes.md"), []byte("notes"), 0o600)
+	_ = os.MkdirAll(filepath.Join(dir, "sub"), 0o750)
+	_ = os.WriteFile(filepath.Join(dir, "sub", "child.md"), []byte("child"), 0o600)
 	// Dotfiles dir should be hidden.
-	_ = os.MkdirAll(filepath.Join(dir, ".hidden"), 0750)
-	_ = os.WriteFile(filepath.Join(dir, ".hidden", "secret.md"), []byte("secret"), 0600)
-	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte("env"), 0600)
+	_ = os.MkdirAll(filepath.Join(dir, ".hidden"), 0o750)
+	_ = os.WriteFile(filepath.Join(dir, ".hidden", "secret.md"), []byte("secret"), 0o600)
+	_ = os.WriteFile(filepath.Join(dir, ".env"), []byte("env"), 0o600)
 
 	tree, err := b.Tree()
 	if err != nil {

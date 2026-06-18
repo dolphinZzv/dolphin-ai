@@ -11,12 +11,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rs/xid"
+	"go.uber.org/zap"
+
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
 	"dolphin/internal/transport"
-
-	"github.com/rs/xid"
-	"go.uber.org/zap"
 )
 
 func init() {
@@ -106,7 +106,7 @@ func (a *A2A) Start(ctx context.Context) error {
 		return nil
 	}
 
-	ln, err := net.Listen("tcp", a.cfg.Addr)
+	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", a.cfg.Addr)
 	if err != nil {
 		return fmt.Errorf("a2a: listen: %w", err)
 	}

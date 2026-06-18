@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"dolphin/internal/types"
-
 	tea "github.com/charmbracelet/bubbletea"
+
+	"dolphin/internal/types"
 )
 
 // simModel holds the model and a chan-based message inbox, simulating

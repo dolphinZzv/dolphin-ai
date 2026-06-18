@@ -3,6 +3,7 @@ package transport
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -163,7 +164,7 @@ func TestNullTransport_Read(t *testing.T) {
 	}
 
 	_, err = n.Read(context.Background())
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/chzyer/readline"
+
 	"dolphin/internal/common"
 	"dolphin/internal/i18n"
-
-	"github.com/chzyer/readline"
 )
 
 var osExit = os.Exit
@@ -326,6 +326,7 @@ func (n *NullTransport) Close() error                                 { n.cancel
 func (n *NullTransport) RequestPermission(_ context.Context, _ string) (PermissionResult, error) {
 	return PermissionDenied, nil
 }
+
 func (n *NullTransport) Capability() Capability {
 	return Capability{Interactive: false, Streamable: false, NestRead: false, RenderTextMarkdown: "none"}
 }

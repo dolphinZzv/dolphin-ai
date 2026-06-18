@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/config"
 	"dolphin/internal/event"
-	"go.uber.org/zap"
 )
 
 // Limiter checks and records LLM usage limits.

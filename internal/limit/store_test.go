@@ -149,10 +149,10 @@ func TestFileStoreSurvivesReload(t *testing.T) {
 
 func TestFileStoreCorruptFileReturnsEmpty(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "counters.json"), []byte("not-json{"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "counters.json"), []byte("not-json{"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	store, err := NewFileStore(dir)

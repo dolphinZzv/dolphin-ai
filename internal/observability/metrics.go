@@ -3,8 +3,9 @@ package observability
 import (
 	"context"
 
-	"dolphin/internal/event"
 	"go.opentelemetry.io/otel/metric"
+
+	"dolphin/internal/event"
 )
 
 type MetricsHook struct {

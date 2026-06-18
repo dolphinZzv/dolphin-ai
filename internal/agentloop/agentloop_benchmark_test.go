@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/event"
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
-
-	"go.uber.org/zap"
 )
 
 // BenchmarkAgentLoopSingleTurn measures latency of a single turn through the

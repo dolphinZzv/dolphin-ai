@@ -3,9 +3,9 @@ package setup
 import (
 	"context"
 
-	"dolphin/internal/pprof"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/pprof"
 )
 
 type PprofBootstrapper struct{}

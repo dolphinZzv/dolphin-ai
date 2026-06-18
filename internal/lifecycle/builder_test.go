@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"dolphin/internal/config"
 	. "github.com/smartystreets/goconvey/convey"
+
+	"dolphin/internal/config"
 )
 
 func TestBuilder(t *testing.T) {

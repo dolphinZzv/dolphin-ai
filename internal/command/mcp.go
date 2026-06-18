@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/i18n"
 	"dolphin/internal/tool"
 	"dolphin/internal/types"
-
-	"github.com/spf13/cobra"
 )
 
 type category struct {

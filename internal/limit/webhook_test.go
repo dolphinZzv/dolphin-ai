@@ -34,7 +34,7 @@ func TestWebhookSendSuccess(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received.Add(1)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
@@ -53,7 +53,7 @@ func TestWebhookSendNon2xx(t *testing.T) {
 	var received atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received.Add(1)
-		w.WriteHeader(500)
+		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`server error`))
 	}))
 	defer srv.Close()
@@ -71,7 +71,7 @@ func TestWebhookSendAPIErrorCode(t *testing.T) {
 	var received atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		received.Add(1)
-		w.WriteHeader(200)
+		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"errcode":310000,"errmsg":"bad sign"}`))
 	}))
 	defer srv.Close()

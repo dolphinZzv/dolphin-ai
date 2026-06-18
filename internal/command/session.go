@@ -1,10 +1,10 @@
 package command
 
 import (
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
-
-	"github.com/spf13/cobra"
 )
 
 // RegisterSession registers the /session command group.

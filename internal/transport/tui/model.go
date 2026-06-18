@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-
 	"time"
-
-	"dolphin/internal/agentio"
-	"dolphin/internal/types"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"dolphin/internal/agentio"
+	"dolphin/internal/types"
 )
 
 const maxMessages = 500
@@ -24,31 +23,35 @@ const maxMessages = 500
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 // Message types sent via tea.Program.Send.
-type contentMsg struct{ text string }
-type thinkingMsg struct{ text string }
-type toolCallMsg struct{ call types.ToolCall }
-type toolResultMsg struct{ result types.ToolResult }
-type flushMsg struct{}
-type queueTickMsg struct{}
-type setAgentIOMsg struct{ a *agentio.AgentIO }
-type permRequestMsg struct {
-	prompt string
-	ch     chan string // response channel; the model replies here on resolve
-}
-type userSubmitMsg struct{ text string }
-type prioritySubmitMsg struct{ text string }
-type modelChangeMsg struct{ name string }
-type sessionMsg struct{ id string }
-type usageMsg struct {
-	inputTokens  int
-	outputTokens int
-	rounds       int
-	hardReqs     int64
-	reqs         int64
-	hardTokens   int64
-	tokens       int64
-	toolCalls    int
-}
+type (
+	contentMsg     struct{ text string }
+	thinkingMsg    struct{ text string }
+	toolCallMsg    struct{ call types.ToolCall }
+	toolResultMsg  struct{ result types.ToolResult }
+	flushMsg       struct{}
+	queueTickMsg   struct{}
+	setAgentIOMsg  struct{ a *agentio.AgentIO }
+	permRequestMsg struct {
+		prompt string
+		ch     chan string // response channel; the model replies here on resolve
+	}
+)
+type (
+	userSubmitMsg     struct{ text string }
+	prioritySubmitMsg struct{ text string }
+	modelChangeMsg    struct{ name string }
+	sessionMsg        struct{ id string }
+	usageMsg          struct {
+		inputTokens  int
+		outputTokens int
+		rounds       int
+		hardReqs     int64
+		reqs         int64
+		hardTokens   int64
+		tokens       int64
+		toolCalls    int
+	}
+)
 
 // renderEntry is a rendered line or block in the conversation viewport.
 type renderEntry struct {

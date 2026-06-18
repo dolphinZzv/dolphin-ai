@@ -1,6 +1,8 @@
 package setup
 
 import (
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
 	"dolphin/internal/brain"
@@ -21,8 +23,6 @@ import (
 	"dolphin/internal/userio"
 	"dolphin/internal/watcher"
 	"dolphin/internal/workflow"
-
-	"go.uber.org/zap"
 )
 
 // Context holds all components produced during bootstrapping.

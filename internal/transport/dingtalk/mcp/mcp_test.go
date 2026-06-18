@@ -185,7 +185,7 @@ func TestUploadMedia(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		dir := t.TempDir()
 		filePath := filepath.Join(dir, "test.png")
-		if err := os.WriteFile(filePath, []byte("fake-png-data"), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte("fake-png-data"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -215,7 +215,7 @@ func TestUploadMedia(t *testing.T) {
 	t.Run("api error", func(t *testing.T) {
 		dir := t.TempDir()
 		filePath := filepath.Join(dir, "doc.pdf")
-		if err := os.WriteFile(filePath, []byte("pdf-data"), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte("pdf-data"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -391,7 +391,7 @@ func TestExecuteFileUpload(t *testing.T) {
 
 		dir := t.TempDir()
 		filePath := filepath.Join(dir, "test.pdf")
-		if err := os.WriteFile(filePath, []byte("data"), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte("data"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 
@@ -421,7 +421,7 @@ func TestExecuteFileUpload(t *testing.T) {
 
 		dir := t.TempDir()
 		filePath := filepath.Join(dir, "photo.png")
-		if err := os.WriteFile(filePath, []byte("png-data"), 0644); err != nil {
+		if err := os.WriteFile(filePath, []byte("png-data"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 

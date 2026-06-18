@@ -6,12 +6,12 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/spf13/cobra"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/i18n"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
-
-	"github.com/spf13/cobra"
 )
 
 // renderModeKey is the context key for the output render mode ("none" or "markdown").

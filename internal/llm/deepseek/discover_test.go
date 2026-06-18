@@ -1,10 +1,12 @@
 package deepseek
 
 import (
+	"context"
 	"testing"
 
-	"dolphin/internal/llm"
 	"github.com/h2non/gock"
+
+	"dolphin/internal/llm"
 )
 
 func TestDeepSeekDiscoverModels(t *testing.T) {
@@ -26,7 +28,7 @@ func TestDeepSeekDiscoverModels(t *testing.T) {
 		APIKey:  "sk-test",
 		BaseURL: "https://api.deepseek.com/anthropic",
 	}
-	models, err := DiscoverModels(cfg)
+	models, err := DiscoverModels(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("DiscoverModels error: %v", err)
 	}
@@ -59,7 +61,7 @@ func TestDeepSeekDiscoverModels_stripsAnthropicPath(t *testing.T) {
 		Reply(200).
 		JSON(map[string]any{"data": []map[string]any{{"id": "deepseek-chat"}}})
 
-	models, err := DiscoverModels(cfg)
+	models, err := DiscoverModels(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("DiscoverModels error: %v", err)
 	}
@@ -81,7 +83,7 @@ func TestDeepSeekDiscoverModels_HTTPError(t *testing.T) {
 		APIKey:  "bad-key",
 		BaseURL: "https://api.deepseek.com",
 	}
-	_, err := DiscoverModels(cfg)
+	_, err := DiscoverModels(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -4,14 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"time"
 
-	"dolphin/internal/types"
 	"go.uber.org/zap"
+
+	"dolphin/internal/types"
 )
 
 func init() {
@@ -291,7 +293,7 @@ func StreamOpenAI(ctx context.Context, url, apiKey string, headers map[string]st
 		dec := NewStreamDecoder(resp.Body)
 		for {
 			chunk, err := dec.Decode()
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				send(LLMChunk{Done: true})
 				return
 			}
@@ -437,9 +439,9 @@ type modelsListResponse struct {
 }
 
 // DiscoverOpenAIModels calls the OpenAI-compatible /v1/models endpoint and returns the model list.
-func DiscoverOpenAIModels(cfg Config) ([]ModelConfig, error) {
+func DiscoverOpenAIModels(ctx context.Context, cfg Config) ([]ModelConfig, error) {
 	url := OpenAIModelsURL(cfg.BaseURL)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("llm: discover models: %w", err)
 	}

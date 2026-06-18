@@ -89,7 +89,6 @@ func TestManagerList(t *testing.T) {
 			}
 			So(ids[s1.ID], ShouldBeTrue)
 		})
-
 	})
 }
 

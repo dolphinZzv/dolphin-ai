@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/tool"
 	transport "dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"go.uber.org/zap"
 )
 
 // WeWorkClient is the subset of *WeWork needed by MCP tools.

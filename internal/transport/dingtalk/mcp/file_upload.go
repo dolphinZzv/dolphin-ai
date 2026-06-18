@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"dolphin/internal/types"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/types"
 )
 
 func (s *dingtalkSource) executeFileUpload(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {

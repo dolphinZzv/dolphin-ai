@@ -4,9 +4,9 @@ import (
 	"sort"
 	"strings"
 
-	"dolphin/internal/i18n"
-
 	"github.com/spf13/cobra"
+
+	"dolphin/internal/i18n"
 )
 
 // supportedLangs lists all languages available for switching.

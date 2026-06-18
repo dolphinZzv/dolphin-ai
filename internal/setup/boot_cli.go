@@ -4,11 +4,11 @@ import (
 	"context"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/cli"
 	appctx "dolphin/internal/context"
 	"dolphin/internal/tool"
-
-	"go.uber.org/zap"
 )
 
 type CLIBootstrapper struct{}

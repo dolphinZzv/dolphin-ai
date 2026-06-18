@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/config"
 	"dolphin/internal/limit"
@@ -15,8 +17,6 @@ import (
 	"dolphin/internal/session"
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
-
-	"go.uber.org/zap"
 )
 
 type TransportsBootstrapper struct{}

@@ -6,13 +6,13 @@ import (
 	"os"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/brain"
-	"dolphin/internal/watcher"
 	"dolphin/internal/command"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
-
-	"go.uber.org/zap"
+	"dolphin/internal/watcher"
 )
 
 type BrainBootstrapper struct{}

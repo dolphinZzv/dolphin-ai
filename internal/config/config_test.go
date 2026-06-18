@@ -44,7 +44,7 @@ log:
   level: debug
 `)
 		path := filepath.Join(dir, "config.yaml")
-		_ = os.WriteFile(path, yamlContent, 0644)
+		_ = os.WriteFile(path, yamlContent, 0o644)
 
 		cfg, err := LoadConfig(path)
 		So(err, ShouldBeNil)

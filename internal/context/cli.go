@@ -4,9 +4,9 @@ import (
 	stdctx "context"
 	"strings"
 
-	"dolphin/internal/cli"
-
 	"go.uber.org/zap"
+
+	"dolphin/internal/cli"
 )
 
 // CliSection injects available CLI tool descriptions into the system prompt.

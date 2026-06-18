@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"dolphin/internal/session"
 	. "github.com/smartystreets/goconvey/convey"
+
+	"dolphin/internal/session"
 )
 
 func TestSessionHolderPerTransport(t *testing.T) {

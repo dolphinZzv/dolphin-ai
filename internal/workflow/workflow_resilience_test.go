@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/h2non/gock"
+
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
 	"dolphin/internal/tool"
-
-	"github.com/h2non/gock"
 )
 
 func TestWorkflowAPIErrors(t *testing.T) {

@@ -18,13 +18,13 @@ import (
 	"sync"
 	"time"
 
-	"dolphin/internal/common"
-	"dolphin/internal/i18n"
-
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/yuin/goldmark"
 	"go.uber.org/zap"
+
+	"dolphin/internal/common"
+	"dolphin/internal/i18n"
 )
 
 var ErrSendOnly = fmt.Errorf("email: send-only mode, cannot receive")
@@ -276,7 +276,6 @@ func (e *Email) RequestPermission(_ context.Context, _ string) (PermissionResult
 
 // rejectMessage sends a rejection email to the sender via SMTP.
 func (e *Email) rejectMessage(ctx context.Context, to, subject, messageId string) {
-
 	rejectSubj := "Re: " + subject
 	body := i18n.T("transport.email_denied")
 	if len(e.allowSenders) == 0 {
@@ -537,7 +536,7 @@ func (e *Email) sendSMTP(ctx context.Context, to, msg string) error {
 	addr := net.JoinHostPort(e.cfg.SMTPServer, e.cfg.SMTPPort)
 
 	tlsCfg := &tls.Config{ServerName: e.cfg.SMTPServer}
-	conn, err := tls.Dial("tcp", addr, tlsCfg)
+	conn, err := (&tls.Dialer{Config: tlsCfg}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("smtp tls dial: %w", err)
 	}

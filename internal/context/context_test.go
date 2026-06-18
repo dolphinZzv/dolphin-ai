@@ -7,10 +7,11 @@ import (
 	"runtime"
 	"testing"
 
-	"dolphin/internal/cli"
-	"dolphin/internal/skill"
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
+
+	"dolphin/internal/cli"
+	"dolphin/internal/skill"
 )
 
 func TestRegistry(t *testing.T) {
@@ -138,7 +139,7 @@ func TestBaseSection(t *testing.T) {
 
 		Convey("BuildContent reads AGENTS.md from workspace", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agent"), 0644)
+			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agent"), 0o644)
 			s := &Base{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
@@ -147,7 +148,7 @@ func TestBaseSection(t *testing.T) {
 
 		Convey("BuildContent reads CLAUDE.md from workspace", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude"), 0644)
+			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude"), 0o644)
 			s := &Base{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
@@ -156,8 +157,8 @@ func TestBaseSection(t *testing.T) {
 
 		Convey("BuildContent prefers AGENTS.md over CLAUDE.md", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agent"), 0644)
-			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude"), 0644)
+			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agent"), 0o644)
+			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude"), 0o644)
 			s := &Base{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
@@ -230,7 +231,7 @@ func TestDesignSection(t *testing.T) {
 
 		Convey("BuildContent reads DESIGN.md from workspace", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("# Design"), 0644)
+			os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("# Design"), 0o644)
 			s := &Design{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
@@ -247,7 +248,7 @@ func TestDesignSection(t *testing.T) {
 
 		Convey("BuildContent returns empty for blank content", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("   "), 0644)
+			os.WriteFile(filepath.Join(dir, "DESIGN.md"), []byte("   "), 0o644)
 			s := &Design{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
@@ -277,7 +278,7 @@ func TestSoulSection(t *testing.T) {
 
 		Convey("BuildContent reads SOUL.md from workspace", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("be excellent"), 0644)
+			os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("be excellent"), 0o644)
 			s := &Soul{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
@@ -287,7 +288,7 @@ func TestSoulSection(t *testing.T) {
 
 		Convey("BuildContent returns empty for blank content", func() {
 			dir := t.TempDir()
-			os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("  \n  "), 0644)
+			os.WriteFile(filepath.Join(dir, "SOUL.md"), []byte("  \n  "), 0o644)
 			s := &Soul{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)

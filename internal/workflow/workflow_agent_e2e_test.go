@@ -14,6 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
 	"dolphin/internal/config"
@@ -27,8 +29,6 @@ import (
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
-
-	"go.uber.org/zap"
 )
 
 // e2eSessionStore is a lightweight session store.

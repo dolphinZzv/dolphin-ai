@@ -10,9 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"dolphin/internal/types"
 	"github.com/h2non/gock"
 	"go.uber.org/zap"
+
+	"dolphin/internal/types"
 )
 
 func TestOpenAIBuildMessages_WithToolCalls(t *testing.T) {
@@ -211,7 +212,7 @@ func TestStreamDecoder_Decode(t *testing.T) {
 	}
 
 	_, err = dec.Decode()
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
@@ -235,7 +236,7 @@ func TestStreamDecoder_EmptyBody(t *testing.T) {
 	dec := NewStreamDecoder(strings.NewReader(""))
 
 	_, err := dec.Decode()
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
@@ -262,7 +263,7 @@ func TestAnthropicStreamDecoder_Decode(t *testing.T) {
 	}
 
 	_, err = dec.Decode()
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
@@ -355,7 +356,7 @@ func TestAnthropicStreamDecoder_Thinking(t *testing.T) {
 	}
 
 	_, err = dec.Decode()
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
@@ -378,7 +379,7 @@ func TestAnthropicStreamDecoder_Thinking_DeepSeekVariant(t *testing.T) {
 	}
 
 	_, err = dec.Decode()
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
@@ -387,7 +388,7 @@ func TestAnthropicStreamDecoder_EmptyBody(t *testing.T) {
 	dec := NewAnthropicDecoder(strings.NewReader(""))
 
 	_, err := dec.Decode()
-	if err != io.EOF {
+	if !errors.Is(err, io.EOF) {
 		t.Fatalf("expected io.EOF, got %v", err)
 	}
 }
@@ -440,7 +441,7 @@ func TestStreamDecoder_DeepSeekCharByChar(t *testing.T) {
 	var gotTokens int
 	for {
 		chunk, err := dec.Decode()
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -1255,7 +1256,7 @@ func TestDiscoverOpenAIModels(t *testing.T) {
 		APIKey:  "sk-test",
 		BaseURL: "https://api.openai.com",
 	}
-	models, err := DiscoverOpenAIModels(cfg)
+	models, err := DiscoverOpenAIModels(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("DiscoverOpenAIModels returned error: %v", err)
 	}
@@ -1276,7 +1277,7 @@ func TestDiscoverOpenAIModels_HTTPError(t *testing.T) {
 		JSON(map[string]any{"error": map[string]any{"message": "bad key"}})
 
 	cfg := Config{APIKey: "bad-key", BaseURL: "https://api.openai.com"}
-	_, err := DiscoverOpenAIModels(cfg)
+	_, err := DiscoverOpenAIModels(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1301,7 +1302,7 @@ func TestDiscoverAnthropicModels(t *testing.T) {
 		APIKey:  "sk-ant-test",
 		BaseURL: "https://api.anthropic.com",
 	}
-	models, err := DiscoverAnthropicModels(cfg)
+	models, err := DiscoverAnthropicModels(context.Background(), cfg)
 	if err != nil {
 		t.Fatalf("DiscoverAnthropicModels returned error: %v", err)
 	}
@@ -1322,7 +1323,7 @@ func TestDiscoverAnthropicModels_HTTPError(t *testing.T) {
 		JSON(map[string]any{"error": map[string]any{"message": "bad request"}})
 
 	cfg := Config{APIKey: "bad-key", BaseURL: "https://api.anthropic.com"}
-	_, err := DiscoverAnthropicModels(cfg)
+	_, err := DiscoverAnthropicModels(context.Background(), cfg)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -1342,7 +1343,7 @@ func TestDiscoverModels_openaiFallback(t *testing.T) {
 		APIKey:  "sk-test",
 		BaseURL: "https://api.openai.com",
 	}
-	models, err := DiscoverModels(cfg, zap.NewNop())
+	models, err := DiscoverModels(context.Background(), cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("DiscoverModels error: %v", err)
 	}
@@ -1365,7 +1366,7 @@ func TestDiscoverModels_anthropicFallback(t *testing.T) {
 		APIKey:  "ant-key",
 		BaseURL: "https://api.anthropic.com",
 	}
-	models, err := DiscoverModels(cfg, zap.NewNop())
+	models, err := DiscoverModels(context.Background(), cfg, zap.NewNop())
 	if err != nil {
 		t.Fatalf("DiscoverModels error: %v", err)
 	}

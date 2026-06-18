@@ -3,12 +3,12 @@ package setup
 import (
 	"context"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
 	"dolphin/internal/permission"
 	"dolphin/internal/tool"
-
-	"go.uber.org/zap"
 )
 
 type AgentIOBootstrapper struct{}

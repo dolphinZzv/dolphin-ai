@@ -174,7 +174,7 @@ func NewConfigInitCmd() *cobra.Command {
 				}
 			}
 
-			if err := os.WriteFile(outputPath, []byte(defaultConfigYAML), 0644); err != nil {
+			if err := os.WriteFile(outputPath, []byte(defaultConfigYAML), 0o644); err != nil {
 				return fmt.Errorf("write config: %w", err)
 			}
 			cmd.Printf("created default config at %s\n", outputPath)
@@ -187,7 +187,7 @@ func NewConfigInitCmd() *cobra.Command {
 						return nil
 					}
 				}
-				if err := os.WriteFile(schemaPath, defaultConfigSchema, 0644); err != nil {
+				if err := os.WriteFile(schemaPath, defaultConfigSchema, 0o644); err != nil {
 					return fmt.Errorf("write schema: %w", err)
 				}
 				cmd.Printf("created default schema at %s\n", schemaPath)

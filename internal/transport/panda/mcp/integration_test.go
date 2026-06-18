@@ -14,9 +14,11 @@ import (
 	"testing"
 )
 
-const pandaServer = "http://127.0.0.1:8080"
-const pandaAccount = "dolphin"
-const pandaPassword = "dolphin..*"
+const (
+	pandaServer   = "http://127.0.0.1:8080"
+	pandaAccount  = "dolphin"
+	pandaPassword = "dolphin..*"
+)
 
 type loginRes struct {
 	UserID string `json:"user_id"`
@@ -72,7 +74,7 @@ func TestIntegration_FileUpload_Image(t *testing.T) {
 		0xAE, 0x42, 0x60, 0x82,
 	}
 	tmpFile := filepath.Join(t.TempDir(), "test_1px.png")
-	if err := os.WriteFile(tmpFile, pngData, 0644); err != nil {
+	if err := os.WriteFile(tmpFile, pngData, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -105,7 +107,7 @@ func TestIntegration_FileUpload_TextFile(t *testing.T) {
 	token := login(t)
 
 	tmpFile := filepath.Join(t.TempDir(), "hello.txt")
-	if err := os.WriteFile(tmpFile, []byte("Hello, panda-ai!"), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, []byte("Hello, panda-ai!"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,7 +137,7 @@ func TestIntegration_FileUpload_Audio(t *testing.T) {
 	token := login(t)
 
 	tmpFile := filepath.Join(t.TempDir(), "test.mp3")
-	if err := os.WriteFile(tmpFile, make([]byte, 512), 0644); err != nil {
+	if err := os.WriteFile(tmpFile, make([]byte, 512), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
