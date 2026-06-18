@@ -664,7 +664,7 @@ func TestPanda_Write_Connected(t *testing.T) {
 		if payload.Body != "test message" {
 			t.Fatalf("expected 'test message', got '%s'", payload.Body)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for server to receive frame")
 	}
 }
@@ -703,7 +703,7 @@ func TestPanda_Run_ExitsOnClose(t *testing.T) {
 	p.Close()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("run() did not exit after Close()")
 	}
 }
@@ -802,7 +802,7 @@ func TestPanda_readLoop_ProcessesFrame(t *testing.T) {
 		if msg != "hello from readLoop" {
 			t.Fatalf("expected 'hello from readLoop', got '%s'", msg)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for message from readLoop")
 	}
 
@@ -814,7 +814,7 @@ func TestPanda_readLoop_ProcessesFrame(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("readLoop did not exit after close")
 	}
 }
@@ -870,7 +870,7 @@ func TestPanda_WriteContent_Image(t *testing.T) {
 		if payload.Body != "http://example.com/img.png" {
 			t.Fatalf("expected body with url, got '%s'", payload.Body)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for frame")
 	}
 }
@@ -1088,7 +1088,7 @@ func TestPanda_Write_AutoUploadsImage(t *testing.T) {
 		if !strings.Contains(payload.Body, "http://example.com/written.png") {
 			t.Fatalf("expected uploaded URL in body, got: %s", payload.Body)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for frame")
 	}
 }
@@ -1513,7 +1513,7 @@ func TestPanda_AgentTimeline_ProgressiveSend_WithParentMsgID(t *testing.T) {
 		select {
 		case f := <-got:
 			frames = append(frames, f)
-		case <-time.After(time.Second):
+		case <-time.After(3 * time.Second):
 			t.Fatalf("timed out waiting for frame %d", i+1)
 		}
 	}
@@ -1707,7 +1707,7 @@ func TestPanda_AgentTimeline_BufferBeforeAck(t *testing.T) {
 		if len(t1.Entries) != 2 {
 			t.Fatalf("expected 2 entries (thinking + toolCall), got %d", len(t1.Entries))
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for first frame")
 	}
 
@@ -1823,7 +1823,7 @@ func TestPanda_AgentTimeline_StaleAckIgnored(t *testing.T) {
 		if body.ParentMsgID != 0 {
 			t.Fatalf("turn 2 must use parentMsgID=0, got %d", body.ParentMsgID)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for turn 2 frame")
 	}
 

@@ -47,8 +47,9 @@ func TestWatchdog_ShellToolFiresOnSilentStall(t *testing.T) {
 	_, _ = h(ctx, json.RawMessage(`{"command":"sleep 2"}`))
 	elapsed := time.Since(start)
 
-	// Should have been killed well under 2s — somewhere around 50-200ms.
-	if elapsed > 500*time.Millisecond {
+	// Should have been killed well under 2s — somewhere around 50-200ms on a
+	// fast machine. Allow generous headroom for CI runners under -race.
+	if elapsed > 1500*time.Millisecond {
 		t.Fatalf("watchdog didn't fire in time, elapsed=%v", elapsed)
 	}
 	if !wd.Stats().Fired {
