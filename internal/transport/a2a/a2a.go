@@ -116,7 +116,10 @@ func (a *A2A) Start(ctx context.Context) error {
 	mux.HandleFunc("/.well-known/agent.json", a.handleAgentCard)
 	mux.HandleFunc("/", a.handleJSONRPC)
 
-	a.httpServer = &http.Server{Handler: mux}
+	a.httpServer = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	a.started = true
 
 	go func() {

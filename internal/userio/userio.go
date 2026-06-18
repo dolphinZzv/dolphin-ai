@@ -88,7 +88,7 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 					// Non-interactive — capture output.
 					cmdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 					defer cancel()
-					cmd := exec.CommandContext(cmdCtx, words[0], words[1:]...)
+					cmd := exec.CommandContext(cmdCtx, words[0], words[1:]...) //nolint:gosec // G204: runs a configured editor/pager command
 					output, _ := cmd.CombinedOutput()
 					outStr := string(output)
 					const maxOutput = 64 * 1024

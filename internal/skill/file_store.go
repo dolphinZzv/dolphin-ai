@@ -187,7 +187,7 @@ func (s *FileStore) syncIndexLocked() {
 	if !listed {
 		b.WriteString("No skills registered.\n")
 	}
-	os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o644)
+	os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o600)
 }
 
 // ---------------------------------------------------------------------------
@@ -279,7 +279,7 @@ func writeFile(path string, sk *Skill) error {
 		sb.WriteString("\n")
 	}
 
-	return os.WriteFile(path, []byte(sb.String()), 0o644)
+	return os.WriteFile(path, []byte(sb.String()), 0o600)
 }
 
 func writeMetaFile(path string, sk *Skill) error {
@@ -287,5 +287,5 @@ func writeMetaFile(path string, sk *Skill) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, 0o600)
 }

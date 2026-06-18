@@ -65,7 +65,7 @@ func FetchHelp(c *CLI, logger *zap.Logger) {
 
 	for _, flag := range []string{"--help", "-h", "help"} {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := exec.CommandContext(ctx, c.Path, flag)
+		cmd := exec.CommandContext(ctx, c.Path, flag) //nolint:gosec // G204: c.Path is a configured pager binary, not user input
 		out, err := cmd.CombinedOutput()
 		cancel()
 		if err == nil {

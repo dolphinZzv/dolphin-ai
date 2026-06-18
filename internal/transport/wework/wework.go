@@ -2,7 +2,7 @@ package wework
 
 import (
 	"context"
-	"crypto/md5"
+	"crypto/md5" //nolint:gosec // G501: WeWork upload API requires md5 file digest
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -567,7 +567,7 @@ func (w *WeWork) UploadMedia(ctx context.Context, filePath string) (mediaID, fil
 	totalSize := len(fileData)
 	chunkSize := 512 * 1024
 	totalChunks := (totalSize + chunkSize - 1) / chunkSize
-	md5Hash := md5.Sum(fileData)
+	md5Hash := md5.Sum(fileData) //nolint:gosec // G401: WeWork upload API requires md5 digest
 	md5Str := fmt.Sprintf("%x", md5Hash)
 
 	w.logger.Info("wework upload start",

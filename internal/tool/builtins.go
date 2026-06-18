@@ -58,7 +58,7 @@ func shellHandler(binDirs []string) BuiltinHandler {
 			defer cancel()
 		}
 
-		cmd := exec.CommandContext(execCtx, "sh", "-c", req.Command)
+		cmd := exec.CommandContext(execCtx, "sh", "-c", req.Command) //nolint:gosec // G204: shell tool intentionally runs user-provided commands
 		if len(binDirs) > 0 {
 			extra := strings.Join(binDirs, ":")
 			cmd.Env = append(os.Environ(), "PATH="+extra+":"+os.Getenv("PATH"))

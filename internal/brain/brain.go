@@ -84,7 +84,7 @@ func (b *Brain) Init(ctx context.Context) error {
 
 	// Write .gitignore.
 	gitignore := "# Brain gitignore\n*.log\n.env\ntokens\n"
-	if err := os.WriteFile(filepath.Join(b.dir, ".gitignore"), []byte(gitignore), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(b.dir, ".gitignore"), []byte(gitignore), 0o600); err != nil {
 		return fmt.Errorf("brain: write .gitignore: %w", err)
 	}
 
@@ -105,7 +105,7 @@ func (b *Brain) Init(ctx context.Context) error {
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return fmt.Errorf("brain: mkdir seed %s: %w", rel, err)
 		}
-		if err := os.WriteFile(full, data, 0o644); err != nil {
+		if err := os.WriteFile(full, data, 0o600); err != nil {
 			return fmt.Errorf("brain: write seed %s: %w", rel, err)
 		}
 		return nil
@@ -196,7 +196,7 @@ func (b *Brain) Write(ctx context.Context, path, summary, content string) error 
 		exists = false
 	}
 
-	if err := os.WriteFile(full, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(full, []byte(content), 0o600); err != nil {
 		return fmt.Errorf("brain: write %s: %w", path, err)
 	}
 

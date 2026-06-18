@@ -783,7 +783,7 @@ type apiResponse struct {
 func (p *Panda) login(ctx context.Context) error {
 	serverURL := strings.TrimRight(p.cfg.Server, "/")
 	body := loginReq{Account: p.cfg.Account, Password: p.cfg.Password}
-	reqData, err := json.Marshal(body)
+	reqData, err := json.Marshal(body) //nolint:gosec // G117: password is a login credential field, not a hardcoded secret
 	if err != nil {
 		return fmt.Errorf("marshal login: %w", err)
 	}

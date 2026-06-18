@@ -39,7 +39,7 @@ func writeResult(spec *WorkflowSpec, rs *runState, status string, startedAt time
 
 	// Result file writes alongside the workflow file in the brain directory.
 	path := filepath.Join(brainDir, spec.Name+".result.yaml")
-	if err := os.WriteFile(path, data, 0o644); err != nil {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("workflow: write result: %w", err)
 	}
 	return nil

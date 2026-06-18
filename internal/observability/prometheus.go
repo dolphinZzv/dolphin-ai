@@ -315,7 +315,11 @@ func StartPrometheusServer(addr string) (func(), error) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 
-	srv := &http.Server{Addr: addr, Handler: mux}
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 
 	go func() { _ = srv.ListenAndServe() }()
 

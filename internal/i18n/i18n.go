@@ -68,7 +68,7 @@ func Register(pkg string, dicts ...any) {
 		store[pkg] = make(map[string]Dict)
 	}
 
-	for i := 0; i < len(dicts); i += 2 {
+	for i := 0; i+1 < len(dicts); i += 2 {
 		l, ok := dicts[i].(string)
 		if !ok {
 			continue

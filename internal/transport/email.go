@@ -533,6 +533,11 @@ func (e *Email) closeIMAP() {
 // ---------------------------------------------------------------------------
 
 func (e *Email) sendSMTP(ctx context.Context, to, msg string) error {
+	// Reject recipients containing line breaks to prevent SMTP header/command
+	// injection (gosec G707). A valid address is a single line.
+	if strings.ContainsAny(to, "\r\n") {
+		return fmt.Errorf("smtp: invalid recipient (contains line break)")
+	}
 	addr := net.JoinHostPort(e.cfg.SMTPServer, e.cfg.SMTPPort)
 
 	tlsCfg := &tls.Config{ServerName: e.cfg.SMTPServer}
@@ -556,7 +561,7 @@ func (e *Email) sendSMTP(ctx context.Context, to, msg string) error {
 	if err := client.Mail(e.cfg.EmailAddress); err != nil {
 		return fmt.Errorf("smtp mail: %w", err)
 	}
-	if err := client.Rcpt(to); err != nil {
+	if err := client.Rcpt(to); err != nil { //nolint:gosec // G707: `to` validated for line breaks at function entry
 		return fmt.Errorf("smtp rcpt: %w", err)
 	}
 

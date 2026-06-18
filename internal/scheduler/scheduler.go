@@ -517,7 +517,7 @@ func (s *Scheduler) syncTaskToFileLocked(t *Task) {
 		return
 	}
 	content := "---\n" + string(data) + "---\n"
-	if err := os.WriteFile(filepath.Join(s.dir, t.ID+".md"), []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.dir, t.ID+".md"), []byte(content), 0o600); err != nil {
 		s.logger.Warn("scheduler: save task file", zap.String("name", t.Name), zap.Error(err))
 	}
 	s.syncIndexLocked()
@@ -564,7 +564,7 @@ func (s *Scheduler) syncIndexLocked() {
 				t.ID[:8], t.Name, typ, sched, t.Command, status, t.RunCount)
 		}
 	}
-	if err := os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o600); err != nil {
 		s.logger.Warn("scheduler: write index.md", zap.Error(err))
 	}
 }

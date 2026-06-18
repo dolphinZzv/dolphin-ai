@@ -75,7 +75,7 @@ func (a *AgentLoop) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for i := 0; i < a.poolSize; i++ {
 		wg.Add(1)
-		go func(id int) {
+		go func(id int) { //nolint:gosec // G118: worker publishes panic events on background ctx (run ctx may be cancelled)
 			defer wg.Done()
 			workerID := fmt.Sprintf("worker-%d", id+1)
 			consecutivePanics := 0
