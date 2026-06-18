@@ -64,6 +64,14 @@ func shellHandler(binDirs []string) BuiltinHandler {
 			cmd.Env = append(os.Environ(), "PATH="+extra+":"+os.Getenv("PATH"))
 		}
 
+		// Put the child in its own process group so that on context
+		// cancellation we can kill the whole group (sh + its children,
+		// e.g. `sleep`, `tail -f`). exec.CommandContext's default
+		// Cancel only signals the direct child, leaving grandchildren
+		// alive holding the stdout pipe open and blocking the reader
+		// goroutine below until they exit on their own.
+		configureProcessGroup(cmd)
+
 		// Stream stdout+stderr line-by-line into a buffer, feeding the
 		// watchdog on each line. A long-running command that emits
 		// progress (build, test suite) keeps the turn alive naturally;
@@ -73,6 +81,11 @@ func shellHandler(binDirs []string) BuiltinHandler {
 		pr, pw := io.Pipe()
 		cmd.Stdout = pw
 		cmd.Stderr = pw
+		// Close the pipe write end as soon as the context is cancelled
+		// so the reader goroutine unblocks immediately even if a
+		// grandchild lingers holding the inherited fd.
+		stopPipeClose := context.AfterFunc(execCtx, func() { pw.Close() })
+		defer stopPipeClose()
 
 		if err := cmd.Start(); err != nil {
 			pw.Close()

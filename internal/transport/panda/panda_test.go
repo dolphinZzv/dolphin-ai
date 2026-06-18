@@ -1369,7 +1369,27 @@ func TestPanda_HandleFrame_SendAck_FlushesPending(t *testing.T) {
 
 	_ = p.WriteThinking(context.Background(), "think")
 	_ = p.WriteToolCall(context.Background(), types.ToolCall{ID: "a", Name: "t1", Arguments: "{}"})
-	time.Sleep(100 * time.Millisecond)
+
+	// Wait for the first-send ack to arrive and flush pending entries,
+	// rather than a fixed sleep that races the async readLoop on slow
+	// CI runners under -race.
+	deadline := time.Now().Add(3 * time.Second)
+	for {
+		p.mu.Lock()
+		pending := len(p.pendingEntries)
+		flushed := p.timelineRootMsgID != 0
+		p.mu.Unlock()
+		if flushed && pending == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			p.mu.Lock()
+			pending := len(p.pendingEntries)
+			p.mu.Unlock()
+			t.Fatalf("expected pending entries flushed after ack, got %d", pending)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
 
 	_ = p.WriteToolResult(context.Background(), types.ToolResult{ToolCallID: "a", Content: "ok"})
 	drainFrames(t, got)
