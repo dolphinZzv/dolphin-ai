@@ -121,7 +121,7 @@ func BuildAnthropicMessages(req LLMRequest, logger *zap.Logger) []AnthropicMessa
 	var msgs []AnthropicMessage
 	for i := 0; i < len(req.Messages); i++ {
 		m := req.Messages[i]
-		switch m.Role {
+		switch m.Role { //nolint:exhaustive // RoleUser/RoleSystem share the default text path
 		case types.RoleTool:
 			// Collect all consecutive tool_result blocks into a single
 			// user message so every tool_use from the preceding assistant

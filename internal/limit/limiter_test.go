@@ -236,7 +236,7 @@ func TestCheckLLMSoftObjectFormat(t *testing.T) {
 
 	var softCount, hardCount int32
 	bus.Subscribe(func(_ context.Context, e event.Event) {
-		switch e.Type {
+		switch e.Type { //nolint:exhaustive // test counts only limit events
 		case event.EventLimitSoftWarn:
 			atomic.AddInt32(&softCount, 1)
 		case event.EventLimitHardBlock:

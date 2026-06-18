@@ -880,7 +880,7 @@ func TestToolStageProcessSuccess(t *testing.T) {
 		hasStart := false
 		hasComplete := false
 		for _, e := range gotEvents {
-			switch e.Type {
+			switch e.Type { //nolint:exhaustive // test asserts only on tool events
 			case event.EventToolStart:
 				hasStart = true
 			case event.EventToolComplete:

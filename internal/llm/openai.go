@@ -126,7 +126,7 @@ func BuildOpenAIMessages(req LLMRequest, logger *zap.Logger) []OpenAIMessage {
 		msgs = append(msgs, OpenAIMessage{Role: "system", Content: req.System})
 	}
 	for _, m := range req.Messages {
-		switch m.Role {
+		switch m.Role { //nolint:exhaustive // RoleUser/RoleSystem share the default path
 		case types.RoleTool:
 			msgs = append(msgs, OpenAIMessage{
 				Role:       "tool",

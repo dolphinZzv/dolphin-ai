@@ -1040,7 +1040,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 			return fmt.Errorf(i18n.T("agentloop.tool_permission_failed"), call.Name, err)
 		}
 
-		switch permResult {
+		switch permResult { //nolint:exhaustive // PermissionDenied falls through to default
 		case transport.PermissionOnce:
 			return nil
 		case transport.PermissionAlways:

@@ -1069,7 +1069,7 @@ func (p *Panda) readLoop() {
 
 // handleFrame dispatches a received frame.
 func (p *Panda) handleFrame(f frame) error {
-	switch f.Type {
+	switch f.Type { //nolint:exhaustive // unhandled frame types are intentionally ignored
 	case msgTypePing:
 		return p.writeFrame(frame{Type: msgTypePong})
 

@@ -95,7 +95,7 @@ func (rs *runState) findReady() []string {
 // allDone returns true when every step is in a terminal state.
 func (rs *runState) allDone() bool {
 	for _, s := range rs.spec.Steps {
-		switch rs.statuses[s.ID] {
+		switch rs.statuses[s.ID] { //nolint:exhaustive // non-terminal states fall through to default (not done)
 		case StatusDone, StatusFailed, StatusSkipped:
 			continue
 		default:

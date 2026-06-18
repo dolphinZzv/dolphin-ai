@@ -14,7 +14,7 @@ func NewLogHandler(logger *zap.Logger) Handler {
 			fields = append(fields, zap.Any(k, v))
 		}
 
-		switch e.Type {
+		switch e.Type { //nolint:exhaustive // logs only notable event types; others ignored
 		case EventLLMError, EventToolError, EventTurnError:
 			logger.Error(string(e.Type), fields...)
 		case EventLLMRetry:

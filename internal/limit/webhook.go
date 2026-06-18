@@ -44,7 +44,7 @@ func NewWebhookNotifier(webhookType WebhookType, url string, logger *zap.Logger)
 
 // Handle processes limit events and sends webhooks asynchronously.
 func (w *WebhookNotifier) Handle(ctx context.Context, e event.Event) {
-	switch e.Type {
+	switch e.Type { //nolint:exhaustive // only acts on limit events
 	case event.EventLimitSoftWarn, event.EventLimitHardBlock:
 		go w.send(ctx, e) //nolint:contextcheck
 	}
@@ -98,7 +98,7 @@ func (w *WebhookNotifier) send(ctx context.Context, e event.Event) {
 }
 
 func (w *WebhookNotifier) formatMessage(e event.Event) any {
-	switch w.typ {
+	switch w.typ { //nolint:exhaustive // WebhookHTTP falls through to default (generic)
 	case WebhookDingTalk:
 		return w.formatDingTalk(e)
 	case WebhookWeWork:
@@ -176,7 +176,7 @@ func toInt64(v any) int64 {
 }
 
 func friendlyName(t event.Type) string {
-	switch t {
+	switch t { //nolint:exhaustive // names only limit events; default for others
 	case event.EventLimitSoftWarn:
 		return "软限告警"
 	case event.EventLimitHardBlock:

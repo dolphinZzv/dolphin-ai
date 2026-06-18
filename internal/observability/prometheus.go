@@ -107,7 +107,7 @@ func (h *PrometheusHook) Name() string { return "prometheus" }
 func (h *PrometheusHook) Handle(ctx context.Context, e event.Event) error {
 	sid := e.SessionID
 
-	switch e.Type {
+	switch e.Type { //nolint:exhaustive // exports only turn/tool/token metrics
 	case event.EventTurnComplete:
 		h.turnTotal.WithLabelValues(sid).Inc()
 
@@ -268,7 +268,7 @@ func metricToTimeSeries(mf *dto.MetricFamily, timestamp int64) []prompb.TimeSeri
 		}
 
 		var samples []prompb.Sample
-		switch metricType {
+		switch metricType { //nolint:exhaustive // SUMMARY/UNTYPED/GAUGE_HISTOGRAM fall through to default (skipped)
 		case dto.MetricType_COUNTER:
 			if m.Counter != nil {
 				samples = append(samples, prompb.Sample{

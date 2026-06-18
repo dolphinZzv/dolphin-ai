@@ -100,7 +100,7 @@ func RegisterPermissionTool(r *Registry, ps *permission.Store, getTransport func
 				}, nil
 			}
 
-			switch permResult {
+			switch permResult { //nolint:exhaustive // PermissionDenied falls through to default
 			case transport.PermissionAlways:
 				if ps != nil {
 					argsToSave := json.RawMessage(`{}`)

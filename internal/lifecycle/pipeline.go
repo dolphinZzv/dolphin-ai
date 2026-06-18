@@ -116,7 +116,7 @@ func (p *Pipeline) Start(ctx context.Context) {
 		if sess == nil {
 			return
 		}
-		switch e.Type {
+		switch e.Type { //nolint:exhaustive // only tracks token/round metrics
 		case event.EventLLMComplete:
 			if v, ok := e.Payload["input_tokens"].(int); ok && v > 0 {
 				sess.Set("last_input_tokens", v)

@@ -198,7 +198,7 @@ func globMatch(pattern, s string) bool {
 var _ fmt.Stringer = Result(0)
 
 func (r Result) String() string {
-	switch r {
+	switch r { //nolint:exhaustive // default covers NoMatch
 	case Allow:
 		return "allow"
 	case Deny:
@@ -210,7 +210,7 @@ func (r Result) String() string {
 
 // MapResult maps a Result to a transport.PermissionResult.
 func MapResult(r Result) transport.PermissionResult {
-	switch r {
+	switch r { //nolint:exhaustive // NoMatch falls through to default (Deny)
 	case Allow:
 		return transport.PermissionAlways
 	case Deny:

@@ -31,7 +31,7 @@ func (h *OTelHook) Name() string { return "otel" }
 func (h *OTelHook) Handle(ctx context.Context, e event.Event) error {
 	sid := validSessionID(e.SessionID)
 
-	switch e.Type {
+	switch e.Type { //nolint:exhaustive // traces only LLM/tool spans
 	case event.EventLLMStart:
 		_, span := h.tracer.Start(ctx, "llm.complete")
 		if sid != "" {

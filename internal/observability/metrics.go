@@ -21,7 +21,7 @@ type MetricsHook struct {
 func (h *MetricsHook) Name() string { return "metrics" }
 
 func (h *MetricsHook) Handle(ctx context.Context, e event.Event) error {
-	switch e.Type {
+	switch e.Type { //nolint:exhaustive // records only turn/tool/token metrics
 	case event.EventTurnComplete:
 		if ms, ok := e.Payload["duration_ms"].(float64); ok {
 			h.turnDuration.Record(ctx, ms)
