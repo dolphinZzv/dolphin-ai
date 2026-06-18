@@ -113,7 +113,9 @@ func (s *FileStore) Save(ctx context.Context, sk Skill) error {
 	if err := writeFile(s.skillFile(sk.Name), &sk); err != nil {
 		return err
 	}
-	writeMetaFile(filepath.Join(dir, "metadata.json"), &sk)
+	// metadata.json is advisory; a write failure leaves it stale but does
+	// not affect skill loading from SKILL.md.
+	_ = writeMetaFile(filepath.Join(dir, "metadata.json"), &sk)
 
 	s.syncIndexLocked()
 
@@ -187,7 +189,9 @@ func (s *FileStore) syncIndexLocked() {
 	if !listed {
 		b.WriteString("No skills registered.\n")
 	}
-	os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o600)
+	// index.md is a derived listing; a write failure leaves it stale but
+	// does not affect skill operations.
+	_ = os.WriteFile(filepath.Join(s.dir, "index.md"), []byte(b.String()), 0o600)
 }
 
 // ---------------------------------------------------------------------------
@@ -210,15 +214,17 @@ func migrateFlatFiles(dir string) {
 			os.Remove(filepath.Join(dir, e.Name()))
 			continue
 		}
-		os.MkdirAll(skillDir, 0o755)
+		// Migration is best-effort: failures here leave the old flat file in
+		// place, which is harmless (it will be retried on next start).
+		_ = os.MkdirAll(skillDir, 0o755)
 		oldPath := filepath.Join(dir, e.Name())
 		newPath := filepath.Join(skillDir, "SKILL.md")
-		os.Rename(oldPath, newPath)
+		_ = os.Rename(oldPath, newPath)
 		if sk, err := readFile(newPath); err == nil {
-			writeMetaFile(filepath.Join(skillDir, "metadata.json"), sk)
+			_ = writeMetaFile(filepath.Join(skillDir, "metadata.json"), sk)
 		}
 	}
-	os.Remove(filepath.Join(dir, "index.md"))
+	_ = os.Remove(filepath.Join(dir, "index.md"))
 }
 
 // ---------------------------------------------------------------------------

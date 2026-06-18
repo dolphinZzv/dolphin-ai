@@ -60,7 +60,9 @@ func (rs *ResetScheduler) resetCounters() {
 		return
 	}
 	if totalTokens > 0 {
-		rs.store.Increment("llm.total_tokens", totalTokens)
+		if _, err := rs.store.Increment("llm.total_tokens", totalTokens); err != nil {
+			rs.logger.Warn("limit: restore total_tokens after reset failed", zap.Error(err))
+		}
 	}
 	if rs.OnReset != nil {
 		rs.OnReset()

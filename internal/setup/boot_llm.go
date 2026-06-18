@@ -45,7 +45,10 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 
 	active := c.Config.GetString("llm.use")
 	if active != "" {
-		mgr.SetActiveModel(active)
+		if err := mgr.SetActiveModel(active); err != nil {
+			c.Logger.Warn("llm.use model not found, leaving default",
+				zap.String("model", active), zap.Error(err))
+		}
 	}
 	c.LLMProvider = mgr
 	return nil

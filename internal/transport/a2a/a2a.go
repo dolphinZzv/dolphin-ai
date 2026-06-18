@@ -236,7 +236,9 @@ func (a *A2A) handleAgentCard(w http.ResponseWriter, r *http.Request) {
 		Protocol:    "a2a/1.0",
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(card)
+	// Encode writes to the response; a failure means the client is gone,
+	// nothing to recover.
+	_ = json.NewEncoder(w).Encode(card)
 }
 
 // a2aRequestMsg is an incoming JSON-RPC request.
@@ -405,7 +407,7 @@ func (a *A2A) handleTaskGet(w http.ResponseWriter, req *a2aRequestMsg) {
 
 func (a *A2A) writeJSONRPCResult(w http.ResponseWriter, id any, result any) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(a2aResponse{
+	_ = json.NewEncoder(w).Encode(a2aResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Result:  result,
@@ -415,7 +417,7 @@ func (a *A2A) writeJSONRPCResult(w http.ResponseWriter, id any, result any) {
 func (a *A2A) writeJSONRPCError(w http.ResponseWriter, id any, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK) // JSON-RPC errors are still HTTP 200
-	json.NewEncoder(w).Encode(a2aResponse{
+	_ = json.NewEncoder(w).Encode(a2aResponse{
 		JSONRPC: "2.0",
 		ID:      id,
 		Error:   &a2aError{Code: code, Message: message},

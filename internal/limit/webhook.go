@@ -71,7 +71,9 @@ func (w *WebhookNotifier) send(ctx context.Context, e event.Event) {
 	}
 
 	var result map[string]any
-	json.NewDecoder(resp.Body).Decode(&result)
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		w.logger.Warn("webhook: decode response failed", zap.Error(err))
+	}
 	resp.Body.Close()
 
 	if resp.StatusCode >= 300 {

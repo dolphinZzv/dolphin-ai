@@ -165,7 +165,9 @@ func (w *Watcher) scan() {
 
 	current := make(map[string]time.Time)
 
-	filepath.Walk(w.dir, func(path string, fi os.FileInfo, err error) error {
+	// The walk callback never returns an error (it skips inaccessible
+	// entries), so the walk error is effectively always nil.
+	_ = filepath.Walk(w.dir, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return nil // skip inaccessible
 		}

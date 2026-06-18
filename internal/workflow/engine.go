@@ -219,7 +219,9 @@ func (e *Engine) Run(ctx context.Context, spec *WorkflowSpec, transportID string
 		if checkpointReached {
 			e.progress(transportID, i18n.T("workflow.checkpoint_pause", spec.Name))
 			e.publishEvent(ctx, event.EventWorkflowPaused, spec.Name, nil)
-			writeResult(spec, rs, "paused", startedAt, e.brainDir)
+			if err := writeResult(spec, rs, "paused", startedAt, e.brainDir); err != nil {
+				e.logger.Warn("workflow: write paused result", zap.Error(err))
+			}
 			return nil, ErrCheckpointReached
 		}
 	}
@@ -270,7 +272,9 @@ func (e *Engine) ParseAndRun(ctx context.Context, data []byte, transportID strin
 }
 
 func (e *Engine) finish(spec *WorkflowSpec, rs *runState, status string, startedAt time.Time) *WorkflowResult {
-	writeResult(spec, rs, status, startedAt, e.brainDir)
+	if err := writeResult(spec, rs, status, startedAt, e.brainDir); err != nil {
+		e.logger.Warn("workflow: write final result", zap.Error(err))
+	}
 	wr := &WorkflowResult{
 		Workflow: spec.Name,
 		Status:   status,

@@ -149,8 +149,10 @@ func (s *FileStore) read() (counterData, error) {
 	var cd counterData
 	if err := json.Unmarshal(data, &cd); err != nil {
 		// Corrupt file detected — back it up before returning empty.
+		// Best-effort: if the rename fails we still return empty data
+		// rather than aborting the read.
 		backup := s.filePath() + ".corrupt." + time.Now().Format("20060102T150405")
-		os.Rename(s.filePath(), backup)
+		_ = os.Rename(s.filePath(), backup)
 		return counterData{Counters: make(map[string]int64)}, nil
 	}
 	if cd.Counters == nil {

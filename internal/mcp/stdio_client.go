@@ -72,7 +72,9 @@ func (c *StdioClient) List(ctx context.Context) ([]types.ToolDef, error) {
 func (c *StdioClient) Execute(ctx context.Context, call types.ToolCall) (*types.ToolResult, error) {
 	var args any
 	if call.Arguments != "" {
-		json.Unmarshal([]byte(call.Arguments), &args)
+		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+			return nil, fmt.Errorf("mcp: parse arguments: %w", err)
+		}
 	}
 
 	resp, err := c.call(ctx, "tools/call", map[string]any{

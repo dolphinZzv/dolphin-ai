@@ -2,6 +2,7 @@ package lifecycle
 
 import (
 	"context"
+	"fmt"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/command"
@@ -21,6 +22,11 @@ type Builder struct {
 	ctx      *setup.Context
 	pipeline *Pipeline
 
+	// firstErr captures the first bootstrap error so it can surface from
+	// Build() instead of being silently dropped. Chain methods keep
+	// returning *Builder, so the first error is sticky and reported once.
+	firstErr error
+
 	// cmdReg is set during StepTools for test compatibility.
 	cmdReg *command.Registry
 }
@@ -32,11 +38,21 @@ func NewBuilder(cfg *config.Config) *Builder {
 	}
 }
 
+// bootstrap runs a bootstrapper and records the first error.
+func (b *Builder) boot(bs setup.Bootstrapper) {
+	if b.firstErr != nil {
+		return
+	}
+	if err := bs.Bootstrap(context.Background(), b.ctx); err != nil {
+		b.firstErr = err
+	}
+}
+
 func (b *Builder) StepLogger() *Builder {
 	if b.ctx.Logger != nil {
 		return b
 	}
-	(&setup.LoggerBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.LoggerBootstrapper{})
 	return b
 }
 
@@ -44,7 +60,7 @@ func (b *Builder) StepLimit() *Builder {
 	if b.ctx.Limit != nil {
 		return b
 	}
-	(&setup.LimitBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.LimitBootstrapper{})
 	return b
 }
 
@@ -52,7 +68,7 @@ func (b *Builder) StepBuses() *Builder {
 	if b.ctx.EventBus != nil {
 		return b
 	}
-	(&setup.BusesBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.BusesBootstrapper{})
 	return b
 }
 
@@ -60,7 +76,7 @@ func (b *Builder) StepSession() *Builder {
 	if b.ctx.SessionMgr != nil {
 		return b
 	}
-	(&setup.SessionBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.SessionBootstrapper{})
 	return b
 }
 
@@ -68,7 +84,7 @@ func (b *Builder) StepMemory() *Builder {
 	if b.ctx.Mem != nil {
 		return b
 	}
-	(&setup.MemoryBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.MemoryBootstrapper{})
 	return b
 }
 
@@ -76,7 +92,7 @@ func (b *Builder) StepLLM() *Builder {
 	if b.ctx.LLMProvider != nil {
 		return b
 	}
-	(&setup.LLMBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.LLMBootstrapper{})
 	return b
 }
 
@@ -84,13 +100,13 @@ func (b *Builder) StepTools() *Builder {
 	if b.ctx.ToolReg != nil {
 		return b
 	}
-	(&setup.ToolsBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.ToolsBootstrapper{})
 	b.cmdReg = b.ctx.CmdReg
 	return b
 }
 
 func (b *Builder) StepCli() *Builder {
-	_ = (&setup.CLIBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.CLIBootstrapper{})
 	return b
 }
 
@@ -98,7 +114,7 @@ func (b *Builder) StepBrain() *Builder {
 	if b.ctx.Brain != nil {
 		return b
 	}
-	(&setup.BrainBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.BrainBootstrapper{})
 	return b
 }
 
@@ -106,7 +122,7 @@ func (b *Builder) StepScheduler() *Builder {
 	if b.ctx.Scheduler != nil {
 		return b
 	}
-	(&setup.SchedulerBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.SchedulerBootstrapper{})
 	return b
 }
 
@@ -114,7 +130,7 @@ func (b *Builder) StepAgentIO() *Builder {
 	if b.ctx.AgentIO != nil {
 		return b
 	}
-	(&setup.AgentIOBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.AgentIOBootstrapper{})
 	return b
 }
 
@@ -122,7 +138,7 @@ func (b *Builder) StepWorkflow() *Builder {
 	if b.ctx.WorkflowEngine != nil {
 		return b
 	}
-	_ = (&setup.WorkflowBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.WorkflowBootstrapper{})
 	return b
 }
 
@@ -130,7 +146,7 @@ func (b *Builder) StepUserIO() *Builder {
 	if b.ctx.UserIO != nil {
 		return b
 	}
-	(&setup.UserIOBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.UserIOBootstrapper{})
 	return b
 }
 
@@ -138,7 +154,7 @@ func (b *Builder) StepObservability() *Builder {
 	if b.ctx.OtelShutdown != nil {
 		return b
 	}
-	(&setup.ObservabilityBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.ObservabilityBootstrapper{})
 	return b
 }
 
@@ -146,7 +162,7 @@ func (b *Builder) StepPprof() *Builder {
 	if b.ctx.PprofShutdown != nil {
 		return b
 	}
-	_ = (&setup.PprofBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.PprofBootstrapper{})
 	return b
 }
 
@@ -154,7 +170,7 @@ func (b *Builder) StepTransports() *Builder {
 	if b.ctx.Transports != nil {
 		return b
 	}
-	(&setup.TransportsBootstrapper{}).Bootstrap(context.Background(), b.ctx)
+	b.boot(&setup.TransportsBootstrapper{})
 	return b
 }
 
@@ -191,8 +207,12 @@ func (b *Builder) Assemble() *Builder {
 	return b
 }
 
-// Build returns the assembled Pipeline. Panics if Assemble wasn't called.
+// Build returns the assembled Pipeline. Panics if Assemble wasn't called
+// or if an earlier bootstrap step failed — startup errors are fatal.
 func (b *Builder) Build() *Pipeline {
+	if b.firstErr != nil {
+		panic(fmt.Sprintf("pipeline builder: bootstrap failed: %v", b.firstErr))
+	}
 	if b.pipeline == nil {
 		panic("pipeline builder: Build() called without running Assemble()")
 	}

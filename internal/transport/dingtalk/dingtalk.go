@@ -298,7 +298,7 @@ func (d *DingTalk) sendStartupNotification(ctx context.Context) {
 		return
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body)
+	_, _ = io.Copy(io.Discard, resp.Body)
 }
 
 // ---------------------------------------------------------------------------
@@ -395,7 +395,7 @@ func (d *DingTalk) rejectMessage(ctx context.Context, nick string) {
 	req.Header.Set("Content-Type", "application/json")
 	resp, err := d.httpClient.Do(req)
 	if err == nil {
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 	}
 }

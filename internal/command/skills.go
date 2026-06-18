@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -69,7 +70,9 @@ func RegisterSkills(r *Registry, skillStore interface {
 				return nil
 			}
 			sk.Enabled = true
-			skillStore.Save(context.Background(), *sk)
+			if err := skillStore.Save(context.Background(), *sk); err != nil {
+				return fmt.Errorf("enable skill: %w", err)
+			}
 			cmd.Printf("skill %q enabled\n", name)
 			return nil
 		},
@@ -86,7 +89,9 @@ func RegisterSkills(r *Registry, skillStore interface {
 				return nil
 			}
 			sk.Enabled = false
-			skillStore.Save(context.Background(), *sk)
+			if err := skillStore.Save(context.Background(), *sk); err != nil {
+				return fmt.Errorf("disable skill: %w", err)
+			}
 			cmd.Printf("skill %q disabled\n", name)
 			return nil
 		},

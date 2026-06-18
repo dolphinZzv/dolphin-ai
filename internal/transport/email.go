@@ -348,7 +348,7 @@ func (e *Email) buildMessage(to, subject, body, messageID string, originalBody s
 			finalBody += "> " + line + "\n"
 		}
 	}
-	p.Write([]byte(finalBody + "\r\n"))
+	_, _ = p.Write([]byte(finalBody + "\r\n"))
 
 	// text/html part
 	// Append quoted original as blockquote in HTML.
@@ -364,7 +364,7 @@ func (e *Email) buildMessage(to, subject, body, messageID string, originalBody s
 	p, _ = mw.CreatePart(textproto.MIMEHeader{
 		"Content-Type": {"text/html; charset=\"UTF-8\""},
 	})
-	p.Write([]byte(h + "\r\n"))
+	_, _ = p.Write([]byte(h + "\r\n"))
 
 	mw.Close()
 	return buf.String()

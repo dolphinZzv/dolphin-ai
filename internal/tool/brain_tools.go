@@ -65,7 +65,8 @@ func RegisterBrainTools(r *Registry, br *brain.Brain) {
 		var req struct {
 			N int `json:"n"`
 		}
-		json.Unmarshal(args, &req)
+		// Args are advisory; on parse error we fall back to defaults.
+		_ = json.Unmarshal(args, &req)
 		if req.N <= 0 {
 			req.N = 10
 		}

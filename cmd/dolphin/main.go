@@ -53,5 +53,7 @@ func main() {
 	configCmd.AddCommand(command.NewConfigInitCmd())
 	rootCmd.AddCommand(configCmd)
 
-	rootCmd.Execute()
+	if err := rootCmd.Execute(); err != nil {
+		os.Exit(1)
+	}
 }

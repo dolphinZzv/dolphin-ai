@@ -309,33 +309,41 @@ func (l *Limiter) globalLimit(configKey, storeKey, display string) []limitDef {
 // RecordLLM records usage after a successful LLM call.
 func (l *Limiter) RecordLLM(model string, inputTokens, outputTokens int) {
 	total := int64(inputTokens + outputTokens)
-	l.store.Increment("llm.requests", 1)
+	l.incr("llm.requests", 1)
 	if total > 0 {
-		l.store.Increment("llm.total_tokens", total)
+		l.incr("llm.total_tokens", total)
 	}
 	if inputTokens > 0 {
-		l.store.Increment("llm.input_tokens", int64(inputTokens))
+		l.incr("llm.input_tokens", int64(inputTokens))
 	}
 	if outputTokens > 0 {
-		l.store.Increment("llm.output_tokens", int64(outputTokens))
+		l.incr("llm.output_tokens", int64(outputTokens))
 	}
 	if model != "" {
-		l.store.Increment("llm.model."+model+".requests", 1)
+		l.incr("llm.model."+model+".requests", 1)
 		if total > 0 {
-			l.store.Increment("llm.model."+model+".tokens", total)
+			l.incr("llm.model."+model+".tokens", total)
 		}
 		// Also record to qualified keys so /limit per-model display works
 		// when the model name is short (no provider prefix).
 		if !strings.Contains(model, "/") {
 			for qualified := range l.modelLimits {
 				if strings.HasSuffix(qualified, "/"+model) {
-					l.store.Increment("llm.model."+qualified+".requests", 1)
+					l.incr("llm.model."+qualified+".requests", 1)
 					if total > 0 {
-						l.store.Increment("llm.model."+qualified+".tokens", total)
+						l.incr("llm.model."+qualified+".tokens", total)
 					}
 				}
 			}
 		}
+	}
+}
+
+// incr increments a counter, logging (not failing) on store errors — usage
+// counters are best-effort and must not break the LLM call path.
+func (l *Limiter) incr(key string, delta int64) {
+	if _, err := l.store.Increment(key, delta); err != nil && l.logger != nil {
+		l.logger.Warn("limit: increment failed", zap.String("key", key), zap.Error(err))
 	}
 }
 

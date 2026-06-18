@@ -397,7 +397,7 @@ func RegisterSkillTools(r *Registry, store SkillStore) {
 				var nameReq struct {
 					Name string `json:"name"`
 				}
-				json.Unmarshal(args, &nameReq)
+				_ = json.Unmarshal(args, &nameReq)
 				if err := store.Delete(ctx, nameReq.Name); err != nil {
 					return &types.ToolResult{Content: "failed to delete: " + err.Error(), IsError: true}, nil
 				}
@@ -442,7 +442,9 @@ func RegisterSkillTools(r *Registry, store SkillStore) {
 			return &types.ToolResult{Content: "skill not found: " + req.Name, IsError: true}, nil
 		}
 		sk.Enabled = true
-		store.Save(ctx, *sk)
+		if err := store.Save(ctx, *sk); err != nil {
+			return &types.ToolResult{Content: "failed to load skill: " + err.Error(), IsError: true}, nil
+		}
 		return &types.ToolResult{Content: "skill '" + sk.Name + "' loaded"}, nil
 	})
 }

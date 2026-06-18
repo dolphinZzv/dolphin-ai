@@ -470,7 +470,7 @@ func (p *Panda) writeFrame(f frame) error {
 		return fmt.Errorf("panda: not connected")
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(pandaWriteTimeout))
+	_ = conn.SetWriteDeadline(time.Now().Add(pandaWriteTimeout))
 	return conn.WriteJSON(f)
 }
 
@@ -644,7 +644,7 @@ func (p *Panda) uploadImage(ctx context.Context, filePath string) (string, error
 	if _, err := io.Copy(fw, f); err != nil {
 		return "", fmt.Errorf("copy file: %w", err)
 	}
-	w.WriteField("file_type", fmt.Sprintf("%d", fileType))
+	_ = w.WriteField("file_type", fmt.Sprintf("%d", fileType))
 	w.Close()
 
 	serverURL := strings.TrimRight(p.cfg.Server, "/")
