@@ -78,6 +78,13 @@ type model struct {
 	inThinking         bool
 	msgChan            chan string
 	permCh             chan string
+		inputHistory       []string
+		historyPos         int
+		historyDraft       string
+		completions       []string
+		completionIdx     int
+		completionPrefix  string
+		getCompletions    func(prefix string) []string
 	username           string
 	agentName          string
 	version            string
@@ -175,6 +182,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.permDialog != nil {
 			return m.handlePermKey(msg)
 		}
+		// Any non-tab key clears the completions popup.
+		if msg.String() != "tab" {
+			m.completions = nil
+			m.completionIdx = 0
+			m.completionPrefix = ""
+		}
+
 		switch msg.String() {
 		case "alt+enter":
 			ta, _ := m.textarea.Update(tea.KeyMsg{
@@ -191,12 +205,35 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 
 		case "ctrl+g":
-			// Jump to the bottom of the conversation. Returns early so the
-			// keystroke is not inserted into the textarea; textarea.Blink
-			// keeps the cursor blinking.
 			m.viewport.GotoBottom()
 			m.updateViewportHeight()
 			return m, textarea.Blink
+
+		case "tab":
+			// Slash-command autocomplete. First tab gathers completions
+			// and applies the first match; subsequent tabs cycle.
+			if m.getCompletions == nil {
+				return m, tea.Batch(cmds...)
+			}
+			input := m.textarea.Value()
+			if !strings.HasPrefix(input, "/") {
+				return m, tea.Batch(cmds...)
+			}
+			if len(m.completions) == 0 {
+				m.completions = m.getCompletions(input)
+				if len(m.completions) == 0 {
+					return m, tea.Batch(cmds...)
+				}
+				m.completionPrefix = input
+				m.textarea.SetValue(m.completions[0])
+				m.textarea.CursorEnd()
+				m.completionIdx = 0
+				return m, tea.Batch(cmds...)
+			}
+			m.completionIdx = (m.completionIdx + 1) % len(m.completions)
+			m.textarea.SetValue(m.completions[m.completionIdx])
+			m.textarea.CursorEnd()
+			return m, tea.Batch(cmds...)
 
 		case "enter":
 			input := strings.TrimSpace(m.textarea.Value())
@@ -224,6 +261,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmds...)
 			}
 			if input != "" {
+				if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != input {
+					m.inputHistory = append(m.inputHistory, input)
+					if len(m.inputHistory) > 100 {
+						m.inputHistory = m.inputHistory[len(m.inputHistory)-100:]
+					}
+				}
+				m.historyPos = -1
 				cmds = append(cmds, func() tea.Msg { return userSubmitMsg{text: input} })
 			}
 			return m, tea.Batch(cmds...)
@@ -414,6 +458,37 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
+	// History navigation via up/down arrow.
+	if keyMsg, ok := msg.(tea.KeyMsg); ok {
+		switch keyMsg.String() {
+		case "up":
+			if len(m.inputHistory) > 0 {
+				if m.historyPos == -1 {
+					m.historyDraft = m.textarea.Value()
+					m.historyPos = len(m.inputHistory) - 1
+				} else if m.historyPos > 0 {
+					m.historyPos--
+				}
+				m.textarea.SetValue(m.inputHistory[m.historyPos])
+				m.textarea.CursorEnd()
+			}
+			return m, tea.Batch(append(cmds, textarea.Blink)...)
+		case "down":
+			if m.historyPos >= 0 {
+				m.historyPos++
+				if m.historyPos >= len(m.inputHistory) {
+					m.historyPos = -1
+					m.textarea.SetValue(m.historyDraft)
+					m.historyDraft = ""
+				} else {
+					m.textarea.SetValue(m.inputHistory[m.historyPos])
+				}
+				m.textarea.CursorEnd()
+			}
+			return m, tea.Batch(append(cmds, textarea.Blink)...)
+		}
+	}
+
 
 	// Update components.
 	ta, taCmd := m.textarea.Update(msg)
@@ -452,27 +527,45 @@ func (m model) handlePermKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	choices := m.permDialog.choices
-	switch msg.String() {
+
+	// 'a' (always) requires double-press confirmation.
+	confirmOrResolve := func(idx int) (tea.Model, tea.Cmd) {
+		if m.permDialog.confirmIdx != idx {
+			m.permDialog.confirmIdx = idx
+			m.permDialog.active = idx
+			return m, nil
+		}
+		return m.resolvePerm(idx)
+	}
+
+	key := msg.String()
+	switch key {
 	case "y", "Y":
-		return m.resolvePerm(0)
+		m.permDialog.confirmIdx = -1
+		return m.resolvePerm(0) // once, immediate
 	case "a", "A":
-		return m.resolvePerm(1)
+		return confirmOrResolve(1) // always, needs confirm
 	case "n", "N", "esc":
-		return m.resolvePerm(2)
+		m.permDialog.confirmIdx = -1
+		return m.resolvePerm(2) // deny, immediate
 	case "left", "h":
+		m.permDialog.confirmIdx = -1
 		m.permDialog.active = (m.permDialog.active - 1 + len(choices)) % len(choices)
 		return m, nil
 	case "right", "l":
+		m.permDialog.confirmIdx = -1
 		m.permDialog.active = (m.permDialog.active + 1) % len(choices)
 		return m, nil
 	case "enter", " ":
+		m.permDialog.confirmIdx = -1
 		idx := m.permDialog.active
 		if idx < 0 || idx >= len(permChoiceMap) {
 			idx = 2 // deny
 		}
 		return m.resolvePerm(idx)
 	}
-	// Any other key is swallowed by the modal.
+	// Any other key clears confirmation and is swallowed.
+	m.permDialog.confirmIdx = -1
 	return m, nil
 }
 
@@ -1070,6 +1163,46 @@ func (m model) View() string {
 	}
 
 	// === Row 3..: full-width input + separator + status bar ===
+	// Completions popup: shown below the queue when autocompleting.
+	if len(m.completions) > 0 {
+		compStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+			Background(lipgloss.AdaptiveColor{Light: "189", Dark: "236"}).
+			Padding(0, 1)
+		compSep := lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
+			Render(strings.Repeat("─", m.width))
+		header := lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"}).
+			Render("Tab to cycle, type to filter")
+		elements = append(elements, compSep)
+		// Show up to 8 completions; highlight the active one.
+		start := m.completionIdx / 8 * 8
+		end := start + 8
+		if end > len(m.completions) {
+			end = len(m.completions)
+		}
+		var compLines []string
+		for j := start; j < end; j++ {
+			line := m.completions[j]
+			if j == m.completionIdx {
+				line = "▸ " + line
+			} else {
+				line = "  " + line
+			}
+			compLines = append(compLines, compStyle.Render(line))
+		}
+		if len(compLines) > 0 {
+			elements = append(elements, lipgloss.JoinVertical(lipgloss.Left, compLines...))
+		}
+		if len(m.completions) > 8 {
+			elements = append(elements, compStyle.Render(fmt.Sprintf("  … %d total", len(m.completions))))
+		}
+		elements = append(elements, lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+			Render(header))
+	}
+	// Full-width separator + input line.
 	inputLine := lipgloss.NewStyle().
 		Width(m.width).
 		Render(m.textarea.View())

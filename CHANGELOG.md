@@ -3,7 +3,10 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
-- (formatting fix: gofmt)
+- Permission dialog: `a (always)` requires double-press to confirm (safety guard against accidental permanent grants). Dialog remains 3-choice: once/always/deny. Reverted abort/yolo additions.
+- Slash-command Tab-completion: `/` prefix triggers autocomplete from cobra registry + TUI-only commands (`/tools`, `/thinking`, `/windows`, `/exit`). Completions popup renders between queue and input. Tab cycles matches.
+- Mouse wheel scrolling enabled in TUI viewport via `tea.WithMouseCellMotion()`.
+- Input history: up/down arrow navigates previously submitted messages (last 100, dedup consecutive). Bubble Tea textarea provides built-in readline keybindings (Ctrl+A/E/W/U/K, Alt+B/F, etc.).
 - **Permission system overhaul**: `always` now grants per-tool access (glob match) instead of exact-parameter matching, so approving `shell` once covers all future shell commands. Deny rules checked first and take priority over allow/safe-command auto-approval. Built-in safe commands (`ls`, `pwd`, `cat`, `grep`, etc.) auto-allow without prompting when no rule matches. Config-driven deny defaults (`permission.deny`) act as a safety net blocking dangerous operations like `rm *`, `sudo *`, `dd *` regardless of runtime grants.
 - **Compaction**: auto-compaction now has a dedicated `compaction` config section (schema + defaults). `/session compaction` and `/compaction` commands for on-demand manual compaction — always compacts regardless of token threshold, with dynamic keepRounds adjustment to ensure at least one round gets summarized. `Compact()` exported from `CompactionStage`.
 - **`/session dump` and `/dump`**: write the last turn's LLM request/response + tool calls to `<session.dump_dir>/<session_id>.json`. `dump` package with `Recorder` + `TurnDump` struct; recorded per-turn in `AgentLoop.processTurn` on success.

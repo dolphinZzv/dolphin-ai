@@ -80,6 +80,49 @@ func (r *Registry) HasCommand(name string) bool {
 	return err == nil
 }
 
+// Completions returns registered command paths that match the given prefix,
+// ordered by prefix match priority for tab completion. Prefix can be empty
+// (return all), or a path with optional leading "/" like "ses" or "/session".
+func (r *Registry) Completions(prefix string) []string {
+	// Normalize: strip leading "/" for cobra-internal path matching.
+	prefix = strings.TrimPrefix(prefix, "/")
+	var matches []string
+	var walk func(cmd *cobra.Command)
+	walk = func(cmd *cobra.Command) {
+		path := cmd.CommandPath()
+		// Skip the root "dolphin" prefix.
+		path = strings.TrimPrefix(path, "dolphin ")
+		if path != "dolphin" && path != "" && strings.HasPrefix(path, prefix) {
+			if !slicesContains(matches, path) {
+				matches = append(matches, "/"+path)
+			}
+		}
+		for _, sub := range cmd.Commands() {
+			walk(sub)
+		}
+	}
+	walk(r.root)
+	// Dedup: exact prefix matches first.
+	var result []string
+	seen := make(map[string]bool)
+	for _, m := range matches {
+		if !seen[m] {
+			seen[m] = true
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+func slicesContains(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
 // resolveI18nAnnotations refreshes all dynamic i18n Short fields on registered commands.
 func (r *Registry) resolveI18nAnnotations() {
 	var walk func(cmd *cobra.Command)

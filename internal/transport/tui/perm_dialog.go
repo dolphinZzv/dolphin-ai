@@ -7,9 +7,10 @@ import (
 )
 
 type permDialog struct {
-	prompt  string
-	choices []string
-	active  int
+	prompt     string
+	choices    []string
+	active     int
+	confirmIdx int // -1 = no pending confirmation, >=0 = waiting for second press
 }
 
 type permResponseMsg struct {
@@ -42,7 +43,11 @@ func renderPermDialog(d permDialog, width int) string {
 
 	for i, c := range d.choices {
 		if i == d.active {
-			b.WriteString(activeStyle.Render(" " + c + " "))
+			label := " " + c + " "
+			if d.confirmIdx == i {
+				label = " " + c + " -- press again "
+			}
+			b.WriteString(activeStyle.Render(label))
 		} else {
 			b.WriteString(choiceStyle.Render(" " + c + " "))
 		}

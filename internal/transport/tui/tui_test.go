@@ -823,14 +823,22 @@ func TestModelUpdate_PermDialogKey_A(t *testing.T) {
 	m := newModel()
 	m.viewport = viewport.New(80, 20)
 	m.permDialog = &permDialog{
-		prompt:  "test",
-		choices: []string{"y", "n"},
+		prompt:     "test",
+		choices:    []string{"y", "n"},
+		confirmIdx: -1,
 	}
 	m.permCh = make(chan string, 1)
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	// 'a' requires double-press. First press shows confirm; second resolves.
+	a := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}
+	newM, _ := m.Update(a)
+	m = newM.(model)
+	if m.permDialog == nil || m.permDialog.confirmIdx != 1 {
+		t.Error("first 'a' should set confirm, not dismiss")
+	}
+	newM, _ = m.Update(a)
 	m = newM.(model)
 	if m.permDialog != nil {
-		t.Error("permDialog should be cleared")
+		t.Error("second 'a' should dismiss permDialog")
 	}
 }
 

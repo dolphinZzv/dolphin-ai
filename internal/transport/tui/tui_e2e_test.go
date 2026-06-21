@@ -141,13 +141,17 @@ func TestE2E_PermissionFlow(t *testing.T) {
 		t.Fatal("model should hold the request's response channel")
 	}
 
-	// Pressing 'a' resolves the modal: the dialog closes and the returned
-	// cmd delivers permResponseMsg, which replies on permCh.
+	// 'a' (always) needs double-press confirmation.
+	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	sim.stepAll()
+	if sim.m.permDialog == nil {
+		t.Error("permission dialog should still show after first 'a'")
+	}
 	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
 	sim.stepAll()
 
 	if sim.m.permDialog != nil {
-		t.Error("permission dialog should be dismissed after 'a' key")
+		t.Error("permission dialog should be dismissed after second 'a'")
 	}
 
 	select {

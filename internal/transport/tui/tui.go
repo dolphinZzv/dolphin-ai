@@ -49,7 +49,13 @@ func init() {
 			logger = l
 		}
 		compMaxTokens, _ := cfg["compaction.max_tokens"].(int)
-		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger), nil
+		var getCompletions func(string) []string
+		if f, ok := cfg["get_completions"].(func(string) []string); ok {
+			getCompletions = f
+		}
+		tui := NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger)
+		tui.getCompletions = getCompletions
+		return tui, nil
 	})
 }
 
@@ -73,6 +79,7 @@ type TUI struct {
 	version            string
 	poolSize           int
 	toolParallelism    int
+	getCompletions     func(string) []string
 	temperature        float64
 	tempFor            func(string) float64
 	reasoningEffort    string
@@ -155,6 +162,7 @@ func (t *TUI) Start(_ context.Context) error {
 	m.thinkingEnabled = t.thinking
 	m.thinkingFor = t.thinkingFor
 	m.compMaxTokens = int64(t.compMaxTokens)
+	m.getCompletions = t.getCompletions
 	m.version = t.version
 	m.toolParallelism = t.toolParallelism
 
@@ -172,7 +180,7 @@ func (t *TUI) Start(_ context.Context) error {
 		})
 	}
 
-	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithAltScreen())
+	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithAltScreen(), tea.WithMouseCellMotion())
 
 	// Start the event loop first — Send() blocks until Run() consumes.
 	go func() {

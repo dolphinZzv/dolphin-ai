@@ -52,6 +52,28 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 			tc.Config["thinking_for"] = func(name string) bool {
 				return lookupThinking(c.LLMProvider, name)
 			}
+			// Slash-command completions for the TUI input area.
+			if c.CmdReg != nil {
+				tuiCmds := []string{"/tools", "/thinking", "/windows", "/windows status", "/exit"}
+				tc.Config["get_completions"] = func(prefix string) []string {
+					reg := c.CmdReg.Completions(prefix)
+					for _, t := range tuiCmds {
+						if strings.HasPrefix(t, prefix) {
+							found := false
+							for _, r := range reg {
+								if r == t {
+									found = true
+									break
+								}
+							}
+							if !found {
+								reg = append(reg, t)
+							}
+						}
+					}
+					return reg
+				}
+			}
 		}
 		tio, err := transport.Build(ctx, tc.Type, tc.Config)
 		if err != nil {

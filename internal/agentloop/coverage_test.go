@@ -34,6 +34,11 @@ func TestIsSafeShellCommand(t *testing.T) {
 		{"shell", `{"command":"ls|grep"}`, false},
 		{"shell", `{"command":"echo $HOME"}`, false},
 		{"shell", `{"command":""}`, false},
+		{"shell", `{"command":"$HOME"}`, false},
+		{"shell", `{"command":"(echo)"}`, false},
+		{"shell", "{\"command\":\"`cmd`\"}", false},
+		{"shell", `{"command":"a&b"}`, false},
+		{"shell", `{"command":"a;b"}`, false},
 	}
 	for _, c := range cases {
 		if got := isSafeShellCommand(c.tool, c.args); got != c.want {
@@ -48,6 +53,8 @@ func TestAgentLoopSetSessionGcInterval(t *testing.T) {
 	if a.gcInterval != time.Minute {
 		t.Error("gcInterval not set")
 	}
+	// SetDumpRecorder should be callable (just exercises the setter path)
+	a.SetDumpRecorder(nil)
 }
 
 func TestCompositor_Setters(t *testing.T) {
