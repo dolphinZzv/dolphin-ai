@@ -18,9 +18,12 @@ type SessionID = string
 
 // Session represents a single conversation session.
 type Session struct {
-	ID        string         `json:"id"`
-	Active    bool           `json:"active"`
-	CreatedAt time.Time      `json:"created_at"`
+	ID        string    `json:"id"`
+	Active    bool      `json:"active"`
+	CreatedAt time.Time `json:"created_at"`
+	// UpdatedAt tracks the last time a turn was bound to this session.
+	// Used by AgentIO to detect session expiry (idle-too-long).
+	UpdatedAt time.Time      `json:"updated_at,omitempty"`
 	Data      map[string]any `json:"data,omitempty"`
 
 	saveFn func(*Session) // set by Manager for auto-save
@@ -71,6 +74,7 @@ func (m *Manager) Create(ctx context.Context) *Session {
 		ID:        xid.New().String(),
 		Active:    true,
 		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	sess.saveFn = m.saveSession
 	m.current = sess
@@ -88,6 +92,7 @@ func (m *Manager) NewSession(ctx context.Context) *Session {
 		ID:        xid.New().String(),
 		Active:    false,
 		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
 	}
 	sess.saveFn = m.saveSession
 	m.known[sess.ID] = sess
@@ -121,6 +126,19 @@ func (m *Manager) Active() *Session {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.current
+}
+
+// Touch updates UpdatedAt on the active session and persists it. Used by
+// AgentIO on each turn so session-expiry checks see a fresh timestamp.
+// No-op if there is no active session or the active id doesn't match.
+func (m *Manager) Touch(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.current == nil || m.current.ID != id {
+		return
+	}
+	m.current.UpdatedAt = time.Now()
+	m.saveSessionLocked(m.current)
 }
 
 func (m *Manager) Get(id string) *Session {

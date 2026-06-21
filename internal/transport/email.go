@@ -274,6 +274,10 @@ func (e *Email) RequestPermission(_ context.Context, _ string) (PermissionResult
 	return PermissionDenied, fmt.Errorf("%s", i18n.T("transport.email_no_interactive"))
 }
 
+func (e *Email) Confirm(_ context.Context, _ string) (bool, error) {
+	return false, fmt.Errorf("%s", i18n.T("transport.email_no_interactive"))
+}
+
 // rejectMessage sends a rejection email to the sender via SMTP.
 func (e *Email) rejectMessage(ctx context.Context, to, subject, messageId string) {
 	rejectSubj := "Re: " + subject

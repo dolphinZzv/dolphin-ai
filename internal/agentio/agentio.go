@@ -54,6 +54,11 @@ type AgentIO struct {
 	logger     *zap.Logger
 	agentName  string
 
+	// expireAfter, if > 0, prompts the user to start a new session when a
+	// turn arrives more than this long after the active session's last
+	// activity. 0 disables the check.
+	expireAfter time.Duration
+
 	bufMu   sync.Mutex
 	buffers map[string]string // partial text for chunk-mode transports
 
@@ -110,6 +115,48 @@ func (a *AgentIO) GetTransport(id string) transport.IO {
 	return a.routes[id]
 }
 
+// SetExpireAfter configures session idle expiry. When a turn arrives more
+// than d after the active session's last activity, the user is asked
+// (via their transport) whether to start a fresh session. 0 disables.
+func (a *AgentIO) SetExpireAfter(d time.Duration) {
+	a.expireAfter = d
+}
+
+// bindSession picks (or creates / rotates) the session for a turn that
+// didn't already carry one. On idle expiry it prompts the user's transport;
+// turns without a transport context silently continue the active session.
+func (a *AgentIO) bindSession(ctx context.Context, turn *Turn) {
+	sess := a.sessionMgr.Active()
+	if sess == nil {
+		sess = a.sessionMgr.Create(ctx)
+		turn.SessionID = sess.ID
+		return
+	}
+
+	// Decide whether to ask about rotation. Only ask when:
+	//   - expiry is enabled,
+	//   - the session is genuinely idle past the threshold,
+	//   - the turn came in over a known transport that can ask the user.
+	if a.expireAfter > 0 && !sess.UpdatedAt.IsZero() &&
+		time.Since(sess.UpdatedAt) > a.expireAfter && turn.TransportID != "" {
+		if tio := a.routes[turn.TransportID]; tio != nil {
+			idle := time.Since(sess.UpdatedAt).Round(time.Second)
+			prompt := i18n.T("agentio.session_expired_prompt", idle.String())
+			ok, err := tio.Confirm(ctx, prompt)
+			if err == nil && ok {
+				sess = a.sessionMgr.Create(ctx)
+				turn.SessionID = sess.ID
+				return
+			}
+			// err != nil (transport non-interactive) or user said no:
+			// fall through and reuse the existing session.
+		}
+	}
+
+	turn.SessionID = sess.ID
+	a.sessionMgr.Touch(sess.ID)
+}
+
 func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
 	if turn.TurnID == "" {
 		turn.TurnID = xid.New().String()
@@ -134,11 +181,7 @@ func (a *AgentIO) SendTurn(ctx context.Context, turn *Turn) {
 	}
 
 	if turn.SessionID == "" {
-		sess := a.sessionMgr.Active()
-		if sess == nil {
-			sess = a.sessionMgr.Create(ctx)
-		}
-		turn.SessionID = sess.ID
+		a.bindSession(ctx, turn)
 	}
 
 	turn.EnqueuedAt = time.Now()
@@ -181,11 +224,7 @@ func (a *AgentIO) SendTurnPriority(ctx context.Context, turn *Turn) {
 	}
 
 	if turn.SessionID == "" {
-		sess := a.sessionMgr.Active()
-		if sess == nil {
-			sess = a.sessionMgr.Create(ctx)
-		}
-		turn.SessionID = sess.ID
+		a.bindSession(ctx, turn)
 	}
 
 	turn.EnqueuedAt = time.Now()

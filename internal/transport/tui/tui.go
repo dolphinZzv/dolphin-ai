@@ -316,3 +316,13 @@ func (t *TUI) RequestPermission(ctx context.Context, prompt string) (transport.P
 		return transport.PermissionDenied, nil
 	}
 }
+
+// Confirm asks the user a yes/no question by reusing the permission dialog
+// (y/a → yes, n/esc → no).
+func (t *TUI) Confirm(ctx context.Context, prompt string) (bool, error) {
+	res, err := t.RequestPermission(ctx, prompt)
+	if err != nil {
+		return false, err
+	}
+	return res != transport.PermissionDenied, nil
+}

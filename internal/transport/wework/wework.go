@@ -967,6 +967,10 @@ func (w *WeWork) RequestPermission(_ context.Context, _ string) (transport.Permi
 	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("wework.no_interactive"))
 }
 
+func (w *WeWork) Confirm(_ context.Context, _ string) (bool, error) {
+	return false, fmt.Errorf("%s", i18n.T("wework.no_interactive"))
+}
+
 // UserID returns the WeWork user ID of the most recent message sender.
 func (w *WeWork) UserID() string {
 	w.stateMu.Lock()

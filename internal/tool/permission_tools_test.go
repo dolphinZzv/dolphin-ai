@@ -164,6 +164,10 @@ func (m *mockPermTransport) Session() *session.Session                       { r
 func (m *mockPermTransport) RequestPermission(_ context.Context, _ string) (transport.PermissionResult, error) {
 	return m.permissionResult, nil
 }
+
+func (m *mockPermTransport) Confirm(_ context.Context, _ string) (bool, error) {
+	return m.permissionResult != transport.PermissionDenied, nil
+}
 func (m *mockPermTransport) WriteThinking(_ context.Context, _ string) error             { return nil }
 func (m *mockPermTransport) WriteToolCall(_ context.Context, _ types.ToolCall) error     { return nil }
 func (m *mockPermTransport) WriteToolResult(_ context.Context, _ types.ToolResult) error { return nil }

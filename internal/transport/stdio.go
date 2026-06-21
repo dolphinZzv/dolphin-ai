@@ -283,6 +283,16 @@ func (s *Stdio) RequestPermission(_ context.Context, prompt string) (PermissionR
 	}
 }
 
+// Confirm asks a yes/no question by reusing the permission menu
+// (once/always → yes, deny → no).
+func (s *Stdio) Confirm(ctx context.Context, prompt string) (bool, error) {
+	res, err := s.RequestPermission(ctx, prompt)
+	if err != nil {
+		return false, err
+	}
+	return res != PermissionDenied, nil
+}
+
 // Ensure Stdio implements IO.
 var _ IO = (*Stdio)(nil)
 
@@ -325,6 +335,10 @@ func (n *NullTransport) Flush() error                                 { return n
 func (n *NullTransport) Close() error                                 { n.cancel(); return nil }
 func (n *NullTransport) RequestPermission(_ context.Context, _ string) (PermissionResult, error) {
 	return PermissionDenied, nil
+}
+
+func (n *NullTransport) Confirm(_ context.Context, _ string) (bool, error) {
+	return false, nil
 }
 
 func (n *NullTransport) Capability() Capability {

@@ -100,6 +100,13 @@ func (t *TestTransport) RequestPermission(_ context.Context, msg string) (Permis
 	return PermissionOnce, nil
 }
 
+func (t *TestTransport) Confirm(_ context.Context, msg string) (bool, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	fmt.Fprintf(&t.output, "[CONFIRM:%s]", msg)
+	return true, nil
+}
+
 func (t *TestTransport) Capability() Capability {
 	return Capability{
 		Interactive:        true,

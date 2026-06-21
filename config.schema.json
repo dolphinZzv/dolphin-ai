@@ -65,7 +65,12 @@
       "additionalProperties": false,
       "properties": {
         "dir": { "type": "string", "default": ".dolphin/sessions" },
-        "window": { "type": "integer", "minimum": 1, "default": 40 }
+        "window": { "type": "integer", "minimum": 1, "default": 40 },
+        "expire_after": {
+          "type": "string",
+          "default": "1h",
+          "description": "Idle duration after which a new turn prompts the user to start a fresh session. Go duration syntax (e.g. 1h, 30m). Set to 0 to disable."
+        }
       }
     },
     "agent": {

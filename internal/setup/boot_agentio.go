@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -25,6 +26,15 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		bufferSize = 1024
 	}
 	c.AgentIO = agentio.NewAgentIO(bufferSize, c.SessionMgr, c.SignalBus, c.Logger, c.Config.GetString("agent.name"))
+
+	// Session idle-expiry: when > 0, AgentIO asks the user (via their
+	// transport) whether to rotate to a new session if a turn arrives
+	// after this much idle time on the active session. Default: 1h.
+	expireAfter := c.Config.GetDuration("session.expire_after")
+	if expireAfter <= 0 {
+		expireAfter = time.Hour
+	}
+	c.AgentIO.SetExpireAfter(expireAfter)
 
 	maxRounds := c.Config.GetInt("agent.max_rounds")
 	if maxRounds <= 0 {

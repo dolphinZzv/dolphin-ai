@@ -25,6 +25,10 @@ type IO interface {
 	NewSession(ctx context.Context) *session.Session
 	Session() *session.Session
 	RequestPermission(ctx context.Context, prompt string) (PermissionResult, error)
+	// Confirm asks the user a yes/no question. Returns true for yes, false
+	// for no. Used by session-expiry prompts and other simple confirmations
+	// that don't need the Once/Always distinction of RequestPermission.
+	Confirm(ctx context.Context, prompt string) (bool, error)
 	WriteThinking(ctx context.Context, text string) error
 	WriteToolCall(ctx context.Context, call types.ToolCall) error
 	WriteToolResult(ctx context.Context, result types.ToolResult) error

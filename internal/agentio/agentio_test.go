@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"go.uber.org/zap"
@@ -350,3 +351,129 @@ func (s *streamableTransport) Capability() transport.Capability {
 type assertionError string
 
 func (e assertionError) Error() string { return string(e) }
+
+// confirmTransport is a NullTransport whose Confirm() returns a configured
+// answer, so we can drive the expire-prompt flow in tests.
+type confirmTransport struct {
+	transport.NullTransport
+	answer  bool
+	prompts []string
+	mu      sync.Mutex
+}
+
+func newConfirmTransport(id string, answer bool) *confirmTransport {
+	return &confirmTransport{
+		NullTransport: *transport.NewNullTransport(id),
+		answer:        answer,
+	}
+}
+
+func (c *confirmTransport) Confirm(_ context.Context, prompt string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.prompts = append(c.prompts, prompt)
+	return c.answer, nil
+}
+
+func (c *confirmTransport) prompted() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.prompts) > 0
+}
+
+func TestAgentIOSessionExpiry(t *testing.T) {
+	Convey("AgentIO session expiry", t, func() {
+		logger, _ := zap.NewDevelopment()
+		sb := signal.NewBus()
+		mgr := session.NewManager(t.TempDir())
+		ctx := context.Background()
+
+		Convey("expire_after=0 disables the prompt", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetExpireAfter(0)
+
+			tio := newConfirmTransport("t1", true)
+			aio.RegisterTransport("t1", tio)
+
+			sess := mgr.Create(ctx)
+			// Backdate UpdatedAt so the threshold would otherwise fire.
+			sess.UpdatedAt = time.Now().Add(-2 * time.Hour)
+
+			turnCtx := transport.WithInfo(ctx, &transport.Info{ID: "t1"})
+			aio.SendTurn(turnCtx, &Turn{Input: "hi"})
+
+			So(tio.prompted(), ShouldBeFalse)
+			So(mgr.Active().ID, ShouldEqual, sess.ID)
+		})
+
+		Convey("fresh session does not prompt", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetExpireAfter(time.Hour)
+			tio := newConfirmTransport("t1", true)
+			aio.RegisterTransport("t1", tio)
+
+			sess := mgr.Create(ctx)
+			turnCtx := transport.WithInfo(ctx, &transport.Info{ID: "t1"})
+			aio.SendTurn(turnCtx, &Turn{Input: "hi"})
+
+			So(tio.prompted(), ShouldBeFalse)
+			So(mgr.Active().ID, ShouldEqual, sess.ID)
+		})
+
+		Convey("expired session: user says yes -> rotate", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetExpireAfter(time.Hour)
+			tio := newConfirmTransport("t1", true)
+			aio.RegisterTransport("t1", tio)
+
+			old := mgr.Create(ctx)
+			old.UpdatedAt = time.Now().Add(-2 * time.Hour)
+
+			turnCtx := transport.WithInfo(ctx, &transport.Info{ID: "t1"})
+			turn := &Turn{Input: "hi"}
+			aio.SendTurn(turnCtx, turn)
+
+			So(tio.prompted(), ShouldBeTrue)
+			So(mgr.Active().ID, ShouldNotEqual, old.ID)
+			So(turn.SessionID, ShouldEqual, mgr.Active().ID)
+		})
+
+		Convey("expired session: user says no -> reuse and refresh", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetExpireAfter(time.Hour)
+			tio := newConfirmTransport("t1", false)
+			aio.RegisterTransport("t1", tio)
+
+			old := mgr.Create(ctx)
+			old.UpdatedAt = time.Now().Add(-2 * time.Hour)
+			oldID := old.ID
+
+			turnCtx := transport.WithInfo(ctx, &transport.Info{ID: "t1"})
+			turn := &Turn{Input: "hi"}
+			aio.SendTurn(turnCtx, turn)
+
+			So(tio.prompted(), ShouldBeTrue)
+			So(mgr.Active().ID, ShouldEqual, oldID)
+			So(turn.SessionID, ShouldEqual, oldID)
+			// UpdatedAt was refreshed via Touch.
+			So(mgr.Active().UpdatedAt.After(time.Now().Add(-time.Minute)), ShouldBeTrue)
+		})
+
+		Convey("expired but no transport in ctx -> silently reuse", func() {
+			aio := NewAgentIO(10, mgr, sb, logger, "Dolphin")
+			aio.SetExpireAfter(time.Hour)
+			tio := newConfirmTransport("t1", true)
+			aio.RegisterTransport("t1", tio)
+
+			old := mgr.Create(ctx)
+			old.UpdatedAt = time.Now().Add(-2 * time.Hour)
+
+			// No transport info on ctx and no lastTransportID yet.
+			turn := &Turn{Input: "hi"}
+			aio.SendTurn(ctx, turn)
+
+			So(tio.prompted(), ShouldBeFalse)
+			So(mgr.Active().ID, ShouldEqual, old.ID)
+		})
+	})
+}

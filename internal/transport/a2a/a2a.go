@@ -214,6 +214,10 @@ func (a *A2A) RequestPermission(_ context.Context, _ string) (transport.Permissi
 	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("a2a.no_interactive"))
 }
 
+func (a *A2A) Confirm(_ context.Context, _ string) (bool, error) {
+	return false, fmt.Errorf("%s", i18n.T("a2a.no_interactive"))
+}
+
 // ---------------------------------------------------------------------------
 // HTTP handlers (A2A protocol)
 // ---------------------------------------------------------------------------

@@ -755,6 +755,10 @@ func (p *Panda) RequestPermission(_ context.Context, _ string) (transport.Permis
 	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("panda.no_interactive"))
 }
 
+func (p *Panda) Confirm(_ context.Context, _ string) (bool, error) {
+	return false, fmt.Errorf("%s", i18n.T("panda.no_interactive"))
+}
+
 // ---------------------------------------------------------------------------
 // Authentication
 // ---------------------------------------------------------------------------

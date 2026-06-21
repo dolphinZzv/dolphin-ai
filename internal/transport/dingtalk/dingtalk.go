@@ -268,6 +268,10 @@ func (d *DingTalk) RequestPermission(_ context.Context, _ string) (transport.Per
 	return transport.PermissionDenied, fmt.Errorf("%s", i18n.T("dingtalk.no_interactive"))
 }
 
+func (d *DingTalk) Confirm(_ context.Context, _ string) (bool, error) {
+	return false, fmt.Errorf("%s", i18n.T("dingtalk.no_interactive"))
+}
+
 // sendStartupNotification sends a one-shot startup message to the DingTalk webhook.
 func (d *DingTalk) sendStartupNotification(ctx context.Context) {
 	payload := map[string]any{

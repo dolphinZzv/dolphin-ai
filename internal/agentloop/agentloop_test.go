@@ -441,6 +441,10 @@ func (m *mockTransport) RequestPermission(_ context.Context, _ string) (transpor
 	return m.permResult, nil
 }
 
+func (m *mockTransport) Confirm(_ context.Context, _ string) (bool, error) {
+	return m.permResult != transport.PermissionDenied, nil
+}
+
 func TestRealLLMCompositor(t *testing.T) {
 	testhelper.LoadEnv()
 	if os.Getenv("DOLPHIN_LLM_ANTHROPIC_API_KEY") == "" {
