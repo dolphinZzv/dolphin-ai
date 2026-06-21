@@ -78,13 +78,13 @@ type model struct {
 	inThinking         bool
 	msgChan            chan string
 	permCh             chan string
-		inputHistory       []string
-		historyPos         int
-		historyDraft       string
-		completions       []string
-		completionIdx     int
-		completionPrefix  string
-		getCompletions    func(prefix string) []string
+	inputHistory       []string
+	historyPos         int
+	historyDraft       string
+	completions        []string
+	completionIdx      int
+	completionPrefix   string
+	getCompletions     func(prefix string) []string
 	username           string
 	agentName          string
 	version            string
@@ -488,7 +488,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(append(cmds, textarea.Blink)...)
 		}
 	}
-
 
 	// Update components.
 	ta, taCmd := m.textarea.Update(msg)

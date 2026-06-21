@@ -163,3 +163,4 @@ All notable changes to Dolphin will be documented in this file.
 	- Fix data race in TUI TestRequestPermission_ReplyPaths: protect permCh access with mutex.
 
   (format fix)
+- (gofmt formatting fix)
