@@ -31,10 +31,13 @@ import (
 
 // testSessionStore is a lightweight SessionStore for tests.
 type testSessionStore struct {
+	mu       sync.Mutex
 	sessions map[string]*session.Session
 }
 
 func (s *testSessionStore) Get(id string) *session.Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if sess, ok := s.sessions[id]; ok {
 		return sess
 	}
