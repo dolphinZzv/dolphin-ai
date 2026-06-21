@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -67,6 +68,7 @@ func defaultConfig() *Config {
 			"memory.dir":                ".dolphin/memory",
 			"brain.dir":                 ".dolphin/brain",
 			"session.dir":               ".dolphin/sessions",
+			"session.dump_dir":          ".dolphin/dumps",
 			"session.mode":              "per_transport",
 			"agent.pool_size":           1,
 			"agent.tool_parallelism":    1,
@@ -169,8 +171,47 @@ func (c *Config) GetInt(key string) int {
 	case float64:
 		return int(val)
 	case string:
-		n, _ := strconv.Atoi(val)
-		return n
+		n, err := strconv.Atoi(val)
+		if err == nil {
+			return n
+		}
+		return int(parseHumanCount(val))
+	}
+	return 0
+}
+
+// parseHumanCount parses a human-readable count string like "1k", "2.5m", "3b".
+// Supports suffixes: k (thousand), m (million), b (billion), t (trillion).
+// Returns 0 for unparseable input.
+func parseHumanCount(s string) int64 {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	// Strip suffix and determine multiplier.
+	mult := int64(1)
+	last := s[len(s)-1]
+	switch last {
+	case 'k', 'K':
+		mult = 1_000
+		s = s[:len(s)-1]
+	case 'm', 'M':
+		mult = 1_000_000
+		s = s[:len(s)-1]
+	case 'b', 'B':
+		mult = 1_000_000_000
+		s = s[:len(s)-1]
+	case 't', 'T':
+		mult = 1_000_000_000_000
+		s = s[:len(s)-1]
+	}
+	// Try integer first.
+	if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return n * mult
+	}
+	// Try float (e.g. "1.5k").
+	if f, err := strconv.ParseFloat(s, 64); err == nil {
+		return int64(math.Round(f * float64(mult)))
 	}
 	return 0
 }

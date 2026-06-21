@@ -96,6 +96,10 @@ type OpenAIFunction struct {
 	Parameters  json.RawMessage `json:"parameters"`
 }
 
+type OpenAIThinking struct {
+	Type string `json:"type"`
+}
+
 type OpenAIErrorBody struct {
 	Error struct {
 		Message string `json:"message"`
@@ -215,6 +219,7 @@ func BuildOpenAIRequest(model string, messages []OpenAIMessage, cfg Config, req 
 		Stop            []string        `json:"stop,omitempty"`
 		Tools           []OpenAITool    `json:"tools,omitempty"`
 		ReasoningEffort string          `json:"reasoning_effort,omitempty"`
+		Thinking        *OpenAIThinking `json:"thinking,omitempty"`
 	}{
 		Model:           model,
 		Messages:        messages,
@@ -224,6 +229,9 @@ func BuildOpenAIRequest(model string, messages []OpenAIMessage, cfg Config, req 
 		Stream:          req.Stream,
 		Stop:            req.Stop,
 		ReasoningEffort: req.ReasoningEffort,
+	}
+	if req.Thinking {
+		body.Thinking = &OpenAIThinking{Type: "enabled"}
 	}
 	if len(tools) > 0 {
 		body.Tools = tools

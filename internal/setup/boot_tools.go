@@ -60,6 +60,19 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		return c.ContextReg
 	})
 	command.RegisterConfig(c.CmdReg)
+	command.RegisterCompaction(
+		c.CmdReg,
+		c.LLMProvider,
+		c.Mem,
+		c.Config.GetInt("compaction.max_tokens"),
+		c.Config.GetInt("compaction.keep_rounds"),
+		c.Config.GetInt("compaction.summary_max_tokens"),
+		c.Config.GetInt("compaction.token_ratio"),
+		c.Config.GetString("compaction.model"),
+		c.EventBus,
+		c.Logger,
+		c.SessionMgr,
+	)
 
 	return nil
 }

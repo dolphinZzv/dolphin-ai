@@ -9,6 +9,7 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	appctx "dolphin/internal/context"
+	"dolphin/internal/dump"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 	"dolphin/internal/limit"
@@ -52,10 +53,25 @@ type Context struct {
 	ContextSections     []appctx.Section
 	ContextReg          *appctx.Registry
 	Limit               *limit.Limiter
+	DumpRecorder        *dump.Recorder
 	LimitResetScheduler *limit.ResetScheduler
 	WorkflowEngine      *workflow.Engine
 }
 
 func NewContext(cfg *config.Config) *Context {
 	return &Context{Config: cfg}
+}
+
+// CreateDumpRecorder creates the dump recorder if not already created,
+// using the configured dump_dir. Safe to call multiple times.
+func (c *Context) CreateDumpRecorder() *dump.Recorder {
+	if c.DumpRecorder != nil {
+		return c.DumpRecorder
+	}
+	dir := c.Config.GetString("session.dump_dir")
+	if dir == "" {
+		dir = ".dolphin/dumps"
+	}
+	c.DumpRecorder = dump.NewRecorder(dir)
+	return c.DumpRecorder
 }

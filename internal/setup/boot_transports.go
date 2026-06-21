@@ -44,6 +44,14 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 			tc.Config["temp_for"] = func(name string) float64 {
 				return lookupTemperature(c.LLMProvider, name)
 			}
+			tc.Config["reasoning_effort"] = lookupReasoningEffort(c.LLMProvider, activeModel)
+			tc.Config["reasoning_effort_for"] = func(name string) string {
+				return lookupReasoningEffort(c.LLMProvider, name)
+			}
+			tc.Config["thinking"] = lookupThinking(c.LLMProvider, activeModel)
+			tc.Config["thinking_for"] = func(name string) bool {
+				return lookupThinking(c.LLMProvider, name)
+			}
 		}
 		tio, err := transport.Build(ctx, tc.Type, tc.Config)
 		if err != nil {
@@ -234,15 +242,16 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 			tcs = append(tcs, transportConfig{
 				Type: "tui",
 				Config: map[string]any{
-					"type":             "tui",
-					"agent_name":       agentName,
-					"theme":            cfg.GetString("tui.theme"),
-					"model":            cfg.GetString("llm.use"),
-					"show_tools":       cfg.GetBool("tui.show_tools"),
-					"show_thinking":    cfg.GetBool("tui.show_thinking"),
-					"workmode":         cfg.GetString("agent.workmode"),
-					"pool_size":        cfg.GetInt("agent.pool_size"),
-					"tool_parallelism": cfg.GetInt("agent.tool_parallelism"),
+					"type":                  "tui",
+					"agent_name":            agentName,
+					"theme":                 cfg.GetString("tui.theme"),
+					"model":                 cfg.GetString("llm.use"),
+					"show_tools":            cfg.GetBool("tui.show_tools"),
+					"show_thinking":         cfg.GetBool("tui.show_thinking"),
+					"workmode":              cfg.GetString("agent.workmode"),
+					"pool_size":             cfg.GetInt("agent.pool_size"),
+					"tool_parallelism":      cfg.GetInt("agent.tool_parallelism"),
+					"compaction.max_tokens": cfg.GetInt("compaction.max_tokens"),
 				},
 			})
 		}
@@ -287,6 +296,48 @@ func lookupTemperature(provider llm.Provider, modelName string) float64 {
 		}
 	}
 	return 0
+}
+
+// lookupReasoningEffort returns the configured reasoning_effort for the model.
+func lookupReasoningEffort(provider llm.Provider, modelName string) string {
+	if provider == nil || modelName == "" {
+		return ""
+	}
+	models, err := provider.Models(context.Background())
+	if err != nil {
+		return ""
+	}
+	short := modelName
+	if _, after, found := strings.Cut(modelName, "/"); found {
+		short = after
+	}
+	for _, mc := range models {
+		if mc.Name == modelName || mc.Name == short {
+			return mc.ReasoningEffort
+		}
+	}
+	return ""
+}
+
+// lookupThinking returns whether extended thinking is enabled for the model.
+func lookupThinking(provider llm.Provider, modelName string) bool {
+	if provider == nil || modelName == "" {
+		return false
+	}
+	models, err := provider.Models(context.Background())
+	if err != nil {
+		return false
+	}
+	short := modelName
+	if _, after, found := strings.Cut(modelName, "/"); found {
+		short = after
+	}
+	for _, mc := range models {
+		if mc.Name == modelName || mc.Name == short {
+			return mc.Thinking
+		}
+	}
+	return false
 }
 
 // configHasKey returns true if the config key exists (was explicitly set).

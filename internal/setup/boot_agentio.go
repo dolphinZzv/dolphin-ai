@@ -2,12 +2,14 @@ package setup
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
+	"dolphin/internal/command"
 	"dolphin/internal/permission"
 	"dolphin/internal/tool"
 )
@@ -54,6 +56,12 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 			zap.Error(err),
 		)
 		permStore = permission.NewStore(permFile)
+	}
+
+	// Load deny defaults from config — these act as a safety net that
+	// blocks dangerous operations regardless of runtime allow grants.
+	if denyDefaults := loadDenyDefaults(c.Config); len(denyDefaults) > 0 {
+		permStore.AddDenyDefaults(denyDefaults)
 	}
 
 	if workmode != "yolo" {
@@ -130,6 +138,10 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	c.AgentLoop = agentloop.NewAgentLoop(c.AgentIO.Queue(), compositor, c.Logger, c.EventBus, c.AgentIO, c.Config.GetInt("agent.pool_size"))
 	c.AgentLoop.SetSessionGcInterval(c.Config.GetDuration("agent.session_gc_interval"))
 
+	recorder := c.CreateDumpRecorder()
+	c.AgentLoop.SetDumpRecorder(recorder)
+	command.RegisterDump(c.CmdReg, recorder, c.SessionMgr)
+
 	c.CmdReg.SetAgentIO(c.AgentIO)
 
 	return nil
@@ -140,4 +152,33 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// loadDenyDefaults reads permission.deny rules from config and returns them
+// in the format expected by permission.Store.AddDenyDefaults.
+func loadDenyDefaults(cfg interface {
+	Keys() []string
+	GetString(string) string
+}) map[string][]map[string]string {
+	result := make(map[string][]map[string]string)
+	prefix := "permission.deny."
+	for _, key := range cfg.Keys() {
+		if !strings.HasPrefix(key, prefix) {
+			continue
+		}
+		rest := strings.TrimPrefix(key, prefix)
+		// Expected format: <tool>.<index>.<arg>
+		parts := strings.SplitN(rest, ".", 3)
+		if len(parts) < 3 {
+			continue
+		}
+		tool := parts[0]
+		// parts[1] is the index, parts[2] is the arg name
+		v := cfg.GetString(key)
+		if v == "" {
+			continue
+		}
+		result[tool] = append(result[tool], map[string]string{parts[2]: v})
+	}
+	return result
 }

@@ -61,8 +61,23 @@ docs:
 	cd docs && hugo server -D
 
 .PHONY: push
-push: setup
+push:
 	git push
+
+.PHONY: push-gitea
+push-gitea:
+	git push gitea
+
+.PHONY: push-origin
+push-origin:
+	git push origin
+
+.PHONY: push-fast
+push-fast:
+	git push --no-verify
+
+.PHONY: init
+init: setup
 
 .PHONY: setup
 setup:

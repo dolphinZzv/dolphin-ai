@@ -36,6 +36,7 @@ type State struct {
 	Input            string
 	TransportContext string
 	TransportID      string
+	ModelName        string
 	History          []types.Message
 	Messages         []types.Message
 	SystemPrompt     string
@@ -480,12 +481,14 @@ func (s *LLMStage) tryComplete(ctx context.Context, state *State, sigCh <-chan s
 		},
 	})
 
+	state.ModelName = s.activeModel()
+
 	s.EventBus.Publish(ctx, event.Event{
 		Type:      event.EventLLMStart,
 		Timestamp: time.Now(),
 		SessionID: state.SessionID,
 		Payload: map[string]any{
-			"model": s.activeModel(),
+			"model": state.ModelName,
 			"tools": toolNames,
 		},
 	})
@@ -1022,6 +1025,9 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 	case permission.Allow:
 		return nil
 	case permission.NoMatch:
+		if isSafeShellCommand(call.Name, call.Arguments) {
+			return nil
+		}
 		if s.Workmode == "yolo" {
 			return nil
 		}
@@ -1044,7 +1050,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 		case transport.PermissionOnce:
 			return nil
 		case transport.PermissionAlways:
-			if err := s.PermissionStore.AddAllow(call.Name, argsRaw); err != nil {
+			if err := s.PermissionStore.AddAllowTool(call.Name); err != nil {
 				s.Logger.Warn("failed to save permission rule", zap.Error(err))
 			}
 			return nil
@@ -1067,6 +1073,57 @@ var permFeedInterval = 5 * time.Second
 // idle watchdog on a ticker until the user answers (or the context is
 // cancelled). Feed is nil-safe once the watchdog has fired, so a late tick
 // after cancellation is harmless.
+
+// safeShellCommands is the set of commands considered harmless when invoked as
+// the first token (before any flags or args). They emit no side-effects and
+// are auto-allowed without prompting.
+var safeShellCommands = map[string]bool{
+	"ls": true, "pwd": true, "cat": true, "echo": true, "head": true,
+	"tail": true, "wc": true, "which": true, "date": true, "whoami": true,
+	"hostname": true, "uname": true, "id": true, "env": true, "printenv": true,
+	"ps": true, "df": true, "du": true, "free": true, "uptime": true,
+	"dirname": true, "basename": true, "realpath": true, "readlink": true,
+	"sort": true, "uniq": true, "tr": true, "cut": true, "tee": true,
+	"grep": true, "awk": true, "sed": true, "find": true, "xargs": true,
+	"file": true, "stat": true, "tree": true, "diff": true, "man": true,
+	"pgrep": true, "history": true, "type": true, "command": true,
+}
+
+// isSafeShellCommand returns true if the call is a shell command whose first
+// token is on the safe list. Compound commands (&&, ||, ;, |, >, <) and
+// commands with flags that write/modify are NOT automatically safe.
+func isSafeShellCommand(toolName, args string) bool {
+	if toolName != "shell" {
+		return false
+	}
+	// Parse first token from the command string.
+	raw := args
+	// Handle JSON {"command":"cmd ..."}
+	if len(raw) > 0 && raw[0] == '{' {
+		var m map[string]string
+		_ = json.Unmarshal([]byte(raw), &m)
+		if m != nil {
+			raw = m["command"]
+		}
+	}
+	if raw == "" {
+		return false
+	}
+	// Split on whitespace; reject commands with shell metacharacters
+	// that could chain unsafe operations (&&, ||, ;, |, >, <, $, `, etc.).
+	for _, ch := range raw {
+		switch ch {
+		case '&', '|', ';', '>', '<', '$', '`', '(', ')':
+			return false
+		}
+	}
+	first := strings.Fields(raw)
+	if len(first) == 0 {
+		return false
+	}
+	return safeShellCommands[first[0]]
+}
+
 func requestPermissionFeeding(ctx context.Context, tio transport.IO, prompt string) (transport.PermissionResult, error) {
 	Feed(ctx) // immediate feed so the prompt display itself doesn't trip the watchdog
 	// Read the interval once here (in the caller's goroutine) rather than
@@ -1251,7 +1308,7 @@ func (s *CompactionStage) Process(ctx context.Context, state *State) error {
 		return nil
 	}
 
-	compacted, err := s.compact(ctx, state.Messages)
+	compacted, err := s.Compact(ctx, state.Messages)
 	if err != nil {
 		// Compaction is best-effort: on failure, fall back to the
 		// un-compacted messages so the turn can still proceed. Log and
@@ -1302,7 +1359,7 @@ func (s *CompactionStage) Process(ctx context.Context, state *State) error {
 // [summary + tail]. It never orphans a tool_result: the split point
 // walks back past RoleTool messages so every tool_result in tail has
 // its matching tool_use.
-func (s *CompactionStage) compact(ctx context.Context, msgs []types.Message) ([]types.Message, error) {
+func (s *CompactionStage) Compact(ctx context.Context, msgs []types.Message) ([]types.Message, error) {
 	// tail keeps keepRounds rounds (user+assistant pairs) from the end,
 	// but the very last message (current user input) is always part of
 	// tail regardless. Work back from the end counting rounds.
@@ -1342,6 +1399,69 @@ func (s *CompactionStage) compact(ctx context.Context, msgs []types.Message) ([]
 	out = append(out, summary)
 	out = append(out, tail...)
 	return out, nil
+}
+
+// ManualCompact reads the session history, compacts it, and persists the
+// result. It is used by /session compaction (and /compaction alias) for
+// on-demand compaction. Skips the token threshold and always compacts.
+// Temporarily reduces keepRounds if needed so there is always at least
+// one round of old messages to summarize.
+func (s *CompactionStage) ManualCompact(ctx context.Context, sessionID string) (string, error) {
+	if s == nil || s.Provider == nil || s.Memory == nil {
+		return "", fmt.Errorf("compaction: not configured")
+	}
+	if s.MaxThreshold <= 0 || s.KeepRounds <= 0 {
+		return "", fmt.Errorf("compaction: disabled (max_tokens or keep_rounds is 0)")
+	}
+
+	msgs, err := s.Memory.Read(ctx, sessionID)
+	if err != nil {
+		return "", fmt.Errorf("compaction: read history: %w", err)
+	}
+	if len(msgs) == 0 {
+		return "", fmt.Errorf("compaction: session has no messages")
+	}
+
+	// Strip any existing IsSummary message at the head.
+	filtered := msgs[:0]
+	for _, m := range msgs {
+		if !m.IsSummary {
+			filtered = append(filtered, m)
+		}
+	}
+	msgs = filtered
+	before := len(msgs)
+
+	// Temporarily reduce keepRounds if it would keep everything so
+	// there is always at least one round to summarize.
+	savedKeep := s.KeepRounds
+	needed := s.KeepRounds*2 + 1
+	if needed >= len(msgs) {
+		s.KeepRounds = len(msgs) / 2
+		if s.KeepRounds < 1 {
+			s.KeepRounds = 1
+		}
+	}
+
+	// Compact expects a trailing user-input marker.
+	marker := types.Message{Role: types.RoleUser, Content: "[manual compaction]", Timestamp: time.Now()}
+	compacted, err := s.Compact(ctx, append(msgs, marker))
+	s.KeepRounds = savedKeep
+	if err != nil {
+		return "", fmt.Errorf("compaction: %w", err)
+	}
+
+	// Strip the synthetic marker — always the last message.
+	if len(compacted) > 0 && compacted[len(compacted)-1].Content == "[manual compaction]" {
+		compacted = compacted[:len(compacted)-1]
+	}
+
+	if err := s.Memory.Replace(ctx, sessionID, compacted); err != nil {
+		return "", fmt.Errorf("compaction: persist: %w", err)
+	}
+
+	after := len(compacted)
+	return fmt.Sprintf("compacted %d messages → %d messages (summary + %d kept)", before, after, after-1), nil
 }
 
 // summarize calls the LLM to produce a concise summary of oldMsgs. Any

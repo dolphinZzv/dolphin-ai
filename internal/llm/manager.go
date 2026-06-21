@@ -159,6 +159,9 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 			if mc.ReasoningEffort != "" {
 				req.ReasoningEffort = mc.ReasoningEffort
 			}
+			if mc.Thinking {
+				req.Thinking = true
+			}
 			if mc.TopP != 0 {
 				req.TopP = mc.TopP
 			}

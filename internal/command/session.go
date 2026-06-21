@@ -2,7 +2,13 @@ package command
 
 import (
 	"github.com/spf13/cobra"
+	"go.uber.org/zap"
 
+	"dolphin/internal/agentloop"
+	"dolphin/internal/dump"
+	"dolphin/internal/event"
+	"dolphin/internal/llm"
+	"dolphin/internal/memory"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
 )
@@ -122,4 +128,99 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	}
 	alias("new")
 	alias("clear")
+}
+
+// RegisterDump registers the /session dump and /dump alias commands.
+func RegisterDump(r *Registry, recorder *dump.Recorder, sessMgr *session.Manager) {
+	if recorder == nil || sessMgr == nil {
+		return
+	}
+
+	runE := func(cmd *cobra.Command, args []string) error {
+		sid := ""
+		if len(args) > 0 {
+			sid = args[0]
+		} else {
+			if s := sessMgr.Active(); s != nil {
+				sid = s.ID
+			}
+		}
+		if sid == "" {
+			cmd.Println("no session specified and no active session")
+			return nil
+		}
+
+		path, err := recorder.Write(sid)
+		if err != nil {
+			cmd.Printf("dump failed: %v\n", err)
+			return nil
+		}
+		cmd.Printf("dumped to %s\n", path)
+		return nil
+	}
+
+	// /session dump [session_id]
+	r.Register(&cobra.Command{
+		Use:   "session dump [session_id]",
+		Short: "Write the last turn's LLM request/response and tool calls to a JSON file",
+		Long:  "Writes the most recent turn's full data to <dump_dir>/<session_id>.json. If no session_id is given, the currently active session is used.",
+		RunE:  runE,
+	})
+
+	// /dump alias
+	r.Register(&cobra.Command{
+		Use:   "dump [session_id]",
+		Short: "Alias for /session dump",
+		RunE:  runE,
+	})
+}
+
+// RegisterCompaction registers /session compaction and the /compaction alias
+// for on-demand manual history compaction.
+func RegisterCompaction(r *Registry, provider llm.Provider, mem memory.Memory, maxThreshold, keepRounds, summaryMaxTokens, tokenRatio int, model string, eventBus *event.Bus, logger *zap.Logger, sessMgr *session.Manager) {
+	if provider == nil || mem == nil || maxThreshold <= 0 || keepRounds <= 0 {
+		return
+	}
+
+	stage := &agentloop.CompactionStage{
+		Provider:     provider,
+		Memory:       mem,
+		Model:        model,
+		MaxTokens:    summaryMaxTokens,
+		MaxThreshold: maxThreshold,
+		KeepRounds:   keepRounds,
+		TokenRatio:   tokenRatio,
+		EventBus:     eventBus,
+		Logger:       logger,
+	}
+
+	runE := func(cmd *cobra.Command, args []string) error {
+		s := sessMgr.Active()
+		if s == nil {
+			cmd.Println("no active session")
+			return nil
+		}
+		result, err := stage.ManualCompact(cmd.Context(), s.ID)
+		if err != nil {
+			cmd.Printf("compaction failed: %v\n", err)
+			return nil
+		}
+		cmd.Println(result)
+		return nil
+	}
+
+	// /session compaction
+	r.Register(&cobra.Command{
+		Use:   "session compaction",
+		Short: "Manually compact the current session's history",
+		Long:  "Summarizes the oldest messages in the current session, keeping the most recent turns verbatim. The compacted history replaces the original in memory.",
+		RunE:  runE,
+	})
+
+	// /compaction alias
+	r.Register(&cobra.Command{
+		Use:   "compaction",
+		Short: "Alias for /session compaction",
+		RunE:  runE,
+	})
 }

@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"dolphin/internal/types"
 )
@@ -19,20 +18,26 @@ import (
 // with support for SSE streaming responses (MCP Streamable HTTP transport).
 // Reference: https://spec.modelcontextprotocol.io/specification/2025-03-26/#streamable-http
 type Client struct {
-	baseURL   string
-	sessionID string
-	http      *http.Client
-	mu        sync.Mutex
-	nextID    int
+	baseURL    string
+	sessionID  string
+	http       *http.Client
+	mu         sync.Mutex
+	nextID     int
+	onProgress func(event string, data json.RawMessage)
 }
 
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
-		http: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		http:    &http.Client{},
 	}
+}
+
+// SetOnProgress sets a callback that receives intermediate SSE events
+// (e.g. "progress" notifications) during long-running tool calls.
+// The callback is called synchronously from the readSSE loop.
+func (c *Client) SetOnProgress(fn func(event string, data json.RawMessage)) {
+	c.onProgress = fn
 }
 
 func (c *Client) List(ctx context.Context) ([]types.ToolDef, error) {
@@ -120,10 +125,10 @@ func (c *Client) call(ctx context.Context, method string, params any) (*jsonRPCR
 		return nil, fmt.Errorf("mcp: request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Accept", "application/json, text/event-stream")
 	if c.sessionID != "" {
 		httpReq.Header.Set("Mcp-Session-Id", c.sessionID)
 	}
-	httpReq.Close = true // disable keepalive for one-shot server compatibility
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -140,7 +145,7 @@ func (c *Client) call(ctx context.Context, method string, params any) (*jsonRPCR
 
 	// SSE streaming response.
 	if strings.HasPrefix(contentType, "text/event-stream") {
-		return readSSE(resp.Body)
+		return c.readSSE(resp.Body)
 	}
 
 	// Standard JSON response.
@@ -190,9 +195,12 @@ func (l *LazyClient) getClient() *Client {
 }
 
 // readSSE parses a text/event-stream response and extracts the final
-// JSON-RPC response from the stream.
-func readSSE(body io.Reader) (*jsonRPCResponse, error) {
+// JSON-RPC response from the stream. Intermediate events (e.g. progress
+// notifications) are forwarded to the Client's onProgress callback.
+func (c *Client) readSSE(body io.Reader) (*jsonRPCResponse, error) {
 	scanner := bufio.NewScanner(body)
+	// SSE streams can leave long-lived connections open; increase buffer.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	var event, data string
 
 	for scanner.Scan() {
@@ -208,7 +216,7 @@ func readSSE(body io.Reader) (*jsonRPCResponse, error) {
 			if data == "" {
 				continue
 			}
-			// Return on result or error event (ignore progress, etc.).
+			// Return on result or error event.
 			if event == "result" || event == "error" || event == "" {
 				var rpcResp jsonRPCResponse
 				if err := json.Unmarshal([]byte(data), &rpcResp); err != nil {
@@ -218,9 +226,17 @@ func readSSE(body io.Reader) (*jsonRPCResponse, error) {
 				}
 				return &rpcResp, nil
 			}
+			// Forward intermediate events (e.g. progress notifications).
+			if c.onProgress != nil && data != "" {
+				c.onProgress(event, json.RawMessage(data))
+			}
 			event = ""
 			data = ""
 		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("mcp: sse read: %w", err)
 	}
 
 	// Handle trailing data without trailing newline.

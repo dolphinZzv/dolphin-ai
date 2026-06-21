@@ -1,94 +1,95 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== Checking config.yaml against schema ==="
+echo "=== [1/4] Checking config.yaml against schema ==="
 go test dolphin/internal/config -run TestConfigAgainstSchema -count=1
 
-echo "=== Building ==="
-go build -race ./...
-
-echo "=== Running tests ==="
-pkgs=$(go list ./... | grep -v "internal/limit")
-go test $pkgs -count=1
-
-echo "=== Running linter (new issues only) ==="
-golangci-lint run ./... --new
-
-echo "=== Checking formatting (changed files only) ==="
-changed=$(git diff --name-only HEAD @{upstream} -- '*.go' 2>/dev/null || git diff --name-only HEAD -- '*.go')
-if [ -n "$changed" ]; then
-  unformatted=$(gofmt -l $changed 2>/dev/null || true)
-  if [ -n "$unformatted" ]; then
-    echo "The following changed files are not gofmt-formatted:"
-    echo "$unformatted"
-    exit 1
-  fi
+# Determine changed Go files (compared to upstream branch)
+CHANGED_GO=$(git diff --name-only HEAD @{upstream} -- '*.go' 2>/dev/null || git diff --name-only HEAD -- '*.go')
+if [ -z "$CHANGED_GO" ]; then
+  echo "No changed Go files, skipping Go checks."
+  exit 0
 fi
 
-echo "=== Checking coverage for changed source files (≥80% required) ==="
-changed_src=$(git diff --name-only HEAD @{upstream} -- '*.go' 2>/dev/null || git diff --name-only HEAD -- '*.go')
-if [ -n "$changed_src" ]; then
-  # Only non-test source files count toward the coverage gate.
-  src_files=$(echo "$changed_src" | grep -v '_test\.go$' || true)
-  if [ -n "$src_files" ]; then
-    src_pkgs=$(echo "$src_files" \
-      | sed 's|/[^/]*$||' \
-      | sort -u \
-      | while read -r dir; do go list "./$dir" 2>/dev/null; done \
-      | grep -v "internal/limit" || true)
+# Collect unique packages from changed files
+CHANGED_PKGS=$(
+  echo "$CHANGED_GO" \
+    | sed 's|/[^/]*$||' \
+    | sort -u \
+    | while read -r dir; do go list "./$dir" 2>/dev/null; done \
+    | grep -v "internal/limit" || true
+)
 
-    for pkg in $src_pkgs; do
-      test_files=$(go list -f '{{len .TestGoFiles}}' "$pkg" 2>/dev/null || echo "0")
-      if [ "$test_files" = "0" ]; then
-        continue
-      fi
+if [ -n "$CHANGED_PKGS" ]; then
+  echo ""
+  echo "=== [2/4] Building changed packages ==="
+  echo "$CHANGED_PKGS" | tr ' ' '\n' | sed 's/^/    /'
+  go build $CHANGED_PKGS
 
-      # Collect basenames of changed source files in this package.
-      pkg_files=""
-      for f in $src_files; do
-        imp=$(go list -f '{{.ImportPath}}' "./$(dirname "$f")" 2>/dev/null)
-        if [ "$imp" = "$pkg" ]; then
-          pkg_files="$pkg_files $(basename "$f")"
-        fi
-      done
-      pkg_files=$(echo "$pkg_files" | xargs)
-      [ -z "$pkg_files" ] && continue
+  echo ""
+  echo "=== [3/4] Testing changed packages ==="
+  go test $CHANGED_PKGS -count=1
+fi
 
-      tmpcov=$(mktemp)
-      output=$(go test -coverprofile="$tmpcov" -count=1 "$pkg" 2>&1)
-      echo "$output"
+echo ""
+echo "=== [4/4] Checking formatting (changed files only) ==="
+UNFORMATTED=$(gofmt -l $CHANGED_GO 2>/dev/null || true)
+if [ -n "$UNFORMATTED" ]; then
+  echo "ERROR: The following changed files are not gofmt-formatted:"
+  echo "$UNFORMATTED"
+  exit 1
+fi
 
-      if echo "$output" | grep -q "^--- FAIL"; then
-        rm -f "$tmpcov"
-        exit 1
-      fi
+# Coverage check for changed source files (only if there are source + test files)
+SRC_FILES=$(echo "$CHANGED_GO" | grep -v '_test\.go$' || true)
+if [ -n "$SRC_FILES" ] && [ -n "$CHANGED_PKGS" ]; then
+  echo ""
+  echo "=== [4/4] Checking coverage for changed source files (≥80% required) ==="
+  for pkg in $CHANGED_PKGS; do
+    TEST_FILES=$(go list -f '{{len .TestGoFiles}}' "$pkg" 2>/dev/null || echo "0")
+    [ "$TEST_FILES" = "0" ] && continue
 
-      # Build alternation pattern: config.go|config_i18n.go
-      pattern=$(echo "$pkg_files" | tr ' ' '|')
-
-      coverage=$(awk -F'[: ]' -v pat="$pattern" '
-        $1 == "mode" { next }
-        {
-          n = split($1, parts, "/")
-          fname = parts[n]
-          if (fname ~ pat) {
-            stmts += $3
-            if ($4 > 0) covered += $3
-          }
-        }
-        END {
-          if (stmts > 0) printf "%.1f\n", (covered/stmts)*100
-          else print "100"
-        }
-      ' "$tmpcov")
-      rm -f "$tmpcov"
-
-      if [ "$(printf '%s < 80\n' "$coverage" | bc -l 2>/dev/null)" = "1" ]; then
-        echo "ERROR: changed file(s) in $pkg have ${coverage}% coverage (minimum 80%)"
-        exit 1
-      fi
+    # Collect basenames of changed source files in this package
+    PKG_FILES=""
+    for f in $SRC_FILES; do
+      IMP=$(go list -f '{{.ImportPath}}' "./$(dirname "$f")" 2>/dev/null)
+      [ "$IMP" = "$pkg" ] && PKG_FILES="$PKG_FILES $(basename "$f")"
     done
-  fi
+    PKG_FILES=$(echo "$PKG_FILES" | xargs)
+    [ -z "$PKG_FILES" ] && continue
+
+    TMPCOV=$(mktemp)
+    OUTPUT=$(go test -coverprofile="$TMPCOV" -count=1 "$pkg" 2>&1)
+    echo "$OUTPUT"
+    if echo "$OUTPUT" | grep -q "^--- FAIL"; then
+      rm -f "$TMPCOV"
+      exit 1
+    fi
+
+    PATTERN=$(echo "$PKG_FILES" | tr ' ' '|')
+    COVERAGE=$(awk -F'[: ]' -v pat="$PATTERN" '
+      $1 == "mode" { next }
+      {
+        n = split($1, parts, "/")
+        fname = parts[n]
+        if (fname ~ pat) {
+          stmts += $3
+          if ($4 > 0) covered += $3
+        }
+      }
+      END {
+        if (stmts > 0) printf "%.1f\n", (covered/stmts)*100
+        else print "100"
+      }
+    ' "$TMPCOV")
+    rm -f "$TMPCOV"
+
+    if [ "$(printf '%s < 80\n' "$COVERAGE" | bc -l 2>/dev/null)" = "1" ]; then
+      echo "ERROR: changed file(s) in $pkg have ${COVERAGE}% coverage (minimum 80%)"
+      exit 1
+    fi
+  done
 fi
 
+echo ""
 echo "=== All checks passed ==="

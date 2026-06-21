@@ -42,14 +42,15 @@ type (
 	modelChangeMsg    struct{ name string }
 	sessionMsg        struct{ id string }
 	usageMsg          struct {
-		inputTokens  int
-		outputTokens int
-		rounds       int
-		hardReqs     int64
-		reqs         int64
-		hardTokens   int64
-		tokens       int64
-		toolCalls    int
+		inputTokens   int
+		outputTokens  int
+		rounds        int
+		hardReqs      int64
+		reqs          int64
+		hardTokens    int64
+		tokens        int64
+		toolCalls     int
+		compMaxTokens int64
 	}
 )
 
@@ -66,47 +67,53 @@ type completedItem struct {
 }
 
 type model struct {
-	viewport        viewport.Model
-	textarea        textarea.Model
-	messages        []renderEntry
-	permDialog      *permDialog
-	width           int
-	height          int
-	ready           bool
-	thinking        string
-	inThinking      bool
-	msgChan         chan string
-	permCh          chan string
-	username        string
-	agentName       string
-	version         string
-	modelName       string
-	newReply        bool
-	closeBlock      bool
-	showTools       bool
-	showThinking    bool
-	workmode        string
-	poolSize        int
-	toolParallelism int
-	temperature     float64
-	tempFor         func(modelName string) float64
-	sessionID       string
-	inputTokens     int
-	outputTokens    int
-	rounds          int
-	hardReqs        int64
-	reqs            int64
-	hardTokens      int64
-	tokens          int64
-	toolCalls       int
-	setPriority     func()
-	savePrefs       func()
-	currentMsg      string // user message currently being processed
-	msgStatus       string // "pending", "success", "error"
-	msgStartedAt    time.Time
-	spinFrame       int // rotating spinner frame, advanced each tick while pending
-	agentIO         *agentio.AgentIO
-	completedItems  []completedItem // recently finished turns
+	viewport           viewport.Model
+	textarea           textarea.Model
+	messages           []renderEntry
+	permDialog         *permDialog
+	width              int
+	height             int
+	ready              bool
+	thinking           string
+	inThinking         bool
+	msgChan            chan string
+	permCh             chan string
+	username           string
+	agentName          string
+	version            string
+	modelName          string
+	newReply           bool
+	closeBlock         bool
+	showTools          bool
+	showThinking       bool
+	showSideStatus     bool
+	workmode           string
+	poolSize           int
+	toolParallelism    int
+	temperature        float64
+	reasoningEffort    string
+	reasoningEffortFor func(modelName string) string
+	thinkingEnabled    bool
+	thinkingFor        func(modelName string) bool
+	tempFor            func(modelName string) float64
+	sessionID          string
+	inputTokens        int
+	outputTokens       int
+	rounds             int
+	compMaxTokens      int64
+	hardReqs           int64
+	reqs               int64
+	hardTokens         int64
+	tokens             int64
+	toolCalls          int
+	setPriority        func()
+	savePrefs          func()
+	currentMsg         string // user message currently being processed
+	msgStatus          string // "pending", "success", "error"
+	msgStartedAt       time.Time
+	spinFrame          int // rotating spinner frame, advanced each tick while pending
+	agentIO            *agentio.AgentIO
+	completedItems     []completedItem // recently finished turns
 
 	// Incremental rendering state.
 	renderedContent string
@@ -125,10 +132,11 @@ func newModel() model {
 	vp.SetContent("")
 
 	return model{
-		textarea:     ta,
-		viewport:     vp,
-		showTools:    false,
-		showThinking: false,
+		textarea:       ta,
+		viewport:       vp,
+		showTools:      false,
+		showThinking:   false,
+		showSideStatus: true,
 	}
 }
 
@@ -206,6 +214,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if input == "/thinking" {
 				m.showThinking = !m.showThinking
 				m.appendEntry(renderEntry{content: fmt.Sprintf("Thinking: %s", onOff(m.showThinking)), style: "system"})
+				m.notifyPrefsChanged()
+				return m, tea.Batch(cmds...)
+			}
+			if input == "/windows" || input == "/windows status" {
+				m.showSideStatus = !m.showSideStatus
+				m.appendEntry(renderEntry{content: fmt.Sprintf("Side panel: %s", onOff(m.showSideStatus)), style: "system"})
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
@@ -324,6 +338,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.hardTokens = msg.hardTokens
 		m.tokens = msg.tokens
 		m.toolCalls = msg.toolCalls
+		m.compMaxTokens = msg.compMaxTokens
 
 	case modelChangeMsg:
 		m.modelName = msg.name
@@ -331,6 +346,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if t := m.tempFor(msg.name); t > 0 {
 				m.temperature = t
 			}
+		}
+		if m.reasoningEffortFor != nil {
+			m.reasoningEffort = m.reasoningEffortFor(msg.name)
+		}
+		if m.thinkingFor != nil {
+			m.thinkingEnabled = m.thinkingFor(msg.name)
 		}
 		m.rebuildViewport()
 
@@ -759,7 +780,7 @@ func (m *model) updateViewportHeight() {
 // viewport takes the remaining ~80%; otherwise it gets the full width.
 func (m model) viewportWidth() int {
 	sw := sideStatusWidth(m.width)
-	if sw == 0 {
+	if sw == 0 || !m.showSideStatus {
 		return m.width
 	}
 	w := m.width - sw - 1 // 1 col gap between viewport and side panel
@@ -960,6 +981,9 @@ func (m model) View() string {
 	// right edge.
 	var leftParts []string
 	leftParts = append(leftParts, "🐬 "+m.agentName+" "+m.version)
+	if idx := strings.LastIndex(m.version, "-"); idx > 0 {
+		leftParts = append(leftParts, "git:"+m.version[idx+1:])
+	}
 	var rightParts []string
 	if m.msgStatus == "pending" {
 		frame := spinnerFrames[m.spinFrame%len(spinnerFrames)]
@@ -969,7 +993,21 @@ func (m model) View() string {
 			Render(frame+" "+elapsed.String()))
 	}
 	if m.sessionID != "" {
-		rightParts = append(rightParts, truncateSessionID(m.sessionID))
+		rightParts = append(rightParts, "session:"+truncateSessionID(m.sessionID))
+	}
+	// Always show turn count in the bottom bar so it's visible even
+	// when the side panel is hidden or too full.
+	if m.rounds > 0 {
+		leftParts = append(leftParts, fmt.Sprintf("turn:%d", m.rounds))
+	}
+	compTok := int64(m.inputTokens + m.outputTokens)
+	if compTok > 0 {
+		s := fmt.Sprintf("tok:%s", formatCount(compTok))
+		if m.compMaxTokens > 0 {
+			pct := float64(compTok) / float64(m.compMaxTokens) * 100
+			s = fmt.Sprintf("tok:%s/%s(%.0f%%)", formatCount(compTok), formatCount(m.compMaxTokens), pct)
+		}
+		leftParts = append(leftParts, s)
 	}
 	if sideStatus == "" {
 		// Narrow mode: put everything on the bottom bar.
@@ -980,19 +1018,16 @@ func (m model) View() string {
 		if m.toolParallelism > 1 {
 			leftParts = append(leftParts, fmt.Sprintf("parallel:%d", m.toolParallelism))
 		}
-		if m.rounds > 0 {
-			leftParts = append(leftParts, fmt.Sprintf("turn:%d", m.rounds))
-			if m.hardReqs > 0 {
-				pct := float64(m.reqs) / float64(m.hardReqs) * 100
-				leftParts = append(leftParts, fmt.Sprintf("req:%s/%.1f%%", formatCount(m.reqs), pct))
-			}
-			if m.hardTokens > 0 {
-				pct := float64(m.tokens) / float64(m.hardTokens) * 100
-				leftParts = append(leftParts, fmt.Sprintf("tok:%s/%.1f%%", formatCount(m.tokens), pct))
-			}
-			if m.toolCalls > 0 {
-				leftParts = append(leftParts, fmt.Sprintf("tools:%d", m.toolCalls))
-			}
+		if m.hardReqs > 0 {
+			pct := float64(m.reqs) / float64(m.hardReqs) * 100
+			leftParts = append(leftParts, fmt.Sprintf("req:%s/%.1f%%", formatCount(m.reqs), pct))
+		}
+		if m.hardTokens > 0 {
+			pct := float64(m.tokens) / float64(m.hardTokens) * 100
+			leftParts = append(leftParts, fmt.Sprintf("tok:%s/%.1f%%", formatCount(m.tokens), pct))
+		}
+		if m.toolCalls > 0 {
+			leftParts = append(leftParts, fmt.Sprintf("tools:%d", m.toolCalls))
 		}
 		if m.inputTokens > 0 || m.outputTokens > 0 {
 			leftParts = append(leftParts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
@@ -1171,11 +1206,11 @@ var sidePanelBorder = lipgloss.Border{
 // values never wrap to a new line.
 func (m model) renderSideStatus() string {
 	innerWidth := sideStatusWidth(m.width)
-	if innerWidth == 0 {
+	if innerWidth == 0 || !m.showSideStatus {
 		return ""
 	}
 	boxInnerWidth := innerWidth - 2 - 4 // border on each side + horizontal padding 2
-	sep := strings.Repeat("─", boxInnerWidth)
+	sep := strings.Repeat("╌", boxInnerWidth)
 	// Max value width: boxInner - label column - 1 space gap.
 	maxValWidth := boxInnerWidth - sideLabelWidth - 1
 	if maxValWidth < 4 {
@@ -1186,6 +1221,12 @@ func (m model) renderSideStatus() string {
 		{"model", m.modelName},
 		{"temp", fmt.Sprintf("%.1f", m.temperature)},
 		{"pool", fmt.Sprintf("%d", m.poolSize)},
+	}
+	if m.reasoningEffort != "" {
+		rows = append(rows, [2]string{"reasoning", m.reasoningEffort})
+	}
+	if m.thinkingEnabled {
+		rows = append(rows, [2]string{"thinking", "enabled"})
 	}
 	if m.toolParallelism > 1 {
 		rows = append(rows, [2]string{"parallel", fmt.Sprintf("%d", m.toolParallelism)})

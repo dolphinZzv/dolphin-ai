@@ -34,61 +34,82 @@ func init() {
 		if f, ok := cfg["temp_for"].(func(string) float64); ok {
 			tempFor = f
 		}
+		var reasoningEffortFor func(string) string
+		if f, ok := cfg["reasoning_effort_for"].(func(string) string); ok {
+			reasoningEffortFor = f
+		}
+		var thinkingFor func(string) bool
+		if f, ok := cfg["thinking_for"].(func(string) bool); ok {
+			thinkingFor = f
+		}
+		reasoningEffort, _ := cfg["reasoning_effort"].(string)
+		thinking, _ := cfg["thinking"].(bool)
 		var logger *zap.Logger
 		if l, ok := cfg["logger"].(*zap.Logger); ok {
 			logger = l
 		}
-		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, logger), nil
+		compMaxTokens, _ := cfg["compaction.max_tokens"].(int)
+		return NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger), nil
 	})
 }
 
 type TUI struct {
 	*transport.SessionHolder
-	id              string
-	program         *tea.Program
-	pendingAgentIO  *agentio.AgentIO
-	priority        bool
-	msgChan         chan string
-	permCh          chan string
-	ctx             context.Context
-	cancel          context.CancelFunc
-	mu              sync.Mutex
-	agentName       string
-	modelName       string
-	username        string
-	showTools       bool
-	showThinking    bool
-	workmode        string
-	version         string
-	poolSize        int
-	toolParallelism int
-	temperature     float64
-	tempFor         func(string) float64
-	limiter         *limit.Limiter
-	logger          *zap.Logger
+	id                 string
+	program            *tea.Program
+	pendingAgentIO     *agentio.AgentIO
+	priority           bool
+	msgChan            chan string
+	permCh             chan string
+	ctx                context.Context
+	cancel             context.CancelFunc
+	mu                 sync.Mutex
+	agentName          string
+	modelName          string
+	username           string
+	showTools          bool
+	showThinking       bool
+	workmode           string
+	version            string
+	poolSize           int
+	toolParallelism    int
+	temperature        float64
+	tempFor            func(string) float64
+	reasoningEffort    string
+	reasoningEffortFor func(string) string
+	thinking           bool
+	thinkingFor        func(string) bool
+	compMaxTokens      int
+	limiter            *limit.Limiter
+	logger             *zap.Logger
 }
 
-func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, temperature float64, tempFor func(string) float64, logger *zap.Logger) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, temperature float64, tempFor func(string) float64, reasoningEffort string, reasoningEffortFor func(string) string, thinking bool, thinkingFor func(string) bool, compMaxTokens int, logger *zap.Logger) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
-		SessionHolder:   transport.NewSessionHolder(nil),
-		id:              "tui",
-		msgChan:         make(chan string, 1),
-		ctx:             ctx,
-		cancel:          cancel,
-		agentName:       "Dolphin",
-		modelName:       modelName,
-		username:        username,
-		version:         common.Version,
-		showTools:       showTools,
-		showThinking:    showThinking,
-		workmode:        workmode,
-		poolSize:        poolSize,
-		toolParallelism: toolParallelism,
-		temperature:     temperature,
-		tempFor:         tempFor,
-		logger:          logger,
+		SessionHolder:      transport.NewSessionHolder(nil),
+		id:                 "tui",
+		msgChan:            make(chan string, 1),
+		ctx:                ctx,
+		cancel:             cancel,
+		agentName:          "Dolphin",
+		modelName:          modelName,
+		username:           username,
+		version:            common.Version,
+		showTools:          showTools,
+		showThinking:       showThinking,
+		workmode:           workmode,
+		poolSize:           poolSize,
+		toolParallelism:    toolParallelism,
+		temperature:        temperature,
+		tempFor:            tempFor,
+		reasoningEffort:    reasoningEffort,
+		reasoningEffortFor: reasoningEffortFor,
+		thinking:           thinking,
+		thinkingFor:        thinkingFor,
+		compMaxTokens:      compMaxTokens,
+		logger:             logger,
 	}
 }
 
@@ -112,13 +133,13 @@ func (t *TUI) Capability() transport.Capability {
 }
 
 func (t *TUI) Start(_ context.Context) error {
+	m := newModel()
 	// Load persisted preferences, but config values take priority.
 	if prefs, err := loadPrefs(); err == nil {
 		t.showTools = t.showTools || prefs.ShowTools
 		t.showThinking = t.showThinking || prefs.ShowThinking
+		m.showSideStatus = prefs.ShowSideStatus
 	}
-
-	m := newModel()
 	m.msgChan = t.msgChan
 	m.username = t.username
 	m.agentName = t.agentName
@@ -129,6 +150,11 @@ func (t *TUI) Start(_ context.Context) error {
 	m.poolSize = t.poolSize
 	m.temperature = t.temperature
 	m.tempFor = t.tempFor
+	m.reasoningEffort = t.reasoningEffort
+	m.reasoningEffortFor = t.reasoningEffortFor
+	m.thinkingEnabled = t.thinking
+	m.thinkingFor = t.thinkingFor
+	m.compMaxTokens = int64(t.compMaxTokens)
 	m.version = t.version
 	m.toolParallelism = t.toolParallelism
 
@@ -140,8 +166,9 @@ func (t *TUI) Start(_ context.Context) error {
 	}
 	m.savePrefs = func() {
 		_ = savePrefs(tuiPrefs{
-			ShowTools:    m.showTools,
-			ShowThinking: m.showThinking,
+			ShowTools:      m.showTools,
+			ShowThinking:   m.showThinking,
+			ShowSideStatus: m.showSideStatus,
 		})
 	}
 
@@ -214,7 +241,7 @@ func (t *TUI) syncSession() {
 	rounds, _ := s.Get("rounds").(int)
 
 	toolCalls, _ := s.Get("tool_calls").(int)
-	msg := usageMsg{inputTokens: input, outputTokens: output, rounds: rounds, toolCalls: toolCalls}
+	msg := usageMsg{inputTokens: input, outputTokens: output, rounds: rounds, toolCalls: toolCalls, compMaxTokens: int64(t.compMaxTokens)}
 
 	if t.limiter != nil {
 		cfg := t.limiter.Config()

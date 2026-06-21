@@ -13,6 +13,7 @@ import (
 	"go.uber.org/zap"
 
 	"dolphin/internal/agentio"
+	"dolphin/internal/dump"
 	"dolphin/internal/event"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
@@ -30,6 +31,8 @@ type AgentLoop struct {
 
 	sessionMu    sync.Mutex
 	sessionLocks map[string]*sync.Mutex
+
+	dumpRecorder *dump.Recorder
 
 	gcInterval           time.Duration
 	maxPanicBackoff      time.Duration
@@ -65,6 +68,12 @@ func (a *AgentLoop) SetOnResult(fn func(agentio.TurnResult)) {
 // SetSessionGcInterval sets the session lock GC interval.
 func (a *AgentLoop) SetSessionGcInterval(d time.Duration) {
 	a.gcInterval = d
+}
+
+// SetDumpRecorder sets the recorder that captures the last turn's LLM
+// request/response and tool calls for the /dump command.
+func (a *AgentLoop) SetDumpRecorder(r *dump.Recorder) {
+	a.dumpRecorder = r
 }
 
 func (a *AgentLoop) Run(ctx context.Context) {
@@ -297,6 +306,17 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	}
 
 	span.SetAttributes(attribute.String("output", output.String()))
+	if a.dumpRecorder != nil {
+		a.dumpRecorder.Record(&dump.TurnDump{
+			SessionID:    turn.SessionID,
+			ModelName:    state.ModelName,
+			Input:        turn.Input,
+			SystemPrompt: state.SystemPrompt,
+			Messages:     state.Messages,
+			ToolResults:  state.ToolResults,
+			Timestamp:    time.Now(),
+		})
+	}
 
 	if a.onResult != nil {
 		a.onResult(agentio.TurnResult{

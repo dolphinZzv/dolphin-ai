@@ -263,7 +263,7 @@ func TestToolStage_CheckPermission(t *testing.T) {
 				Workmode:        "yolo",
 			}
 			state := &State{}
-			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"unsafe_cmd"}`}
 			err := stage.checkPermission(context.Background(), state, call)
 			So(err, ShouldBeNil)
 		})
@@ -275,7 +275,7 @@ func TestToolStage_CheckPermission(t *testing.T) {
 				Workmode:        "default",
 			}
 			state := &State{}
-			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"unsafe_cmd"}`}
 			err := stage.checkPermission(context.Background(), state, call)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "requires permission")
@@ -291,7 +291,7 @@ func TestToolStage_CheckPermission(t *testing.T) {
 				},
 			}
 			state := &State{TransportID: "test"}
-			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"unsafe_cmd"}`}
 			err := stage.checkPermission(context.Background(), state, call)
 			So(err, ShouldBeNil)
 		})
@@ -306,7 +306,7 @@ func TestToolStage_CheckPermission(t *testing.T) {
 				},
 			}
 			state := &State{TransportID: "test"}
-			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"unsafe_cmd"}`}
 			err := stage.checkPermission(context.Background(), state, call)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "denied by the user")
@@ -333,7 +333,7 @@ func TestToolStage_CheckPermission(t *testing.T) {
 				GetTransport:    func(id string) transport.IO { return nil },
 			}
 			state := &State{TransportID: "missing"}
-			call := types.ToolCall{Name: "shell", Arguments: `{"command":"ls"}`}
+			call := types.ToolCall{Name: "shell", Arguments: `{"command":"unsafe_cmd"}`}
 			err := stage.checkPermission(context.Background(), state, call)
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "requires permission")
@@ -768,7 +768,7 @@ func TestToolStageProcessDenied(t *testing.T) {
 		}
 		state := &State{SessionID: "s1"}
 		state.ToolCalls = []types.ToolCall{
-			{ID: "call1", Name: "shell", Arguments: `{"command":"ls"}`},
+			{ID: "call1", Name: "shell", Arguments: `{"command":"unsafe_cmd"}`},
 		}
 
 		err := stage.Process(context.Background(), state)
@@ -868,7 +868,7 @@ func TestToolStageProcessSuccess(t *testing.T) {
 		}
 		state := &State{SessionID: "s1"}
 		state.ToolCalls = []types.ToolCall{
-			{ID: "call1", Name: "shell", Arguments: `{"command":"ls"}`},
+			{ID: "call1", Name: "shell", Arguments: `{"command":"unsafe_cmd"}`},
 		}
 
 		err := stage.Process(context.Background(), state)

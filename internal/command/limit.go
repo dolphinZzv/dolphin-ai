@@ -1,6 +1,7 @@
 package command
 
 import (
+	"fmt"
 	"sort"
 
 	"github.com/spf13/cobra"
@@ -8,6 +9,40 @@ import (
 	"dolphin/internal/config"
 	"dolphin/internal/limit"
 )
+
+// formatCount renders an integer with k/m/b/t suffixes for compact display.
+func formatCount(n int64) string {
+	switch {
+	case n < 0:
+		return fmt.Sprintf("%d", n)
+	case n < 1000:
+		return fmt.Sprintf("%d", n)
+	case n < 1_000_000:
+		v := float64(n) / 1000
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%.0fk", v)
+		}
+		return fmt.Sprintf("%.1fk", v)
+	case n < 1_000_000_000:
+		v := float64(n) / 1_000_000
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%.0fm", v)
+		}
+		return fmt.Sprintf("%.1fm", v)
+	case n < 1_000_000_000_000:
+		v := float64(n) / 1_000_000_000
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%.0fb", v)
+		}
+		return fmt.Sprintf("%.1fb", v)
+	default:
+		v := float64(n) / 1_000_000_000_000
+		if v == float64(int64(v)) {
+			return fmt.Sprintf("%.0ft", v)
+		}
+		return fmt.Sprintf("%.1ft", v)
+	}
+}
 
 // RegisterLimit registers the /limit command for viewing usage and limits.
 func RegisterLimit(r *Registry, limiter *limit.Limiter) {
@@ -79,9 +114,9 @@ func printLimitStatus(cmd *cobra.Command, limiter *limit.Limiter) error {
 						softReq = ml.HardRequests * 80 / 100
 					}
 					if ml.HardRequests > 0 {
-						cmd.Printf("| | requests | %d | %d | %d |\n", ml.HardRequests, softReq, reqCurrent)
+						cmd.Printf("| | requests | %s | %s | %s |\n", formatCount(ml.HardRequests), formatCount(softReq), formatCount(reqCurrent))
 					} else {
-						cmd.Printf("| | requests | - | %d | %d |\n", softReq, reqCurrent)
+						cmd.Printf("| | requests | - | %s | %s |\n", formatCount(softReq), formatCount(reqCurrent))
 					}
 				}
 				if ml.HardTokens > 0 || ml.SoftTokens > 0 {
@@ -90,9 +125,9 @@ func printLimitStatus(cmd *cobra.Command, limiter *limit.Limiter) error {
 						softTok = ml.HardTokens * 80 / 100
 					}
 					if ml.HardTokens > 0 {
-						cmd.Printf("| | tokens | %d | %d | %d |\n", ml.HardTokens, softTok, tokCurrent)
+						cmd.Printf("| | tokens | %s | %s | %s |\n", formatCount(ml.HardTokens), formatCount(softTok), formatCount(tokCurrent))
 					} else {
-						cmd.Printf("| | tokens | - | %d | %d |\n", softTok, tokCurrent)
+						cmd.Printf("| | tokens | - | %s | %s |\n", formatCount(softTok), formatCount(tokCurrent))
 					}
 				}
 				if ml.HardRequests == 0 && ml.HardTokens == 0 && ml.SoftRequests == 0 && ml.SoftTokens == 0 {
@@ -106,9 +141,9 @@ func printLimitStatus(cmd *cobra.Command, limiter *limit.Limiter) error {
 						softReq = ml.HardRequests * 80 / 100
 					}
 					if ml.HardRequests > 0 {
-						cmd.Printf("    requests:  hard=%-8d soft=%-8d current=%d\n", ml.HardRequests, softReq, reqCurrent)
+						cmd.Printf("    requests:  hard=%-8s soft=%-8s current=%s\n", formatCount(ml.HardRequests), formatCount(softReq), formatCount(reqCurrent))
 					} else {
-						cmd.Printf("    requests:  hard=%-8s soft=%-8d current=%d\n", "-", softReq, reqCurrent)
+						cmd.Printf("    requests:  hard=%-8s soft=%-8s current=%s\n", "-", formatCount(softReq), formatCount(reqCurrent))
 					}
 				}
 				if ml.HardTokens > 0 || ml.SoftTokens > 0 {
@@ -117,9 +152,9 @@ func printLimitStatus(cmd *cobra.Command, limiter *limit.Limiter) error {
 						softTok = ml.HardTokens * 80 / 100
 					}
 					if ml.HardTokens > 0 {
-						cmd.Printf("    tokens:    hard=%-8d soft=%-8d current=%d\n", ml.HardTokens, softTok, tokCurrent)
+						cmd.Printf("    tokens:    hard=%-8s soft=%-8s current=%s\n", formatCount(ml.HardTokens), formatCount(softTok), formatCount(tokCurrent))
 					} else {
-						cmd.Printf("    tokens:    hard=%-8s soft=%-8d current=%d\n", "-", softTok, tokCurrent)
+						cmd.Printf("    tokens:    hard=%-8s soft=%-8s current=%s\n", "-", formatCount(softTok), formatCount(tokCurrent))
 					}
 				}
 				if ml.HardRequests == 0 && ml.HardTokens == 0 && ml.SoftRequests == 0 && ml.SoftTokens == 0 {
@@ -131,11 +166,11 @@ func printLimitStatus(cmd *cobra.Command, limiter *limit.Limiter) error {
 
 	if isMarkdown {
 		totalRequests := usage["llm.requests"]
-		cmd.Printf("\n**Total requests:** %d\n", totalRequests)
+		cmd.Printf("\n**Total requests:** %s\n", formatCount(totalRequests))
 	} else {
 		cmd.Println()
 		totalRequests := usage["llm.requests"]
-		cmd.Printf("Total requests: %d\n", totalRequests)
+		cmd.Printf("Total requests: %s\n", formatCount(totalRequests))
 	}
 	return nil
 }
@@ -145,9 +180,9 @@ func printGlobalLimit(cmd *cobra.Command, cfg *config.Config, configKey, display
 	current := usage[storeKey]
 	if hard <= 0 {
 		if isMarkdown {
-			cmd.Printf("| %s | - | - | %d |\n", display, current)
+			cmd.Printf("| %s | - | - | %s |\n", display, formatCount(current))
 		} else {
-			cmd.Printf("  %s: current=%d (no limit)\n", display, current)
+			cmd.Printf("  %s: current=%s (no limit)\n", display, formatCount(current))
 		}
 		return
 	}
@@ -156,8 +191,8 @@ func printGlobalLimit(cmd *cobra.Command, cfg *config.Config, configKey, display
 		soft = hard * 80 / 100
 	}
 	if isMarkdown {
-		cmd.Printf("| %s | %d | %d | %d |\n", display, hard, soft, current)
+		cmd.Printf("| %s | %s | %s | %s |\n", display, formatCount(hard), formatCount(soft), formatCount(current))
 	} else {
-		cmd.Printf("  %s: hard=%-8d soft=%-8d current=%d\n", display, hard, soft, current)
+		cmd.Printf("  %s: hard=%-8s soft=%-8s current=%s\n", display, formatCount(hard), formatCount(soft), formatCount(current))
 	}
 }

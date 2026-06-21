@@ -96,8 +96,8 @@ func (s *Store) Check(toolName string, args json.RawMessage) Result {
 	return NoMatch
 }
 
-// AddAllow adds an allow rule for the given tool and exact args, then saves.
-// The args are stored as-is (exact glob match against the same JSON values).
+// AddAllow adds an allow rule for the given tool with the given arg patterns,
+// then saves. Use AddAllowTool to allow the tool for all parameter values.
 func (s *Store) AddAllow(toolName string, args json.RawMessage) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -123,6 +123,33 @@ func (s *Store) AddAllow(toolName string, args json.RawMessage) error {
 	s.rules[toolName] = rs
 
 	return s.save()
+}
+
+// AddAllowTool adds an allow rule that matches ALL parameter values for the
+// tool. Equivalent to the user saying "always allow this tool".
+func (s *Store) AddAllowTool(toolName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rs := s.rules[toolName]
+	// Empty allow rule matches all parameter values.
+	rs.Allow = append(rs.Allow, map[string]string{})
+	s.rules[toolName] = rs
+
+	return s.save()
+}
+
+// AddDenyDefaults merges deny rules from an external source (e.g. config.yaml).
+// Existing deny rules are preserved; new ones are appended.
+func (s *Store) AddDenyDefaults(defaults map[string][]map[string]string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for toolName, rules := range defaults {
+		rs := s.rules[toolName]
+		rs.Deny = append(rs.Deny, rules...)
+		s.rules[toolName] = rs
+	}
 }
 
 // save writes the current rules to the JSON file.

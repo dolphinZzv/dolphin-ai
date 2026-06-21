@@ -400,7 +400,8 @@ func TestLazyClient_ListThenExecute(t *testing.T) {
 func TestReadSSE_ValidResult(t *testing.T) {
 	input := "event: result\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hello\"}]}}\n\n"
 	body := strings.NewReader(input)
-	resp, err := readSSE(body)
+	client := &Client{}
+	resp, err := client.readSSE(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -415,7 +416,8 @@ func TestReadSSE_ValidResult(t *testing.T) {
 func TestReadSSE_ValidError(t *testing.T) {
 	input := "event: error\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-1,\"message\":\"something went wrong\"}}\n\n"
 	body := strings.NewReader(input)
-	resp, err := readSSE(body)
+	client := &Client{}
+	resp, err := client.readSSE(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +432,8 @@ func TestReadSSE_ValidError(t *testing.T) {
 func TestReadSSE_SkipsProgressBeforeResult(t *testing.T) {
 	input := "event: progress\ndata: {\"progress\":50}\n\nevent: result\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"done\"}]}}\n\n"
 	body := strings.NewReader(input)
-	resp, err := readSSE(body)
+	client := &Client{}
+	resp, err := client.readSSE(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +445,8 @@ func TestReadSSE_SkipsProgressBeforeResult(t *testing.T) {
 func TestReadSSE_NoResult(t *testing.T) {
 	input := "event: ping\ndata: {}\n\nevent: keepalive\ndata: {}\n\n"
 	body := strings.NewReader(input)
-	_, err := readSSE(body)
+	client := &Client{}
+	_, err := client.readSSE(body)
 	if err == nil {
 		t.Fatal("expected error for no result in stream")
 	}
@@ -451,7 +455,8 @@ func TestReadSSE_NoResult(t *testing.T) {
 func TestReadSSE_TrailingData(t *testing.T) {
 	input := "event: result\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"ok\"}"
 	body := strings.NewReader(input)
-	resp, err := readSSE(body)
+	client := &Client{}
+	resp, err := client.readSSE(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +468,8 @@ func TestReadSSE_TrailingData(t *testing.T) {
 func TestReadSSE_UnnamedEvent(t *testing.T) {
 	input := "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":\"ok\"}\n\n"
 	body := strings.NewReader(input)
-	resp, err := readSSE(body)
+	client := &Client{}
+	resp, err := client.readSSE(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +481,8 @@ func TestReadSSE_UnnamedEvent(t *testing.T) {
 func TestReadSSE_MultipleDataLines(t *testing.T) {
 	input := "event: result\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hello\"}]}}\n\n"
 	body := bufio.NewReader(strings.NewReader(input))
-	resp, err := readSSE(body)
+	client := &Client{}
+	resp, err := client.readSSE(body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,10 +495,10 @@ func TestReadSSE_MultipleDataLines(t *testing.T) {
 // HTTP transport tests
 // ---------------------------------------------------------------------------
 
-func TestNewClient_Timeout(t *testing.T) {
+func TestNewClient_NoTimeout(t *testing.T) {
 	c := NewClient("http://localhost:9999")
-	if c.http.Timeout != 10*time.Second {
-		t.Fatalf("expected 10s timeout, got %v", c.http.Timeout)
+	if c.http.Timeout != 0 {
+		t.Fatalf("expected no timeout for SSE, got %v", c.http.Timeout)
 	}
 }
 

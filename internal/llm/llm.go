@@ -21,6 +21,7 @@ type ModelConfig struct {
 	TopP            float64       `json:"top_p"`
 	Stop            []string      `json:"stop"`
 	ReasoningEffort string        `json:"reasoning_effort,omitempty"`
+	Thinking        bool          `json:"thinking,omitempty"`
 	Stream          bool          `json:"stream"`
 	StreamSet       bool          `json:"-"`
 	Disabled        bool          `json:"disabled,omitempty"`
@@ -37,6 +38,7 @@ type LLMRequest struct {
 	Stop            []string
 	Tools           []types.ToolDef
 	ReasoningEffort string
+	Thinking        bool
 	Stream          bool
 }
 

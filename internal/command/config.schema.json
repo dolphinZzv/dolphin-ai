@@ -60,11 +60,25 @@
         "dir": { "type": "string", "default": ".dolphin/memory" }
       }
     },
+    "compaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Auto-compaction summarizes old messages when the estimated token count exceeds max_tokens.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true },
+        "max_tokens": { "type": "integer", "minimum": 1, "default": 60000, "description": "Token threshold that triggers auto-compaction. Shown in TUI status bar as tok:N/60k(X%)." },
+        "keep_rounds": { "type": "integer", "minimum": 1, "default": 6, "description": "Recent rounds kept verbatim when compacting." },
+        "model": { "type": "string", "description": "Model used to generate the compact summary (empty = active model)." },
+        "summary_max_tokens": { "type": "integer", "default": 512 },
+        "token_ratio": { "type": "integer", "default": 4, "description": "Runes per estimated token for token counting." }
+      }
+    },
     "session": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
         "dir": { "type": "string", "default": ".dolphin/sessions" },
+        "dump_dir": { "type": "string", "default": ".dolphin/dumps", "description": "Directory where /dump writes turn JSON dumps." },
         "window": { "type": "integer", "minimum": 1, "default": 40 },
         "expire_after": {
           "type": "string",
@@ -232,15 +246,22 @@
   },
   "definitions": {
     "limitValue": {
-      "description": "Limit can be a scalar (hard only) or {hard, soft} object",
+      "description": "Limit can be a scalar (hard only) or {hard, soft} object. Supports human-readable suffixes: 1k, 2.5m, 1b.",
       "oneOf": [
         { "type": "integer", "minimum": 1 },
+        { "type": "string", "pattern": "^\\d+(\\.\\d+)?[kKmMbBtT]?$", "description": "Human-readable count, e.g. 1k, 2.5m, 1b" },
         {
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "hard": { "type": "integer", "minimum": 0 },
-            "soft": { "type": "integer", "minimum": 0 }
+            "hard": { "oneOf": [
+              { "type": "integer", "minimum": 0 },
+              { "type": "string", "pattern": "^\\d+(\\.\\d+)?[kKmMbBtT]?$" }
+            ]},
+            "soft": { "oneOf": [
+              { "type": "integer", "minimum": 0 },
+              { "type": "string", "pattern": "^\\d+(\\.\\d+)?[kKmMbBtT]?$" }
+            ]}
           }
         }
       ]
@@ -264,7 +285,8 @@
             "properties": {
               "name": { "type": "string", "description": "Model name" },
               "disabled": { "type": "boolean", "default": false, "description": "When true, the model is excluded from the available models list" },
-              "reasoning_effort": { "type": "string", "enum": ["high", "max"], "description": "DeepSeek reasoning effort level" },
+              "reasoning_effort": { "type": "string", "enum": ["high", "max"], "description": "Reasoning effort level. Anthropic format: output_config.effort. OpenAI format: reasoning_effort." },
+              "thinking": { "type": "boolean", "default": false, "description": "Enable extended thinking mode. Anthropic format: thinking block with budget_tokens. OpenAI format: thinking field (provider-dependent)." },
               "stream": { "type": "boolean", "default": true, "description": "Enable SSE streaming for this model" },
               "max_tokens": { "type": "integer", "minimum": 1 },
               "temperature": { "type": "number", "minimum": 0, "maximum": 2, "default": 0.7 },

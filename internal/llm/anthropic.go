@@ -84,10 +84,16 @@ type AnthropicRequest struct {
 	Stop         []string           `json:"stop_sequences,omitempty"`
 	Tools        []AnthropicTool    `json:"tools,omitempty"`
 	OutputConfig *OutputConfig      `json:"output_config,omitempty"`
+	Thinking     *AnthropicThinking `json:"thinking,omitempty"`
 }
 
 type OutputConfig struct {
 	Effort string `json:"effort"`
+}
+
+type AnthropicThinking struct {
+	Type         string `json:"type"`
+	BudgetTokens int    `json:"budget_tokens"`
 }
 
 type AnthropicTool struct {
@@ -230,6 +236,13 @@ func BuildAnthropicRequest(model string, messages []AnthropicMessage, cfg Config
 	}
 	if req.ReasoningEffort != "" {
 		body.OutputConfig = &OutputConfig{Effort: req.ReasoningEffort}
+	}
+	if req.Thinking {
+		budget := req.MaxTokens
+		if budget == 0 {
+			budget = 4096
+		}
+		body.Thinking = &AnthropicThinking{Type: "enabled", BudgetTokens: budget}
 	}
 	if len(req.Tools) > 0 {
 		body.Tools = BuildAnthropicTools(req.Tools)

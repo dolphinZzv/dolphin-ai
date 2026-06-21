@@ -155,6 +155,7 @@ func parseProviderModels(cfg interface {
 			MaxConcurrency:  maxConcurrency,
 			Timeout:         timeout,
 			ReasoningEffort: cfg.GetString(prefix + ".reasoning_effort"),
+			Thinking:        cfg.GetBool(prefix + ".thinking"),
 			Stream:          stream,
 			StreamSet:       streamSet,
 			Disabled:        cfg.GetBool(prefix + ".disabled"),

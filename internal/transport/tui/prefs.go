@@ -7,8 +7,9 @@ import (
 )
 
 type tuiPrefs struct {
-	ShowTools    bool `json:"show_tools"`
-	ShowThinking bool `json:"show_thinking"`
+	ShowTools      bool `json:"show_tools"`
+	ShowThinking   bool `json:"show_thinking"`
+	ShowSideStatus bool `json:"show_side_status"`
 }
 
 func prefsPath() (string, error) {
