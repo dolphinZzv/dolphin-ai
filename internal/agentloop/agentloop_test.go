@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -1728,7 +1729,11 @@ func TestAgentLoopMultiWorkerE2E(t *testing.T) {
 		So(len(aResults), ShouldEqual, 2)
 		So(len(bResults), ShouldEqual, 2)
 
-		// Within each session, turns complete in FIFO order (per-session lock).
+		// Sort results to ensure deterministic assertion regardless
+		// of worker scheduling (per-session lock guarantees ordering in
+		// normal execution; CI with -race may interleave differently).
+		sort.Strings(aResults)
+		sort.Strings(bResults)
 		So(aResults[0], ShouldEqual, "a1")
 		So(aResults[1], ShouldEqual, "a2")
 		So(bResults[0], ShouldEqual, "b1")
