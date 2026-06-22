@@ -393,8 +393,8 @@ func TestGetDurationExtended(t *testing.T) {
 	Convey("GetDuration with various input types", t, func() {
 		cfg := LoadConfigFromMap(map[string]any{
 			"dur_str":   "30s",
-			"dur_int":   60,         // interpreted as seconds
-			"dur_float": 120.0,      // interpreted as seconds
+			"dur_int":   60,    // interpreted as seconds
+			"dur_float": 120.0, // interpreted as seconds
 			"dur_bad":   "not-a-duration",
 		})
 		So(cfg.GetDuration("dur_str"), ShouldEqual, 30*time.Second)

@@ -3,10 +3,10 @@ package tui
 import (
 	"strings"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/atotto/clipboard"
 )
 
 // viewportStartY returns the terminal row (0-indexed) where the viewport's
