@@ -18,6 +18,7 @@ import (
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/permission"
+	"dolphin/internal/session"
 	"dolphin/internal/signal"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
@@ -1242,6 +1243,12 @@ type CompactionStage struct {
 	TokenRatio   int    // runes per estimated token
 	EventBus     *event.Bus
 	Logger       *zap.Logger
+	// SessionMgr, when set, supplies the previous turn's real input-token
+	// count (last_input_tokens, as reported by the provider). Compaction
+	// triggers when that exceeds MaxThreshold — far more accurate than the
+	// rune-based estimate, which misses system prompts and tool schemas.
+	// Falls back to estimateTokens when nil or unset.
+	SessionMgr *session.Manager
 }
 
 func (s *CompactionStage) Name() string { return "compaction" }
@@ -1258,6 +1265,7 @@ func (s *CompactionStage) Clone() Stage {
 		TokenRatio:   s.TokenRatio,
 		EventBus:     s.EventBus,
 		Logger:       s.Logger,
+		SessionMgr:   s.SessionMgr,
 	}
 }
 
@@ -1291,6 +1299,30 @@ func (s *CompactionStage) estimateTokens(msgs []types.Message) int {
 	return runes / ratio
 }
 
+// estimateTokensReal returns the best available estimate of the current
+// request's input-token size for threshold comparison. It prefers the
+// previous turn's real input-token count (last_input_tokens, reported by
+// the provider and accumulated in the session), since that captures the
+// system prompt, tool schemas, and full history — none of which the
+// rune-based estimate sees. The current turn's input is at least as large
+// as the previous one, so using last_input_tokens as a floor is safe.
+// estimateTokens is taken as a secondary floor so a fresh session with no
+// prior LLM call still compacts on the rune signal.
+func (s *CompactionStage) estimateTokensReal(state *State) int {
+	est := s.estimateTokens(state.Messages)
+	if s.SessionMgr == nil || state.SessionID == "" {
+		return est
+	}
+	sess := s.SessionMgr.Get(state.SessionID)
+	if sess == nil {
+		return est
+	}
+	if v, ok := sess.Get("last_input_tokens").(int); ok && v > est {
+		return v
+	}
+	return est
+}
+
 func (s *CompactionStage) Process(ctx context.Context, state *State) error {
 	if s == nil || s.Provider == nil || s.Memory == nil {
 		return nil
@@ -1304,7 +1336,7 @@ func (s *CompactionStage) Process(ctx context.Context, state *State) error {
 	if len(state.Messages) < minNeeded {
 		return nil
 	}
-	if s.estimateTokens(state.Messages) < s.MaxThreshold {
+	if s.estimateTokensReal(state) < s.MaxThreshold {
 		return nil
 	}
 

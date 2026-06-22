@@ -12,6 +12,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
+	"dolphin/internal/session"
 	"dolphin/internal/types"
 )
 
@@ -288,5 +289,49 @@ func TestCompaction_TooFewMessagesSkips(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(state.Messages), ShouldEqual, len(msgs))
 		So(state.Messages[0].IsSummary, ShouldBeFalse)
+	})
+}
+
+// TestCompaction_RealInputTokensTriggers verifies that the previous turn's
+// real input-token count (last_input_tokens from the provider) drives the
+// threshold — not just the rune-based estimate, which misses system prompts
+// and tool schemas. With short message content (rune estimate well below
+// threshold) but a high last_input_tokens, compaction must still fire.
+func TestCompaction_RealInputTokensTriggers(t *testing.T) {
+	Convey("last_input_tokens above threshold triggers compaction", t, func() {
+		p := &summaryProvider{content: "real-token summary"}
+		mem := &memStore{}
+		s := newCompactionStage(p, mem, 5000, 2) // threshold high vs short content
+
+		// Short content: rune estimate ~ tens of tokens, far below 5000.
+		msgs := buildMessages(5, "short")
+		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
+
+		// Session with a real last_input_tokens above the threshold, as if
+		// the prior turn's full request (system prompt + tools + history)
+		// was large even though message content here is small.
+		mgr := session.NewManager(t.TempDir())
+		sess := mgr.Create(context.Background())
+		sess.Set("last_input_tokens", 6000)
+		s.SessionMgr = mgr
+		state.SessionID = sess.ID
+
+		err := s.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(state.Messages[0].IsSummary, ShouldBeTrue)
+	})
+
+	Convey("without SessionMgr the rune estimate still drives the threshold", t, func() {
+		p := &summaryProvider{content: "rune summary"}
+		mem := &memStore{}
+		s := newCompactionStage(p, mem, 100, 2) // low threshold
+		big := strings.Repeat("x", 2000)
+		msgs := buildMessages(5, big)
+		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
+		// SessionMgr intentionally nil.
+
+		err := s.Process(context.Background(), state)
+		So(err, ShouldBeNil)
+		So(state.Messages[0].IsSummary, ShouldBeTrue)
 	})
 }

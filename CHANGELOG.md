@@ -3,6 +3,8 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- Compaction uses real `last_input_tokens` (from provider) as threshold floor — `SessionMgr` wired into `CompactionStage`, new `estimateTokensReal()` method prefers session-stored prior-turn token count over rune estimate, which missed system prompts and tool schemas
+- Tests: `TestCompaction_RealInputTokensTriggers` covers real-token-driven compaction and rune-based fallback
 - Mouse-driven text selection: click and drag to select text in the viewport, `Ctrl+Shift+C` to copy selection to clipboard. Selection overlay renders on top of viewport content. "Copied" indicator appears in the status bar after successful copy.
 - Permission dialog: `a (always)` requires double-press to confirm (safety guard against accidental permanent grants). Dialog remains 3-choice: once/always/deny. Reverted abort/yolo additions.
 - Slash-command Tab-completion: `/` prefix triggers autocomplete from cobra registry + TUI-only commands (`/tools`, `/thinking`, `/windows`, `/exit`). Completions popup renders between queue and input. Tab cycles matches.

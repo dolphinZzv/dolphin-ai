@@ -96,6 +96,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 			TokenRatio:   c.Config.GetInt("compaction.token_ratio"),
 			EventBus:     c.EventBus,
 			Logger:       c.Logger,
+			SessionMgr:   c.SessionMgr,
 		})
 	}
 
