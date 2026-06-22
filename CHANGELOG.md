@@ -164,3 +164,4 @@ All notable changes to Dolphin will be documented in this file.
 
   (format fix)
 - (gofmt formatting fix)
+- Fix CI flaky tests: add mutex to testSessionStore, sort multi-worker results, poll for timeline ack instead of fixed sleep
