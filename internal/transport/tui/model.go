@@ -126,6 +126,15 @@ type model struct {
 	renderedContent string
 	blockOffsets    []int // byte offset in renderedContent where each output block starts
 	textBlockDirty  bool  // true when last text block has merged content not yet markdown-rendered
+
+	// Selection state for mouse-driven text selection (see selection.go).
+	sel struct {
+		active    bool
+		startLine int
+		startCol  int
+		endLine   int
+		endCol    int
+	}
 }
 
 func newModel() model {
@@ -170,6 +179,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateViewportHeight()
 		m.textarea.SetWidth(m.viewportWidth() - 1)
 		cmds = append(cmds, tea.ClearScreen)
+
+	case tea.MouseMsg:
+		// Wheel events pass through to viewport.Update at the bottom of
+		// Update(). Non-wheel mouse events are handled by handleMouse.
+		if m.permDialog != nil {
+			break
+		}
+		switch msg.Button {
+		case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown,
+			tea.MouseButtonWheelLeft, tea.MouseButtonWheelRight:
+			break // pass through to viewport.Update
+		default:
+			if cmd := m.handleMouse(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			m.autoScrollDuringDrag(msg)
+		}
 
 	case tea.KeyMsg:
 		// ctrl+c always force-quits, even while a permission dialog is open.
@@ -271,6 +297,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, func() tea.Msg { return userSubmitMsg{text: input} })
 			}
 			return m, tea.Batch(cmds...)
+		case "ctrl+shift+c":
+			return m, m.copySelection()
 		}
 
 	case contentMsg:
@@ -579,6 +607,7 @@ func (m model) resolvePerm(idx int) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) appendEntry(e renderEntry) {
+	m.clearSelection()
 	if e.style == "text" {
 		hadMerge := false
 		lines := strings.Split(e.content, "\n")
@@ -1084,6 +1113,11 @@ func (m model) View() string {
 			Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
 			Render(frame+" "+elapsed.String()))
 	}
+	if m.sel.active {
+		rightParts = append(rightParts, lipgloss.NewStyle().
+			Foreground(lipgloss.AdaptiveColor{Light: "26", Dark: "75"}).
+			Render("Copied"))
+	}
 	if m.sessionID != "" {
 		rightParts = append(rightParts, "session:"+truncateSessionID(m.sessionID))
 	}
@@ -1134,7 +1168,12 @@ func (m model) View() string {
 
 	// === Row 1: viewport + side status panel (split horizontally) ===
 	viewWidth := m.viewportWidth()
-	viewportView := m.viewport.View()
+	var viewportView string
+	if m.sel.active {
+		viewportView = m.renderViewportContent()
+	} else {
+		viewportView = m.viewport.View()
+	}
 
 	var viewportElements []string
 	scrolled := !m.viewport.AtBottom()

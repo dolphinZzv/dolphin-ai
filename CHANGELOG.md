@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- Mouse-driven text selection: click and drag to select text in the viewport, `Ctrl+Shift+C` to copy selection to clipboard. Selection overlay renders on top of viewport content. "Copied" indicator appears in the status bar after successful copy.
 - Permission dialog: `a (always)` requires double-press to confirm (safety guard against accidental permanent grants). Dialog remains 3-choice: once/always/deny. Reverted abort/yolo additions.
 - Slash-command Tab-completion: `/` prefix triggers autocomplete from cobra registry + TUI-only commands (`/tools`, `/thinking`, `/windows`, `/exit`). Completions popup renders between queue and input. Tab cycles matches.
 - Mouse wheel scrolling enabled in TUI viewport via `tea.WithMouseCellMotion()`.
