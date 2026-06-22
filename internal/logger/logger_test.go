@@ -136,6 +136,27 @@ func TestNamedChain(t *testing.T) {
 	}
 }
 
+func TestNewStdout(t *testing.T) {
+	// Without log.file, New should log to stdout.
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"log.level": "info",
+	})
+	logger := New(cfg)
+	if logger == nil {
+		t.Fatal("New() returned nil")
+	}
+	logger.Info("stdout test")
+	logger.Sync()
+}
+
+func TestParseLevelWarning(t *testing.T) {
+	// "warning" is an alias for "warn"
+	level := parseLevel("warning")
+	if level != zapcore.WarnLevel {
+		t.Errorf("expected WarnLevel for 'warning', got %v", level)
+	}
+}
+
 func TestNamedEmptyName(t *testing.T) {
 	root := zap.NewNop()
 	child := Named(root, "")

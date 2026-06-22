@@ -322,6 +322,142 @@ func TestConfigAgainstSchema(t *testing.T) {
 	})
 }
 
+func TestParseHumanCount(t *testing.T) {
+	Convey("parseHumanCount", t, func() {
+		Convey("returns 0 for empty string", func() {
+			So(parseHumanCount(""), ShouldEqual, 0)
+		})
+
+		Convey("parses plain integer", func() {
+			So(parseHumanCount("42"), ShouldEqual, 42)
+		})
+
+		Convey("parses k/K suffix", func() {
+			So(parseHumanCount("1k"), ShouldEqual, 1000)
+			So(parseHumanCount("2K"), ShouldEqual, 2000)
+		})
+
+		Convey("parses m/M suffix", func() {
+			So(parseHumanCount("1m"), ShouldEqual, 1000000)
+			So(parseHumanCount("3M"), ShouldEqual, 3000000)
+		})
+
+		Convey("parses b/B suffix", func() {
+			So(parseHumanCount("2b"), ShouldEqual, 2000000000)
+			So(parseHumanCount("1B"), ShouldEqual, 1000000000)
+		})
+
+		Convey("parses t/T suffix", func() {
+			So(parseHumanCount("1t"), ShouldEqual, 1000000000000)
+			So(parseHumanCount("2T"), ShouldEqual, 2000000000000)
+		})
+
+		Convey("parses float with suffix", func() {
+			So(parseHumanCount("1.5k"), ShouldEqual, 1500)
+			So(parseHumanCount("2.5m"), ShouldEqual, 2500000)
+		})
+
+		Convey("returns 0 for unparseable input", func() {
+			So(parseHumanCount("abc"), ShouldEqual, 0)
+		})
+
+		Convey("trims spaces", func() {
+			So(parseHumanCount("  100  "), ShouldEqual, 100)
+		})
+	})
+}
+
+func TestGetIntWithHumanCount(t *testing.T) {
+	Convey("GetInt with human-readable count", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"hcount": "1k",
+			"hfloat": "1.5m",
+		})
+		So(cfg.GetInt("hcount"), ShouldEqual, 1000)
+		So(cfg.GetInt("hfloat"), ShouldEqual, 1500000)
+	})
+}
+
+func TestGetFloatWithString(t *testing.T) {
+	Convey("GetFloat with string value", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"str_float": "3.14",
+			"str_int":   "42",
+		})
+		So(cfg.GetFloat("str_float"), ShouldEqual, 3.14)
+		So(cfg.GetFloat("str_int"), ShouldEqual, 42.0)
+	})
+}
+
+func TestGetDurationExtended(t *testing.T) {
+	Convey("GetDuration with various input types", t, func() {
+		cfg := LoadConfigFromMap(map[string]any{
+			"dur_str":   "30s",
+			"dur_int":   60,         // interpreted as seconds
+			"dur_float": 120.0,      // interpreted as seconds
+			"dur_bad":   "not-a-duration",
+		})
+		So(cfg.GetDuration("dur_str"), ShouldEqual, 30*time.Second)
+		So(cfg.GetDuration("dur_int"), ShouldEqual, 60*time.Second)
+		So(cfg.GetDuration("dur_float"), ShouldEqual, 120*time.Second)
+		So(cfg.GetDuration("dur_bad"), ShouldEqual, 0)
+	})
+}
+
+func TestSetOnNilValues(t *testing.T) {
+	Convey("Set on nil values map creates it", t, func() {
+		cfg := &Config{}
+		cfg.Set("new.key", "value")
+		So(cfg.GetString("new.key"), ShouldEqual, "value")
+	})
+}
+
+func TestFlattenWithArrays(t *testing.T) {
+	Convey("flatten with nested arrays", t, func() {
+		input := map[string]any{
+			"llm": map[string]any{
+				"models": []any{
+					map[string]any{"name": "gpt-4"},
+					map[string]any{"name": "gpt-3.5"},
+				},
+			},
+			"tags": []any{"a", "b", "c"},
+		}
+		result := flatten(input, "")
+		So(result["llm.models.0.name"], ShouldEqual, "gpt-4")
+		So(result["llm.models.1.name"], ShouldEqual, "gpt-3.5")
+		So(result["tags.0"], ShouldEqual, "a")
+		So(result["tags.1"], ShouldEqual, "b")
+		So(result["tags.2"], ShouldEqual, "c")
+	})
+}
+
+func TestLoadConfigJSON(t *testing.T) {
+	Convey("LoadConfig from JSON file", t, func() {
+		dir := t.TempDir()
+		jsonContent := []byte(`{"llm":{"use":"claude-3"},"log":{"level":"warn"}}`)
+		path := filepath.Join(dir, "config.json")
+		_ = os.WriteFile(path, jsonContent, 0o644)
+
+		cfg, err := LoadConfig(path)
+		So(err, ShouldBeNil)
+		So(cfg, ShouldNotBeNil)
+		So(cfg.GetString("llm.use"), ShouldEqual, "claude-3")
+		So(cfg.GetString("log.level"), ShouldEqual, "warn")
+	})
+}
+
+func TestApplyEnvOverridesNewKey(t *testing.T) {
+	Convey("applyEnvOverrides with new env var", t, func() {
+		_ = os.Setenv("DOLPHIN_CUSTOM_KEY", "custom_value")
+		defer func() { _ = os.Unsetenv("DOLPHIN_CUSTOM_KEY") }()
+
+		cfg := LoadConfigFromMap(map[string]any{})
+		cfg.applyEnvOverrides()
+		So(cfg.GetString("custom.key"), ShouldEqual, "custom_value")
+	})
+}
+
 func normalizeForJSON(v any) any {
 	switch val := v.(type) {
 	case map[string]any:

@@ -259,6 +259,115 @@ func TestResultString(t *testing.T) {
 	}
 }
 
+func TestAddAllowTool(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "permissions.json")
+	os.WriteFile(f, []byte(`{}`), 0o644)
+
+	s, err := Load(f)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.AddAllowTool("shell"); err != nil {
+		t.Fatalf("AddAllowTool: %v", err)
+	}
+
+	// Empty allow rule matches all parameter values.
+	if r := s.Check("shell", json.RawMessage(`{"command": "anything"}`)); r != Allow {
+		t.Errorf("expected Allow for any args, got %s", r)
+	}
+
+	// Verify it persisted.
+	data, _ := os.ReadFile(f)
+	var rules map[string]RuleSet
+	json.Unmarshal(data, &rules)
+	rs, ok := rules["shell"]
+	if !ok || len(rs.Allow) != 1 || len(rs.Allow[0]) != 0 {
+		t.Fatalf("expected shell.allow with 1 empty entry, got %+v", rules)
+	}
+}
+
+func TestAddDenyDefaults(t *testing.T) {
+	s := NewTestStore(map[string]RuleSet{
+		"shell": {
+			Deny: []map[string]string{{"command": "rm *"}},
+		},
+	})
+
+	defaults := map[string][]map[string]string{
+		"shell": {
+			{"command": "echo *"},
+		},
+		"FILE_UPLOAD": {
+			{"file_path": "/etc/*"},
+		},
+	}
+	s.AddDenyDefaults(defaults)
+
+	if r := s.Check("shell", json.RawMessage(`{"command": "rm -rf /"}`)); r != Deny {
+		t.Errorf("expected Deny for rm, got %s", r)
+	}
+	if r := s.Check("shell", json.RawMessage(`{"command": "echo secret"}`)); r != Deny {
+		t.Errorf("expected Deny for echo, got %s", r)
+	}
+	if r := s.Check("FILE_UPLOAD", json.RawMessage(`{"file_path": "/etc/passwd"}`)); r != Deny {
+		t.Errorf("expected Deny for FILE_UPLOAD /etc/, got %s", r)
+	}
+}
+
+func TestLoadEmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "empty.json")
+	os.WriteFile(f, []byte{}, 0o644)
+
+	s, err := Load(f)
+	if err != nil {
+		t.Fatalf("expected no error for empty file, got: %v", err)
+	}
+	if s == nil {
+		t.Fatal("expected non-nil store")
+	}
+}
+
+func TestCheckInvalidJSONArgs(t *testing.T) {
+	s := &Store{rules: map[string]RuleSet{
+		"shell": {Deny: []map[string]string{{"command": "*"}}},
+	}}
+	// Invalid JSON args should produce NoMatch (not crash)
+	if r := s.Check("shell", json.RawMessage(`not json`)); r != NoMatch {
+		t.Errorf("expected NoMatch for invalid JSON, got %s", r)
+	}
+}
+
+func TestGlobMatch(t *testing.T) {
+	tests := []struct {
+		pattern string
+		s       string
+		want    bool
+	}{
+		{"*", "anything", true},
+		{"?", "a", true},
+		{"?", "ab", false},
+		{"a*b", "acb", true},
+		{"a*b", "ab", true},
+		{"a*b", "aXb", true},
+		{"a*b", "bXb", false},
+		{"*.txt", "file.txt", true},
+		{"*.txt", "file.go", false},
+		{"hello", "hello", true},
+		{"hello", "world", false},
+		{"*a*", "ba", true},
+		{"*a*", "b", false},
+	}
+	for _, tt := range tests {
+		got := globMatch(tt.pattern, tt.s)
+		if got != tt.want {
+			t.Errorf("globMatch(%q, %q) = %v, want %v", tt.pattern, tt.s, got, tt.want)
+		}
+	}
+}
+
 func TestMapResult(t *testing.T) {
 	if MapResult(Allow) != transport.PermissionAlways {
 		t.Error("Allow should map to PermissionAlways")
