@@ -6,6 +6,7 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	"go.uber.org/zap"
 
 	"dolphin/internal/config"
 	"dolphin/internal/event"
@@ -209,6 +210,61 @@ func TestPipelineTokenAccumulation(t *testing.T) {
 		t.Errorf("tool_calls = %d, want 1", n)
 	}
 }
+
+func TestBuilderBootWithFirstErr(t *testing.T) {
+	Convey("Builder.boot with firstErr", t, func() {
+		cfg := config.LoadConfigFromMap(map[string]any{})
+		b := NewBuilder(cfg)
+		b.firstErr = assertError("pre-existing error")
+
+		// boot should return immediately without calling Bootstrap
+		b.boot(nil) // nil bootstrapper should not panic because firstErr is set
+
+		So(b.firstErr.Error(), ShouldEqual, "pre-existing error")
+	})
+}
+
+func TestBuilderStepMethods(t *testing.T) {
+	Convey("Step methods", t, func() {
+		Convey("skip when context already populated", func() {
+			cfg := config.LoadConfigFromMap(map[string]any{})
+			b := NewBuilder(cfg)
+
+			// Calling Step* when ctx field is already set should skip and not set firstErr.
+			b.ctx.Logger = zap.NewNop()
+			b.StepLogger()
+			So(b.firstErr, ShouldBeNil)
+		})
+	})
+}
+
+func TestBuilderBuildWithoutAssemble(t *testing.T) {
+	Convey("Build without Assemble panics", t, func() {
+		cfg := config.LoadConfigFromMap(map[string]any{})
+		b := NewBuilder(cfg)
+
+		So(func() {
+			b.Build()
+		}, ShouldPanic)
+	})
+}
+
+func TestBuilderBuildWithFirstErr(t *testing.T) {
+	Convey("Build with firstErr panics", t, func() {
+		cfg := config.LoadConfigFromMap(map[string]any{})
+		b := NewBuilder(cfg)
+		b.firstErr = assertError("boot failed")
+		b.pipeline = &Pipeline{}
+
+		So(func() {
+			b.Build()
+		}, ShouldPanic)
+	})
+}
+
+type assertError string
+
+func (e assertError) Error() string { return string(e) }
 
 func TestPipelineTokenAccumulationNewSession(t *testing.T) {
 	t.Parallel()

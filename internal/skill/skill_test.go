@@ -333,6 +333,67 @@ func TestWriteFile(t *testing.T) {
 	})
 }
 
+func TestSaveWithAutoCommitter(t *testing.T) {
+	Convey("Save with AutoCommitter", t, func() {
+		store := mustNewStore(t, t.TempDir())
+		committed := ""
+		store.SetAutoCommitter(&recordingCommitter{fn: func(ctx context.Context, msg string) {
+			committed = msg
+		}})
+
+		ctx := context.Background()
+		err := store.Save(ctx, Skill{Name: "auto-test", Prompt: "auto-commit test"})
+		So(err, ShouldBeNil)
+		So(committed, ShouldContainSubstring, "auto-test")
+	})
+}
+
+func TestDeleteWithAutoCommitter(t *testing.T) {
+	Convey("Delete with AutoCommitter", t, func() {
+		store := mustNewStore(t, t.TempDir())
+		ctx := context.Background()
+
+		store.Save(ctx, Skill{Name: "to-delete", Prompt: "x"})
+
+		committed := ""
+		store.SetAutoCommitter(&recordingCommitter{fn: func(ctx context.Context, msg string) {
+			committed = msg
+		}})
+
+		err := store.Delete(ctx, "to-delete")
+		So(err, ShouldBeNil)
+		So(committed, ShouldContainSubstring, "delete")
+		So(committed, ShouldContainSubstring, "to-delete")
+	})
+}
+
+func TestListWithNonDirEntry(t *testing.T) {
+	Convey("List with non-directory entries", t, func() {
+		dir := t.TempDir()
+		store := mustNewStore(t, dir)
+		ctx := context.Background()
+
+		store.Save(ctx, Skill{Name: "valid-skill", Prompt: "test"})
+
+		// Create a file that looks like a skill dir (but is a file)
+		os.WriteFile(store.path("not-a-dir"), []byte("no"), 0o644)
+
+		skills, err := store.List(ctx)
+		So(err, ShouldBeNil)
+		// The non-directory entry should be skipped; only valid-skill returned.
+		So(len(skills), ShouldEqual, 1)
+		So(skills[0].Name, ShouldEqual, "valid-skill")
+	})
+}
+
+type recordingCommitter struct {
+	fn func(ctx context.Context, msg string)
+}
+
+func (r *recordingCommitter) AutoCommit(ctx context.Context, msg string) {
+	r.fn(ctx, msg)
+}
+
 func TestWriteMetaFile(t *testing.T) {
 	Convey("writeMetaFile", t, func() {
 		Convey("writes JSON metadata", func() {
