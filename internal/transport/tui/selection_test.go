@@ -646,6 +646,56 @@ func TestHandleMouse_ReleaseKeepsSelection(t *testing.T) {
 	}
 }
 
+// TestHandleMouse_ReleaseCopiesSGR locks in the fix for the copy-to-clipboard
+// bug. bubbletea negotiates SGR mouse mode with most modern terminals
+// (iTerm2, Terminal.app, Alacritty, kitty). Under SGR a left-button release
+// arrives with Button == MouseButtonLeft — NOT MouseButtonNone (which is the
+// X10 fallback). The release handler must fire copySelection in both cases,
+// otherwise drag-to-select never reaches the clipboard.
+func TestHandleMouse_ReleaseCopiesSGR(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 100
+	m.height = 40
+	m.viewport.Width = 80
+	m.viewport.Height = 20
+	m.renderedContent = "hello world\n"
+	m.viewport.SetContent(m.renderedContent)
+
+	// Press + drag to build a real selection, then release SGR-style.
+	m.handleMouse(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
+	cmd := m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if cmd == nil {
+		t.Fatal("SGR left-button release should return a copy cmd, got nil")
+	}
+	if !m.sel.active {
+		t.Error("selection should persist after SGR release")
+	}
+}
+
+// TestHandleMouse_ReleaseCopiesX10 verifies the X10-fallback release path
+// (Button == MouseButtonNone) still copies.
+func TestHandleMouse_ReleaseCopiesX10(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 100
+	m.height = 40
+	m.viewport.Width = 80
+	m.viewport.Height = 20
+	m.renderedContent = "hello world\n"
+	m.viewport.SetContent(m.renderedContent)
+
+	m.handleMouse(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+
+	cmd := m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonNone, Action: tea.MouseActionRelease})
+	if cmd == nil {
+		t.Fatal("X10 release should return a copy cmd, got nil")
+	}
+}
+
 func TestHandleMouse_NonLeftClickClears(t *testing.T) {
 	m := newModel()
 	m.ready = true
