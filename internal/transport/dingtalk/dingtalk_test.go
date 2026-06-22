@@ -430,3 +430,88 @@ func TestDingTalkStdLogAdapter(t *testing.T) {
 	adapter.Errorf("test %d", 4) // uses Warn in Errorf
 	adapter.Fatalf("test %d", 5) // uses Error in Fatalf
 }
+
+func TestDingTalkConfirm(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	defer dt.Close()
+	ok, err := dt.Confirm(context.Background(), "test?")
+	if ok {
+		t.Error("expected false from Confirm")
+	}
+	if err == nil {
+		t.Fatal("expected error from Confirm")
+	}
+}
+
+func TestDingTalkInitRegistration(t *testing.T) {
+	// The init function registers "dingtalk" with the transport registry.
+	// Verify the registration works by building a transport via the global registry.
+	built, err := transport.Build(context.Background(), "dingtalk", map[string]any{
+		"logger":     nil,
+		"agent_name": "test-agent",
+	})
+	if err != nil {
+		t.Fatalf("Build dingtalk failed: %v", err)
+	}
+	defer built.Close()
+	if built.ID() != "dingtalk" {
+		t.Errorf("expected ID 'dingtalk', got %q", built.ID())
+	}
+}
+
+func TestDingTalkStartWithWebhook(t *testing.T) {
+	var notified bool
+	webhookSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		notified = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhookSvr.Close()
+
+	dt := NewDingTalk(DingTalkConfig{}, nil, "")
+	dt.cfg.WebhookURL = webhookSvr.URL
+	defer dt.Close()
+
+	ctx := context.Background()
+	if err := dt.Start(ctx); err != nil {
+		t.Fatalf("Start failed: %v", err)
+	}
+
+	// Give the goroutine time to send the startup notification.
+	time.Sleep(100 * time.Millisecond)
+	if !notified {
+		t.Error("expected startup notification to be sent")
+	}
+}
+
+func TestDingTalkNewDingTalkWithLogger(t *testing.T) {
+	logger, _ := zap.NewDevelopment()
+	dt := NewDingTalk(DingTalkConfig{}, logger, "test-agent")
+	defer dt.Close()
+	if dt.logger != logger {
+		t.Error("expected provided logger to be used")
+	}
+	if dt.agentName != "test-agent" {
+		t.Errorf("expected agentName 'test-agent', got %q", dt.agentName)
+	}
+}
+
+func TestDingTalkNewDingTalkWithAllowUsers(t *testing.T) {
+	dt := NewDingTalk(DingTalkConfig{AllowUsers: "alice,bob"}, nil, "")
+	defer dt.Close()
+	if len(dt.allowUsers) != 2 {
+		t.Errorf("expected 2 allowUsers, got %d", len(dt.allowUsers))
+	}
+	if dt.allowUsers[0] != "alice" || dt.allowUsers[1] != "bob" {
+		t.Errorf("unexpected allowUsers: %v", dt.allowUsers)
+	}
+}
+
+func TestDingTalkNewDingTalkWithCredentials(t *testing.T) {
+	// With client_id and client_secret set, startStream should be called.
+	dt := NewDingTalk(DingTalkConfig{ClientID: "test-id", ClientSecret: "test-secret"}, nil, "")
+	defer dt.Close()
+	// streamCli should be non-nil after startStream.
+	if dt.streamCli == nil {
+		t.Error("expected streamCli to be initialized when credentials are provided")
+	}
+}

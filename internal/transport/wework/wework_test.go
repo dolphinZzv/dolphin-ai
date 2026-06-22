@@ -1250,6 +1250,31 @@ func TestWeWorkWriteConnected(t *testing.T) {
 	})
 }
 
+func TestWeWorkConfirm(t *testing.T) {
+	w := &WeWork{}
+	ok, err := w.Confirm(context.Background(), "test?")
+	if ok {
+		t.Error("expected false from Confirm")
+	}
+	if err == nil {
+		t.Fatal("expected error from Confirm")
+	}
+}
+
+func TestWeWorkInitRegistration(t *testing.T) {
+	built, err := transport.Build(context.Background(), "wework", map[string]any{
+		"logger":     nil,
+		"agent_name": "test-agent",
+	})
+	if err != nil {
+		t.Fatalf("Build wework failed: %v", err)
+	}
+	defer built.Close()
+	if built.ID() != "wework" {
+		t.Errorf("expected ID 'wework', got %q", built.ID())
+	}
+}
+
 func TestWeWorkRead(t *testing.T) {
 	t.Run("returns message from msgChan", func(t *testing.T) {
 		w := &WeWork{
