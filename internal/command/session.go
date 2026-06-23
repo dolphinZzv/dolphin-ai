@@ -1,6 +1,8 @@
 package command
 
 import (
+	"strings"
+
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 
@@ -153,7 +155,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	alias("clear")
 }
 
-// RegisterDump registers the /session dump and /dump alias commands.
+// RegisterDump registers the /session dump subcommand and /dump alias.
 func RegisterDump(r *Registry, recorder *dump.Recorder, sessMgr *session.Manager) {
 	if recorder == nil || sessMgr == nil {
 		return
@@ -182,13 +184,15 @@ func RegisterDump(r *Registry, recorder *dump.Recorder, sessMgr *session.Manager
 		return nil
 	}
 
-	// /session dump [session_id]
-	r.Register(&cobra.Command{
-		Use:   "session dump [session_id]",
-		Short: "Write the last turn's LLM request/response and tool calls to a JSON file",
-		Long:  "Writes the most recent turn's full data to <dump_dir>/<session_id>.json. If no session_id is given, the currently active session is used.",
-		RunE:  runE,
-	})
+	// /session dump [session_id] — subcommand of the existing /session group.
+	if parent, _, err := r.root.Find(strings.Fields("session")); err == nil {
+		parent.AddCommand(&cobra.Command{
+			Use:   "dump [session_id]",
+			Short: "Write the last turn's LLM request/response and tool calls to a JSON file",
+			Long:  "Writes the most recent turn's full data to <dump_dir>/<session_id>.json. If no session_id is given, the currently active session is used.",
+			RunE:  runE,
+		})
+	}
 
 	// /dump alias
 	r.Register(&cobra.Command{
@@ -232,13 +236,15 @@ func RegisterCompaction(r *Registry, provider llm.Provider, mem memory.Memory, m
 		return nil
 	}
 
-	// /session compaction
-	r.Register(&cobra.Command{
-		Use:   "session compaction",
-		Short: "Manually compact the current session's history",
-		Long:  "Summarizes the oldest messages in the current session, keeping the most recent turns verbatim. The compacted history replaces the original in memory.",
-		RunE:  runE,
-	})
+	// /session compaction — subcommand of the existing /session group.
+	if parent, _, err := r.root.Find(strings.Fields("session")); err == nil {
+		parent.AddCommand(&cobra.Command{
+			Use:   "compaction",
+			Short: "Manually compact the current session's history",
+			Long:  "Summarizes the oldest messages in the current session, keeping the most recent turns verbatim. The compacted history replaces the original in memory.",
+			RunE:  runE,
+		})
+	}
 
 	// /compaction alias
 	r.Register(&cobra.Command{
