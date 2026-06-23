@@ -90,6 +90,7 @@ func parseProviderModels(cfg interface {
 	GetFloat(string) float64
 	GetDuration(string) time.Duration
 	GetBool(string) bool
+	GetStringMap(string) map[string]string
 	Keys() []string
 }, provider string,
 ) []llm.ModelConfig {
@@ -147,6 +148,7 @@ func parseProviderModels(cfg interface {
 			Stream:          stream,
 			StreamSet:       streamSet,
 			Disabled:        cfg.GetBool(prefix + ".disabled"),
+			Headers:         cfg.GetStringMap(prefix + ".headers"),
 		})
 	}
 	return models

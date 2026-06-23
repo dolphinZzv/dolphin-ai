@@ -34,7 +34,7 @@ func NewAnthropicProvider(modelName string) llm.ProviderFactory {
 				httpReq.Header.Set("Content-Type", "application/json")
 				httpReq.Header.Set("x-api-key", cfg.APIKey)
 				httpReq.Header.Set("anthropic-version", "2023-06-01")
-				for k, v := range cfg.Headers {
+				for k, v := range mergedHeaders(cfg, mc) {
 					httpReq.Header.Set(k, v)
 				}
 				if req.Stream {

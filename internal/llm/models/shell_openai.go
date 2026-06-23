@@ -29,6 +29,24 @@ func findModelConfig(cfg llm.Config, name string) llm.ModelConfig {
 	return llm.ModelConfig{Name: name, Model: name, Provider: cfg.Provider, APIType: cfg.APIType}
 }
 
+// mergedHeaders combines section-level headers (cfg.Headers) with model-level
+// headers (mc.Headers). Model headers override same-named section headers;
+// other section headers are preserved. Returns nil when neither is set so
+// callers can skip the loop entirely.
+func mergedHeaders(cfg llm.Config, mc llm.ModelConfig) map[string]string {
+	if len(cfg.Headers) == 0 && len(mc.Headers) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(cfg.Headers)+len(mc.Headers))
+	for k, v := range cfg.Headers {
+		out[k] = v
+	}
+	for k, v := range mc.Headers {
+		out[k] = v // model overrides section
+	}
+	return out
+}
+
 // NewOpenAIProvider returns a factory for a model that speaks the OpenAI chat
 // completions protocol with no model-specific quirks. The factory closes over
 // the section config (base URL, auth, headers) supplied at boot.
@@ -51,7 +69,7 @@ func NewOpenAIProvider(modelName string) llm.ProviderFactory {
 				}
 				httpReq.Header.Set("Content-Type", "application/json")
 				httpReq.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-				for k, v := range cfg.Headers {
+				for k, v := range mergedHeaders(cfg, mc) {
 					httpReq.Header.Set(k, v)
 				}
 				if req.Stream {

@@ -25,6 +25,11 @@ type ModelConfig struct {
 	Stream          bool          `json:"stream"`
 	StreamSet       bool          `json:"-"`
 	Disabled        bool          `json:"disabled,omitempty"`
+	// Headers are model-level custom HTTP headers. These override any
+	// same-named headers from the section-level Config.Headers; other
+	// section headers still apply. Used for per-model quirks (e.g. a
+	// specific model requiring an X-Model-Version or route hint).
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 type LLMRequest struct {

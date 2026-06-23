@@ -80,6 +80,7 @@ type configMapFull struct {
 	floats    map[string]float64
 	durations map[string]time.Duration
 	bools     map[string]bool
+	headers   map[string]map[string]string
 }
 
 func (m configMapFull) GetInt(key string) int {
@@ -108,6 +109,13 @@ func (m configMapFull) GetBool(key string) bool {
 		return false
 	}
 	return m.bools[key]
+}
+
+func (m configMapFull) GetStringMap(key string) map[string]string {
+	if m.headers == nil {
+		return nil
+	}
+	return m.headers[key]
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +748,31 @@ func TestParseProviderModels(t *testing.T) {
 		models := parseProviderModels(cfg, "openai")
 		if len(models) != 0 {
 			t.Errorf("expected 0 models, got %d", len(models))
+		}
+	})
+
+	t.Run("parses per-model headers", func(t *testing.T) {
+		cfg := configMapFull{
+			configMap: configMap{
+				"llm.openai.provider":      "openai",
+				"llm.openai.models.0.name": "gpt-4o",
+			},
+			headers: map[string]map[string]string{
+				"llm.openai.models.0.headers": {
+					"X-Model-Version": "gpt-4o-2024",
+					"X-Route":         "experimental",
+				},
+			},
+		}
+		models := parseProviderModels(cfg, "openai")
+		if len(models) != 1 {
+			t.Fatalf("expected 1 model, got %d", len(models))
+		}
+		if got := models[0].Headers["X-Model-Version"]; got != "gpt-4o-2024" {
+			t.Errorf("X-Model-Version = %q, want %q", got, "gpt-4o-2024")
+		}
+		if got := models[0].Headers["X-Route"]; got != "experimental" {
+			t.Errorf("X-Route = %q, want %q", got, "experimental")
 		}
 	})
 }
