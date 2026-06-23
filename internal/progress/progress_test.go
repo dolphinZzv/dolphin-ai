@@ -70,8 +70,8 @@ func TestFeedNilFeeder(t *testing.T) {
 }
 
 func TestFeedNilContext(t *testing.T) {
-	// Should not panic
-	Feed(nil)
+	// Should not panic with an empty context.
+	Feed(context.TODO())
 }
 
 func TestWithPreservesParentValues(t *testing.T) {

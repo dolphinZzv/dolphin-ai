@@ -14,8 +14,10 @@ func init() {
 			"tool_denied_by_user":      "tool %q was denied by the user",
 			"denied_message":           "❌ %s",
 			"tool_interrupted":         "tool %q was interrupted before completion",
+			"tool_failed":              "tool %q failed: %s",
 			"stage_init_failed":        "init stage %s: %w",
 			"stage_loop_failed":        "loop stage %s: %w",
+			"max_rounds_reached":       "\n[reached the %d-round limit for this turn; the response may be incomplete. Continue by sending another message.]",
 		},
 		"zh", i18n.Dict{
 			"error_prefix":             "错误: ",
@@ -27,8 +29,10 @@ func init() {
 			"tool_denied_by_user":      "工具 %q 已被用户拒绝",
 			"denied_message":           "❌ %s",
 			"tool_interrupted":         "tool %q was interrupted before completion",
+			"tool_failed":              "工具 %q 执行失败: %s",
 			"stage_init_failed":        "初始化阶段 %s 失败: %w",
 			"stage_loop_failed":        "循环阶段 %s 失败: %w",
+			"max_rounds_reached":       "\n[本轮已达到 %d 轮上限，回复可能未完成。请再发送一条消息以继续。]",
 		},
 	)
 }

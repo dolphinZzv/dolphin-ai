@@ -25,8 +25,11 @@ func TestNewResetSchedulerRunsMissedReset(t *testing.T) {
 	if v, _ := store.Get("llm.requests"); v != 0 {
 		t.Fatalf("requests should be cleared by missed reset, got %d", v)
 	}
-	if v, _ := store.Get("llm.total_tokens"); v != 100 {
-		t.Fatalf("total tokens should be preserved across reset, got %d", v)
+	// total_tokens must reset alongside requests: both feed the same kind of
+	// soft/hard limit check, so a cron reset that leaves tokens accumulating
+	// would turn max_total_tokens into a lifetime cap rather than a windowed one.
+	if v, _ := store.Get("llm.total_tokens"); v != 0 {
+		t.Fatalf("total tokens should be cleared by missed reset, got %d", v)
 	}
 }
 

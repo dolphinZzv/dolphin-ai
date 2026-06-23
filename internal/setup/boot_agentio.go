@@ -97,6 +97,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 			EventBus:     c.EventBus,
 			Logger:       c.Logger,
 			SessionMgr:   c.SessionMgr,
+			SignalBus:    c.SignalBus,
 		})
 	}
 
@@ -134,6 +135,8 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	compositor.SetTurnTimeout(turnTimeout)
 	compositor.SetIdleTimeout(idleTimeout)
 	compositor.SetFeedMinInterval(feedMinInterval)
+	compositor.SetEventBus(c.EventBus)
+	compositor.SetSignalBus(c.SignalBus)
 	compositor.SetCheckpoint(agentloop.NewCheckpoint(c.Mem, c.EventBus))
 
 	c.AgentLoop = agentloop.NewAgentLoop(c.AgentIO.Queue(), compositor, c.Logger, c.EventBus, c.AgentIO, c.Config.GetInt("agent.pool_size"))

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"dolphin/internal/agentio"
+	"dolphin/internal/i18n"
 	"dolphin/internal/types"
 )
 
@@ -69,7 +70,6 @@ type completedItem struct {
 type model struct {
 	viewport           viewport.Model
 	textarea           textarea.Model
-	messages           []renderEntry
 	permDialog         *permDialog
 	width              int
 	height             int
@@ -122,10 +122,12 @@ type model struct {
 	agentIO            *agentio.AgentIO
 	completedItems     []completedItem // recently finished turns
 
-	// Incremental rendering state.
-	renderedContent string
-	blockOffsets    []int // byte offset in renderedContent where each output block starts
-	textBlockDirty  bool  // true when last text block has merged content not yet markdown-rendered
+	// Rendered conversation output and the incremental-rendering engine that
+	// maintains it. Embedded so legacy field accesses (m.messages,
+	// m.renderedContent, m.blockOffsets, m.textBlockDirty) and the buffer's
+	// pure rendering methods resolve via promotion; the model wraps the few
+	// entry points that also need to sync the bubbletea viewport.
+	messageBuffer
 
 	// Selection state for mouse-driven text selection (see selection.go).
 	sel struct {
@@ -186,7 +188,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.permDialog != nil {
 			break
 		}
-		switch msg.Button {
+		switch msg.Button { //nolint:exhaustive // non-wheel buttons handled by default via handleMouse.
 		case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown,
 			tea.MouseButtonWheelLeft, tea.MouseButtonWheelRight:
 			break // pass through to viewport.Update
@@ -207,6 +209,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the viewport. Only ctrl+c (above) escapes it.
 		if m.permDialog != nil {
 			return m.handlePermKey(msg)
+		}
+		// ESC pauses the running turn — the TUI equivalent of /session pause.
+		// It is a resumable pause: the turn blocks at the next LLM/tool
+		// boundary and continues on /session continue. CompactionStage also
+		// honors Pause, so ESC takes effect even mid-compaction. Only active
+		// while a turn is pending; when idle, ESC falls through so it still
+		// dismisses the completions popup like any other key. The command is
+		// routed through msgChan (same path as typed input) so the normal
+		// command dispatcher sends signal.Pause and prints "session paused".
+		if msg.String() == "esc" && m.msgStatus == "pending" {
+			m.completions = nil
+			m.completionIdx = 0
+			m.completionPrefix = ""
+			if m.msgChan != nil {
+				select {
+				case m.msgChan <- "/session pause":
+				default:
+				}
+			}
+			return m, nil
 		}
 		// Any non-tab key clears the completions popup.
 		if msg.String() != "tab" {
@@ -270,19 +292,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if input == "/tools" {
 				m.showTools = !m.showTools
-				m.appendEntry(renderEntry{content: fmt.Sprintf("Tool calls: %s", onOff(m.showTools)), style: "system"})
+				m.appendEntry(renderEntry{content: fmt.Sprintf(i18n.T("tui.toggle_tools"), onOff(m.showTools)), style: "system"})
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
 			if input == "/thinking" {
 				m.showThinking = !m.showThinking
-				m.appendEntry(renderEntry{content: fmt.Sprintf("Thinking: %s", onOff(m.showThinking)), style: "system"})
+				m.appendEntry(renderEntry{content: fmt.Sprintf(i18n.T("tui.toggle_thinking"), onOff(m.showThinking)), style: "system"})
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
 			if input == "/windows" || input == "/windows status" {
 				m.showSideStatus = !m.showSideStatus
-				m.appendEntry(renderEntry{content: fmt.Sprintf("Side panel: %s", onOff(m.showSideStatus)), style: "system"})
+				m.appendEntry(renderEntry{content: fmt.Sprintf(i18n.T("tui.toggle_sidepanel"), onOff(m.showSideStatus)), style: "system"})
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
@@ -382,6 +404,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.textBlockDirty {
 			m.renderIncremental()
 			m.textBlockDirty = false
+			m.syncViewport()
 		}
 		m.viewport.GotoBottom()
 
@@ -486,10 +509,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	// History navigation via up/down arrow.
+	// Arrow keys: in multi-line input, ↑/↓ move the cursor within the
+	// textarea; in single-line input they scroll the conversation
+	// viewport. Input-history navigation is on Ctrl+↑/Ctrl+↓ so it
+	// never conflicts with cursor movement or viewport scrolling.
+	skipViewport := false
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
 		switch keyMsg.String() {
-		case "up":
+		case "ctrl+up":
 			if len(m.inputHistory) > 0 {
 				if m.historyPos == -1 {
 					m.historyDraft = m.textarea.Value()
@@ -501,7 +528,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.textarea.CursorEnd()
 			}
 			return m, tea.Batch(append(cmds, textarea.Blink)...)
-		case "down":
+		case "ctrl+down":
 			if m.historyPos >= 0 {
 				m.historyPos++
 				if m.historyPos >= len(m.inputHistory) {
@@ -512,6 +539,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.textarea.SetValue(m.inputHistory[m.historyPos])
 				}
 				m.textarea.CursorEnd()
+			}
+			return m, tea.Batch(append(cmds, textarea.Blink)...)
+		case "up", "down":
+			// Multi-line input: let the textarea move the cursor between
+			// lines, and skip the viewport update so ↑/↓ don't also scroll
+			// the conversation (the viewport's default KeyMap binds them).
+			if strings.Count(m.textarea.Value(), "\n") > 0 {
+				skipViewport = true
+				break
+			}
+			// Single-line: scroll the conversation viewport instead of
+			// moving a cursor that has nowhere to go.
+			if keyMsg.String() == "up" {
+				m.viewport.ScrollUp(1)
+			} else {
+				m.viewport.ScrollDown(1)
 			}
 			return m, tea.Batch(append(cmds, textarea.Blink)...)
 		}
@@ -534,9 +577,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// bottom border stays aligned with the queue separator.
 	m.updateViewportHeight()
 
-	vp, vpCmd := m.viewport.Update(msg)
-	m.viewport = vp
-	cmds = append(cmds, vpCmd)
+	if !skipViewport {
+		vp, vpCmd := m.viewport.Update(msg)
+		m.viewport = vp
+		cmds = append(cmds, vpCmd)
+	}
 
 	return m, tea.Batch(cmds...)
 }
@@ -606,246 +651,19 @@ func (m model) resolvePerm(idx int) (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg { return permResponseMsg{choice: choice} }
 }
 
+// appendEntry adds a rendered entry to the conversation buffer and syncs the
+// viewport. It clears any active text selection first (the selection's byte
+// offsets would be meaningless against the newly rendered content).
 func (m *model) appendEntry(e renderEntry) {
 	m.clearSelection()
-	if e.style == "text" {
-		hadMerge := false
-		lines := strings.Split(e.content, "\n")
-		for i, line := range lines {
-			if i > 0 {
-				m.messages = append(m.messages, renderEntry{content: line, style: "text"})
-			} else {
-				n := len(m.messages)
-				if n > 0 && m.messages[n-1].style == "text" {
-					m.messages[n-1].content += line
-					hadMerge = true
-				} else {
-					m.messages = append(m.messages, renderEntry{content: line, style: "text"})
-				}
-			}
-		}
-		if hadMerge {
-			m.renderedContent += e.content
-			m.textBlockDirty = true
-			m.viewport.SetContent(m.renderedContent)
-		} else {
-			m.renderIncremental()
-		}
-	} else {
-		if m.textBlockDirty {
-			m.renderIncremental()
-			m.textBlockDirty = false
-		}
-		m.messages = append(m.messages, e)
-		m.renderIncremental()
-	}
-	if len(m.messages) > maxMessages {
-		m.trimFront()
-	}
+	m.messageBuffer.append(e) //nolint:staticcheck // QF1008: explicit selector is clearer than promoted m.append.
+	m.syncViewport()
 }
 
-func (m *model) trimFront() {
-	keep := maxMessages / 2
-	if keep <= 0 {
-		return
-	}
-	dropBlocks := m.messageBlockIndex(len(m.messages) - keep)
-	if dropBlocks <= 0 {
-		dropBlocks = 1
-	}
-	msgStart := m.blockMessageStart(dropBlocks)
-	m.messages = m.messages[msgStart:]
-	m.fullRebuild()
-}
-
-func (m *model) textRunStart(idx int) int {
-	for idx > 0 && m.messages[idx-1].style == "text" {
-		idx--
-	}
-	return idx
-}
-
-func (m *model) messageBlockIndex(msgIdx int) int {
-	blk := 0
-	i := 0
-	for i <= msgIdx && i < len(m.messages) {
-		if m.messages[i].style == "text" {
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				i++
-			}
-		} else {
-			i++
-		}
-		if i <= msgIdx {
-			blk++
-		}
-	}
-	return blk
-}
-
-func (m *model) renderIncremental() {
-	if len(m.messages) == 0 {
-		m.renderedContent = ""
-		m.blockOffsets = nil
-		m.viewport.SetContent("")
-		return
-	}
-
-	lastIdx := len(m.messages) - 1
-	reRenderFrom := lastIdx
-	if m.messages[lastIdx].style == "text" {
-		reRenderFrom = m.textRunStart(lastIdx)
-	}
-
-	oldBlockCount := len(m.blockOffsets)
-	if oldBlockCount == 0 {
-		m.fullRebuild()
-		return
-	}
-
-	truncateBlock := m.messageBlockIndex(reRenderFrom)
-	if truncateBlock >= oldBlockCount {
-		truncateBlock = oldBlockCount
-	}
-
-	newBlockCount := m.countBlocks()
-	if truncateBlock >= newBlockCount {
-		return
-	}
-
-	if truncateBlock == 0 {
-		m.fullRebuild()
-		return
-	}
-
-	if truncateBlock < len(m.blockOffsets) {
-		m.renderedContent = m.renderedContent[:m.blockOffsets[truncateBlock]]
-		m.blockOffsets = m.blockOffsets[:truncateBlock]
-	}
-
-	msgStart := m.blockMessageStart(truncateBlock)
-	tail := m.renderBlocks(msgStart)
-
-	if len(m.renderedContent) > 0 && len(tail) > 0 && m.renderedContent[len(m.renderedContent)-1] != '\n' {
-		m.renderedContent += "\n"
-	}
-	offset := len(m.renderedContent)
-	m.renderedContent += tail
-
-	m.blockOffsets = append(m.blockOffsets, m.computeBlockOffsets(msgStart, offset)...)
-
-	m.viewport.SetContent(m.renderedContent)
-}
-
-func (m *model) countBlocks() int {
-	n := 0
-	i := 0
-	for i < len(m.messages) {
-		if m.messages[i].style == "text" {
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				i++
-			}
-		} else {
-			i++
-		}
-		n++
-	}
-	return n
-}
-
-func (m *model) blockMessageStart(blk int) int {
-	if blk <= 0 {
-		return 0
-	}
-	i := 0
-	b := 0
-	for i < len(m.messages) && b < blk {
-		if m.messages[i].style == "text" {
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				i++
-			}
-		} else {
-			i++
-		}
-		b++
-	}
-	return i
-}
-
-func (m *model) renderBlocks(startIdx int) string {
-	var b strings.Builder
-	for i := startIdx; i < len(m.messages); {
-		entry := m.messages[i]
-		if entry.style == "text" {
-			var buf strings.Builder
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				if buf.Len() > 0 {
-					buf.WriteString("\n")
-				}
-				buf.WriteString(m.messages[i].content)
-				i++
-			}
-			b.WriteString(renderMarkdown(buf.String()))
-		} else {
-			b.WriteString(renderStyled(entry))
-			i++
-		}
-		b.WriteString("\n")
-	}
-	return b.String()
-}
-
-func (m *model) computeBlockOffsets(startIdx int, baseOffset int) []int {
-	var offsets []int
-	offset := baseOffset
-	i := startIdx
-	for i < len(m.messages) {
-		offsets = append(offsets, offset)
-		if m.messages[i].style == "text" {
-			var buf strings.Builder
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				if buf.Len() > 0 {
-					buf.WriteString("\n")
-				}
-				buf.WriteString(m.messages[i].content)
-				i++
-			}
-			block := renderMarkdown(buf.String()) + "\n"
-			offset += len(block)
-		} else {
-			block := renderStyled(m.messages[i]) + "\n"
-			offset += len(block)
-			i++
-		}
-	}
-	return offsets
-}
-
-func (m *model) fullRebuild() {
-	m.textBlockDirty = false
-	var b strings.Builder
-	m.blockOffsets = nil
-	i := 0
-	for i < len(m.messages) {
-		m.blockOffsets = append(m.blockOffsets, b.Len())
-		entry := m.messages[i]
-		if entry.style == "text" {
-			var buf strings.Builder
-			for i < len(m.messages) && m.messages[i].style == "text" {
-				if buf.Len() > 0 {
-					buf.WriteString("\n")
-				}
-				buf.WriteString(m.messages[i].content)
-				i++
-			}
-			b.WriteString(renderMarkdown(buf.String()))
-		} else {
-			b.WriteString(renderStyled(entry))
-			i++
-		}
-		b.WriteString("\n")
-	}
-	m.renderedContent = b.String()
+// syncViewport pushes the buffer's renderedContent to the bubbletea viewport.
+// Called after any buffer mutation; the buffer itself never touches the
+// viewport so it stays free of tea/bubbles coupling.
+func (m *model) syncViewport() {
 	m.viewport.SetContent(m.renderedContent)
 }
 
@@ -972,7 +790,7 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 	header := lipgloss.NewStyle().
 		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
 		Bold(true).
-		Render("📋 Queue")
+		Render(i18n.T("tui.queue_title"))
 	lines = append(lines, header)
 
 	renderLine := func(icon, input, timeStr string) string {
@@ -1017,7 +835,7 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		lines = append(lines, renderLine(icon, t.Input, timeStr))
 	}
 	if len(activeIDs) > len(aShown) {
-		lines = append(lines, moreLine(fmt.Sprintf("… +%d more active", len(activeIDs)-len(aShown))))
+		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_active"), len(activeIDs)-len(aShown))))
 	}
 
 	// Pending — show the head (what runs next) up to the cap, then a
@@ -1034,7 +852,7 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		lines = append(lines, renderLine(icon, t.Input, timeStr))
 	}
 	if len(pending) > len(pShown) {
-		lines = append(lines, moreLine(fmt.Sprintf("… +%d queued", len(pending)-len(pShown))))
+		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_queued"), len(pending)-len(pShown))))
 	}
 
 	// Recently completed — show the tail (most recent) up to the cap.
@@ -1048,7 +866,7 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		lines = append(lines, renderLine(icon, c.input, timeStr))
 	}
 	if len(completed) > len(cShown) {
-		lines = append(lines, moreLine(fmt.Sprintf("… +%d done", len(completed)-len(cShown))))
+		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_done"), len(completed)-len(cShown))))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1084,11 +902,12 @@ func (m *model) notifyPrefsChanged() {
 
 func (m *model) rebuildViewport() {
 	m.fullRebuild()
+	m.syncViewport()
 }
 
 func (m model) View() string {
 	if !m.ready {
-		return "Initializing..."
+		return i18n.T("tui.initializing")
 	}
 
 	// Side status panel shows on the right when the terminal is wide
@@ -1169,9 +988,15 @@ func (m model) View() string {
 	// === Row 1: viewport + side status panel (split horizontally) ===
 	viewWidth := m.viewportWidth()
 	var viewportView string
-	if m.sel.active {
+	switch { //nolint:gocritic // ifElseChain: three mixed-condition branches read better as if/else.
+	case m.sel.active:
 		viewportView = m.renderViewportContent()
-	} else {
+	case m.showingWelcome():
+		// Empty-state welcome banner: shown only before the first message
+		// arrives and no turn is running. Pure overlay — never enters the
+		// message buffer, so it vanishes the moment real content appears.
+		viewportView = m.renderWelcome()
+	default:
 		viewportView = m.viewport.View()
 	}
 
@@ -1202,43 +1027,8 @@ func (m model) View() string {
 
 	// === Row 3..: full-width input + separator + status bar ===
 	// Completions popup: shown below the queue when autocompleting.
-	if len(m.completions) > 0 {
-		compStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
-			Background(lipgloss.AdaptiveColor{Light: "189", Dark: "236"}).
-			Padding(0, 1)
-		compSep := lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
-			Render(strings.Repeat("─", m.width))
-		header := lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"}).
-			Render("Tab to cycle, type to filter")
-		elements = append(elements, compSep)
-		// Show up to 8 completions; highlight the active one.
-		start := m.completionIdx / 8 * 8
-		end := start + 8
-		if end > len(m.completions) {
-			end = len(m.completions)
-		}
-		var compLines []string
-		for j := start; j < end; j++ {
-			line := m.completions[j]
-			if j == m.completionIdx {
-				line = "▸ " + line
-			} else {
-				line = "  " + line
-			}
-			compLines = append(compLines, compStyle.Render(line))
-		}
-		if len(compLines) > 0 {
-			elements = append(elements, lipgloss.JoinVertical(lipgloss.Left, compLines...))
-		}
-		if len(m.completions) > 8 {
-			elements = append(elements, compStyle.Render(fmt.Sprintf("  … %d total", len(m.completions))))
-		}
-		elements = append(elements, lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
-			Render(header))
+	if c := renderCompletions(m.completions, m.completionIdx, m.width); c != "" {
+		elements = append(elements, c)
 	}
 	// Full-width separator + input line.
 	inputLine := lipgloss.NewStyle().
@@ -1389,43 +1179,43 @@ func (m model) renderSideStatus() string {
 	}
 
 	rows := [][2]string{
-		{"model", m.modelName},
-		{"temp", fmt.Sprintf("%.1f", m.temperature)},
-		{"pool", fmt.Sprintf("%d", m.poolSize)},
+		{i18n.T("tui.label_model"), m.modelName},
+		{i18n.T("tui.label_temp"), fmt.Sprintf("%.1f", m.temperature)},
+		{i18n.T("tui.label_pool"), fmt.Sprintf("%d", m.poolSize)},
 	}
 	if m.reasoningEffort != "" {
-		rows = append(rows, [2]string{"reasoning", m.reasoningEffort})
+		rows = append(rows, [2]string{i18n.T("tui.label_reasoning"), m.reasoningEffort})
 	}
 	if m.thinkingEnabled {
-		rows = append(rows, [2]string{"thinking", "enabled"})
+		rows = append(rows, [2]string{i18n.T("tui.label_thinking"), i18n.T("tui.label_enabled")})
 	}
 	if m.toolParallelism > 1 {
-		rows = append(rows, [2]string{"parallel", fmt.Sprintf("%d", m.toolParallelism)})
+		rows = append(rows, [2]string{i18n.T("tui.label_parallel"), fmt.Sprintf("%d", m.toolParallelism)})
 	}
 	if m.workmode != "" && m.workmode != "default" {
-		rows = append(rows, [2]string{"workmode", m.workmode})
+		rows = append(rows, [2]string{i18n.T("tui.label_workmode"), m.workmode})
 	}
 	if m.rounds > 0 {
-		rows = append(rows, [2]string{"turn", fmt.Sprintf("%d", m.rounds)})
+		rows = append(rows, [2]string{i18n.T("tui.label_turn"), fmt.Sprintf("%d", m.rounds)})
 		if m.toolCalls > 0 {
-			rows = append(rows, [2]string{"calls", fmt.Sprintf("%d", m.toolCalls)})
+			rows = append(rows, [2]string{i18n.T("tui.label_calls"), fmt.Sprintf("%d", m.toolCalls)})
 		}
 	}
 	if m.inputTokens > 0 || m.outputTokens > 0 {
-		rows = append(rows, [2]string{"in/out", fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)})
+		rows = append(rows, [2]string{i18n.T("tui.label_inout"), fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)})
 	}
-	rows = append(rows, [2]string{"tools", onOff(m.showTools)})
-	rows = append(rows, [2]string{"thinking", onOff(m.showThinking)})
+	rows = append(rows, [2]string{i18n.T("tui.label_tools"), onOff(m.showTools)})
+	rows = append(rows, [2]string{i18n.T("tui.label_thinking"), onOff(m.showThinking)})
 	// Limit rows pinned to the bottom so they stay visible at the panel's
 	// foot regardless of how many status rows appear above.
 	if m.rounds > 0 {
 		if m.hardReqs > 0 {
 			pct := float64(m.reqs) / float64(m.hardReqs) * 100
-			rows = append(rows, [2]string{"req", fmt.Sprintf("%s/%.1f%%", formatCount(m.reqs), pct)})
+			rows = append(rows, [2]string{i18n.T("tui.label_req"), fmt.Sprintf("%s/%.1f%%", formatCount(m.reqs), pct)})
 		}
 		if m.hardTokens > 0 {
 			pct := float64(m.tokens) / float64(m.hardTokens) * 100
-			rows = append(rows, [2]string{"tok", fmt.Sprintf("%s/%.1f%%", formatCount(m.tokens), pct)})
+			rows = append(rows, [2]string{i18n.T("tui.label_tok"), fmt.Sprintf("%s/%.1f%%", formatCount(m.tokens), pct)})
 		}
 	}
 
@@ -1439,7 +1229,7 @@ func (m model) renderSideStatus() string {
 	lines := []string{
 		lipgloss.NewStyle().
 			Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
-			Render("Status"),
+			Render(i18n.T("tui.status_title")),
 		sep,
 	}
 	for _, r := range rows {
@@ -1517,7 +1307,7 @@ func renderCurrentMsg(msg, username, status string, width int, scrollPct float64
 	if scrollPct >= 0 {
 		scrollSuffix = lipgloss.NewStyle().
 			Foreground(adaptiveFaint).
-			Render(fmt.Sprintf("↑ %d%% · Ctrl+G", int(scrollPct*100+0.5)))
+			Render(fmt.Sprintf(i18n.T("tui.scroll_hint_short"), int(scrollPct*100+0.5)))
 	}
 	avail := width - lipgloss.Width(label) - 3 - lipgloss.Width(scrollSuffix)
 	if avail < 4 {
@@ -1548,7 +1338,7 @@ func renderCurrentMsg(msg, username, status string, width int, scrollPct float64
 // up but no message is currently being processed. It reports scroll position
 // and the key to jump back to the latest output.
 func renderScrollIndicator(width int, scrollPct float64) string {
-	text := fmt.Sprintf("↑ scrolled to %d%% — Ctrl+G or PgDn to jump to bottom", int(scrollPct*100+0.5))
+	text := fmt.Sprintf(i18n.T("tui.scroll_hint_full"), int(scrollPct*100+0.5))
 	return lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(adaptiveFaint).

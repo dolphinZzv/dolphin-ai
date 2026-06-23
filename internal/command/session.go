@@ -7,6 +7,7 @@ import (
 	"dolphin/internal/agentloop"
 	"dolphin/internal/dump"
 	"dolphin/internal/event"
+	"dolphin/internal/i18n"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
@@ -81,6 +82,10 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 			return nil
 		},
 	}, "command.session_switch"))
+	// /session stop aborts the current turn: it sends signal.Interrupt,
+	// which the compositor turns into a context cancellation that every
+	// stage (including init-stage compaction) observes. This is a hard
+	// stop — use /session pause for a resumable pause.
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "stop",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -89,12 +94,30 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 				cmd.Println("no active session")
 				return nil
 			}
+			r.signalBus.Send(cur.ID, signal.Interrupt)
+			cmd.Println(i18n.T("command.session_stopped_msg"))
+			return nil
+		},
+	}, "command.session_stop"))
+
+	// /session pause pauses the current turn. CompactionStage, LLMStage and
+	// ToolStage all honor Pause, so it takes effect even mid-compaction.
+	// Resume with /session continue.
+	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
+		Use: "pause",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cur := sessMgr.Active()
+			if cur == nil {
+				cmd.Println("no active session")
+				return nil
+			}
 			r.signalBus.Send(cur.ID, signal.Pause)
-			cmd.Printf("session %s paused\n", cur.ID[:8])
+			cmd.Println(i18n.T("command.session_paused_msg"))
 			return nil
 		},
 	}, "command.session_pause"))
 
+	// /session continue resumes a paused turn.
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "continue",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -104,7 +127,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 				return nil
 			}
 			r.signalBus.Send(cur.ID, signal.Resume)
-			cmd.Printf("session %s resumed\n", cur.ID[:8])
+			cmd.Println(i18n.T("command.session_resumed_msg"))
 			return nil
 		},
 	}, "command.session_resume"))

@@ -66,6 +66,8 @@ type Compositor struct {
 	idleTimeout     time.Duration // watchdog idle: cancels the whole turn if no Feed within this window, 0 = disabled
 	feedMinInterval time.Duration // throttle for Feed calls, 0 = use watchdog default
 	checkpoint      *Checkpoint   // optional: flushes partial state on recoverable failures
+	eventBus        *event.Bus    // optional: used to publish max-rounds truncation notices
+	signalBus       *signal.Bus   // optional: cancels the turn on signal.Interrupt
 }
 
 func NewCompositor(init, loop []Stage, maxRounds int) *Compositor {
@@ -78,6 +80,23 @@ func NewCompositor(init, loop []Stage, maxRounds int) *Compositor {
 
 func (c *Compositor) SetTurnTimeout(d time.Duration) {
 	c.turnTimeout = d
+}
+
+// SetEventBus wires the event bus used to publish turn-level notices
+// (currently: max-rounds truncation). Optional — when nil, notices are
+// only delivered via the state callbacks.
+func (c *Compositor) SetEventBus(b *event.Bus) {
+	c.eventBus = b
+}
+
+// SetSignalBus wires the signal bus used to watch for Interrupt during a
+// turn. When set, Execute subscribes for the turn's session and cancels
+// the turn context on signal.Interrupt — so any stage aborts promptly,
+// including init stages (e.g. CompactionStage) that do not subscribe on
+// their own. Pause/Resume are left to the per-stage handlers in LLMStage
+// and ToolStage. Optional — nil disables turn-level interrupt cancellation.
+func (c *Compositor) SetSignalBus(b *signal.Bus) {
+	c.signalBus = b
 }
 
 // SetIdleTimeout configures the watchdog idle window. When > 0, the
@@ -122,6 +141,8 @@ func (c *Compositor) Clone() *Compositor {
 		idleTimeout:     c.idleTimeout,
 		feedMinInterval: c.feedMinInterval,
 		checkpoint:      c.checkpoint,
+		eventBus:        c.eventBus,
+		signalBus:       c.signalBus,
 	}
 }
 
@@ -133,6 +154,34 @@ func (c *Compositor) Execute(ctx context.Context, state *State) error {
 	// each round stays within budget and continues making progress.
 	execCtx, turnCancel := context.WithCancel(ctx)
 	defer turnCancel()
+
+	// Interrupt watcher: /session stop (signal.Interrupt) must abort the
+	// turn no matter which stage is running. LLMStage and ToolStage
+	// subscribe themselves, but init stages like CompactionStage do not —
+	// so the compositor subscribes once for the whole turn and cancels
+	// execCtx on Interrupt, which propagates ctx.Done() to every stage.
+	// Pause/Resume are intentionally not handled here: those are
+	// turn-pacing signals consumed by the LLM/tool stage subscribers.
+	if c.signalBus != nil && state.SessionID != "" {
+		sigCh := c.signalBus.Subscribe(state.SessionID)
+		defer c.signalBus.Unsubscribe(state.SessionID, sigCh)
+		go func() {
+			for {
+				select {
+				case sig, ok := <-sigCh:
+					if !ok {
+						return
+					}
+					if sig == signal.Interrupt {
+						turnCancel()
+						return
+					}
+				case <-execCtx.Done():
+					return
+				}
+			}
+		}()
+	}
 
 	// Idle watchdog: cancels execCtx if no Feed occurs within idleTimeout.
 	// Stages feed via agentloop.Feed(ctx) on LLM chunks and tool results.
@@ -172,6 +221,27 @@ func (c *Compositor) Execute(ctx context.Context, state *State) error {
 		}
 		Feed(roundCtx)
 		state.Round++
+	}
+
+	// If the loop exited because of the round cap rather than state.Done,
+	// the model was still mid-task — surface that so the user/LLM isn't
+	// left with a silently truncated response. Emit a visible notice via
+	// the chunk callback and an observability event.
+	if !state.Done && state.Round >= c.maxRounds {
+		notice := i18n.T("agentloop.max_rounds_reached", c.maxRounds)
+		if state.OnChunk != nil {
+			state.OnChunk(notice)
+		}
+		if c.eventBus != nil {
+			c.eventBus.Publish(ctx, event.Event{
+				Type:      event.EventTurnTruncated,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload: map[string]any{
+					"max_rounds": c.maxRounds,
+				},
+			})
+		}
 	}
 	return nil
 }
@@ -434,11 +504,60 @@ func (s *LLMStage) Process(ctx context.Context, state *State) error {
 		default:
 		}
 
+		// Track whether this attempt streamed anything to the user (text,
+		// thinking, or tool calls). If it did, a retry would duplicate that
+		// output in the UI — the partial response is already committed to
+		// the user's view. In that case we suppress the retry and surface
+		// the error instead. Wrapping the callbacks (rather than changing
+		// tryComplete's signature) keeps emission detection local to the
+		// retry policy that owns it.
+		emitted := false
+		mark := func() { emitted = true }
+		origChunk, origThinking, origToolCall := state.OnChunk, state.OnThinking, state.OnToolCall
+		if origChunk != nil {
+			state.OnChunk = func(text string) {
+				if text != "" {
+					mark()
+				}
+				origChunk(text)
+			}
+		}
+		if origThinking != nil {
+			state.OnThinking = func(text string) {
+				if text != "" {
+					mark()
+				}
+				origThinking(text)
+			}
+		}
+		if origToolCall != nil {
+			state.OnToolCall = func(tc types.ToolCall) { mark(); origToolCall(tc) }
+		}
+
 		err := s.tryComplete(ctx, state, sigCh)
+
+		// Restore the original callbacks before any return path.
+		state.OnChunk, state.OnThinking, state.OnToolCall = origChunk, origThinking, origToolCall
+
 		if err == nil {
 			return nil
 		}
 		if errors.Is(err, ErrInterrupted) {
+			return err
+		}
+		if emitted {
+			// Content was already streamed — retrying would show the user
+			// duplicated output. Publish the error and stop retrying.
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventLLMError,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload: map[string]any{
+					"error":            err.Error(),
+					"retry_suppressed": true,
+					"attempt":          i,
+				},
+			})
 			return err
 		}
 		lastErr = err
@@ -773,10 +892,23 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 					SessionID: state.SessionID,
 					Payload:   map[string]any{"error": err.Error(), "tool": call.Name, "input": call.Arguments},
 				})
-				msg, tr := s.interruptedToolResult(call)
+				// Surface the real error to the LLM as an IsError tool_result
+				// and continue to the next call. The agent loop then re-enters
+				// the LLM stage, letting the model react to the failure rather
+				// than aborting the turn. Only context cancellation/deadline
+				// aborts the turn: those are recoverable failures that should
+				// trigger a checkpoint flush, and the round's context is
+				// already gone so continuing would be pointless.
+				msg, tr := s.failedToolResult(call, err)
 				state.Messages = append(state.Messages, msg)
 				state.ToolResults = append(state.ToolResults, tr)
-				return err
+				if state.OnToolResult != nil {
+					state.OnToolResult(tr)
+				}
+				if IsRecoverable(err) {
+					return err
+				}
+				continue
 			}
 
 			s.EventBus.Publish(ctx, event.Event{
@@ -830,6 +962,29 @@ func (s *ToolStage) deniedToolResult(call types.ToolCall, err error) (types.Mess
 // tool_result in the message history.
 func (s *ToolStage) interruptedToolResult(call types.ToolCall) (types.Message, types.ToolResult) {
 	content := i18n.T("agentloop.tool_interrupted", call.Name)
+	msg := types.Message{
+		Role:       types.RoleTool,
+		ToolCallID: call.ID,
+		Content:    content,
+		IsError:    true,
+		Timestamp:  time.Now(),
+	}
+	tr := types.ToolResult{
+		ToolCallID: call.ID,
+		Content:    content,
+		IsError:    true,
+	}
+	return msg, tr
+}
+
+// failedToolResult builds a tool_result carrying the real execution error
+// returned by the tool. Unlike interruptedToolResult (which is for
+// pre-execution interrupts and hides the cause), this surfaces the error
+// message to the LLM so it can reason about the failure and recover on
+// the next round — e.g. retry with different arguments, switch tools, or
+// report the problem to the user.
+func (s *ToolStage) failedToolResult(call types.ToolCall, err error) (types.Message, types.ToolResult) {
+	content := fmt.Sprintf(i18n.T("agentloop.tool_failed"), call.Name, err.Error())
 	msg := types.Message{
 		Role:       types.RoleTool,
 		ToolCallID: call.ID,
@@ -950,15 +1105,28 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 					SessionID: state.SessionID,
 					Payload:   map[string]any{"error": err.Error(), "tool": tc.Name, "input": tc.Arguments},
 				})
-				if firstErr == nil {
-					firstErr = err
-					execCancel()
+				// Surface the real error to the LLM. Recoverable failures
+				// (context cancellation / deadline — typically a round
+				// timeout or watchdog) abort the batch: the exec context is
+				// already gone, so sibling tools can't make progress anyway,
+				// and the turn should checkpoint. Tool-specific errors do
+				// NOT cancel siblings — let them finish so the LLM gets the
+				// full set of results and can recover on the next round.
+				if IsRecoverable(err) {
+					if firstErr == nil {
+						firstErr = err
+						execCancel()
+					}
 				}
-				// Always append a tool_result so every tool_use has a match.
-				msg, tr := s.interruptedToolResult(tc)
+				msg, tr := s.failedToolResult(tc, err)
 				state.Messages = append(state.Messages, msg)
 				state.ToolResults = append(state.ToolResults, tr)
 				completed[tc.ID] = true
+				// Invoke the callback under the lock so OnToolResult order
+				// matches the order results are appended (see success branch).
+				if state.OnToolResult != nil {
+					state.OnToolResult(tr)
+				}
 				mu.Unlock()
 				return
 			}
@@ -979,11 +1147,15 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 			})
 			state.ToolResults = append(state.ToolResults, *result)
 			completed[tc.ID] = true
-			mu.Unlock()
-
+			// Invoke the callback under the lock so the order of
+			// OnToolResult calls matches the order results are appended to
+			// state.Messages/ToolResults. The callback forwards to the
+			// transport/UI and does not re-enter this stage, so holding mu
+			// briefly is safe and keeps the event stream consistent.
 			if state.OnToolResult != nil {
 				state.OnToolResult(*result)
 			}
+			mu.Unlock()
 		}(call)
 	}
 
@@ -1047,7 +1219,7 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 			return fmt.Errorf(i18n.T("agentloop.tool_permission_failed"), call.Name, err)
 		}
 
-		switch permResult {
+		switch permResult { //nolint:exhaustive // PermissionDenied falls through to default (denied).
 		case transport.PermissionOnce:
 			return nil
 		case transport.PermissionAlways:
@@ -1078,14 +1250,21 @@ var permFeedInterval = 5 * time.Second
 // safeShellCommands is the set of commands considered harmless when invoked as
 // the first token (before any flags or args). They emit no side-effects and
 // are auto-allowed without prompting.
+//
+// Policy: only genuinely read-only, side-effect-free commands belong here.
+// Commands that can mutate the filesystem (sed -i, tee, find -delete/-exec,
+// xargs <cmd>) or execute arbitrary code (awk via system(), find -exec) are
+// intentionally excluded — even though their common forms are read-only, a
+// flag-level allowlist cannot reliably distinguish safe from destructive
+// invocations, so they must go through the normal permission flow.
 var safeShellCommands = map[string]bool{
 	"ls": true, "pwd": true, "cat": true, "echo": true, "head": true,
 	"tail": true, "wc": true, "which": true, "date": true, "whoami": true,
 	"hostname": true, "uname": true, "id": true, "env": true, "printenv": true,
 	"ps": true, "df": true, "du": true, "free": true, "uptime": true,
 	"dirname": true, "basename": true, "realpath": true, "readlink": true,
-	"sort": true, "uniq": true, "tr": true, "cut": true, "tee": true,
-	"grep": true, "awk": true, "sed": true, "find": true, "xargs": true,
+	"sort": true, "uniq": true, "tr": true, "cut": true,
+	"grep": true,
 	"file": true, "stat": true, "tree": true, "diff": true, "man": true,
 	"pgrep": true, "history": true, "type": true, "command": true,
 }
@@ -1249,6 +1428,10 @@ type CompactionStage struct {
 	// rune-based estimate, which misses system prompts and tool schemas.
 	// Falls back to estimateTokens when nil or unset.
 	SessionMgr *session.Manager
+	// SignalBus, when set, lets the summary stream honor Pause (block until
+	// Resume) and Interrupt (abort) so /session pause and ESC take effect
+	// during compaction instead of being silently dropped.
+	SignalBus *signal.Bus
 }
 
 func (s *CompactionStage) Name() string { return "compaction" }
@@ -1266,6 +1449,7 @@ func (s *CompactionStage) Clone() Stage {
 		EventBus:     s.EventBus,
 		Logger:       s.Logger,
 		SessionMgr:   s.SessionMgr,
+		SignalBus:    s.SignalBus,
 	}
 }
 
@@ -1340,7 +1524,16 @@ func (s *CompactionStage) Process(ctx context.Context, state *State) error {
 		return nil
 	}
 
-	compacted, err := s.Compact(ctx, state.Messages)
+	// Subscribe for the session so the summary stream can honor Pause
+	// (block until Resume) and Interrupt (abort). nil when no signal bus —
+	// summarize treats a nil sigCh as "no signals".
+	var sigCh <-chan signal.Signal
+	if s.SignalBus != nil && state.SessionID != "" {
+		sigCh = s.SignalBus.Subscribe(state.SessionID)
+		defer s.SignalBus.Unsubscribe(state.SessionID, sigCh)
+	}
+
+	compacted, err := s.Compact(ctx, state.Messages, sigCh)
 	if err != nil {
 		// Compaction is best-effort: on failure, fall back to the
 		// un-compacted messages so the turn can still proceed. Log and
@@ -1391,7 +1584,7 @@ func (s *CompactionStage) Process(ctx context.Context, state *State) error {
 // [summary + tail]. It never orphans a tool_result: the split point
 // walks back past RoleTool messages so every tool_result in tail has
 // its matching tool_use.
-func (s *CompactionStage) Compact(ctx context.Context, msgs []types.Message) ([]types.Message, error) {
+func (s *CompactionStage) Compact(ctx context.Context, msgs []types.Message, sigCh <-chan signal.Signal) ([]types.Message, error) {
 	// tail keeps keepRounds rounds (user+assistant pairs) from the end,
 	// but the very last message (current user input) is always part of
 	// tail regardless. Work back from the end counting rounds.
@@ -1414,7 +1607,7 @@ func (s *CompactionStage) Compact(ctx context.Context, msgs []types.Message) ([]
 	oldMsgs := msgs[:split]
 	tail := msgs[split:]
 
-	summaryText, err := s.summarize(ctx, oldMsgs)
+	summaryText, err := s.summarize(ctx, oldMsgs, sigCh)
 	if err != nil {
 		return nil, err
 	}
@@ -1477,7 +1670,7 @@ func (s *CompactionStage) ManualCompact(ctx context.Context, sessionID string) (
 
 	// Compact expects a trailing user-input marker.
 	marker := types.Message{Role: types.RoleUser, Content: "[manual compaction]", Timestamp: time.Now()}
-	compacted, err := s.Compact(ctx, append(msgs, marker))
+	compacted, err := s.Compact(ctx, append(msgs, marker), nil)
 	s.KeepRounds = savedKeep
 	if err != nil {
 		return "", fmt.Errorf("compaction: %w", err)
@@ -1499,7 +1692,7 @@ func (s *CompactionStage) ManualCompact(ctx context.Context, sessionID string) (
 // summarize calls the LLM to produce a concise summary of oldMsgs. Any
 // existing IsSummary message in oldMsgs is folded in as prior context so
 // earlier summaries are not lost (summarize-on-summarize).
-func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message) (string, error) {
+func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message, sigCh <-chan signal.Signal) (string, error) {
 	var b strings.Builder
 	b.WriteString("Summarize the conversation below. Capture: key facts, decisions made, pending tasks, and any important context the assistant needs to continue. Be concise and factual; do not invent details. If a prior summary is included, integrate it.\n\n")
 
@@ -1551,12 +1744,42 @@ func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message
 		return "", fmt.Errorf("compaction: start summary: %w", err)
 	}
 	var content strings.Builder
-	for chunk := range ch {
-		if chunk.Error != nil {
-			return "", fmt.Errorf("compaction: summary stream: %w", chunk.Error)
+	// Watch ctx and sigCh alongside the stream. sigCh (when non-nil) lets
+	// /session pause and ESC take effect mid-compaction: Pause blocks here
+	// until Resume (the stream stays open, mirroring LLMStage), Interrupt
+	// aborts. ctx.Done() covers the compositor's Interrupt cancellation
+	// for stages that don't subscribe. A nil sigCh makes the signal case
+	// inert (nil channel never fires in select).
+	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				goto summarizeDone
+			}
+			if chunk.Error != nil {
+				return "", fmt.Errorf("compaction: summary stream: %w", chunk.Error)
+			}
+			content.WriteString(chunk.Content)
+		case sig, ok := <-sigCh:
+			if !ok {
+				continue
+			}
+			switch sig { //nolint:exhaustive // only Pause/Interrupt need action; other signals ignored.
+			case signal.Pause:
+				// Block until Resume/Interrupt/Cancel. On Resume, keep
+				// streaming the summary; on anything else, abort.
+				if pauseOnSignal(sigCh) != signal.Resume {
+					return "", fmt.Errorf("compaction: summary stream: %w", ErrInterrupted)
+				}
+			case signal.Interrupt:
+				return "", fmt.Errorf("compaction: summary stream: %w", ErrInterrupted)
+			}
+		case <-ctx.Done():
+			return "", fmt.Errorf("compaction: summary stream: %w", ctx.Err())
 		}
-		content.WriteString(chunk.Content)
 	}
+
+summarizeDone:
 	out := strings.TrimSpace(content.String())
 	if out == "" {
 		return "", fmt.Errorf("compaction: summary produced empty output")

@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+
+	"dolphin/internal/i18n"
 )
 
 func TestFormatCount(t *testing.T) {
@@ -321,5 +323,39 @@ func TestRenderScrollIndicator(t *testing.T) {
 	}
 	if !strings.Contains(plain, "Ctrl+G") {
 		t.Errorf("expected Ctrl+G hint, got: %s", plain)
+	}
+}
+
+// TestTUIi18n_SwitchesWithLang verifies that user-facing TUI strings follow
+// the global language setting, and that tests default to English.
+func TestTUIi18n_SwitchesWithLang(t *testing.T) {
+	// Save and restore the language so this test can't leak state.
+	prev := i18n.Lang()
+	defer i18n.SetLang(prev)
+
+	// Default (empty lang) falls back to English.
+	i18n.SetLang("")
+	if got := i18n.T("tui.initializing"); got != "Initializing..." {
+		t.Errorf("default lang: expected English fallback, got %q", got)
+	}
+
+	// Chinese.
+	i18n.SetLang("zh")
+	if got := i18n.T("tui.initializing"); got != "初始化中..." {
+		t.Errorf("zh: expected 初始化中..., got %q", got)
+	}
+	if got := i18n.T("tui.status_title"); got != "状态" {
+		t.Errorf("zh status_title: expected 状态, got %q", got)
+	}
+	// Format with args.
+	queueLine := i18n.T("tui.queue_more_queued", 3)
+	if queueLine != "… +3 个排队中" {
+		t.Errorf("zh queue_more_queued: got %q", queueLine)
+	}
+
+	// Unknown language falls back to English.
+	i18n.SetLang("fr")
+	if got := i18n.T("tui.initializing"); got != "Initializing..." {
+		t.Errorf("fr fallback: expected English, got %q", got)
 	}
 }

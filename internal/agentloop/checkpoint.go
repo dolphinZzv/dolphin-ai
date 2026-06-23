@@ -46,6 +46,14 @@ func NewCheckpoint(mem memory.Memory, bus *event.Bus) *Checkpoint {
 //
 // Write is best-effort: a write error is returned but does not block
 // the turn's failure path from completing. Callers should log it.
+//
+// Concurrency: Checkpoint is shared across all worker compositor clones
+// (Compositor.Clone copies the pointer). Write itself is stateless — it
+// only reads the per-turn `state` and delegates to Memory.Write, which
+// is concurrency-safe (FileMemory holds its own mutex). Per-session
+// turns are serialized by AgentLoop's sessionLock, so two Write calls
+// racing on the same session cannot happen; races across different
+// sessions touch disjoint session state. No additional locking here.
 func (c *Checkpoint) Write(ctx context.Context, state *State, reason string) error {
 	if c == nil || c.Memory == nil || state == nil {
 		return nil

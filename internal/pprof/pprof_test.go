@@ -1,6 +1,7 @@
 package pprof
 
 import (
+	"errors"
 	"net/http"
 	"testing"
 	"time"
@@ -26,7 +27,7 @@ func TestStartShutdownMultiple(t *testing.T) {
 	// Check for immediate startup error
 	select {
 	case err := <-errc:
-		if err != http.ErrServerClosed {
+		if !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("unexpected startup error: %v", err)
 		}
 	default:

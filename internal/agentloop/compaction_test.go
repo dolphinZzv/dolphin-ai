@@ -13,6 +13,7 @@ import (
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
+	"dolphin/internal/signal"
 	"dolphin/internal/types"
 )
 
@@ -333,5 +334,102 @@ func TestCompaction_RealInputTokensTriggers(t *testing.T) {
 		err := s.Process(context.Background(), state)
 		So(err, ShouldBeNil)
 		So(state.Messages[0].IsSummary, ShouldBeTrue)
+	})
+}
+
+// gatingSummaryProvider returns a stream that blocks on `release` before
+// delivering the summary content. Used to test Pause/Resume mid-compaction.
+type gatingSummaryProvider struct {
+	release chan struct{}
+	content string
+}
+
+func (g *gatingSummaryProvider) Name() string        { return "gating" }
+func (g *gatingSummaryProvider) ActiveModel() string { return "test-model" }
+func (g *gatingSummaryProvider) Models(_ context.Context) ([]llm.ModelConfig, error) {
+	return nil, nil
+}
+func (g *gatingSummaryProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	ch := make(chan llm.LLMChunk, 1)
+	go func() {
+		<-g.release
+		ch <- llm.LLMChunk{Content: g.content, Done: true}
+		close(ch)
+	}()
+	return ch, nil
+}
+
+func TestCompaction_PauseResumesMidSummary(t *testing.T) {
+	Convey("Pause blocks compaction and Resume continues it", t, func() {
+		sb := signal.NewBus()
+		release := make(chan struct{})
+		p := &gatingSummaryProvider{release: release, content: "resumed summary"}
+		mem := &memStore{}
+		s := newCompactionStage(p, mem, 100, 2)
+		s.SignalBus = sb
+
+		big := strings.Repeat("x", 2000)
+		msgs := buildMessages(5, big)
+		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
+
+		done := make(chan error, 1)
+		go func() { done <- s.Process(context.Background(), state) }()
+
+		// Give the stage a moment to subscribe and enter the summarize
+		// stream select, then send Pause. The turn should block (not done).
+		time.Sleep(50 * time.Millisecond)
+		sb.Send("s1", signal.Pause)
+
+		select {
+		case <-done:
+			t.Fatal("compaction should be paused, not finished")
+		case <-time.After(80 * time.Millisecond):
+		}
+
+		// Resume — the paused summarize unblocks and waits on the stream
+		// again. Release the provider so it delivers the summary.
+		sb.Send("s1", signal.Resume)
+		close(release)
+
+		select {
+		case err := <-done:
+			So(err, ShouldBeNil)
+			So(state.Messages[0].IsSummary, ShouldBeTrue)
+			So(state.Messages[0].Content, ShouldContainSubstring, "resumed summary")
+		case <-time.After(2 * time.Second):
+			t.Fatal("compaction did not complete after Resume")
+		}
+	})
+
+	Convey("Interrupt during compaction aborts (best-effort fallback)", t, func() {
+		sb := signal.NewBus()
+		release := make(chan struct{})
+		p := &gatingSummaryProvider{release: release, content: "should not appear"}
+		mem := &memStore{}
+		s := newCompactionStage(p, mem, 100, 2)
+		s.SignalBus = sb
+
+		big := strings.Repeat("x", 2000)
+		msgs := buildMessages(5, big)
+		orig := append([]types.Message{}, msgs...)
+		state := &State{SessionID: "s2", Messages: msgs, History: msgs[:len(msgs)-1]}
+
+		done := make(chan error, 1)
+		go func() { done <- s.Process(context.Background(), state) }()
+
+		time.Sleep(50 * time.Millisecond)
+		sb.Send("s2", signal.Interrupt)
+
+		select {
+		case err := <-done:
+			// Compaction is best-effort: Process returns nil and falls back
+			// to the un-compacted messages.
+			So(err, ShouldBeNil)
+			So(state.Messages[0].IsSummary, ShouldBeFalse)
+			So(len(state.Messages), ShouldEqual, len(orig))
+		case <-time.After(2 * time.Second):
+			t.Fatal("compaction did not abort after Interrupt")
+		}
+		close(release)
 	})
 }

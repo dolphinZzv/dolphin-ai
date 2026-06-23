@@ -39,6 +39,16 @@ func TestIsSafeShellCommand(t *testing.T) {
 		{"shell", "{\"command\":\"`cmd`\"}", false},
 		{"shell", `{"command":"a&b"}`, false},
 		{"shell", `{"command":"a;b"}`, false},
+		// Destructive/alias-capable commands are NOT auto-allowed even in
+		// their plain form — they require a permission prompt.
+		{"shell", `{"command":"sed -i s/a/b/ f"}`, false},
+		{"shell", `{"command":"awk '{print}' f"}`, false},
+		{"shell", `{"command":"find . -delete"}`, false},
+		{"shell", `{"command":"xargs rm"}`, false},
+		{"shell", `{"command":"tee f"}`, false},
+		// Plain read-only forms of removed commands still prompt (not safe).
+		{"shell", `{"command":"sed -n 1p f"}`, false},
+		{"shell", `{"command":"find . -name x"}`, false},
 	}
 	for _, c := range cases {
 		if got := isSafeShellCommand(c.tool, c.args); got != c.want {

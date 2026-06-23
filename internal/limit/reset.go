@@ -52,17 +52,17 @@ func NewResetScheduler(expr string, store Store, lastReset time.Time, logger *za
 	return rs, nil
 }
 
+// resetCounters clears all usage counters so the configured soft/hard limits
+// (requests and total tokens alike) start a fresh accounting window. Both
+// llm.requests and llm.total_tokens feed the same kind of limit check in the
+// limiter, so they must reset together — otherwise a cron reset would refresh
+// the request quota but leave the token quota as a lifetime accumulator,
+// defeating the purpose of reset_cron.
 func (rs *ResetScheduler) resetCounters() {
 	rs.logger.Info("limit: resetting counters")
-	totalTokens, _ := rs.store.Get("llm.total_tokens")
 	if err := rs.store.Reset(""); err != nil {
 		rs.logger.Error("limit: reset failed", zap.Error(err))
 		return
-	}
-	if totalTokens > 0 {
-		if _, err := rs.store.Increment("llm.total_tokens", totalTokens); err != nil {
-			rs.logger.Warn("limit: restore total_tokens after reset failed", zap.Error(err))
-		}
 	}
 	if rs.OnReset != nil {
 		rs.OnReset()

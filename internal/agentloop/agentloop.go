@@ -147,6 +147,30 @@ func (a *AgentLoop) runWorker(ctx context.Context, id string) {
 	}()
 
 	for {
+		// Priority turn is dispatched strictly ahead of the regular queue.
+		// A single multi-case select would pick pseudo-randomly when both
+		// channels are ready, defeating the priority channel's purpose, so
+		// drain priority non-blockingly first, then fall through to the
+		// blocking select that also watches ctx.Done(). ctx.Done() is
+		// checked in the drain too, so a steady stream of priority turns
+		// cannot starve cancellation.
+		select {
+		case <-ctx.Done():
+			wLogger.Info("worker stopped")
+			return
+		case turn := <-a.priority:
+			if a.agentIO != nil {
+				cancelled := a.agentIO.IsCancelled(turn.TurnID)
+				a.agentIO.OnTurnDequeued(turn)
+				if cancelled {
+					continue
+				}
+			}
+			a.processTurn(ctx, turn, compositor, id, wLogger)
+			continue
+		default:
+		}
+
 		select {
 		case <-ctx.Done():
 			wLogger.Info("worker stopped")

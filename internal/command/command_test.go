@@ -1202,12 +1202,27 @@ func TestRegisterSession(t *testing.T) {
 			}
 		})
 
-		Convey("/session stop sends pause to active session", func() {
+		Convey("/session stop sends interrupt to active session", func() {
 			sess := mgr.Create(context.Background())
 			sigCh := sb.Subscribe(sess.ID)
 			defer sb.Unsubscribe(sess.ID, sigCh)
 
 			r.Execute(context.Background(), "session stop", "")
+
+			select {
+			case sig := <-sigCh:
+				So(sig, ShouldEqual, signal.Interrupt)
+			default:
+				So("expected interrupt signal", ShouldBeNil)
+			}
+		})
+
+		Convey("/session pause sends pause to active session", func() {
+			sess := mgr.Create(context.Background())
+			sigCh := sb.Subscribe(sess.ID)
+			defer sb.Unsubscribe(sess.ID, sigCh)
+
+			r.Execute(context.Background(), "session pause", "")
 
 			select {
 			case sig := <-sigCh:

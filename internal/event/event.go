@@ -18,6 +18,7 @@ const (
 	EventTurnComplete         Type = "turn.complete"
 	EventTurnError            Type = "turn.error"
 	EventTurnInterrupt        Type = "turn.interrupt"
+	EventTurnTruncated        Type = "turn.truncated"
 	EventLLMStart             Type = "llm.start"
 	EventLLMComplete          Type = "llm.complete"
 	EventLLMError             Type = "llm.error"

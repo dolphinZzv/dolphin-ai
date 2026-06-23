@@ -544,6 +544,120 @@ func TestModelViewReady(t *testing.T) {
 	}
 }
 
+// TestModelView_WelcomeBanner verifies the empty-state welcome banner is
+// shown before the first message and disappears once content arrives or a
+// turn starts. It is a pure overlay and must not enter the message buffer.
+func TestModelView_WelcomeBanner(t *testing.T) {
+	newReadyModel := func() model {
+		m := newModel()
+		m.ready = true
+		m.width = 80
+		m.height = 24
+		m.agentName = "Dolphin"
+		m.version = "v1.0.0"
+		m.modelName = "test-model"
+		m.viewport = viewport.New(80, 20)
+		return m
+	}
+
+	t.Run("shown when empty and idle", func(t *testing.T) {
+		m := newReadyModel()
+		if !m.showingWelcome() {
+			t.Fatal("expected welcome banner while empty and idle")
+		}
+		view := m.View()
+		if !strings.Contains(view, "Dolphin") {
+			t.Error("welcome view should contain agent name")
+		}
+	})
+
+	t.Run("hidden while a turn is pending", func(t *testing.T) {
+		m := newReadyModel()
+		m.msgStatus = "pending"
+		if m.showingWelcome() {
+			t.Error("welcome should not show while a turn is pending")
+		}
+	})
+
+	t.Run("hidden after a message arrives", func(t *testing.T) {
+		m := newReadyModel()
+		m.appendEntry(renderEntry{content: "hello", style: "text"})
+		if m.showingWelcome() {
+			t.Error("welcome should not show after content arrives")
+		}
+		// The welcome banner must not have entered the message buffer.
+		if len(m.messages) == 0 {
+			t.Error("appendEntry should have recorded the message")
+		}
+	})
+}
+
+// TestModelUpdate_ArrowKeys verifies the arrow-key behaviour shown in the
+// welcome banner: ↑/↓ scroll the conversation viewport when input is
+// single-line (and move the textarea cursor when multi-line), while
+// Ctrl+↑/Ctrl+↓ browse input history regardless of input length.
+func TestModelUpdate_ArrowKeys(t *testing.T) {
+	newModelWithHistory := func() model {
+		m := newModel()
+		// Small viewport height so 4 lines of content overflow and scrolling
+		// is observable.
+		m.viewport = viewport.New(80, 2)
+		m.viewport.SetContent("line1\nline2\nline3\nline4")
+		m.width = 80
+		m.inputHistory = []string{"first", "second"}
+		m.historyPos = -1
+		return m
+	}
+
+	t.Run("ctrl+up browses input history", func(t *testing.T) {
+		m := newModelWithHistory()
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp})
+		m = newM.(model)
+		if m.historyPos != 1 {
+			t.Errorf("ctrl+up should navigate to latest history (pos 1), got %d", m.historyPos)
+		}
+		if m.textarea.Value() != "second" {
+			t.Errorf("ctrl+up should load history entry, got %q", m.textarea.Value())
+		}
+	})
+
+	t.Run("ctrl+down moves history forward", func(t *testing.T) {
+		m := newModelWithHistory()
+		m1, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp})
+		m2, _ := m1.(model).Update(tea.KeyMsg{Type: tea.KeyCtrlDown})
+		m = m2.(model)
+		if m.historyPos != -1 {
+			t.Errorf("ctrl+down past the end should reset historyPos to -1, got %d", m.historyPos)
+		}
+	})
+
+	t.Run("single-line up scrolls viewport, not history", func(t *testing.T) {
+		m := newModelWithHistory()
+		m.viewport.GotoBottom()
+		before := m.viewport.YOffset
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		m = newM.(model)
+		if m.historyPos != -1 {
+			t.Errorf("plain up should not touch history, got historyPos=%d", m.historyPos)
+		}
+		if m.viewport.YOffset >= before {
+			t.Errorf("single-line up should scroll viewport up, YOffset %d->%d", before, m.viewport.YOffset)
+		}
+	})
+
+	t.Run("multi-line up falls through to textarea (no scroll)", func(t *testing.T) {
+		m := newModelWithHistory()
+		m.viewport.GotoBottom()
+		m.textarea.SetValue("line a\nline b")
+		before := m.viewport.YOffset
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		m = newM.(model)
+		if m.viewport.YOffset != before {
+			t.Errorf("multi-line up should not scroll viewport, YOffset %d->%d", before, m.viewport.YOffset)
+		}
+	})
+}
+
 func TestModelViewWithPermDialog(t *testing.T) {
 	m := newModel()
 	m.ready = true
@@ -714,6 +828,44 @@ func TestModelUpdate_ToolResultMsg_Error(t *testing.T) {
 	if m.msgStatus != "error" {
 		t.Errorf("expected msgStatus='error', got %q", m.msgStatus)
 	}
+}
+
+// TestModelUpdate_ESCPausesTurn verifies that pressing ESC while a turn is
+// pending sends "/session pause" through msgChan (the same path as typed
+// input), and that ESC does nothing when no turn is running.
+func TestModelUpdate_ESCPausesTurn(t *testing.T) {
+	t.Run("pending sends pause", func(t *testing.T) {
+		m := newModel()
+		m.msgChan = make(chan string, 1)
+		m.msgStatus = "pending"
+
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		m = newM.(model)
+
+		select {
+		case got := <-m.msgChan:
+			if got != "/session pause" {
+				t.Errorf("expected '/session pause', got %q", got)
+			}
+		default:
+			t.Error("expected '/session pause' on msgChan")
+		}
+	})
+
+	t.Run("idle does nothing", func(t *testing.T) {
+		m := newModel()
+		m.msgChan = make(chan string, 1)
+		m.msgStatus = "success" // no turn running
+
+		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		m = newM.(model)
+
+		select {
+		case got := <-m.msgChan:
+			t.Errorf("idle ESC should not send, got %q", got)
+		default:
+		}
+	})
 }
 
 // Tool errors must surface even when showTools is off — otherwise a
