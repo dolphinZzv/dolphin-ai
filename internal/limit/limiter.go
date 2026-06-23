@@ -30,6 +30,98 @@ func (l *Limiter) ClearAlerted() {
 	l.alerted = make(map[string]bool)
 }
 
+// ResetUsage resets usage counters matching the given target and clears the
+// corresponding alerted entries so those limits can fire alerts again.
+//
+// target semantics:
+//   - "" (empty): resets everything (global + all per-model).
+//   - "deepseek": resets all per-model keys for configured models whose
+//     qualified name starts with "deepseek" — vendor-scoped.
+//   - "deepseek-v4-flash": resets per-model keys whose qualified name ends
+//     with "/deepseek-v4-flash" (short-name match across providers).
+//   - "deepseek_anthropic/deepseek-v4-flash": resets the exact qualified model.
+//
+// Global counters (llm.requests etc.) are only reset by the empty target,
+// since they are shared across all models and should not be zeroed by a
+// single model/vendor reset. Returns the number of keys reset.
+func (l *Limiter) ResetUsage(target string) (int, error) {
+	// Empty target: reset everything (global + per-model) and clear all alerts.
+	if target == "" {
+		if err := l.store.Reset(""); err != nil {
+			return 0, err
+		}
+		l.alerted = make(map[string]bool)
+		// Count is unknown for a full Reset(""); report 0 meaning "all".
+		return 0, nil
+	}
+
+	// Resolve the target to concrete qualified-name prefixes. Each becomes a
+	// "llm.model.<qualified>." store-key prefix.
+	prefixes := l.expandResetPrefix(target)
+	storePrefixes := make([]string, 0, len(prefixes))
+	for _, p := range prefixes {
+		storePrefixes = append(storePrefixes, "llm.model."+p)
+	}
+
+	// Snapshot current keys so we can count what gets removed and clear the
+	// matching alerted entries precisely.
+	all, err := l.store.GetAll()
+	if err != nil {
+		return 0, err
+	}
+
+	n := 0
+	for _, sp := range storePrefixes {
+		if err := l.store.Reset(sp); err != nil {
+			return n, err
+		}
+		for k := range all {
+			if strings.HasPrefix(k, sp) {
+				n++
+				delete(all, k)
+			}
+		}
+	}
+
+	// Clear alerted entries whose underlying store key was reset.
+	for ak := range l.alerted {
+		for _, sp := range storePrefixes {
+			if strings.HasPrefix(ak, sp) {
+				delete(l.alerted, ak)
+				break
+			}
+		}
+	}
+	return n, nil
+}
+
+// expandResetPrefix turns a user-supplied reset target into the qualified-name
+// prefixes to reset. Empty input returns [""] meaning "everything".
+// A target containing "/" is treated as an exact qualified name.
+// Otherwise it is matched as a short name suffix against configured models;
+// if no configured model matches, the raw target is returned so the caller
+// still resets whatever keys happen to share that prefix.
+func (l *Limiter) expandResetPrefix(target string) []string {
+	if target == "" {
+		return []string{""}
+	}
+	if strings.Contains(target, "/") {
+		return []string{target}
+	}
+	var matches []string
+	for qualified := range l.modelLimits {
+		if strings.HasSuffix(qualified, "/"+target) {
+			matches = append(matches, qualified)
+		}
+	}
+	if len(matches) == 0 {
+		// Fall back: treat as a raw vendor prefix (e.g. "deepseek" matches
+		// "deepseek_anthropic/..." and "deepseek_openai/...").
+		return []string{target}
+	}
+	return matches
+}
+
 // PerModelLimit stores the per-model limit overrides.
 type PerModelLimit struct {
 	HardRequests   int64

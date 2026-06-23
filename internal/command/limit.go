@@ -44,7 +44,8 @@ func formatCount(n int64) string {
 	}
 }
 
-// RegisterLimit registers the /limit command for viewing usage and limits.
+// RegisterLimit registers the /limit command for viewing usage and limits,
+// plus the /limit reset [target] subcommand for clearing usage counters.
 func RegisterLimit(r *Registry, limiter *limit.Limiter) {
 	if limiter == nil {
 		return
@@ -58,7 +59,47 @@ func RegisterLimit(r *Registry, limiter *limit.Limiter) {
 		},
 	}
 
+	resetCmd := &cobra.Command{
+		Use:   "reset [target]",
+		Short: "Reset LLM usage counters",
+		Long: `Reset LLM usage counters so soft/hard limits start a fresh window.
+
+Without a target, resets everything (global + all per-model counters).
+
+With a target:
+  reset deepseek                          vendor: all models whose qualified name starts with "deepseek"
+  reset deepseek-v4-flash                 short name: matches "<provider>/deepseek-v4-flash" across providers
+  reset deepseek_anthropic/deepseek-v4-flash  exact qualified model
+
+Global counters (shared across models) are only reset when no target is given.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runLimitReset(cmd, limiter, args)
+		},
+	}
+
+	cmd.AddCommand(resetCmd)
 	r.Register(cmd)
+}
+
+func runLimitReset(cmd *cobra.Command, limiter *limit.Limiter, args []string) error {
+	target := ""
+	if len(args) > 0 {
+		target = args[0]
+	}
+
+	n, err := limiter.ResetUsage(target)
+	if err != nil {
+		cmd.Printf("reset failed: %v\n", err)
+		return nil
+	}
+
+	if target == "" {
+		cmd.Println("Reset all usage counters.")
+		return nil
+	}
+	cmd.Printf("Reset %d counter(s) matching %q.\n", n, target)
+	return nil
 }
 
 func printLimitStatus(cmd *cobra.Command, limiter *limit.Limiter) error {
