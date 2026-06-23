@@ -2,7 +2,10 @@ package llm
 
 import (
 	"context"
+	"strings"
 	"testing"
+
+	"dolphin/internal/types"
 )
 
 type mockProvider struct {
@@ -226,12 +229,13 @@ func TestManager_QualifiedModelName_StreamConfig(t *testing.T) {
 		},
 	})
 
-	// Set active with qualified name.
+	// Set active with qualified name — ActiveModel preserves the section
+	// prefix so short-name collisions across sections route correctly.
 	if err := mgr.SetActiveModel("volcengine_agent/minimax-m3"); err != nil {
 		t.Fatalf("SetActiveModel failed: %v", err)
 	}
-	if mgr.ActiveModel() != "minimax-m3" {
-		t.Errorf("expected active model 'minimax-m3', got '%s'", mgr.ActiveModel())
+	if mgr.ActiveModel() != "volcengine_agent/minimax-m3" {
+		t.Errorf("expected active model 'volcengine_agent/minimax-m3', got '%s'", mgr.ActiveModel())
 	}
 
 	// CompleteStream should use Stream: false from the matched ModelConfig.
@@ -267,7 +271,7 @@ func TestManager_QualifiedModelName_MatchesShortName(t *testing.T) {
 		},
 	})
 
-	// SetActiveModel with short name.
+	// Short name — no slash in input, stays short.
 	if err := mgr.SetActiveModel("minimax-m3"); err != nil {
 		t.Fatalf("SetActiveModel with short name failed: %v", err)
 	}
@@ -275,12 +279,12 @@ func TestManager_QualifiedModelName_MatchesShortName(t *testing.T) {
 		t.Errorf("expected 'minimax-m3', got '%s'", mgr.ActiveModel())
 	}
 
-	// SetActiveModel with qualified name.
+	// Qualified name — preserves the section prefix to avoid cross-section ambiguity.
 	if err := mgr.SetActiveModel("volcengine_agent/minimax-m3"); err != nil {
 		t.Fatalf("SetActiveModel with qualified name failed: %v", err)
 	}
-	if mgr.ActiveModel() != "minimax-m3" {
-		t.Errorf("expected 'minimax-m3', got '%s'", mgr.ActiveModel())
+	if mgr.ActiveModel() != "volcengine_agent/minimax-m3" {
+		t.Errorf("expected 'volcengine_agent/minimax-m3', got '%s'", mgr.ActiveModel())
 	}
 }
 
@@ -375,4 +379,84 @@ func TestManager_TopP_Zero_NotForwarded(t *testing.T) {
 	if capturedReq.TopP != 0.5 {
 		t.Errorf("expected TopP=0.5 (unchanged), got %f", capturedReq.TopP)
 	}
+}
+
+// TestCrossSectionModelNameCollision verifies that when two sections (e.g.
+// deepseek_anthropic and volcengine_agent) both define the same short model
+// name (e.g. "deepseek-v4-flash"), SetActiveModel with a qualified name
+// routes to the correct provider — not the one that happened to be loaded
+// first in map-iteration order.
+func TestCrossSectionModelNameCollision(t *testing.T) {
+	mgr := NewManager()
+
+	// deepseek_anthropic/deepseek-v4-flash (anthropic protocol)
+	mgr.AddProvider("deepseek_anthropic", &mockProvider{
+		name: "deepseek_anthropic",
+		models: []ModelConfig{
+			{Name: "deepseek-v4-flash", Model: "deepseek-v4-flash", Thinking: true},
+		},
+	})
+
+	// volcengine_agent/deepseek-v4-flash (openai protocol)
+	mgr.AddProvider("volcengine_agent", &mockProvider{
+		name: "volcengine_agent",
+		models: []ModelConfig{
+			{Name: "deepseek-v4-flash", Model: "deepseek-v4-flash"},
+		},
+	})
+
+	// Qualified name must route to deepseek_anthropic.
+	target := "deepseek_anthropic/deepseek-v4-flash"
+	if err := mgr.SetActiveModel(target); err != nil {
+		t.Fatalf("SetActiveModel(%q): %v", target, err)
+	}
+	active := mgr.ActiveModel()
+	if !strings.Contains(active, "/") || !strings.Contains(active, "deepseek_anthropic") {
+		t.Fatalf("expected qualified active model containing 'deepseek_anthropic', got %q", active)
+	}
+
+	// resolveModel must point to deepseek_anthropic, not volcengine_agent.
+	// Use a helper that we add inline.
+	providerName, err := mgr.resolveModel(active)
+	if err != nil {
+		t.Fatalf("resolveModel(%q): %v", active, err)
+	}
+	if providerName != "deepseek_anthropic" {
+		t.Fatalf("expected provider 'deepseek_anthropic', got %q", providerName)
+	}
+
+	// Short name "deepseek-v4-flash" should also still resolve (it picks
+	// whichever section was loaded first — that's inherently non-deterministic
+	// for the short name, which is why qualified names are recommended).
+	if _, err := mgr.resolveModel("deepseek-v4-flash"); err != nil {
+		t.Fatalf("short name 'deepseek-v4-flash' should still resolve: %v", err)
+	}
+
+	// Model list must contain both qualified entries.
+	models, _ := mgr.Models(context.Background())
+	hasQualified := make(map[string]bool)
+	for _, m := range models {
+		if strings.HasSuffix(m.Name, "/deepseek-v4-flash") {
+			hasQualified[m.Name] = true
+		}
+	}
+	for _, q := range []string{
+		"deepseek_anthropic/deepseek-v4-flash",
+		"volcengine_agent/deepseek-v4-flash",
+	} {
+		if !hasQualified[q] {
+			t.Errorf("model list missing %q", q)
+		}
+	}
+
+	// Verify model configs are preserved through collision renaming.
+	ch, err := mgr.CompleteStream(context.Background(), LLMRequest{
+		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		MaxTokens: 10,
+	})
+	if err != nil {
+		t.Fatalf("CompleteStream: %v", err)
+	}
+	<-ch
+	t.Logf("cross-section collision resolved correctly")
 }

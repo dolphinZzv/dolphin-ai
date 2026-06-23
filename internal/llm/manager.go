@@ -96,15 +96,25 @@ func (m *Manager) SetActiveModel(name string) error {
 	// name collisions across providers.
 	qualified := providerName + "/" + name
 	shortName := name
+	hadSlash := false
 	if _, after, found := strings.Cut(name, "/"); found {
 		shortName = after
+		hadSlash = true
 	}
 	for _, mc := range m.models {
 		if mc.Name == qualified || mc.Name == shortName {
 			if mc.Disabled {
 				return fmt.Errorf("llm: model %q is disabled", name)
 			}
-			m.active = mc.Name
+			if hadSlash {
+				// When the caller already qualified the name (llm.use or
+				// /models use with a prefix), preserve it so the short-name
+				// collision across sections doesn't route to the wrong
+				// provider on subsequent calls to activeModel.
+				m.active = providerName + "/" + shortName
+			} else {
+				m.active = mc.Name
+			}
 			return nil
 		}
 	}
