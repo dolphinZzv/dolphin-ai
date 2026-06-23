@@ -62,6 +62,11 @@ func NewRegistry(sessMgr *session.Manager, sb *signal.Bus) *Registry {
 
 	RegisterVersion(r)
 	RegisterSession(r, sessMgr)
+	// Register cobra's built-in help command eagerly so HasCommand("help")
+	// works before Execute is called. InitDefaultHelpCmd only adds the help
+	// subcommand once the root has other children, so call it after the
+	// domain commands are registered.
+	r.root.InitDefaultHelpCmd()
 
 	return r
 }

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -460,9 +461,9 @@ func TestDingTalkInitRegistration(t *testing.T) {
 }
 
 func TestDingTalkStartWithWebhook(t *testing.T) {
-	var notified bool
+	var notified atomic.Bool
 	webhookSvr := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		notified = true
+		notified.Store(true)
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer webhookSvr.Close()
@@ -478,7 +479,7 @@ func TestDingTalkStartWithWebhook(t *testing.T) {
 
 	// Give the goroutine time to send the startup notification.
 	time.Sleep(100 * time.Millisecond)
-	if !notified {
+	if !notified.Load() {
 		t.Error("expected startup notification to be sent")
 	}
 }
