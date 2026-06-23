@@ -16,6 +16,8 @@ import (
 	gogit "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/go-git/go-git/v5/plumbing/transport"
+	"github.com/go-git/go-git/v5/plumbing/transport/ssh"
 )
 
 //go:embed seed
@@ -471,6 +473,8 @@ func (b *Brain) commitPath(path, msg string) error {
 }
 
 // Push pushes committed changes to the "origin" remote.
+// For SSH remotes (git@...), authenticates via ssh-agent or the system's
+// default SSH keys (~/.ssh/id_ed25519, ~/.ssh/id_rsa).
 func (b *Brain) Push(ctx context.Context) error {
 	if b.repo == nil {
 		return fmt.Errorf("brain: not initialized")
@@ -479,10 +483,15 @@ func (b *Brain) Push(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("brain: remote origin not found — use /brain set url <url> first: %w", err)
 	}
-	return remote.PushContext(ctx, &gogit.PushOptions{})
+	auth, err := b.sshAuthForRemote(remote)
+	if err != nil {
+		return err
+	}
+	return remote.PushContext(ctx, &gogit.PushOptions{Auth: auth})
 }
 
 // Pull fetches and merges from the "origin" remote.
+// For SSH remotes, authenticates via ssh-agent or system default keys.
 func (b *Brain) Pull(ctx context.Context) error {
 	if b.repo == nil {
 		return fmt.Errorf("brain: not initialized")
@@ -491,7 +500,11 @@ func (b *Brain) Pull(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("brain: worktree: %w", err)
 	}
-	return wt.PullContext(ctx, &gogit.PullOptions{RemoteName: "origin"})
+	auth, err := b.sshAuthForRemote(nil)
+	if err != nil {
+		return err
+	}
+	return wt.PullContext(ctx, &gogit.PullOptions{RemoteName: "origin", Auth: auth})
 }
 
 // SetURL configures the "origin" remote URL, replacing any existing remote
@@ -505,4 +518,50 @@ func (b *Brain) SetURL(ctx context.Context, url string) error {
 		URLs: []string{url},
 	})
 	return err
+}
+
+// sshAuthForRemote returns SSH auth for the remote, or nil if the remote URL
+// is not SSH (e.g. HTTPS). Uses ssh-agent first, then falls back to the
+// system's default SSH keys.
+func (b *Brain) sshAuthForRemote(remote *gogit.Remote) (transport.AuthMethod, error) {
+	urls := []string{""}
+	if remote != nil {
+		urls = remote.Config().URLs
+	}
+	// Only configure SSH auth for SSH URLs; HTTPS repos need git credential
+	// helpers or environment-variable tokens (handled separately).
+	isSSH := false
+	for _, u := range urls {
+		if strings.Contains(u, "@") && !strings.HasPrefix(u, "https://") {
+			isSSH = true
+			break
+		}
+		if strings.HasPrefix(u, "ssh://") {
+			isSSH = true
+			break
+		}
+	}
+	if !isSSH {
+		return nil, nil // HTTPS: let go-git/credential helpers handle it
+	}
+
+	// 1. Try ssh-agent.
+	if a, err := ssh.NewSSHAgentAuth("git"); err == nil {
+		return a, nil
+	}
+
+	// 2. Fallback to default SSH keys.
+	home, _ := os.UserHomeDir()
+	for _, name := range []string{"id_ed25519", "id_rsa"} {
+		keyPath := filepath.Join(home, ".ssh", name)
+		if _, err := os.Stat(keyPath); err != nil {
+			continue
+		}
+		keys, err := ssh.NewPublicKeysFromFile("git", keyPath, "")
+		if err == nil {
+			return keys, nil
+		}
+	}
+
+	return nil, fmt.Errorf("brain: no SSH auth available — ensure ssh-agent is running or %s/.ssh/id_ed25519 exists", home)
 }

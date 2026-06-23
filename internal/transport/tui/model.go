@@ -612,6 +612,35 @@ func (m model) handlePermKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	key := msg.String()
 	switch key {
+	case "up", "k":
+		m.permDialog.confirmIdx = -1
+		if m.permDialog.scrollOffset > 0 {
+			m.permDialog.scrollOffset--
+		}
+		return m, nil
+	case "down", "j":
+		m.permDialog.confirmIdx = -1
+		m.permDialog.scrollOffset++
+		return m, nil
+	case "ctrl+u":
+		m.permDialog.confirmIdx = -1
+		m.permDialog.scrollOffset -= 5
+		if m.permDialog.scrollOffset < 0 {
+			m.permDialog.scrollOffset = 0
+		}
+		return m, nil
+	case "ctrl+d":
+		m.permDialog.confirmIdx = -1
+		m.permDialog.scrollOffset += 5
+		return m, nil
+	case "g":
+		m.permDialog.confirmIdx = -1
+		m.permDialog.scrollOffset = 0
+		return m, nil
+	case "G":
+		m.permDialog.confirmIdx = -1
+		m.permDialog.scrollOffset = 1<<31 - 1 // max int, will be clamped in render
+		return m, nil
 	case "y", "Y":
 		m.permDialog.confirmIdx = -1
 		return m.resolvePerm(0) // once, immediate
@@ -1042,7 +1071,7 @@ func (m model) View() string {
 	mainView := lipgloss.JoinVertical(lipgloss.Left, elements...)
 
 	if m.permDialog != nil {
-		dialog := renderPermDialog(*m.permDialog, m.width)
+		dialog := renderPermDialog(*m.permDialog, m.width, m.height-2)
 		lines := strings.Split(mainView, "\n")
 		mid := len(lines) / 2
 		dialogLines := strings.Split(dialog, "\n")

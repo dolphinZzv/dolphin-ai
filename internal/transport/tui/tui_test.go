@@ -330,7 +330,7 @@ func TestRenderPermDialog(t *testing.T) {
 		choices: []string{"y (once)", "a (always)", "n (deny)"},
 		active:  0,
 	}
-	result := renderPermDialog(d, 80)
+	result := renderPermDialog(d, 80, 0)
 	if result == "" {
 		t.Error("renderPermDialog returned empty string")
 	}
@@ -345,7 +345,7 @@ func TestRenderPermDialog_ActiveChoice(t *testing.T) {
 		choices: []string{"a", "b"},
 		active:  1,
 	}
-	result := renderPermDialog(d, 80)
+	result := renderPermDialog(d, 80, 0)
 	if result == "" {
 		t.Error("renderPermDialog returned empty string")
 	}
@@ -353,7 +353,7 @@ func TestRenderPermDialog_ActiveChoice(t *testing.T) {
 
 func TestRenderPermDialog_NarrowWidth(t *testing.T) {
 	d := permDialog{prompt: "Test", choices: []string{"x"}}
-	result := renderPermDialog(d, 10)
+	result := renderPermDialog(d, 10, 0)
 	if result == "" {
 		t.Error("renderPermDialog should handle narrow width")
 	}
