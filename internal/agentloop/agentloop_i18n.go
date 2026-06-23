@@ -18,6 +18,8 @@ func init() {
 			"stage_init_failed":        "init stage %s: %w",
 			"stage_loop_failed":        "loop stage %s: %w",
 			"max_rounds_reached":       "\n[reached the %d-round limit for this turn; the response may be incomplete. Continue by sending another message.]",
+			"llm_backoff":              "llm: request failed (attempt %d/%d), backing off for %s before retry: %s",
+			"llm_non_retryable":        "llm: non-retryable error, not retrying: %s",
 		},
 		"zh", i18n.Dict{
 			"error_prefix":             "错误: ",
@@ -33,6 +35,8 @@ func init() {
 			"stage_init_failed":        "初始化阶段 %s 失败: %w",
 			"stage_loop_failed":        "循环阶段 %s 失败: %w",
 			"max_rounds_reached":       "\n[本轮已达到 %d 轮上限，回复可能未完成。请再发送一条消息以继续。]",
+			"llm_backoff":              "llm: 请求失败 (第 %d/%d 次)，%s 后重试: %s",
+			"llm_non_retryable":        "llm: 不可重试错误，放弃重试: %s",
 		},
 	)
 }

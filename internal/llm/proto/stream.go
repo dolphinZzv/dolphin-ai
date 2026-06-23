@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -64,7 +66,7 @@ func DoStream(
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			send(llm.LLMChunk{Error: decodeError(errDecode, resp.StatusCode, body)})
+			send(llm.LLMChunk{Error: decodeError(errDecode, resp.StatusCode, resp.Header, body)})
 			return
 		}
 
@@ -113,7 +115,7 @@ func DoComplete(
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			ch <- llm.LLMChunk{Error: decodeError(errDecode, resp.StatusCode, body)}
+			ch <- llm.LLMChunk{Error: decodeError(errDecode, resp.StatusCode, resp.Header, body)}
 			return
 		}
 
@@ -135,11 +137,72 @@ func DoComplete(
 	return ch, nil
 }
 
-func decodeError(errDecode ErrorDecoder, status int, body []byte) error {
-	if errDecode != nil {
-		if e := errDecode(status, body); e != nil {
-			return e
-		}
+// HTTPStatusError wraps a non-200 response from an LLM provider. It carries
+// the status code and the parsed Retry-After hint so the retry layer can
+// back off appropriately on 429 / 503. The body is included so the error
+// stays human-readable in logs and the UI.
+type HTTPStatusError struct {
+	Status     int
+	RetryAfter time.Duration // zero when absent or unparseable
+	Body       string
+	err        error // provider-specific decoded error, if any
+}
+
+func (e *HTTPStatusError) Error() string {
+	if e.err != nil {
+		return e.err.Error()
 	}
-	return fmt.Errorf("llm: status %d (body: %s)", status, string(body))
+	return fmt.Sprintf("llm: status %d (body: %s)", e.Status, e.Body)
+}
+
+func (e *HTTPStatusError) Unwrap() error { return e.err }
+
+// IsRetryable reports whether the retry loop should retry on this status.
+// 429 (rate limit) and 5xx (transient server errors) are retryable; other
+// 4xx are permanent (bad request, auth, etc.) and must not be retried.
+func (e *HTTPStatusError) IsRetryable() bool {
+	return e.Status == http.StatusTooManyRequests || e.Status >= 500
+}
+
+// decodeError builds the error for a non-200 response. If the provider
+// supplied an ErrorDecoder it is consulted first (for human-readable
+// messages); the result is wrapped in an HTTPStatusError so the retry layer
+// can always recover the status code and Retry-After regardless of how the
+// provider chose to format the body.
+func decodeError(errDecode ErrorDecoder, status int, header http.Header, body []byte) error {
+	var decoded error
+	if errDecode != nil {
+		decoded = errDecode(status, body)
+	}
+	hse := &HTTPStatusError{
+		Status: status,
+		Body:   string(body),
+		err:    decoded,
+	}
+	if header != nil {
+		hse.RetryAfter = parseRetryAfter(header.Get("Retry-After"))
+	}
+	return hse
+}
+
+// parseRetryAfter parses a Retry-After header. Two forms are supported per
+// RFC 7231: a non-negative integer (seconds) or an HTTP-date. Returns zero
+// when the value is absent or unparseable — callers treat zero as "no hint".
+func parseRetryAfter(v string) time.Duration {
+	v = strings.TrimSpace(v)
+	if v == "" {
+		return 0
+	}
+	// Seconds form.
+	if secs, err := strconv.Atoi(v); err == nil && secs >= 0 {
+		return time.Duration(secs) * time.Second
+	}
+	// HTTP-date form.
+	if t, err := http.ParseTime(v); err == nil {
+		if d := time.Until(t); d > 0 {
+			return d
+		}
+		return 0
+	}
+	return 0
 }
