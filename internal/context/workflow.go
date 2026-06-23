@@ -95,5 +95,8 @@ A step with checkpoint: true causes the engine to pause after that step complete
 
 - .workflow.yaml — written by you via brain_write, read by run_workflow/continue_workflow
 - .result.yaml — written by the engine, inspect it to see progress and step outputs
-- After completion, .result.yaml contains the final status: "completed"`, nil
+- After completion, .result.yaml contains the final status: "completed"
+
+### Schema reference
+- ` + "`workflow.schema.json`" + ` in the repo root provides the formal JSON Schema for .workflow.yaml. Fields include: version("1"), name, description, steps[](id, prompt, depends_on[], foreach, output_schema, timeout, max_tokens, checkpoint). When in doubt about field names or types, read the schema via brain_read.`, nil
 }
