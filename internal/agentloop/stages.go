@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +17,7 @@ import (
 	"dolphin/internal/hook"
 	"dolphin/internal/i18n"
 	"dolphin/internal/llm"
+	"dolphin/internal/llm/proto"
 	"dolphin/internal/memory"
 	"dolphin/internal/permission"
 	"dolphin/internal/session"
@@ -459,6 +461,56 @@ func (s *LLMStage) activeModel() string {
 
 var ErrInterrupted = errors.New("llm: interrupted")
 
+// isRetryableLLMError reports whether err should be retried. Network and
+// context errors are retryable; an HTTPStatusError is retryable only for
+// 429/5xx (see HTTPStatusError.IsRetryable). Anything else defaults to
+// retryable — a conservative choice that preserves the previous behavior
+// for errors the LLM layer wraps generically (e.g. "llm: decode: ...").
+func isRetryableLLMError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var hse *proto.HTTPStatusError
+	if errors.As(err, &hse) {
+		return hse.IsRetryable()
+	}
+	// Context cancellation is not something a retry can fix.
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return false
+	}
+	return true
+}
+
+// retryDelay computes the backoff before the next retry attempt. When the
+// error carries a Retry-After hint (429 responses often do), honor it
+// directly (capped at maxBackoff for safety). Otherwise use exponential
+// backoff with jitter: base * 2^attempt, capped, plus up to 25% jitter so
+// concurrent workers don't retry in lockstep.
+//
+// attempt is 0-based (the just-failed attempt index).
+func retryDelay(err error, attempt int) time.Duration {
+	var hse *proto.HTTPStatusError
+	if errors.As(err, &hse) && hse.RetryAfter > 0 {
+		if hse.RetryAfter > maxBackoff {
+			return maxBackoff
+		}
+		return hse.RetryAfter
+	}
+	// Exponential backoff: 500ms, 1s, 2s, 4s, ... capped at 30s.
+	d := baseBackoff << attempt
+	if d <= 0 || d > maxBackoff {
+		d = maxBackoff
+	}
+	// Jitter: add up to 25% of d to spread out concurrent retries.
+	jitter := time.Duration(rand.Int63n(int64(d) / 4)) //nolint:gosec // G404: jitter does not need crypto-grade randomness.
+	return d + jitter
+}
+
+const (
+	baseBackoff = 500 * time.Millisecond
+	maxBackoff  = 30 * time.Second
+)
+
 func (s *LLMStage) Process(ctx context.Context, state *State) error {
 	// Pre-check limits via hook before retry loop.
 	if s.HookReg != nil {
@@ -560,12 +612,43 @@ func (s *LLMStage) Process(ctx context.Context, state *State) error {
 			})
 			return err
 		}
+		// Classify the error before retrying. A non-retryable HTTP status
+		// (4xx other than 429) means retrying is pointless — surface it now
+		// instead of burning the retry budget.
+		if !isRetryableLLMError(err) {
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventLLMError,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+				Payload: map[string]any{
+					"error":         err.Error(),
+					"non_retryable": true,
+					"attempt":       i,
+				},
+			})
+			s.Logger.Warn(fmt.Sprintf(i18n.T("agentloop.llm_non_retryable"), err))
+			return err
+		}
+		// Back off before the next attempt. Honor Retry-After when the
+		// provider gave one; otherwise exponential backoff with jitter.
+		// This is what stops a 429 from turning into an immediate retry
+		// storm that deepens the rate limit.
+		delay := retryDelay(err, i)
+		s.Logger.Info(fmt.Sprintf(i18n.T("agentloop.llm_backoff"), i+1, s.MaxRetries+1, delay, err))
+		if backoffSleep(sigCh, delay) {
+			s.EventBus.Publish(ctx, event.Event{
+				Type:      event.EventLLMInterrupt,
+				Timestamp: time.Now(),
+				SessionID: state.SessionID,
+			})
+			return ErrInterrupted
+		}
 		lastErr = err
 		s.EventBus.Publish(ctx, event.Event{
 			Type:      event.EventLLMRetry,
 			Timestamp: time.Now(),
 			SessionID: state.SessionID,
-			Payload:   map[string]any{"error": err.Error(), "attempt": i},
+			Payload:   map[string]any{"error": err.Error(), "attempt": i, "backoff": delay.String()},
 		})
 	}
 
