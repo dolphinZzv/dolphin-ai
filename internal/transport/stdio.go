@@ -278,19 +278,21 @@ func (s *Stdio) RequestPermission(_ context.Context, prompt string) (PermissionR
 		return PermissionOnce, nil
 	case "2", "always":
 		return PermissionAlways, nil
+	case "4", "abort":
+		return PermissionAbort, nil
 	default:
 		return PermissionDenied, nil
 	}
 }
 
 // Confirm asks a yes/no question by reusing the permission menu
-// (once/always → yes, deny → no).
+// (once/always → yes, deny/abort → no).
 func (s *Stdio) Confirm(ctx context.Context, prompt string) (bool, error) {
 	res, err := s.RequestPermission(ctx, prompt)
 	if err != nil {
 		return false, err
 	}
-	return res != PermissionDenied, nil
+	return res == PermissionOnce || res == PermissionAlways, nil
 }
 
 // Ensure Stdio implements IO.

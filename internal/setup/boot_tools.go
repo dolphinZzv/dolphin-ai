@@ -60,6 +60,7 @@ func (b *ToolsBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		return c.ContextReg
 	})
 	command.RegisterConfig(c.CmdReg)
+	command.RegisterBrain(c.CmdReg, c.Brain)
 	command.RegisterCompaction(
 		c.CmdReg,
 		c.LLMProvider,

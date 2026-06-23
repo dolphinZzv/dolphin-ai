@@ -460,6 +460,7 @@ func (s *LLMStage) activeModel() string {
 }
 
 var ErrInterrupted = errors.New("llm: interrupted")
+var ErrTurnAborted = errors.New("turn aborted by user")
 
 // isRetryableLLMError reports whether err should be retried. Network and
 // context errors are retryable; an HTTPStatusError is retryable only for
@@ -946,6 +947,17 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 				})
 				state.Messages = append(state.Messages, msg)
 				state.ToolResults = append(state.ToolResults, tr)
+				if errors.Is(err, ErrTurnAborted) {
+					// Abort the entire turn: append interrupted results for
+					// remaining calls so every tool_use has a matching tool_result.
+					for _, c := range calls[i+1:] {
+						msg, tr := s.interruptedToolResult(c)
+						state.Messages = append(state.Messages, msg)
+						state.ToolResults = append(state.ToolResults, tr)
+					}
+					state.Done = true
+					return nil
+				}
 				continue
 			}
 
@@ -1101,7 +1113,7 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 	}
 	var pendingCalls []pending
 
-	for _, call := range calls {
+	for i, call := range calls {
 		if err := s.checkPermission(ctx, state, call); err != nil {
 			msg, tr := s.deniedToolResult(call, err)
 			s.EventBus.Publish(ctx, event.Event{
@@ -1112,6 +1124,17 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 			})
 			state.Messages = append(state.Messages, msg)
 			state.ToolResults = append(state.ToolResults, tr)
+			if errors.Is(err, ErrTurnAborted) {
+				// Abort the entire turn: append interrupted results for
+				// remaining calls so every tool_use has a matching tool_result.
+				for _, c := range calls[i+1:] {
+					msg, tr := s.interruptedToolResult(c)
+					state.Messages = append(state.Messages, msg)
+					state.ToolResults = append(state.ToolResults, tr)
+				}
+				state.Done = true
+				return nil
+			}
 			continue
 		}
 		pendingCalls = append(pendingCalls, pending{call})
@@ -1310,6 +1333,8 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 				s.Logger.Warn("failed to save permission rule", zap.Error(err))
 			}
 			return nil
+		case transport.PermissionAbort:
+			return fmt.Errorf("%w: %s", ErrTurnAborted, call.Name)
 		default:
 			return fmt.Errorf(i18n.T("agentloop.tool_denied_by_user"), call.Name)
 		}

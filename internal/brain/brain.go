@@ -14,6 +14,7 @@ import (
 	"time"
 
 	gogit "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
@@ -467,4 +468,41 @@ func (b *Brain) commitPath(path, msg string) error {
 		return fmt.Errorf("brain: commit: %w", err)
 	}
 	return nil
+}
+
+// Push pushes committed changes to the "origin" remote.
+func (b *Brain) Push(ctx context.Context) error {
+	if b.repo == nil {
+		return fmt.Errorf("brain: not initialized")
+	}
+	remote, err := b.repo.Remote("origin")
+	if err != nil {
+		return fmt.Errorf("brain: remote origin not found — use /brain set url <url> first: %w", err)
+	}
+	return remote.PushContext(ctx, &gogit.PushOptions{})
+}
+
+// Pull fetches and merges from the "origin" remote.
+func (b *Brain) Pull(ctx context.Context) error {
+	if b.repo == nil {
+		return fmt.Errorf("brain: not initialized")
+	}
+	wt, err := b.repo.Worktree()
+	if err != nil {
+		return fmt.Errorf("brain: worktree: %w", err)
+	}
+	return wt.PullContext(ctx, &gogit.PullOptions{RemoteName: "origin"})
+}
+
+// SetURL configures the "origin" remote URL, replacing any existing remote
+// with that name.
+func (b *Brain) SetURL(ctx context.Context, url string) error {
+	if b.repo == nil {
+		return fmt.Errorf("brain: not initialized")
+	}
+	_, err := b.repo.CreateRemote(&config.RemoteConfig{
+		Name: "origin",
+		URLs: []string{url},
+	})
+	return err
 }

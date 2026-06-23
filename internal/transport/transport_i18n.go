@@ -11,7 +11,7 @@ func init() {
 			// stdio
 			"stdio_exit_confirm":    "Confirm exit? (y/N) ",
 			"stdio_bye":             "bye",
-			"stdio_permission_menu": "\n1) Allow once  2) Always allow (double-press a)  3) Deny\nChoice (1/2/3): ",
+			"stdio_permission_menu": "\n1) Allow once  2) Always allow (double-press a)  3) Deny  4) Abort turn\nChoice (1/2/3/4): ",
 
 			// email
 			"email_send_only":      "email: send-only mode, cannot receive",
@@ -38,7 +38,7 @@ func init() {
 			// stdio
 			"stdio_exit_confirm":    "确认退出？(y/N) ",
 			"stdio_bye":             "bye",
-			"stdio_permission_menu": "\n1) 同意一次  2) 以后都同意（双击 a）  3) 拒绝\n选择 (1/2/3): ",
+			"stdio_permission_menu": "\n1) 同意一次  2) 以后都同意（双击 a）  3) 拒绝  4) 中断回合\n选择 (1/2/3/4): ",
 
 			// email
 			"email_send_only":      "邮箱: 仅发送模式，无法接收",

@@ -41,6 +41,7 @@ const (
 	PermissionDenied PermissionResult = iota
 	PermissionOnce
 	PermissionAlways
+	PermissionAbort
 )
 
 // Capability describes transport features.

@@ -101,6 +101,10 @@ func RegisterPermissionTool(r *Registry, ps *permission.Store, getTransport func
 			}
 
 			switch permResult { //nolint:exhaustive // PermissionDenied falls through to default
+			case transport.PermissionAbort:
+				return &types.ToolResult{
+					Content: fmt.Sprintf("Operation aborted by user. Stop the current task immediately and do not attempt further actions for [%s].", req.ToolName),
+				}, nil
 			case transport.PermissionAlways:
 				if ps != nil {
 					argsToSave := json.RawMessage(`{}`)

@@ -453,7 +453,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case permRequestMsg:
 		m.permDialog = &permDialog{
 			prompt:  msg.prompt,
-			choices: []string{"y (once)", "a (always)", "n (deny)"},
+			choices: []string{"y (once)", "a (always)", "n (deny)", "esc (abort)"},
 			active:  0,
 		}
 		// Capture this request's response channel so the model can reply
@@ -587,8 +587,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 // permChoiceMap maps the dialog's choice index to the response string the
-// transport expects: 0 = once, 1 = always, 2 = deny.
-var permChoiceMap = []string{"once", "always", "deny"}
+// transport expects: 0 = once, 1 = always, 2 = deny, 3 = abort.
+var permChoiceMap = []string{"once", "always", "deny", "abort"}
 
 // handlePermKey processes a keystroke while the permission dialog is open.
 // The dialog is modal: every key is captured here and the method returns
@@ -617,9 +617,12 @@ func (m model) handlePermKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.resolvePerm(0) // once, immediate
 	case "a", "A":
 		return confirmOrResolve(1) // always, needs confirm
-	case "n", "N", "esc":
+	case "n", "N":
 		m.permDialog.confirmIdx = -1
 		return m.resolvePerm(2) // deny, immediate
+	case "esc":
+		m.permDialog.confirmIdx = -1
+		return m.resolvePerm(3) // abort, immediate
 	case "left", "h":
 		m.permDialog.confirmIdx = -1
 		m.permDialog.active = (m.permDialog.active - 1 + len(choices)) % len(choices)
