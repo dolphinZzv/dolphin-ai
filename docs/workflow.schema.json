@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "http://dolphin.siciv.space/workflow.schema.json",
+  "title": "Dolphin Workflow",
+  "description": "Schema for .workflow.yaml files — multi-step DAG tasks executed by run_workflow. Steps without depends_on run in parallel; steps with depends_on wait for their dependencies.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "name", "steps"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Workflow format version. Currently \"1\".",
+      "const": "1"
+    },
+    "name": {
+      "type": "string",
+      "description": "Unique workflow name. Used as the .result.yaml filename and the workflow identifier in logs.",
+      "minLength": 1
+    },
+    "description": {
+      "type": "string",
+      "description": "Optional human-readable description, shown in progress output."
+    },
+    "steps": {
+      "type": "array",
+      "description": "Ordered list of steps. Execution order is determined by depends_on, not array order — steps with no depends_on or same-level dependencies run in parallel.",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/step" }
+    }
+  },
+  "definitions": {
+    "step": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "prompt"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique step identifier within this workflow. Referenced by depends_on and template shortcuts ($step_id.field).",
+          "minLength": 1
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Task description for this step. Supports template shortcuts: $step.field, $each, $each.key, $step[*].field. Can also use Go template syntax {{.step.field}} directly.",
+          "minLength": 1
+        },
+        "depends_on": {
+          "type": "array",
+          "description": "Step IDs this step waits for. The step starts only after all dependencies complete successfully.",
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "foreach": {
+          "type": "string",
+          "description": "Fan-out: repeats this step once per element of an upstream step's array output. Value is a template reference like \"$list_step.field\". The current element is available as $each inside the prompt. Requires the referenced upstream step to have an output_schema with an array field."
+        },
+        "output_schema": {
+          "type": "object",
+          "description": "Optional JSON schema for structured step output. Keys are field names, values are type strings (string, number, boolean) or arrays of a type (e.g. [string]). Used by foreach to extract array fields.",
+          "additionalProperties": {
+            "oneOf": [
+              { "type": "string", "enum": ["string", "number", "boolean", "integer", "object", "array"] },
+              { "type": "array", "items": { "type": "string", "enum": ["string", "number", "boolean", "integer", "object", "array"] }, "minItems": 1, "uniqueItems": true }
+            ]
+          }
+        },
+        "timeout": {
+          "type": "string",
+          "pattern": "^\\d+(ns|us|µs|ms|s|m|h)$",
+          "description": "Per-step timeout, e.g. \"60s\", \"5m\". Default 300s. Set to 0 to disable the timeout for this step."
+        },
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max output tokens for this step's LLM call. Overrides the global default."
+        },
+        "checkpoint": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, the engine pauses after this step completes. The .result.yaml is written to disk; review it and call continue_workflow to resume. Useful before dangerous or irreversible actions."
+        }
+      }
+    }
+  }
+}

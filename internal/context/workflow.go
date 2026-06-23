@@ -1,6 +1,16 @@
 package context
 
-import stdctx "context"
+import (
+	stdctx "context"
+	_ "embed"
+)
+
+// workflowSchemaJSON is the canonical JSON Schema for .workflow.yaml files.
+// Kept in sync with the repo-root workflow.schema.json via
+// TestEmbeddedWorkflowSchemaMatchesRepoRoot.
+//
+//go:embed workflow.schema.json
+var workflowSchemaJSON []byte
 
 // Workflow injects guidance about when and how to use .workflow.yaml.
 type Workflow struct{}
