@@ -21,6 +21,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/limit"
 	"dolphin/internal/llm"
+	"dolphin/internal/llm/models"
 	"dolphin/internal/scheduler"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
@@ -1470,357 +1471,148 @@ func TestBrainBootstrapperBootstrap_full(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// createProvider
+// bootstrapSection
 // ---------------------------------------------------------------------------
 
-func TestCreateProvider_withConfig(t *testing.T) {
+func TestBootstrapSection_registersRegisteredModel(t *testing.T) {
+	// Register a throwaway per-model provider for the test model.
+	llm.RegisterModelProvider("dolphin-test-model/openai", models.NewOpenAIProvider("dolphin-test-model"))
+	defer llm.UnregisterModelProvider("dolphin-test-model/openai")
+
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.openai.api_key":  "sk-test",
-		"llm.openai.base_url": "http://test",
-		"llm.openai.provider": "openai",
-		"llm.max_tokens":      4096,
+		"llm.test.api_key":             "sk-test",
+		"llm.test.provider":            "test",
+		"llm.test.api_type":            "openai",
+		"llm.test.base_url":            "http://test",
+		"llm.test.models.0.name":       "dolphin-test-model",
+		"llm.test.models.0.max_tokens": 100,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider(context.Background(), "openai", nil)
-	if provider == nil {
-		t.Fatal("expected non-nil provider")
+	mgr := llm.NewManager()
+	c.bootstrapSection(context.Background(), "test", mgr)
+
+	models, err := mgr.Models(context.Background())
+	if err != nil {
+		t.Fatalf("Models error: %v", err)
+	}
+	found := false
+	for _, m := range models {
+		if m.Name == "dolphin-test-model" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected dolphin-test-model to be registered, got %v", models)
 	}
 }
 
-func TestCreateProvider_withModels(t *testing.T) {
+func TestBootstrapSection_skipsUnregisteredModel(t *testing.T) {
+	// No provider registered for "no-such-model/openai" — must skip, not panic,
+	// and not fall back to a generic provider.
 	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.deepseek.api_key":              "sk-test",
-		"llm.deepseek.provider":             "deepseek",
-		"llm.deepseek.api_type":             "anthropic",
-		"llm.deepseek.models.0.name":        "deepseek-chat",
-		"llm.deepseek.models.0.max_tokens":  8192,
-		"llm.deepseek.models.0.temperature": 0.7,
+		"llm.test.api_key":       "sk-test",
+		"llm.test.api_type":      "openai",
+		"llm.test.base_url":      "http://test",
+		"llm.test.models.0.name": "no-such-model",
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider(context.Background(), "deepseek", nil)
-	if provider == nil {
-		t.Fatal("expected non-nil provider")
+	mgr := llm.NewManager()
+	c.bootstrapSection(context.Background(), "test", mgr)
+
+	models, _ := mgr.Models(context.Background())
+	for _, m := range models {
+		if m.Name == "no-such-model" {
+			t.Fatalf("unregistered model should have been skipped, got %v", models)
+		}
 	}
 }
 
-// ---------------------------------------------------------------------------
-// LimitBootstrapper Bootstrap full path
-// ---------------------------------------------------------------------------
-
-func TestLimitBootstrapperBootstrap_full(t *testing.T) {
-	b := &LimitBootstrapper{}
-	dir := t.TempDir()
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests": 100,
-			"limit.dir":              dir,
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set")
-	}
-}
-
-func TestLimitBootstrapperBootstrap_byEnabled(t *testing.T) {
-	b := &LimitBootstrapper{}
-	dir := t.TempDir()
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.enabled": true,
-			"limit.dir":         dir,
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set with enabled=true")
-	}
-}
-
-func TestLimitBootstrapperBootstrap_byHardLimit(t *testing.T) {
-	b := &LimitBootstrapper{}
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests.hard": 50,
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set with hard limit")
-	}
-}
-
-func TestLimitBootstrapperBootstrap_byTokenLimit(t *testing.T) {
-	b := &LimitBootstrapper{}
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_total_tokens": 100000,
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set with token limit")
-	}
-}
-
-func TestLimitBootstrapperBootstrap_defaultStoreDir(t *testing.T) {
-	b := &LimitBootstrapper{}
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests": 100,
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set with default store dir")
-	}
-}
-
-func TestLimitBootstrapperBootstrap_withWebhook(t *testing.T) {
-	b := &LimitBootstrapper{}
-	dir := t.TempDir()
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests": 100,
-			"limit.dir":              dir,
-			"agent.webhook.url":      "http://example.com/webhook",
-			"agent.webhook.type":     "http",
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set with webhook")
-	}
-}
-
-func TestLimitBootstrapperBootstrap_withCron(t *testing.T) {
-	b := &LimitBootstrapper{}
-	dir := t.TempDir()
-	buses := &BusesBootstrapper{}
-	c := &Context{
-		Config: config.LoadConfigFromMap(map[string]any{
-			"llm.limit.max_requests": 100,
-			"limit.dir":              dir,
-			"llm.limit.reset_cron":   "0 0 * * *",
-		}),
-		Logger: zap.NewNop(),
-	}
-	err := buses.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("buses bootstrap: %v", err)
-	}
-	err = b.Bootstrap(context.Background(), c)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if c.Limit == nil {
-		t.Fatal("Limit should be set with cron")
-	}
-}
-
-// ---------------------------------------------------------------------------
-// createProvider with model_discover
-// ---------------------------------------------------------------------------
-
-func TestCreateProvider_withModelDiscoverOpenAI(t *testing.T) {
+func TestBootstrapSection_modelDiscoverWiresRegisteredModels(t *testing.T) {
 	defer gock.Off()
-
 	gock.New("https://api.openai.com").
 		Get("/v1/models").
 		Reply(200).
-		JSON(map[string]any{
-			"data": []map[string]any{
-				{"id": "gpt-4"},
-				{"id": "gpt-4o"},
-			},
-		})
+		JSON(map[string]any{"data": []map[string]any{{"id": "deepseek-v4-flash"}, {"id": "unregistered"}}})
 
-	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.openai.api_key":        "sk-test",
-		"llm.openai.provider":       "openai",
-		"llm.openai.api_type":       "openai",
-		"llm.openai.model_discover": true,
-		"llm.openai.base_url":       "https://api.openai.com",
-	})
-	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider(context.Background(), "openai", nil)
-	if provider == nil {
-		t.Fatal("expected non-nil provider")
-	}
-}
+	llm.RegisterModelProvider("deepseek-v4-flash/openai", models.NewOpenAIProvider("deepseek-v4-flash"))
+	defer llm.UnregisterModelProvider("deepseek-v4-flash/openai")
 
-func TestCreateProvider_withModelDiscoverDeepSeek(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.deepseek.com").
-		Get("/v1/models").
-		Reply(200).
-		JSON(map[string]any{
-			"data": []map[string]any{
-				{"id": "deepseek-chat"},
-			},
-		})
-
-	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.deepseek.api_key":        "sk-test",
-		"llm.deepseek.provider":       "deepseek",
-		"llm.deepseek.api_type":       "openai",
-		"llm.deepseek.model_discover": true,
-		"llm.deepseek.base_url":       "https://api.deepseek.com",
-	})
-	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider(context.Background(), "deepseek", nil)
-	if provider == nil {
-		t.Fatal("expected non-nil provider")
-	}
-}
-
-func TestCreateProvider_withModelDiscoverError(t *testing.T) {
-	defer gock.Off()
-
-	gock.New("https://api.openai.com").
-		Get("/v1/models").
-		Reply(401)
-
-	cfg := config.LoadConfigFromMap(map[string]any{
-		"llm.openai.api_key":        "bad-key",
-		"llm.openai.provider":       "openai",
-		"llm.openai.model_discover": true,
-		"llm.openai.base_url":       "https://api.openai.com",
-	})
-	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	provider := c.createProvider(context.Background(), "openai", nil)
-	if provider == nil {
-		t.Fatal("expected non-nil provider even on discovery error")
-	}
-}
-
-func TestCreateProvider_withModelsPreemptsDiscover(t *testing.T) {
-	defer gock.Off()
-
-	// No gock mock set up — if discover is incorrectly called, the test will panic.
 	cfg := config.LoadConfigFromMap(map[string]any{
 		"llm.test.api_key":        "sk-test",
-		"llm.test.provider":       "test",
+		"llm.test.api_type":       "openai",
+		"llm.test.base_url":       "https://api.openai.com",
 		"llm.test.model_discover": true,
 	})
 	c := &Context{Config: cfg, Logger: zap.NewNop()}
-	models := []llm.ModelConfig{{Name: "manual-model", Model: "manual-model"}}
-	provider := c.createProvider(context.Background(), "test", models)
-	if provider == nil {
-		t.Fatal("expected non-nil provider")
+	mgr := llm.NewManager()
+	c.bootstrapSection(context.Background(), "test", mgr)
+
+	models, _ := mgr.Models(context.Background())
+	hasRegistered := false
+	for _, m := range models {
+		if m.Name == "deepseek-v4-flash" {
+			hasRegistered = true
+		}
+		if m.Name == "unregistered" {
+			t.Fatal("discovered-but-unregistered model should be skipped")
+		}
+	}
+	if !hasRegistered {
+		t.Fatalf("expected deepseek-v4-flash to be wired, got %v", models)
 	}
 }
 
-// ---------------------------------------------------------------------------
-// discoverProviderModels
-// ---------------------------------------------------------------------------
-
-func TestDiscoverProviderModels_deepseek(t *testing.T) {
+func TestBootstrapSection_modelDiscoverErrorIsNonFatal(t *testing.T) {
 	defer gock.Off()
+	gock.New("https://api.openai.com").Get("/v1/models").Reply(401)
 
-	gock.New("https://api.deepseek.com").
-		Get("/v1/models").
-		Reply(200).
-		JSON(map[string]any{
-			"data": []map[string]any{
-				{"id": "deepseek-chat"},
-			},
-		})
-
-	cfg := llm.Config{
-		Vendor:  "deepseek",
-		APIType: "openai",
-		APIKey:  "sk-test",
-		BaseURL: "https://api.deepseek.com",
-	}
-	models, err := discoverProviderModels(context.Background(), cfg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(models) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(models))
-	}
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"llm.test.api_key":        "bad-key",
+		"llm.test.api_type":       "openai",
+		"llm.test.base_url":       "https://api.openai.com",
+		"llm.test.model_discover": true,
+	})
+	c := &Context{Config: cfg, Logger: zap.NewNop()}
+	mgr := llm.NewManager()
+	// Must not panic; section just yields no models.
+	c.bootstrapSection(context.Background(), "test", mgr)
 }
 
-func TestDiscoverProviderModels_default(t *testing.T) {
-	defer gock.Off()
+// ---------------------------------------------------------------------------
+// llm.DiscoverModels dispatch
+// ---------------------------------------------------------------------------
 
+func TestDiscoverModels_openai(t *testing.T) {
+	defer gock.Off()
 	gock.New("https://api.openai.com").
 		Get("/v1/models").
 		Reply(200).
-		JSON(map[string]any{
-			"data": []map[string]any{
-				{"id": "gpt-4"},
-			},
-		})
+		JSON(map[string]any{"data": []map[string]any{{"id": "gpt-4"}}})
 
-	cfg := llm.Config{
-		Vendor:  "openai",
-		APIType: "openai",
-		APIKey:  "sk-test",
-		BaseURL: "https://api.openai.com",
-	}
-	models, err := discoverProviderModels(context.Background(), cfg)
+	cfg := llm.Config{APIType: "openai", APIKey: "sk-test", BaseURL: "https://api.openai.com"}
+	models, err := llm.DiscoverModels(context.Background(), cfg, zap.NewNop())
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("error: %v", err)
 	}
-	if len(models) != 1 {
-		t.Fatalf("expected 1 model, got %d", len(models))
+	if len(models) != 1 || models[0].Name != "gpt-4" {
+		t.Fatalf("unexpected: %+v", models)
+	}
+}
+
+func TestDiscoverModels_anthropic(t *testing.T) {
+	defer gock.Off()
+	gock.New("https://api.anthropic.com").
+		Get("/v1/models").
+		Reply(200).
+		JSON(map[string]any{"data": []map[string]any{{"id": "claude-3"}}})
+
+	cfg := llm.Config{APIType: "anthropic", APIKey: "ant-key", BaseURL: "https://api.anthropic.com"}
+	models, err := llm.DiscoverModels(context.Background(), cfg, zap.NewNop())
+	if err != nil {
+		t.Fatalf("error: %v", err)
+	}
+	if len(models) != 1 || models[0].Name != "claude-3" {
+		t.Fatalf("unexpected: %+v", models)
 	}
 }
 
@@ -2074,7 +1866,7 @@ func TestWorkflowBootstrapper(t *testing.T) {
 		Convey("Bootstrap sets WorkflowEngine", func() {
 			logger, _ := zap.NewDevelopment()
 			cfg := config.LoadConfigFromMap(map[string]any{"llm.use": "openai", "llm.openai.api_key": "sk-test"})
-			provider := llm.NewProvider(llm.Config{
+			provider := models.NewProvider(llm.Config{
 				Provider: "openai",
 				Model:    "gpt-4o",
 				APIKey:   "sk-test",

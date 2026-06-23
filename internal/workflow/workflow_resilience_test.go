@@ -14,6 +14,7 @@ import (
 
 	"dolphin/internal/event"
 	"dolphin/internal/llm"
+	"dolphin/internal/llm/models"
 	"dolphin/internal/tool"
 )
 
@@ -46,7 +47,7 @@ func TestWorkflowAPIErrors(t *testing.T) {
 			return resp
 		})
 
-	provider := llm.NewProvider(llm.Config{
+	provider := models.NewProvider(llm.Config{
 		Provider: "test",
 		APIType:  "openai",
 		APIKey:   "test-key",
@@ -153,7 +154,7 @@ func TestWorkflowAPIErrorsWithDeps(t *testing.T) {
 			return resp
 		})
 
-	provider := llm.NewProvider(llm.Config{
+	provider := models.NewProvider(llm.Config{
 		Provider: "test",
 		APIType:  "openai",
 		APIKey:   "test-key",
@@ -269,7 +270,7 @@ func TestWorkflowMaxConcurrency(t *testing.T) {
 		})
 
 	// Route via Manager so MaxConcurrency semaphore is enforced.
-	provider := llm.NewProvider(llm.Config{
+	provider := models.NewProvider(llm.Config{
 		Provider: "test",
 		APIType:  "openai",
 		APIKey:   "test-key",
@@ -342,7 +343,7 @@ func TestWorkflowAllStepsFail(t *testing.T) {
 			resp.BodyString(`{"error":{"message":"service unavailable"}}`)
 		})
 
-	provider := llm.NewProvider(llm.Config{
+	provider := models.NewProvider(llm.Config{
 		Provider: "test",
 		APIType:  "openai",
 		APIKey:   "test-key",

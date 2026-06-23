@@ -9,10 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"dolphin/internal/llm"
-	_ "dolphin/internal/llm/custom"
-	"dolphin/internal/llm/deepseek"
-	_ "dolphin/internal/llm/models"
-	_ "dolphin/internal/llm/volcengine"
+	_ "dolphin/internal/llm/models" // register per-model providers
 )
 
 type LLMBootstrapper struct{}
@@ -27,19 +24,10 @@ func (b *LLMBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 	mgr := llm.NewManager()
 	providerNames := discoverProviderNames(c.Config)
 	if len(providerNames) == 0 {
-		// Legacy single-provider mode.
-		c.Logger.Warn("no providers configured via llm.<name>.api_key, falling back to legacy")
-		provider := c.createProvider(ctx, "openai", nil)
-		mgr.AddProvider("openai", provider)
+		c.Logger.Warn("no providers configured via llm.<name>.api_key")
 	} else {
 		for _, name := range providerNames {
-			models := parseProviderModels(c.Config, name)
-			c.Logger.Info("discovered provider",
-				zap.String("name", name),
-				zap.Int("models", len(models)),
-			)
-			provider := c.createProvider(ctx, name, models)
-			mgr.AddProvider(name, provider)
+			c.bootstrapSection(ctx, name, mgr)
 		}
 	}
 
@@ -164,48 +152,57 @@ func parseProviderModels(cfg interface {
 	return models
 }
 
-func (c *Context) createProvider(ctx context.Context, name string, models []llm.ModelConfig) llm.Provider {
-	modelDiscover := c.Config.GetBool("llm." + name + ".model_discover")
+// bootstrapSection wires every model declared under llm.<name> (plus any
+// discovered models) into the manager. Each model resolves to an independent
+// per-model provider via LookupModelProvider(model, api_type); models with no
+// registered provider are skipped with a warning rather than silently falling
+// back to a generic implementation.
+func (c *Context) bootstrapSection(ctx context.Context, name string, mgr *llm.Manager) {
+	models := parseProviderModels(c.Config, name)
+	apiType := c.Config.GetString("llm." + name + ".api_type")
+	if apiType == "" {
+		apiType = c.Config.GetString("llm." + name + ".provider")
+	}
 
 	cfg := llm.Config{
 		Provider:      name,
 		Vendor:        c.Config.GetString("llm." + name + ".provider"),
-		APIType:       c.Config.GetString("llm." + name + ".api_type"),
+		APIType:       apiType,
 		APIKey:        c.Config.GetString("llm." + name + ".api_key"),
 		BaseURL:       c.Config.GetString("llm." + name + ".base_url"),
 		MaxTokens:     c.Config.GetInt("llm.max_tokens"),
 		MaxRetries:    c.Config.GetInt("llm.max_retries"),
 		Timeout:       c.Config.GetDuration("llm.timeout"),
 		Headers:       c.Config.GetStringMap("llm." + name + ".headers"),
-		ModelDiscover: modelDiscover,
+		ModelDiscover: c.Config.GetBool("llm." + name + ".model_discover"),
 	}
-	if len(models) > 0 {
-		cfg.Models = models
-	} else if modelDiscover {
-		discovered, err := discoverProviderModels(ctx, cfg)
+
+	if len(models) == 0 && cfg.ModelDiscover {
+		discovered, err := llm.DiscoverModels(ctx, cfg, c.Logger)
 		if err != nil {
 			c.Logger.Warn("model discovery failed",
-				zap.String("provider", name),
-				zap.Error(err),
-			)
-		} else if len(discovered) > 0 {
+				zap.String("provider", name), zap.Error(err))
+		} else {
 			c.Logger.Info("model discovery succeeded",
-				zap.String("provider", name),
-				zap.Int("count", len(discovered)),
-			)
-			cfg.Models = discovered
+				zap.String("provider", name), zap.Int("count", len(discovered)))
+			models = discovered
 		}
 	}
-	return llm.NewProvider(cfg, c.Logger)
-}
+	cfg.Models = models
 
-// discoverProviderModels dispatches model discovery to the vendor-specific
-// implementation, falling back to generic api_type-based discovery.
-func discoverProviderModels(ctx context.Context, cfg llm.Config) ([]llm.ModelConfig, error) {
-	switch cfg.Vendor {
-	case "deepseek":
-		return deepseek.DiscoverModels(ctx, cfg)
-	default:
-		return llm.DiscoverModels(ctx, cfg, nil)
+	for _, mc := range models {
+		if mc.Disabled {
+			continue
+		}
+		factory, err := llm.LookupModelProvider(mc.Name, apiType)
+		if err != nil {
+			c.Logger.Warn("no per-model provider, skipping model",
+				zap.String("provider", name),
+				zap.String("model", mc.Name),
+				zap.String("api_type", apiType),
+				zap.Error(err))
+			continue
+		}
+		mgr.AddProvider(name, factory(cfg, c.Logger))
 	}
 }

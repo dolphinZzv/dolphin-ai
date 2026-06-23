@@ -40,6 +40,10 @@ type LLMRequest struct {
 	ReasoningEffort string
 	Thinking        bool
 	Stream          bool
+	// StreamSet is true when Stream was explicitly set (e.g. from ModelConfig),
+	// distinguishing "stream=false" from "stream not specified". Lets a provider
+	// tell whether the caller chose streaming deliberately.
+	StreamSet bool `json:"-"`
 }
 
 type LLMChunk struct {
@@ -68,6 +72,23 @@ type Provider interface {
 	Name() string
 	CompleteStream(ctx context.Context, req LLMRequest) (<-chan LLMChunk, error)
 	Models(ctx context.Context) ([]ModelConfig, error)
+}
+
+// ProviderFunc adapts a CompleteStream function into a Provider. It is the
+// zero-ceremony way for a per-model provider file to satisfy the interface
+// without declaring a struct. Name/Models come from the supplied metadata.
+type ProviderFunc struct {
+	Name_   string
+	Model_  ModelConfig
+	Stream_ func(ctx context.Context, req LLMRequest) (<-chan LLMChunk, error)
+}
+
+func (p ProviderFunc) Name() string { return p.Name_ }
+func (p ProviderFunc) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LLMChunk, error) {
+	return p.Stream_(ctx, req)
+}
+func (p ProviderFunc) Models(ctx context.Context) ([]ModelConfig, error) {
+	return []ModelConfig{p.Model_}, nil
 }
 
 type Config struct {

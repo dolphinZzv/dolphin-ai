@@ -3,11 +3,14 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,6 +22,7 @@ import (
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
 	"dolphin/internal/llm"
+	"dolphin/internal/llm/models"
 	"dolphin/internal/memory"
 	"dolphin/internal/permission"
 	"dolphin/internal/session"
@@ -98,6 +102,43 @@ func TestCompositor(t *testing.T) {
 			So(rounds, ShouldEqual, 3)
 		})
 
+		Convey("Compositor surfaces a notice when max rounds truncates the turn", func() {
+			mem := memory.NewFileMemory(&testSessionStore{})
+			eb := event.NewBus()
+			var truncatedEvent event.Event
+			sawEvent := false
+			eb.Subscribe(func(_ context.Context, e event.Event) {
+				if e.Type == event.EventTurnTruncated {
+					truncatedEvent = e
+					sawEvent = true
+				}
+			})
+
+			rounds := 0
+			c := NewCompositor(
+				[]Stage{&MemoryReadStage{Memory: mem}},
+				[]Stage{&incrementStage{count: &rounds}},
+				2,
+			)
+			c.SetEventBus(eb)
+
+			var chunks []string
+			state := &State{
+				SessionID: "test",
+				Input:     "x",
+				OnChunk:   func(text string) { chunks = append(chunks, text) },
+			}
+
+			err := c.Execute(context.Background(), state)
+			So(err, ShouldBeNil)
+			// Not Done — the turn was truncated, not completed.
+			So(state.Done, ShouldBeFalse)
+			So(sawEvent, ShouldBeTrue)
+			So(truncatedEvent.Payload["max_rounds"], ShouldEqual, 2)
+			So(len(chunks), ShouldEqual, 1)
+			So(chunks[0], ShouldContainSubstring, "2")
+		})
+
 		Convey("MemoryReadStage reads history", func() {
 			mem := memory.NewFileMemory(&testSessionStore{})
 			mem.Write(context.Background(), "sid", types.Message{
@@ -174,7 +215,7 @@ func TestCompositor(t *testing.T) {
 		Convey("LLMStage retries on error", func() {
 			eb := event.NewBus()
 
-			provider := llm.NewProvider(llm.Config{
+			provider := models.NewProvider(llm.Config{
 				Provider:   "openai",
 				Model:      "gpt-4o",
 				APIKey:     "invalid",
@@ -201,6 +242,44 @@ func TestCompositor(t *testing.T) {
 
 			err := stage.Process(context.Background(), state)
 			So(err, ShouldNotBeNil)
+		})
+
+		Convey("LLMStage does not retry after content was streamed", func() {
+			// Provider emits a content chunk then errors on every call.
+			// Without retry suppression the user would see the partial
+			// content duplicated across retries.
+			eb := event.NewBus()
+			var calls int32
+			provider := &chunkProvider{chunks: []llm.LLMChunk{
+				{Content: "partial-"},
+				{Error: fmt.Errorf("stream blew up")},
+			}}
+			// Wrap to count CompleteStream calls.
+			counting := &countingProvider{inner: provider, count: &calls}
+
+			stage := &LLMStage{
+				Provider:   counting,
+				Model:      "test-model",
+				MaxTokens:  10,
+				MaxRetries: 3,
+				EventBus:   eb,
+				Logger:     logger,
+			}
+
+			var chunks []string
+			state := &State{
+				SessionID: "sid",
+				Input:     "hi",
+				Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+				OnChunk:   func(text string) { chunks = append(chunks, text) },
+			}
+
+			err := stage.Process(context.Background(), state)
+			So(err, ShouldNotBeNil)
+			// Only one attempt — content was emitted, so no retry.
+			So(atomic.LoadInt32(&calls), ShouldEqual, 1)
+			// The partial content reaches the user exactly once.
+			So(strings.Join(chunks, ""), ShouldEqual, "partial-")
 		})
 	})
 }
@@ -459,7 +538,7 @@ func TestRealLLMCompositor(t *testing.T) {
 		logger, _ := zap.NewDevelopment()
 
 		Convey("Provider returns first char of 123456", func() {
-			provider := llm.NewProvider(llm.Config{
+			provider := models.NewProvider(llm.Config{
 				Provider:   "anthropic",
 				Model:      "deepseek-v4-flash",
 				APIKey:     os.Getenv("DOLPHIN_LLM_ANTHROPIC_API_KEY"),
@@ -493,7 +572,7 @@ func TestRealLLMCompositor(t *testing.T) {
 		})
 
 		Convey("Provider respects max tokens", func() {
-			provider := llm.NewProvider(llm.Config{
+			provider := models.NewProvider(llm.Config{
 				Provider:   "anthropic",
 				Model:      "deepseek-v4-flash",
 				APIKey:     os.Getenv("DOLPHIN_LLM_ANTHROPIC_API_KEY"),
@@ -652,6 +731,80 @@ func TestCompositorPerRoundTimeout(t *testing.T) {
 			So(err, ShouldNotBeNil)
 			So(err.Error(), ShouldContainSubstring, "loop stage delay")
 		})
+	})
+}
+
+// blockingInitStage blocks in Process until ctx is cancelled, then
+// returns ctx.Err(). Used to verify the compositor's Interrupt watcher
+// cancels init stages that don't subscribe to the signal bus themselves
+// (e.g. CompactionStage).
+type blockingInitStage struct {
+	started chan struct{}
+}
+
+func (s *blockingInitStage) Name() string { return "blocking_init" }
+func (s *blockingInitStage) Clone() Stage { return s }
+func (s *blockingInitStage) Process(ctx context.Context, _ *State) error {
+	close(s.started)
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestCompositorInterruptCancelsInitStage(t *testing.T) {
+	Convey("Interrupt cancels an init stage that doesn't subscribe itself", t, func() {
+		sb := signal.NewBus()
+		stage := &blockingInitStage{started: make(chan struct{})}
+		c := NewCompositor([]Stage{stage}, nil, 10)
+		c.SetSignalBus(sb)
+
+		state := &State{SessionID: "s1"}
+
+		done := make(chan error, 1)
+		go func() { done <- c.Execute(context.Background(), state) }()
+
+		<-stage.started
+		// Compositor subscribes for s1; send Interrupt. The init stage
+		// should observe ctx cancellation and return ctx.Err().
+		sb.Send("s1", signal.Interrupt)
+
+		select {
+		case err := <-done:
+			So(err, ShouldNotBeNil)
+			So(errors.Is(err, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Execute did not return after Interrupt")
+		}
+	})
+
+	Convey("Pause does not cancel the turn (only Interrupt does)", t, func() {
+		sb := signal.NewBus()
+		stage := &blockingInitStage{started: make(chan struct{})}
+		c := NewCompositor([]Stage{stage}, nil, 10)
+		c.SetSignalBus(sb)
+
+		state := &State{SessionID: "s2"}
+
+		done := make(chan error, 1)
+		go func() { done <- c.Execute(context.Background(), state) }()
+
+		<-stage.started
+		sb.Send("s2", signal.Pause)
+
+		// Pause must not cancel: Execute should still be blocked.
+		select {
+		case err := <-done:
+			t.Fatalf("Pause should not cancel Execute, but got: %v", err)
+		case <-time.After(100 * time.Millisecond):
+		}
+
+		// Now Interrupt to unblock.
+		sb.Send("s2", signal.Interrupt)
+		select {
+		case err := <-done:
+			So(errors.Is(err, context.Canceled), ShouldBeTrue)
+		case <-time.After(2 * time.Second):
+			t.Fatal("Execute did not return after Interrupt")
+		}
 	})
 }
 
@@ -1112,6 +1265,25 @@ func (c *chunkProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-c
 func (c *chunkProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
 func (c *chunkProvider) ActiveModel() string                                 { return "" }
 
+// countingProvider wraps a provider and counts CompleteStream calls.
+type countingProvider struct {
+	inner llm.Provider
+	count *int32
+}
+
+func (c *countingProvider) Name() string { return c.inner.Name() }
+func (c *countingProvider) CompleteStream(ctx context.Context, req llm.LLMRequest) (<-chan llm.LLMChunk, error) {
+	atomic.AddInt32(c.count, 1)
+	return c.inner.CompleteStream(ctx, req)
+}
+func (c *countingProvider) Models(_ context.Context) ([]llm.ModelConfig, error) { return nil, nil }
+func (c *countingProvider) ActiveModel() string {
+	if a, ok := c.inner.(interface{ ActiveModel() string }); ok {
+		return a.ActiveModel()
+	}
+	return ""
+}
+
 type appctxSection struct {
 	name    string
 	content string
@@ -1450,6 +1622,112 @@ func TestAgentLoopProcessTurnError(t *testing.T) {
 		So(lastResult.Text, ShouldContainSubstring, "Error")
 		So(lastResult.Done, ShouldBeTrue)
 	})
+}
+
+// orderRecordStage records the order in which turns are processed by
+// appending state.Input to a shared slice. The first turn blocks on gate
+// so the test can enqueue additional turns before the worker picks them.
+type orderRecordStage struct {
+	mu    sync.Mutex
+	order []string
+	gate  chan struct{}
+	start chan struct{}
+	first int32
+}
+
+func (s *orderRecordStage) Name() string { return "order_record" }
+func (s *orderRecordStage) Clone() Stage { return s }
+func (s *orderRecordStage) Process(ctx context.Context, state *State) error {
+	s.mu.Lock()
+	s.order = append(s.order, state.Input)
+	s.mu.Unlock()
+	if atomic.CompareAndSwapInt32(&s.first, 0, 1) {
+		close(s.start)
+		select {
+		case <-s.gate:
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+	state.Done = true
+	return nil
+}
+
+func TestAgentLoopPriorityDispatchedFirst(t *testing.T) {
+	Convey("priority turns are dispatched before queued turns", t, func() {
+		stage := &orderRecordStage{
+			gate:  make(chan struct{}),
+			start: make(chan struct{}),
+		}
+		// Single loop stage that records and gates the first turn.
+		compositor := NewCompositor(nil, []Stage{stage}, 10)
+		logger, _ := zap.NewDevelopment()
+		q := make(chan *agentio.Turn, 8)
+		a := NewAgentLoop(q, compositor, logger, nil, nil, 1)
+		// Replace the unbuffered priority channel with a buffered one so the
+		// test can enqueue the priority turn before the worker reaches the
+		// dispatch select, making ordering deterministic.
+		a.priority = make(chan *agentio.Turn, 8)
+
+		var doneCount int32
+		a.SetOnResult(func(r agentio.TurnResult) {
+			if r.Done {
+				atomic.AddInt32(&doneCount, 1)
+			}
+		})
+
+		ctx, cancel := context.WithCancel(context.Background())
+		runDone := make(chan struct{})
+		go func() { a.Run(ctx); close(runDone) }()
+
+		// First (regular) turn — holds the worker so we can queue the rest.
+		q <- &agentio.Turn{SessionID: "s", Input: "r1"}
+		<-stage.start
+
+		// While the worker is busy with r1, enqueue regular turns and a
+		// priority turn. Both channels will be ready when the worker loops
+		// back, so this is exactly the case the old random select mishandled.
+		// The priority channel is unbuffered, so send from a goroutine — the
+		// send completes once the worker releases r1 and reaches the select.
+		q <- &agentio.Turn{SessionID: "s", Input: "r2"}
+		q <- &agentio.Turn{SessionID: "s", Input: "r3"}
+		a.priority <- &agentio.Turn{SessionID: "s", Input: "p1"}
+
+		// Release the first turn. Worker should now pick p1 before r2/r3.
+		close(stage.gate)
+
+		// Wait for all four turns to complete.
+		for atomic.LoadInt32(&doneCount) < 4 {
+			select {
+			case <-time.After(5 * time.Second):
+				cancel()
+				t.Fatalf("timeout: only %d turns done", atomic.LoadInt32(&doneCount))
+			default:
+				runtime.Gosched()
+			}
+		}
+		cancel()
+		<-runDone
+
+		stage.mu.Lock()
+		got := append([]string(nil), stage.order...)
+		stage.mu.Unlock()
+
+		// r1 is first (it was already being processed). p1 must come before
+		// r2 and r3 — that is the priority guarantee.
+		So(got[0], ShouldEqual, "r1")
+		So(indexOf(got, "p1"), ShouldBeLessThan, indexOf(got, "r2"))
+		So(indexOf(got, "p1"), ShouldBeLessThan, indexOf(got, "r3"))
+	})
+}
+
+func indexOf(s []string, v string) int {
+	for i, x := range s {
+		if x == v {
+			return i
+		}
+	}
+	return -1
 }
 
 func TestAgentLoopRunContextDone(t *testing.T) {

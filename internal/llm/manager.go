@@ -6,8 +6,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-
-	"dolphin/internal/hook"
 )
 
 // Manager holds multiple providers and routes requests by model name.
@@ -134,9 +132,9 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 
 	// Use the original API model name, not the qualified routing name.
 	apiModel := modelName
-	apiType := ""
 	maxConcurrency := 0
 	stream := true
+	streamSet := false
 	shortName := modelName
 	if _, after, found := strings.Cut(modelName, "/"); found {
 		shortName = after
@@ -165,9 +163,9 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 			if mc.TopP != 0 {
 				req.TopP = mc.TopP
 			}
-			apiType = mc.APIType
 			if mc.StreamSet {
 				stream = mc.Stream
+				streamSet = true
 			}
 			maxConcurrency = mc.MaxConcurrency
 			break
@@ -175,7 +173,7 @@ func (m *Manager) CompleteStream(ctx context.Context, req LLMRequest) (<-chan LL
 	}
 	req.Model = apiModel
 	req.Stream = stream
-	hook.DispatchLLMRequest(&req, modelName, apiType)
+	req.StreamSet = streamSet
 
 	if maxConcurrency <= 0 {
 		return provider.CompleteStream(ctx, req)
