@@ -165,12 +165,12 @@ func parseEditOutput(raw string) ([]Edit, error) {
 	var edits []Edit
 	if err := json.Unmarshal([]byte(raw), &edits); err == nil {
 		return edits, nil
-	} else {
 	}
-	var wrapper struct { Edits []Edit `json:"edits"` }
+	var wrapper struct {
+		Edits []Edit `json:"edits"`
+	}
 	if err := json.Unmarshal([]byte(raw), &wrapper); err == nil && len(wrapper.Edits) > 0 {
 		return wrapper.Edits, nil
-	} else {
 	}
 	var single Edit
 	if err := json.Unmarshal([]byte(raw), &single); err != nil {

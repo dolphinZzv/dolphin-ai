@@ -33,11 +33,11 @@ func TestE2E_EditPhase_WithFakeLLM(t *testing.T) {
 	d := setupE2EDream(t)
 	proposals := []EditProposal{
 		{ID: "p1", Target: "commands/deploy.md", Action: ActionImprove,
-			Before: "Run: docker compose up -d",
-			Reason: "user corrected: use kubectl",
+			Before:     "Run: docker compose up -d",
+			Reason:     "user corrected: use kubectl",
 			Confidence: 0.85, Impact: 2.0, NeedsLLM: true},
 		{ID: "p2", Target: "commands/old.md", Action: ActionDeprecate,
-			Reason: "unused for 45 days",
+			Reason:     "unused for 45 days",
 			Confidence: 0.90, Impact: 0.3, NeedsLLM: false},
 	}
 	edits, err := d.edit(context.Background(), proposals)
@@ -109,8 +109,8 @@ func TestE2E_BuildEditPrompt(t *testing.T) {
 	brain.files["commands/deploy.md"] = "deploy"
 	proposals := []EditProposal{{
 		ID: "p1", Target: "commands/deploy.md", Action: ActionImprove,
-		Before: "docker compose up",
-		Reason: "should use kubectl",
+		Before:     "docker compose up",
+		Reason:     "should use kubectl",
 		Confidence: 0.85, Impact: 2.0, NeedsLLM: true,
 	}}
 	prompt := d.buildEditPrompt(proposals)

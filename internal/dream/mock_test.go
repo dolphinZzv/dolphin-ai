@@ -57,19 +57,23 @@ type mockBrain struct {
 	files map[string]string
 }
 
-func newMockBrain() *mockBrain { return &mockBrain{files: make(map[string]string)} }
+func newMockBrain() *mockBrain   { return &mockBrain{files: make(map[string]string)} }
 func (b *mockBrain) Dir() string { return "/tmp/test-brain" }
 func (b *mockBrain) Read(_ context.Context, path string) (string, error) {
-	if v, ok := b.files[path]; ok { return v, nil }
+	if v, ok := b.files[path]; ok {
+		return v, nil
+	}
 	return "", nil
 }
 func (b *mockBrain) List(_ context.Context) ([]string, error) {
 	var ps []string
-	for p := range b.files { ps = append(ps, p) }
+	for p := range b.files {
+		ps = append(ps, p)
+	}
 	return ps, nil
 }
 func (b *mockBrain) AutoCommit(_ context.Context, _ string) {}
-func (b *mockBrain) Tree() (string, error) { return "", nil }
+func (b *mockBrain) Tree() (string, error)                  { return "", nil }
 
 type mockProvider struct {
 	output string
@@ -78,7 +82,9 @@ type mockProvider struct {
 
 func (p *mockProvider) Name() string { return "mock" }
 func (p *mockProvider) CompleteStream(_ context.Context, _ llm.LLMRequest) (<-chan llm.LLMChunk, error) {
-	if p.err != nil { return nil, p.err }
+	if p.err != nil {
+		return nil, p.err
+	}
 	ch := make(chan llm.LLMChunk, 1)
 	go func() { ch <- llm.LLMChunk{Content: p.output}; close(ch) }()
 	return ch, nil
@@ -102,10 +108,4 @@ func userMsg(c string, ts time.Time) types.Message {
 }
 func asstMsg(c string, ts time.Time) types.Message {
 	return types.Message{Role: types.RoleAssistant, Content: c, Timestamp: ts}
-}
-func toolMsg(c, callID string, isError bool, ts time.Time) types.Message {
-	return types.Message{Role: types.RoleTool, Content: c, ToolCallID: callID, IsError: isError, Timestamp: ts}
-}
-func summaryMsg(c string, ts time.Time) types.Message {
-	return types.Message{Role: types.RoleUser, Content: c, Timestamp: ts, IsSummary: true}
 }

@@ -70,7 +70,9 @@ func TestGate_EnoughMessages(t *testing.T) {
 func TestGate_ConsecutiveEmptyBlocks(t *testing.T) {
 	mem := newMockMemory()
 	now := time.Now()
-	for i := 0; i < 10; i++ { mem.messages["s_t"] = append(mem.messages["s_t"], userMsg("x", now)) }
+	for i := 0; i < 10; i++ {
+		mem.messages["s_t"] = append(mem.messages["s_t"], userMsg("x", now))
+	}
 	d := &Dream{minSessions: 1, minUserMessages: 8, maxConsecutiveEmpty: 2, memory: mem}
 	d.state = newState()
 	d.state.ConsecutiveEmpty = 3
@@ -87,7 +89,9 @@ func TestGate_ConsecutiveEmptyBlocks(t *testing.T) {
 func TestGate_ConsecutiveEmptyLiftedByManySessions(t *testing.T) {
 	mem := newMockMemory()
 	now := time.Now()
-	for i := 0; i < 10; i++ { mem.messages["s"] = append(mem.messages["s"], userMsg("x", now)) }
+	for i := 0; i < 10; i++ {
+		mem.messages["s"] = append(mem.messages["s"], userMsg("x", now))
+	}
 	d := &Dream{minSessions: 1, minUserMessages: 1, maxConsecutiveEmpty: 2, memory: mem}
 	d.state = newState()
 	d.state.ConsecutiveEmpty = 3
