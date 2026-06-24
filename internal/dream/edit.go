@@ -157,36 +157,29 @@ func (d *Dream) buildBrainContext() BrainContext {
 
 // parseEditOutput parses the JSON output from the Phase 2 LLM.
 func parseEditOutput(raw string) ([]Edit, error) {
-	// Strip any markdown code fences.
 	raw = strings.TrimSpace(raw)
 	raw = strings.TrimPrefix(raw, "```json")
 	raw = strings.TrimPrefix(raw, "```")
 	raw = strings.TrimSuffix(raw, "```")
 	raw = strings.TrimSpace(raw)
-
-	// Handle both object and array formats.
 	var edits []Edit
-	if err := json.Unmarshal([]byte(raw), &edits); err != nil {
-		// Try {"edits": [...]} wrapper.
-		var wrapper struct {
-			Edits []Edit `json:"edits"`
-		}
-		if err2 := json.Unmarshal([]byte(raw), &wrapper); err2 != nil {
-			// Try single object.
-			var single Edit
-			if err3 := json.Unmarshal([]byte(raw), &single); err3 != nil {
-				return nil, fmt.Errorf("parse edits: %w (raw: %.200s)", err, raw)
-			}
-			if single.ProposalID != "" {
-				edits = []Edit{single}
-			} else {
-				return nil, fmt.Errorf("parse edits: %w", err)
-			}
-		} else {
-			edits = wrapper.Edits
-		}
+	if err := json.Unmarshal([]byte(raw), &edits); err == nil {
+		return edits, nil
+	} else {
 	}
-	return edits, nil
+	var wrapper struct { Edits []Edit `json:"edits"` }
+	if err := json.Unmarshal([]byte(raw), &wrapper); err == nil && len(wrapper.Edits) > 0 {
+		return wrapper.Edits, nil
+	} else {
+	}
+	var single Edit
+	if err := json.Unmarshal([]byte(raw), &single); err != nil {
+		return nil, fmt.Errorf("parse edits: %w (raw: %.200s)", err, raw)
+	}
+	if single.ProposalID != "" {
+		return []Edit{single}, nil
+	}
+	return nil, fmt.Errorf("parse edits: empty proposal_id")
 }
 
 // filterEdits removes edits that fail causality verification or quality checks.

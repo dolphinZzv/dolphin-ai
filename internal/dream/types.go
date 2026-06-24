@@ -1,8 +1,10 @@
 package dream
 
 import (
+	"context"
 	"time"
 
+	"dolphin/internal/session"
 	"dolphin/internal/types"
 )
 
@@ -132,6 +134,26 @@ type BrainContext struct {
 	Commands []string `json:"commands"`
 	Facts    []string `json:"facts"`
 	Profile  string   `json:"profile"`
+}
+
+// brainAccess is the subset of *brain.Brain methods used by Dream.
+// Abstracted so tests can use a mock.
+type brainAccess interface {
+	Dir() string
+	Read(ctx context.Context, path string) (string, error)
+	List(ctx context.Context) ([]string, error)
+	AutoCommit(ctx context.Context, msg string)
+	Tree() (string, error)
+}
+
+// agentIOChecker is the subset of *agentio.AgentIO used by Dream.
+type agentIOChecker interface {
+	Processing() bool
+}
+
+// sessionLister is the subset of *session.Manager used by Dream.
+type sessionLister interface {
+	List(ctx context.Context) ([]*session.Session, error)
 }
 
 // sessionSnapshot is a read-once snapshot of a session's message history,

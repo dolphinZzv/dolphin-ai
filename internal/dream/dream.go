@@ -8,11 +8,8 @@ import (
 
 	"go.uber.org/zap"
 
-	"dolphin/internal/agentio"
-	"dolphin/internal/brain"
 	"dolphin/internal/llm"
 	"dolphin/internal/memory"
-	"dolphin/internal/session"
 )
 
 // Dream is the offline self-edit orchestrator. It wakes after a period of
@@ -38,10 +35,10 @@ type Dream struct {
 
 	// Dependencies.
 	memory     memory.Memory
-	sessionMgr *session.Manager
-	brain      *brain.Brain
+	sessionMgr sessionLister
+	brain      brainAccess
 	provider   llm.Provider
-	agentIO    *agentio.AgentIO
+	agentIO    agentIOChecker
 	logger     *zap.Logger
 
 	// Runtime.
@@ -80,7 +77,7 @@ type Config struct {
 }
 
 // New creates a Dream instance. Does not start the goroutine — call Start().
-func New(cfg Config, mem memory.Memory, sm *session.Manager, br *brain.Brain, prov llm.Provider, aio *agentio.AgentIO, log *zap.Logger) *Dream {
+func New(cfg Config, mem memory.Memory, sm sessionLister, br brainAccess, prov llm.Provider, aio agentIOChecker, log *zap.Logger) *Dream {
 	ctx, cancel := context.WithCancel(context.Background())
 	d := &Dream{
 		interval:            time.Duration(cfg.IdleMinutes) * time.Minute,

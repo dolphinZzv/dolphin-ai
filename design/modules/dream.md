@@ -277,7 +277,24 @@ OUTPUT: after: null
         reasoning: null
 ```
 
-### 2.3 质量约束
+### 2.3 Prompt 规则（发给 LLM 的指令清单）
+
+```
+1. Output ONLY valid JSON array of edit objects. No markdown wrapping.
+2. Each edit: {"proposal_id":"...", "action":"...", "target":"...", "after":"...", "reasoning":"..."}
+3. improve/merge/create: after must be non-empty. deprecate: after must be null.
+4. Every non-deprecate edit MUST have a non-empty reasoning.
+5. After length ≤ before length for improve/merge (shorter is better).
+6. Do not create new files if an existing brain file already covers the topic.
+7. For any proposal marked rhetorical: only produce an edit if a paired
+   non-rhetorical L1/L2 proposal in the same batch confirms the same
+   corrective intent. If no such pairing exists, discard the rhetorical
+   proposal silently (omit it from the output array).
+```
+
+规则 7 是 Phase 1 → Phase 2 的反问否定捆绑指令。
+
+### 2.4 质量约束
 
 | 约束 | 检查 | 不通过行为 |
 |------|------|-----------|
@@ -287,7 +304,7 @@ OUTPUT: after: null
 | reasoning 有 | len > 0（deprecate 除外） | 丢弃 |
 | 编辑方向正确 | After 长度 ≤ Before 长度（improve/merge 类型） | 丢弃（仅 soft constraint；语义改进优先于字符数） |
 
-### 2.4 因果验证
+### 2.5 因果验证
 
 ```go
 func (d *Dream) verifyCausality(edit LLMEdit, proposals []EditProposal) bool {
@@ -432,6 +449,43 @@ func (d *Dream) calibrate(edits []Edit) {
 ```
 
 **为什么 auto_apply 不校准：** 在自动模式下，缺少"编辑是否被用户接受"的真实信号。V2 可引入隐式负例检测（后续 session 的纠正信号是否针对上次 dream 的编辑），但 V1 不做。未校准的默认阈值已经足够保守。
+
+**采纳率写入路径：** `/dream accept` 和 `/dream reject` 在执行时更新 `.dolphin/dream.json`：
+
+```go
+// /dream accept 处理器
+func onDreamAccept(dreamID int, acceptedCommitIDs []int) {
+    s := loadState()
+    total := len(s.LastAppliedEdits)
+    adopted := len(acceptedCommitIDs)
+    s.Calibration.Window = append(s.Calibration.Window, CalibrationEntry{
+        DreamID: dreamID, Adopted: adopted, Total: total,
+    })
+    if len(s.Calibration.Window) > s.CalibrationWindowSize {
+        s.Calibration.Window = s.Calibration.Window[1:]
+    }
+    s.save()
+}
+// /dream reject 同理：adopted = 用户选择保留的 commit 数，total = 总编辑数
+```
+
+**`/dream review` 输出格式：**
+```
+$ /dream review
+Dream #12 — 分支 dream/12 (5 commits)
+
+  1. improve         (+3 -2) commands/deploy.md
+  2. improve         (+2 -0) commands/test.md
+  3. merge           (+8 -15) knowledge/deploy.md (合并 2→1)
+  4. create          (+4) knowledge/deploy-preference.md
+  5. deprecate       (+1) commands/old-deploy.md
+
+接受全部？ /dream accept     拒绝全部？ /dream reject
+选择性？ /dream accept 1 3    详细？ /dream diff 3
+```
+通过 `git log main..dream/N --oneline` + `git diff --stat main...dream/N` 拼接输出。
+
+---
 
 ### 4.2 V2 预留：隐式负例
 

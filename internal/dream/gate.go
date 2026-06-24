@@ -8,6 +8,9 @@ import (
 // shouldRun implements the Phase 0 gate: is there enough signal to justify
 // a dream run?
 func (d *Dream) shouldRun(sessions []*session.Session) (bool, string) {
+	if d.state == nil {
+		return false, "state not initialised"
+	}
 	// Find sessions newer than last dream.
 	var newSessions []*session.Session
 	for _, s := range sessions {

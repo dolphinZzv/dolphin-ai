@@ -124,17 +124,15 @@ func (d *Dream) extractFromSessions(sessions []sessionSnapshot) *ExtractResult {
 // didAssistantRespondAfterCorrection checks if the assistant's behaviour
 // changed after the user's correction message.
 func (d *Dream) didAssistantRespondAfterCorrection(msgs []types.Message, correctionMsg types.Message) bool {
-	found := false
-	for _, m := range msgs {
+	for i, m := range msgs {
 		if m.Timestamp.Equal(correctionMsg.Timestamp) || m.Timestamp.After(correctionMsg.Timestamp) {
-			if found {
-				continue
+			// Look for the next assistant message after the correction.
+			for j := i + 1; j < len(msgs); j++ {
+				if msgs[j].Role == types.RoleAssistant {
+					return true
+				}
 			}
-			found = true
-			continue
-		}
-		if found && m.Role == types.RoleAssistant {
-			return true
+			return false
 		}
 	}
 	return false
@@ -494,7 +492,7 @@ func detectExplicitPreference(content string) bool {
 }
 
 func detectExplicitCommand(content string) bool {
-	return containsAny(content, "写一个", "创建命令", "加一个命令", "脚本")
+	return containsAny(content, "写一个", "创建", "加一个命令", "脚本", "帮我写")
 }
 
 func detectCorrection(content string) bool {
