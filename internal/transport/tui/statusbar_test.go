@@ -359,3 +359,84 @@ func TestTUIi18n_SwitchesWithLang(t *testing.T) {
 		t.Errorf("fr fallback: expected English, got %q", got)
 	}
 }
+
+// Side status should show MCP tool count when > 0.
+func TestRenderSideStatus_ShowsMCPCount(t *testing.T) {
+	m := newModel()
+	m.width = 160
+	m.modelName = "test-model"
+	m.mcpToolCount = 12
+
+	out := m.renderSideStatus()
+	if !strings.Contains(out, "mcp") {
+		t.Errorf("expected mcp label in side status, got: %s", out)
+	}
+	if !strings.Contains(out, "12") {
+		t.Errorf("expected mcp count 12, got: %s", out)
+	}
+}
+
+// MCP count of 0 should NOT be shown in the side panel.
+func TestRenderSideStatus_HidesMCPCountWhenZero(t *testing.T) {
+	m := newModel()
+	m.width = 160
+	m.modelName = "test-model"
+	m.mcpToolCount = 0
+
+	out := m.renderSideStatus()
+	if strings.Contains(out, "mcp") {
+		t.Errorf("expected no mcp when count is 0, got: %s", out)
+	}
+}
+
+// MCP count should appear in the narrow-mode status bar.
+func TestView_ShowsMCPCountInNarrowMode(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 50
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.viewport = viewport.New(50, 10)
+	m.viewport.SetContent("hello")
+	m.mcpToolCount = 5
+
+	out := m.View()
+	plain := ansiRe.ReplaceAllString(out, "")
+	if !strings.Contains(plain, "mcp:5") {
+		t.Errorf("expected mcp:5 in narrow status bar, got: %s", plain)
+	}
+}
+
+// MCP count of 0 should NOT appear in narrow-mode status bar.
+func TestView_HidesMCPCountInNarrowModeWhenZero(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 50
+	m.height = 24
+	m.agentName = "Dolphin"
+	m.viewport = viewport.New(50, 10)
+	m.viewport.SetContent("hello")
+	m.mcpToolCount = 0
+
+	out := m.View()
+	plain := ansiRe.ReplaceAllString(out, "")
+	if strings.Contains(plain, "mcp:") {
+		t.Errorf("expected no mcp: when count is 0, got: %s", plain)
+	}
+}
+
+// mcpCountMsg should update the model's mcpToolCount field.
+func TestMCPCountMsg_UpdatesModel(t *testing.T) {
+	m := newModel()
+	m.ready = true
+	m.width = 80
+	m.height = 24
+	m.viewport = viewport.New(80, 10)
+	m.viewport.SetContent("hello")
+
+	newM, _ := m.Update(mcpCountMsg{count: 7})
+	m = newM.(model)
+	if m.mcpToolCount != 7 {
+		t.Errorf("expected mcpToolCount=7, got %d", m.mcpToolCount)
+	}
+}

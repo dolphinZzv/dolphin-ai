@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"go.uber.org/zap"
@@ -11,6 +12,7 @@ import (
 	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/limit"
+	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
 )
@@ -48,12 +50,16 @@ func init() {
 		if l, ok := cfg["logger"].(*zap.Logger); ok {
 			logger = l
 		}
+		var toolReg *tool.Registry
+		if tr, ok := cfg["tool_registry"].(*tool.Registry); ok {
+			toolReg = tr
+		}
 		compMaxTokens, _ := cfg["compaction.max_tokens"].(int)
 		var getCompletions func(string) []string
 		if f, ok := cfg["get_completions"].(func(string) []string); ok {
 			getCompletions = f
 		}
-		tui := NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger)
+		tui := NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger, toolReg)
 		tui.getCompletions = getCompletions
 		return tui, nil
 	})
@@ -89,9 +95,10 @@ type TUI struct {
 	compMaxTokens      int
 	limiter            *limit.Limiter
 	logger             *zap.Logger
+	toolReg            *tool.Registry
 }
 
-func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, temperature float64, tempFor func(string) float64, reasoningEffort string, reasoningEffortFor func(string) string, thinking bool, thinkingFor func(string) bool, compMaxTokens int, logger *zap.Logger) *TUI {
+func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, temperature float64, tempFor func(string) float64, reasoningEffort string, reasoningEffortFor func(string) string, thinking bool, thinkingFor func(string) bool, compMaxTokens int, logger *zap.Logger, toolReg *tool.Registry) *TUI {
 	ctx, cancel := context.WithCancel(context.Background())
 	username := os.Getenv("USER")
 	return &TUI{
@@ -117,6 +124,7 @@ func NewTUI(modelName string, showTools, showThinking bool, workmode string, poo
 		thinkingFor:        thinkingFor,
 		compMaxTokens:      compMaxTokens,
 		logger:             logger,
+		toolReg:            toolReg,
 	}
 }
 
@@ -261,6 +269,16 @@ func (t *TUI) syncSession() {
 	}
 
 	t.program.Send(msg)
+
+	// Also send MCP tool count for the status bar.
+	if t.toolReg != nil && t.program != nil {
+		ctx, cancel := context.WithTimeout(t.ctx, 2*time.Second)
+		defs, err := t.toolReg.List(ctx)
+		cancel()
+		if err == nil {
+			t.program.Send(mcpCountMsg{count: len(defs)})
+		}
+	}
 }
 
 var _ transport.IO = (*TUI)(nil)

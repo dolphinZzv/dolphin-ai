@@ -17,6 +17,7 @@ import (
 	"dolphin/internal/session"
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
+	"dolphin/internal/types"
 )
 
 type TransportsBootstrapper struct{}
@@ -74,6 +75,10 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 					return reg
 				}
 			}
+			// Pass tool registry to TUI so it can display MCP tool count.
+			if tc.Type == "tui" && c.ToolReg != nil {
+				tc.Config["tool_registry"] = c.ToolReg
+			}
 		}
 		tio, err := transport.Build(ctx, tc.Type, tc.Config)
 		if err != nil {
@@ -113,24 +118,34 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 					)
 				}
 			case td.URL != "":
-				client := mcp.NewClient(td.URL)
-				c.ToolReg.AddNamedSource(srcName, client)
-				c.Logger.Info("registered transport MCP source",
+				ac := mcp.NewAsyncClient(func(ctx context.Context) (mcp.ClientExecutor, []types.ToolDef, error) {
+					client := mcp.NewClient(td.URL)
+					defs, err := client.List(ctx)
+					if err != nil {
+						return nil, nil, err
+					}
+					return client, defs, nil
+				})
+				c.ToolReg.AddNamedSource(srcName, ac)
+				c.Logger.Info("registered transport MCP source (async)",
 					zap.String("transport", tio.ID()),
 					zap.String("url", td.URL),
 				)
 			case td.Command != "":
-				client, err := mcp.NewStdioClient(ctx, td.Command, td.Args)
-				if err != nil {
-					c.Logger.Warn("transport MCP stdio client failed",
-						zap.String("transport", tio.ID()),
-						zap.String("command", td.Command),
-						zap.Error(err),
-					)
-					continue
-				}
-				c.ToolReg.AddNamedSource(srcName, client)
-				c.Logger.Info("registered transport MCP source",
+				ac := mcp.NewAsyncClient(func(ctx context.Context) (mcp.ClientExecutor, []types.ToolDef, error) {
+					client, err := mcp.NewStdioClient(ctx, td.Command, td.Args)
+					if err != nil {
+						return nil, nil, err
+					}
+					defs, err := client.List(ctx)
+					if err != nil {
+						client.Close()
+						return nil, nil, err
+					}
+					return client, defs, nil
+				})
+				c.ToolReg.AddNamedSource(srcName, ac)
+				c.Logger.Info("registered transport MCP source (async)",
 					zap.String("transport", tio.ID()),
 					zap.String("command", td.Command),
 				)

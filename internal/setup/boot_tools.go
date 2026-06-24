@@ -12,6 +12,7 @@ import (
 	"dolphin/internal/mcp"
 	"dolphin/internal/skill"
 	"dolphin/internal/tool"
+	"dolphin/internal/types"
 )
 
 type ToolsBootstrapper struct{}
@@ -118,8 +119,23 @@ func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) 
 				logger.Warn("mcp server missing url", zap.String("name", name))
 				continue
 			}
-			reg.AddNamedSource(name, mcp.NewLazyClient(url))
-			logger.Info("registered MCP server (lazy)",
+			ac := mcp.NewAsyncClient(func(ctx context.Context) (mcp.ClientExecutor, []types.ToolDef, error) {
+				client := mcp.NewClient(url)
+				defs, err := client.List(ctx)
+				if err != nil {
+					return nil, nil, err
+				}
+				return client, defs, nil
+			})
+			ac.SetOnConnect(func(count int) {
+				logger.Info("async MCP server connected",
+					zap.String("name", name),
+					zap.String("url", url),
+					zap.Int("tools", count),
+				)
+			})
+			reg.AddNamedSource(name, ac)
+			logger.Info("registered async MCP server (url)",
 				zap.String("name", name),
 				zap.String("url", url),
 			)
@@ -138,29 +154,29 @@ func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) 
 				}
 				args = append(args, a)
 			}
-			client, err := mcp.NewStdioClient(context.Background(), cmd, args)
-			if err != nil {
-				logger.Warn("mcp stdio server start failed",
+			ac := mcp.NewAsyncClient(func(ctx context.Context) (mcp.ClientExecutor, []types.ToolDef, error) {
+				client, err := mcp.NewStdioClient(ctx, cmd, args)
+				if err != nil {
+					return nil, nil, err
+				}
+				defs, err := client.List(ctx)
+				if err != nil {
+					client.Close()
+					return nil, nil, err
+				}
+				return client, defs, nil
+			})
+			ac.SetOnConnect(func(count int) {
+				logger.Info("async stdio MCP server connected",
 					zap.String("name", name),
 					zap.String("command", cmd),
-					zap.Error(err),
+					zap.Int("tools", count),
 				)
-				continue
-			}
-			defs, err := client.List(context.Background())
-			if err != nil {
-				logger.Warn("mcp stdio server list failed",
-					zap.String("name", name),
-					zap.Error(err),
-				)
-				client.Close()
-				continue
-			}
-			reg.AddNamedSource(name, client)
-			logger.Info("loaded stdio MCP server",
+			})
+			reg.AddNamedSource(name, ac)
+			logger.Info("registered async stdio MCP server",
 				zap.String("name", name),
 				zap.String("command", cmd),
-				zap.Int("tools", len(defs)),
 			)
 		}
 	}

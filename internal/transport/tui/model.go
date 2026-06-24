@@ -42,7 +42,13 @@ type (
 	prioritySubmitMsg struct{ text string }
 	modelChangeMsg    struct{ name string }
 	sessionMsg        struct{ id string }
-	usageMsg          struct {
+	mcpCountMsg       struct{ count int }
+	tipsMsg           struct {
+		text     string
+		duration time.Duration
+	}
+	clearTipsMsg struct{}
+	usageMsg     struct {
 		inputTokens   int
 		outputTokens  int
 		rounds        int
@@ -113,6 +119,8 @@ type model struct {
 	hardTokens         int64
 	tokens             int64
 	toolCalls          int
+	mcpToolCount       int
+	tipsText           string
 	setPriority        func()
 	savePrefs          func()
 	currentMsg         string // user message currently being processed
@@ -292,19 +300,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if input == "/tools" {
 				m.showTools = !m.showTools
-				m.appendEntry(renderEntry{content: fmt.Sprintf(i18n.T("tui.toggle_tools"), onOff(m.showTools)), style: "system"})
+				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_tools"), onOff(m.showTools))
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
 			if input == "/thinking" {
 				m.showThinking = !m.showThinking
-				m.appendEntry(renderEntry{content: fmt.Sprintf(i18n.T("tui.toggle_thinking"), onOff(m.showThinking)), style: "system"})
+				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_thinking"), onOff(m.showThinking))
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
 			if input == "/windows" || input == "/windows status" {
 				m.showSideStatus = !m.showSideStatus
-				m.appendEntry(renderEntry{content: fmt.Sprintf(i18n.T("tui.toggle_sidepanel"), onOff(m.showSideStatus)), style: "system"})
+				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_sidepanel"), onOff(m.showSideStatus))
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
@@ -423,6 +431,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case sessionMsg:
 		m.sessionID = msg.id
+
+	case mcpCountMsg:
+		m.mcpToolCount = msg.count
+
+	case tipsMsg:
+		m.tipsText = msg.text
+		d := msg.duration
+		if d <= 0 {
+			d = 3 * time.Second
+		}
+		return m, tea.Tick(d, func(time.Time) tea.Msg { return clearTipsMsg{} })
+
+	case clearTipsMsg:
+		m.tipsText = ""
 
 	case usageMsg:
 		m.inputTokens = msg.inputTokens
@@ -727,6 +749,10 @@ func (m *model) updateViewportHeight() {
 	}
 	// Fixed bottom rows: separator + textarea + separator + status bar.
 	fixed := taLines + 3
+	// Tips line — shown between viewport and queue when a tip is active.
+	if m.tipsText != "" {
+		fixed++
+	}
 	// Queue area: header + body lines (capped per category) + separator
 	// above the queue. queueBodyLines matches renderQueue exactly.
 	active, pending := queueCounts(m.agentIO)
@@ -1006,6 +1032,9 @@ func (m model) View() string {
 		if m.toolCalls > 0 {
 			leftParts = append(leftParts, fmt.Sprintf("tools:%d", m.toolCalls))
 		}
+		if m.mcpToolCount > 0 {
+			leftParts = append(leftParts, fmt.Sprintf("mcp:%d", m.mcpToolCount))
+		}
 		if m.inputTokens > 0 || m.outputTokens > 0 {
 			leftParts = append(leftParts, fmt.Sprintf("in:%d out:%d", m.inputTokens, m.outputTokens))
 		}
@@ -1049,10 +1078,19 @@ func (m model) View() string {
 		topRow = viewportColumn
 	}
 
-	// === Row 2: full-width queue ===
+	// === Row 2: tips + full-width queue ===
 	fullSep := styleSeparator.Render(strings.Repeat("-", m.width))
 	var elements []string
 	elements = append(elements, topRow)
+	// Tips banner between viewport and queue — brief notifications for
+	// toggles, copy confirmations, etc.
+	if m.tipsText != "" {
+		tipLine := lipgloss.NewStyle().
+			Foreground(adaptiveFaint).
+			Width(m.width).
+			Render("💡 " + m.tipsText)
+		elements = append(elements, tipLine)
+	}
 	if q := renderQueue(m.agentIO, m.completedItems, m.width); q != "" {
 		elements = append(elements, fullSep, q)
 	}
@@ -1203,7 +1241,7 @@ func (m model) renderSideStatus() string {
 		return ""
 	}
 	boxInnerWidth := innerWidth - 2 - 4 // border on each side + horizontal padding 2
-	sep := strings.Repeat("╌", boxInnerWidth)
+	sep := strings.Repeat("-", boxInnerWidth)
 	// Max value width: boxInner - label column - 1 space gap.
 	maxValWidth := boxInnerWidth - sideLabelWidth - 1
 	if maxValWidth < 4 {
@@ -1232,6 +1270,9 @@ func (m model) renderSideStatus() string {
 		if m.toolCalls > 0 {
 			rows = append(rows, [2]string{i18n.T("tui.label_calls"), fmt.Sprintf("%d", m.toolCalls)})
 		}
+	}
+	if m.mcpToolCount > 0 {
+		rows = append(rows, [2]string{"mcp", fmt.Sprintf("%d", m.mcpToolCount)})
 	}
 	if m.inputTokens > 0 || m.outputTokens > 0 {
 		rows = append(rows, [2]string{i18n.T("tui.label_inout"), fmt.Sprintf("%d/%d", m.inputTokens, m.outputTokens)})

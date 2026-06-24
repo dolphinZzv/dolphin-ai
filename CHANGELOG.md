@@ -181,3 +181,10 @@ All notable changes to Dolphin will be documented in this file.
 - (gofmt formatting fix)
 - Fix CI flaky tests: add mutex to testSessionStore, sort multi-worker results, poll for timeline ack instead of fixed sleep
 - Add `bin` to agent schema properties
+
+- **Async MCP client**: New `mcp.AsyncClient` for lazy/non-blocking MCP connections during bootstrap. Both URL-based and stdio MCP servers use async initialization — startup proceeds even if a server is slow to connect. The `Connector` callback runs in a background goroutine; `List()` returns cached tools once connected, `Execute()` errors until ready. `SetOnConnect` provides a logging hook. Bootstrappers in `setup/boot_tools.go` and `setup/boot_transports.go` register async clients instead of blocking on `List()`.
+- **TUI tips notification system**: Toggle messages (`/tools`, `/thinking`, `/windows`) and copy confirmations no longer pollute the message history. Instead they appear as a temporary `💡` banner between the viewport and the queue, auto-dismissing after 3 seconds. New model messages: `tipsMsg`, `clearTipsMsg`, `mcpCountMsg`.
+- **MCP tool count in TUI status bar**: Shows `mcp:N` in both the narrow (inline) status bar and the side panel. Tool registry is passed to TUI during bootstrap; `syncSession()` queries it and sends `mcpCountMsg` to update the model.
+- **Copy-to-clipboard confirmation**: After `Ctrl+Shift+C` copies selected text, a "Copied" (`已复制到剪贴板`) tip message appears for 2 seconds instead of a silent copy.
+- **Column-aligned command list**: `/commands list` now renders aligned columns with `command`/`status`/`description` headers and dashed separators instead of a simple indented list. Repeated list-rendering logic extracted into `printCommandList` helper.
+- **Side panel separator simplified**: `╌` (U+254C) changed to `-` (ASCII hyphen) for simpler rendering.

@@ -2,11 +2,14 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+
+	"dolphin/internal/i18n"
 )
 
 // viewportStartY returns the terminal row (0-indexed) where the viewport's
@@ -257,7 +260,7 @@ func (m model) applySelectionToLine(line string, lineIdx int) string {
 // Copy to clipboard ----------------------------------------------------------
 
 // copySelection copies the selected text (ANSI stripped) to the system
-// clipboard. Returns a tea.Cmd so the UI does not block.
+// clipboard and returns a tipsMsg to show a "Copied" notification.
 func (m model) copySelection() tea.Cmd {
 	if !m.sel.active {
 		return nil
@@ -266,10 +269,15 @@ func (m model) copySelection() tea.Cmd {
 	if text == "" {
 		return nil
 	}
-	return func() tea.Msg {
-		_ = clipboard.WriteAll(text)
-		return nil
-	}
+	return tea.Sequence(
+		func() tea.Msg {
+			_ = clipboard.WriteAll(text)
+			return nil
+		},
+		func() tea.Msg {
+			return tipsMsg{text: i18n.T("tui.copied"), duration: 2 * time.Second}
+		},
+	)
 }
 
 // selectedText extracts the plain text (ANSI stripped) of the current
