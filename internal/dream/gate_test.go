@@ -62,6 +62,7 @@ func TestGate_EnoughMessages(t *testing.T) {
 		makeSession("s2", now, true),
 	}}
 	d.state = newState()
+	d.state.LastDreamAt = now.Add(-2 * time.Hour) // sessions after this
 	if ok, _ := d.shouldRun(ss.sessions); !ok {
 		t.Fatal("expected pass: 8 user messages")
 	}
@@ -95,6 +96,7 @@ func TestGate_ConsecutiveEmptyLiftedByManySessions(t *testing.T) {
 	d := &Dream{minSessions: 1, minUserMessages: 1, maxConsecutiveEmpty: 2, memory: mem}
 	d.state = newState()
 	d.state.ConsecutiveEmpty = 3
+	d.state.LastDreamAt = now.Add(-2 * time.Hour) // sessions after this
 	// 6 sessions, >= 6 user messages → should pass despite consecutive empty
 	var sessions []*session.Session
 	for i := 0; i < 6; i++ {

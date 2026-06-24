@@ -38,7 +38,11 @@ func RegisterDream(r *Registry, d *dream.Dream) {
 		Short: "Show dream state and metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			s := d.State()
-			cmd.Printf("Last dream: #%d at %s\n", s.LastDreamID, s.LastDreamAt.Format("2006-01-02 15:04"))
+			lastStr := s.LastDreamAt.Format("2006-01-02 15:04")
+		if s.LastDreamAt.IsZero() {
+			lastStr = "never"
+		}
+		cmd.Printf("Last dream: #%d at %s\n", s.LastDreamID, lastStr)
 			cmd.Printf("Consecutive empty: %d\n", s.ConsecutiveEmpty)
 			cmd.Printf("Totals: %d improved, %d deprecated, %d merged, %d created\n",
 				s.Totals.FilesImproved, s.Totals.FilesDeprecated, s.Totals.FilesMerged, s.Totals.FilesCreated)
@@ -77,7 +81,11 @@ func RegisterDream(r *Registry, d *dream.Dream) {
 	// Default: show status.
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		s := d.State()
-		cmd.Printf("Dream: #%d runs completed. Last: %s\n", s.LastDreamID, s.LastDreamAt.Format("2006-01-02 15:04"))
+		lastStr := s.LastDreamAt.Format("2006-01-02 15:04")
+		if s.LastDreamAt.IsZero() {
+			lastStr = "never"
+		}
+		cmd.Printf("Dream: #%d runs completed. Last: %s\n", s.LastDreamID, lastStr)
 		return nil
 	}
 

@@ -91,7 +91,8 @@ var defaultThresholds = map[SignalType]float64{
 
 func newState() *State {
 	return &State{
-		Usage:         UsageData{Files: make(map[string]FileUsage)},
+		LastDreamAt: time.Now(),
+		Usage:       UsageData{Files: make(map[string]FileUsage)},
 		FileCooldowns: make(map[string]FileCooldown),
 		Calibration: CalibrationData{
 			Thresholds: copyMap(defaultThresholds),

@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- **Dream fix**: zero-time display shows "never" instead of 0001-01-01; bootstrap sets LastDreamAt to now.
 - **CI fix**: lint cleanup in dream tests — removed empty else branches, unused helper functions, fixed gci formatting.
 - **Dream 离线自我编辑系统设计**: 完整设计文档 (`design/modules/dream.md`)，包含 Phase 0-4 架构、影响力权重、git 分支工作流、临时工作区隔离、自校准阈值、7 层验证策略。实现注意事项 (`design/modules/dream-notes.md`) 记录 11 项残余风险与缓解方案。
 - **Dream 单元测试 + E2E**: gate/scan/edit/tidy/state 全覆盖 (63.6%)。Phase 0-4 纯规则路径全部通过，Phase 3 git 操作需要真实仓库集成测试。
