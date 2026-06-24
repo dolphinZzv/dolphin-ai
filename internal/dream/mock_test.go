@@ -10,57 +10,40 @@ import (
 	"dolphin/internal/types"
 )
 
-// ─────────────────────────────────────────────────────────────────
-// Mock implementations
-// ─────────────────────────────────────────────────────────────────
-
 type mockMemory struct {
 	mu       sync.Mutex
 	messages map[string][]types.Message
 }
 
 func newMockMemory() *mockMemory { return &mockMemory{messages: make(map[string][]types.Message)} }
-
-func (m *mockMemory) Read(_ context.Context, sessionID string) ([]types.Message, error) {
+func (m *mockMemory) Read(_ context.Context, s string) ([]types.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.messages[sessionID], nil
+	return m.messages[s], nil
 }
-func (m *mockMemory) Write(_ context.Context, sessionID string, msg types.Message) error {
+func (m *mockMemory) Write(_ context.Context, s string, msg types.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.messages[sessionID] = append(m.messages[sessionID], msg)
+	m.messages[s] = append(m.messages[s], msg)
 	return nil
 }
-func (m *mockMemory) Replace(_ context.Context, sessionID string, msgs []types.Message) error {
+func (m *mockMemory) Replace(_ context.Context, s string, msgs []types.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.messages[sessionID] = msgs
+	m.messages[s] = msgs
 	return nil
 }
 
-type mockSessionMgr struct {
-	sessions []*session.Session
-}
+type mockSessionMgr struct{ sessions []*session.Session }
 
 func (m *mockSessionMgr) List(_ context.Context) ([]*session.Session, error) { return m.sessions, nil }
-func (m *mockSessionMgr) Active() *session.Session {
-	for _, s := range m.sessions {
-		if s.Active {
-			return s
-		}
-	}
-	return nil
-}
 
-type mockBrain struct {
-	files map[string]string
-}
+type mockBrain struct{ files map[string]string }
 
 func newMockBrain() *mockBrain   { return &mockBrain{files: make(map[string]string)} }
 func (b *mockBrain) Dir() string { return "/tmp/test-brain" }
-func (b *mockBrain) Read(_ context.Context, path string) (string, error) {
-	if v, ok := b.files[path]; ok {
+func (b *mockBrain) Read(_ context.Context, p string) (string, error) {
+	if v, ok := b.files[p]; ok {
 		return v, nil
 	}
 	return "", nil
@@ -95,17 +78,15 @@ type mockAgentIO struct{ processing bool }
 
 func (a *mockAgentIO) Processing() bool { return a.processing }
 
-// ─────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────
-
 func makeSession(id string, createdAt time.Time, active bool) *session.Session {
 	return &session.Session{ID: id, CreatedAt: createdAt, Active: active}
 }
-
 func userMsg(c string, ts time.Time) types.Message {
 	return types.Message{Role: types.RoleUser, Content: c, Timestamp: ts}
 }
 func asstMsg(c string, ts time.Time) types.Message {
 	return types.Message{Role: types.RoleAssistant, Content: c, Timestamp: ts}
+}
+func toolMsg(c, callID string, isError bool, ts time.Time) types.Message {
+	return types.Message{Role: types.RoleTool, Content: c, ToolCallID: callID, IsError: isError, Timestamp: ts}
 }

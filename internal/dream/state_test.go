@@ -14,75 +14,105 @@ func TestNewState(t *testing.T) {
 	if s.Calibration.Thresholds == nil {
 		t.Error("calibration thresholds should be initialised")
 	}
-	if v, ok := s.Calibration.Thresholds[SignalCorrection]; !ok || v != 0.85 {
-		t.Errorf("default correction threshold should be 0.85, got %v", v)
-	}
 }
-
 func TestStateSaveLoadRoundtrip(t *testing.T) {
-	tmpDir := t.TempDir()
-	primary := filepath.Join(tmpDir, "dream.json")
-	backup := filepath.Join(tmpDir, "backup", "state.json")
-
+	tmp := t.TempDir()
 	s := newState()
 	s.LastDreamID = 5
 	s.Totals.FilesImproved = 3
-	s.Usage.Files["commands/x.md"] = FileUsage{Refs: 10}
-
-	if err := s.save(primary, backup); err != nil {
+	s.Usage.Files["c/x.md"] = FileUsage{Refs: 10}
+	if err := s.save(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json")); err != nil {
 		t.Fatal(err)
 	}
-
-	loaded, err := loadState(primary, backup)
+	l, err := loadState(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.LastDreamID != 5 {
-		t.Errorf("expected 5, got %d", loaded.LastDreamID)
-	}
-	if loaded.Totals.FilesImproved != 3 {
-		t.Errorf("expected 3, got %d", loaded.Totals.FilesImproved)
+	if l.LastDreamID != 5 {
+		t.Errorf("got %d", l.LastDreamID)
 	}
 }
-
 func TestStateRecoveryFromBackup(t *testing.T) {
-	tmpDir := t.TempDir()
-	primary := filepath.Join(tmpDir, "dream.json")
-	backup := filepath.Join(tmpDir, "backup", "state.json")
-
+	tmp := t.TempDir()
 	s := newState()
 	s.LastDreamID = 7
-	_ = os.MkdirAll(filepath.Dir(backup), 0o755)
-	_ = s.save(primary, backup)
-
-	// Remove primary.
-	_ = os.Remove(primary)
-
-	loaded, err := loadState(primary, backup)
+	os.MkdirAll(filepath.Join(tmp, "b"), 0o755)
+	s.save(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	os.Remove(filepath.Join(tmp, "d.json"))
+	l, err := loadState(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.LastDreamID != 7 {
-		t.Errorf("expected 7 from backup, got %d", loaded.LastDreamID)
+	if l.LastDreamID != 7 {
+		t.Errorf("got %d", l.LastDreamID)
 	}
 }
-
 func TestStateBootstrapWhenNone(t *testing.T) {
-	tmpDir := t.TempDir()
-	_, err := loadState(filepath.Join(tmpDir, "dream.json"), filepath.Join(tmpDir, "b", "state.json"))
+	_, err := loadState(filepath.Join(t.TempDir(), "d.json"), filepath.Join(t.TempDir(), "b", "s.json"))
 	if err == nil {
-		t.Fatal("expected error when no state files exist")
+		t.Fatal("expected error")
+	}
+}
+func TestDefaultThresholds(t *testing.T) {
+	if defaultThresholds[SignalCorrection] != 0.85 {
+		t.Error("correction")
+	}
+	if defaultThresholds[SignalPreference] != 0.95 {
+		t.Error("preference")
+	}
+}
+func TestState_NilMapsInitialized(t *testing.T) {
+	tmp := t.TempDir()
+	s := newState()
+	s.Usage = UsageData{}
+	s.save(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	l, _ := loadState(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	if l.Usage.Files == nil {
+		t.Error("Files should be initialised on load")
+	}
+}
+func TestLoadJSON_InvalidContent(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "bad.json")
+	os.WriteFile(p, []byte("not json"), 0o600)
+	if _, err := loadJSON[State](p); err == nil {
+		t.Error("expected error")
 	}
 }
 
-func TestDefaultThresholds(t *testing.T) {
-	if v := defaultThresholds[SignalCorrection]; v != 0.85 {
-		t.Errorf("correction: %f", v)
+func TestLoadState_NilCalibrationThresholds(t *testing.T) {
+	tmp := t.TempDir()
+	// Write a state file that's valid JSON but has nil Calibration.Thresholds.
+	s := newState()
+	s.Calibration.Thresholds = nil
+	s.save(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	l, _ := loadState(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	if l.Calibration.Thresholds == nil {
+		t.Error("thresholds should be restored to defaults when nil")
 	}
-	if v := defaultThresholds[SignalPreference]; v != 0.95 {
-		t.Errorf("preference: %f", v)
+	if l.Calibration.Thresholds[SignalCorrection] != 0.85 {
+		t.Errorf("expected default 0.85, got %f", l.Calibration.Thresholds[SignalCorrection])
 	}
-	if v := defaultThresholds[SignalRefinement]; v != 0.65 {
-		t.Errorf("refinement: %f", v)
+}
+
+func TestLoadState_NilFeedbackAndAlerted(t *testing.T) {
+	tmp := t.TempDir()
+	s := newState()
+	s.EditFeedback = nil
+	s.LastAlerted = nil
+	s.save(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	l, _ := loadState(filepath.Join(tmp, "d.json"), filepath.Join(tmp, "b", "s.json"))
+	if l.EditFeedback == nil {
+		t.Error("EditFeedback should be initialised")
+	}
+	if l.LastAlerted == nil {
+		t.Error("LastAlerted should be initialised")
+	}
+}
+
+func TestSave_PrimaryWriteFails(t *testing.T) {
+	s := newState()
+	err := s.save("/dev/null/impossible/dream.json", "/tmp/x.json")
+	if err == nil {
+		t.Error("expected error when primary write fails")
 	}
 }

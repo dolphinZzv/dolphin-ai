@@ -123,3 +123,68 @@ func TestGate_SessionOverlap(t *testing.T) {
 		t.Fatal("expected skip: overlapping session")
 	}
 }
+
+func TestGate_SessionsOverlapWithLastDream_NoPriorDream(t *testing.T) {
+	d := &Dream{interval: 20 * time.Minute}
+	d.state = newState()
+	// No prior dream → no overlap.
+	if d.sessionsOverlapWithLastDream([]*session.Session{
+		makeSession("s1", time.Now(), true),
+	}) {
+		t.Error("should not overlap with no prior dream")
+	}
+}
+
+func TestGate_SessionsOverlap_AllNew(t *testing.T) {
+	d := &Dream{interval: 20 * time.Minute}
+	d.state = newState()
+	d.state.LastDreamAt = time.Now().Add(-1 * time.Hour)
+	// Session created after last dream → no overlap.
+	if d.sessionsOverlapWithLastDream([]*session.Session{
+		makeSession("s1", time.Now().Add(-30*time.Minute), true),
+	}) {
+		t.Error("session after last dream should not overlap")
+	}
+}
+
+func TestGate_SessionsOverlap_HasOverlap(t *testing.T) {
+	d := &Dream{interval: 20 * time.Minute}
+	d.state = newState()
+	d.state.LastDreamAt = time.Now().Add(-10 * time.Minute)
+	// Session created before last dream and within the (interval*3) window.
+	if !d.sessionsOverlapWithLastDream([]*session.Session{
+		makeSession("s1", time.Now().Add(-15*time.Minute), true),
+	}) {
+		t.Error("should detect overlap")
+	}
+}
+
+func TestGate_SessionsOverlap_TooOld(t *testing.T) {
+	d := &Dream{interval: 20 * time.Minute}
+	d.state = newState()
+	d.state.LastDreamAt = time.Now().Add(-10 * time.Minute)
+	// Session created 3 hours ago → well before last_dream_at - interval*3.
+	if d.sessionsOverlapWithLastDream([]*session.Session{
+		makeSession("s1", time.Now().Add(-3*time.Hour), true),
+	}) {
+		t.Error("old session should not be considered overlap")
+	}
+}
+
+func TestGate_ExactlyMinSessions(t *testing.T) {
+	mem := newMockMemory()
+	now := time.Now()
+	mem.messages["s1"] = []types.Message{userMsg("x", now)}
+	mem.messages["s2"] = []types.Message{userMsg("x", now)}
+	d := &Dream{minSessions: 2, minUserMessages: 1, memory: mem}
+	d.state = newState()
+	d.state.LastDreamAt = now.Add(-2 * time.Hour)
+	ss := &mockSessionMgr{sessions: []*session.Session{
+		makeSession("s1", now.Add(-1*time.Hour), true),
+		makeSession("s2", now.Add(-30*time.Minute), true),
+	}}
+	ok, _ := d.shouldRun(ss.sessions)
+	if !ok {
+		t.Fatal("expected pass with exactly 2 sessions")
+	}
+}

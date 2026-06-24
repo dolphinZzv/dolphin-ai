@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"go.uber.org/zap"
+
 	"dolphin/internal/session"
 	"dolphin/internal/types"
 )
@@ -145,8 +147,9 @@ func setupE2EDream(t *testing.T) *Dream {
 		output: `[{"proposal_id":"p1","action":"improve","target":"commands/deploy.md","after":"kubectl apply -f deploy.yaml","reasoning":"switched to kubectl"}]`,
 	}
 	aio := &mockAgentIO{processing: false}
+	logger := zap.NewNop()
 	d := &Dream{
-		memory: mem, brain: brain, provider: prov, agentIO: aio,
+		memory: mem, brain: brain, provider: prov, agentIO: aio, logger: logger,
 		autoApply: true, minSessions: 1, minUserMessages: 1,
 		maxConsecutiveEmpty: 3, minImpactThreshold: 0.3,
 		fileCooldownDreams: 5, maxEditsPerDream: 10,
@@ -160,4 +163,51 @@ func setupE2EDream(t *testing.T) *Dream {
 		},
 	}
 	return d
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Dream lifecycle tests
+// ─────────────────────────────────────────────────────────────────
+
+func TestDream_IsRunning_False(t *testing.T) {
+	d := setupE2EDream(t)
+	if d.IsRunning() {
+		t.Error("should be false")
+	}
+}
+
+func TestDream_State_NeverNil(t *testing.T) {
+	d := setupE2EDream(t)
+	if s := d.State(); s == nil {
+		t.Fatal("state is nil")
+	}
+}
+
+func TestDream_ActivityCh_Accepts(t *testing.T) {
+	d := setupE2EDream(t)
+	ch := d.ActivityCh()
+	if ch == nil {
+		t.Fatal("ch is nil")
+	}
+	select {
+	case ch <- struct{}{}:
+	default:
+		t.Error("should accept")
+	}
+}
+
+func TestExtractSources(t *testing.T) {
+	edit := Edit{Reasoning: "merge files knowledge/a.md with knowledge/b.md"}
+	srcs := extractSources(edit)
+	if len(srcs) == 0 {
+		t.Error("should extract source files")
+	}
+}
+
+func TestExtractSources_NoMd(t *testing.T) {
+	edit := Edit{Reasoning: "merge something"}
+	srcs := extractSources(edit)
+	if len(srcs) > 0 {
+		t.Errorf("should be empty, got %v", srcs)
+	}
 }
