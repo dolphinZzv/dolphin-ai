@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- **Dream 离线自我编辑系统设计**: 完整设计文档 (`design/modules/dream.md`)，包含 Phase 0-4 架构、影响力权重、git 分支工作流、临时工作区隔离、自校准阈值、7 层验证策略。实现注意事项 (`design/modules/dream-notes.md`) 记录 11 项残余风险与缓解方案。
 - **CI fix**: removed dead `hasBelow`/`hasAbove` assignments in `perm_dialog.go` that were overwritten before use (golangci-lint ineffassign).
 - **`/brain push` / `/brain pull` / `/brain set url <url>`**: git operations on the brain repository. Authentication uses the system's SSH keys: ssh-agent first, falls back to `~/.ssh/id_ed25519` and `~/.ssh/id_rsa`. HTTPS remotes let go-git credential helpers or env vars handle auth. Aliases `/push` and `/pull` at root level.
 - **Fix: qualified model name routing across sections**. `SetActiveModel` now preserves the section prefix when a qualified name (e.g. `deepseek_anthropic/deepseek-v4-flash`) is passed, preventing short-name collisions from routing to the wrong provider. When both `deepseek_anthropic` and `volcengine_agent` define `deepseek-v4-flash`, setting the active model via qualified name now reliably routes to the correct section rather than whichever loaded first in map-iteration order. `TestCrossSectionModelNameCollision` covers the fix.
