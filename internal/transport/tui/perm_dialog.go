@@ -140,15 +140,6 @@ func renderPermDialog(d permDialog, width int, maxHeight int) string {
 		availablePrompt = 1
 	}
 
-	// Recompute end with adjusted available prompt.
-	end = scrollOff + availablePrompt
-	if end > len(promptLines) {
-		end = len(promptLines)
-	}
-	// Re-compute hasBelow — it may have changed.
-	hasBelow = end < len(promptLines)
-	hasAbove = scrollOff > 0
-
 	// Clamp scroll offset to valid range.
 	maxScroll := len(promptLines) - availablePrompt
 	if maxScroll < 0 {

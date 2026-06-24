@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- **CI fix**: removed dead `hasBelow`/`hasAbove` assignments in `perm_dialog.go` that were overwritten before use (golangci-lint ineffassign).
 - **`/brain push` / `/brain pull` / `/brain set url <url>`**: git operations on the brain repository. Authentication uses the system's SSH keys: ssh-agent first, falls back to `~/.ssh/id_ed25519` and `~/.ssh/id_rsa`. HTTPS remotes let go-git credential helpers or env vars handle auth. Aliases `/push` and `/pull` at root level.
 - **Fix: qualified model name routing across sections**. `SetActiveModel` now preserves the section prefix when a qualified name (e.g. `deepseek_anthropic/deepseek-v4-flash`) is passed, preventing short-name collisions from routing to the wrong provider. When both `deepseek_anthropic` and `volcengine_agent` define `deepseek-v4-flash`, setting the active model via qualified name now reliably routes to the correct section rather than whichever loaded first in map-iteration order. `TestCrossSectionModelNameCollision` covers the fix.
 - **`/session dump` and `/session compaction` subcommand fix**: previously registered as standalone root commands (`session dump`, `session compaction`), causing a duplicated `/session` entry in help output. Now properly mounted as subcommands of the `/session` command group (using `r.root.Find("session").AddCommand`), matching `session status`. Aliases `/dump` and `/compaction` remain at root level.
