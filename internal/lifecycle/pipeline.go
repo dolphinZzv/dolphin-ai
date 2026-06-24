@@ -11,6 +11,7 @@ import (
 	"dolphin/internal/agentloop"
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
+	"dolphin/internal/dream"
 	"dolphin/internal/event"
 	"dolphin/internal/limit"
 	"dolphin/internal/scheduler"
@@ -38,6 +39,7 @@ type Pipeline struct {
 	watchers            []*watcher.Watcher
 	subscriptionEngine  *brain.SubscriptionEngine
 	limitResetScheduler *limit.ResetScheduler
+	dream               *dream.Dream
 }
 
 func New(cfg *config.Config) *Pipeline {
@@ -54,6 +56,7 @@ func New(cfg *config.Config) *Pipeline {
 		StepScheduler().
 		StepAgentIO().
 		StepWorkflow().
+		StepDream().
 		StepUserIO().
 		StepObservability().
 		StepPprof().
@@ -82,6 +85,7 @@ func (p *Pipeline) Start(ctx context.Context) {
 	}
 
 	// Idle monitor: 20s after last user input, auto-commit brain changes.
+	// Skips when Dream is in its running state to avoid git conflicts.
 	userActive := make(chan struct{}, 64)
 	if p.brain != nil {
 		go func() {
@@ -100,11 +104,18 @@ func (p *Pipeline) Start(ctx context.Context) {
 					}
 					timer.Reset(20 * time.Second)
 				case <-timer.C:
-					p.brain.AutoCommit(ctx, "")
+					if p.dream == nil || !p.dream.IsRunning() {
+						p.brain.AutoCommit(ctx, "")
+					}
 					timer.Reset(20 * time.Second)
 				}
 			}
 		}()
+	}
+
+	// Start Dream (offline self-editor).
+	if p.dream != nil {
+		p.dream.Start(ctx)
 	}
 
 	// Accumulate token usage and tool call count per-session from events.
@@ -195,6 +206,13 @@ func (p *Pipeline) Start(ctx context.Context) {
 				select {
 				case userActive <- struct{}{}:
 				default:
+				}
+				// Notify Dream of user activity.
+				if p.dream != nil {
+					select {
+					case p.dream.ActivityCh() <- struct{}{}:
+					default:
+					}
 				}
 				if !p.userIO.Handle(ctx, t, input) {
 					continue

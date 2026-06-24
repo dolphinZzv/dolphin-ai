@@ -142,6 +142,11 @@ func (b *Builder) StepWorkflow() *Builder {
 	return b
 }
 
+func (b *Builder) StepDream() *Builder {
+	b.boot(&setup.DreamBootstrapper{})
+	return b
+}
+
 func (b *Builder) StepUserIO() *Builder {
 	if b.ctx.UserIO != nil {
 		return b
@@ -203,6 +208,7 @@ func (b *Builder) Assemble() *Builder {
 		watchers:            b.ctx.Watchers,
 		subscriptionEngine:  b.ctx.SubscriptionEngine,
 		limitResetScheduler: b.ctx.LimitResetScheduler,
+			dream:               b.ctx.Dream,
 	}
 	return b
 }

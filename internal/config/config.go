@@ -87,7 +87,24 @@ func defaultConfig() *Config {
 			"compaction.model":              "",
 			"compaction.summary_max_tokens": 512,
 			"compaction.token_ratio":        4,
-		},
+
+			// Dream — offline self-editing system.
+			"dream.enabled":                       true,
+			"dream.idle_minutes":                  20,
+			"dream.exit_idle_minutes":             2,
+			"dream.auto_apply":                    true,
+			"dream.min_sessions":                  2,
+			"dream.min_user_messages":             8,
+			"dream.max_consecutive_empty":         3,
+			"dream.min_impact_threshold":          0.5,
+			"dream.file_cooldown_dreams":          5,
+			"dream.max_edits_per_dream":           10,
+			"dream.calibration_window":            10,
+			"dream.calibration_min_step":          0.05,
+			"dream.calibration_confidence_floor":  0.3,
+			"dream.calibration_confidence_ceiling": 0.95,
+			"dream.reflect_model":                 "",
+			"dream.max_reflect_tokens":            2048,		},
 	}
 }
 

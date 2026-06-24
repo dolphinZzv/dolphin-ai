@@ -9,6 +9,7 @@ import (
 	"dolphin/internal/command"
 	"dolphin/internal/config"
 	appctx "dolphin/internal/context"
+	"dolphin/internal/dream"
 	"dolphin/internal/dump"
 	"dolphin/internal/event"
 	"dolphin/internal/hook"
@@ -56,6 +57,7 @@ type Context struct {
 	DumpRecorder        *dump.Recorder
 	LimitResetScheduler *limit.ResetScheduler
 	WorkflowEngine      *workflow.Engine
+	Dream               *dream.Dream
 }
 
 func NewContext(cfg *config.Config) *Context {
