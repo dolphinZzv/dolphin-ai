@@ -75,6 +75,163 @@ dolphin
 dolphin --config /path/to/config.yaml
 ```
 
+配置完整说明见 [`config.schema.json`](config.schema.json)。
+
+---
+
+## 配置
+
+### llm — 模型与接入
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `llm.use` | string | - | 当前使用的模型名称 |
+| `llm.max_tokens` | int | 4096 | 每次 LLM 调用最大输出 token |
+| `llm.max_retries` | int | 3 | LLM 调用失败重试次数 |
+| `llm.timeout` | duration | - | 请求超时（如 `30s`, `5m`） |
+| `llm.limit.*` | object | - | 全局用量限制（requests/tokens 硬+软限制） |
+
+每个 provider 作为 `llm` 的子节点，命名任意：
+
+```yaml
+llm:
+  <provider_name>:
+    provider: deepseek|openai|anthropic|...
+    api_type: anthropic|openai
+    api_key: "sk-xxx"
+    base_url: "https://..."
+    model_discover: true       # 自动发现模型
+    models:
+      - name: deepseek-v4-pro
+        thinking: true
+        reasoning_effort: max
+        max_tokens: 8192
+        temperature: 0.7
+        timeout: 60s
+        limit.max_concurrency: 3
+        headers:                # 自定义 HTTP headers
+          X-Custom-Header: value
+```
+
+### agent — Agent 行为
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `agent.name` | string | Dolphin | Agent 名称，显示在欢迎语和状态栏 |
+| `agent.workmode` | string | default | 工作模式（default/yolo/safe） |
+| `agent.workspace` | string | . | 工作目录 |
+| `agent.pool_size` | int | 1 | 并发 worker 数 |
+| `agent.tool_parallelism` | int | 1 | 每轮最大并行工具调用数 |
+| `agent.max_rounds` | int | 100 | 单次对话最大轮数 |
+| `agent.turn_timeout` | duration | 120s | 每轮 LLM+工具硬超时 |
+| `agent.bin` | string | - | CLI 工具搜索目录（加到 PATH） |
+| `agent.buffer_size` | int | 1024 | 消息缓冲区大小 |
+| `agent.feed_min_interval` | duration | 100ms | 看门狗 feed 节流间隔 |
+| `agent.llm_idle_timeout` | duration | 60s | 看门狗空闲超时 |
+
+### dream — 离线自我编辑
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `dream.enabled` | bool | true | 是否启用 dream |
+| `dream.idle_minutes` | int | 20 | 用户空闲多少分钟后触发。0=关闭定时触发 |
+| `dream.auto_apply` | bool | true | 是否自动合并编辑。false=创建分支等待审核 |
+| `dream.exit_idle_minutes` | int | 2 | `/exit` 后的加速空闲窗口 |
+| `dream.min_sessions` | int | 2 | Phase 0：最少新 session 数 |
+| `dream.min_user_messages` | int | 8 | Phase 0：最少用户消息数 |
+| `dream.max_consecutive_empty` | int | 3 | 连续空跑多少次后提高触发门槛 |
+| `dream.min_impact_threshold` | float | 0.5 | 低于此影响力的编辑跳过 LLM |
+| `dream.file_cooldown_dreams` | int | 5 | 同文件在多少次 dream 内不可重复编辑 |
+| `dream.max_edits_per_dream` | int | 10 | 单次 dream 最大编辑数 |
+| `dream.calibration_window` | int | 10 | Phase 4 采纳率滑动窗口大小 |
+| `dream.calibration_min_step` | float | 0.05 | 阈值最小调整步长 |
+| `dream.calibration_confidence_floor` | float | 0.3 | 置信度下界 |
+| `dream.calibration_confidence_ceiling` | float | 0.95 | 置信度上界 |
+| `dream.reflect_model` | string | - | Phase 2 专用模型。空=当前 active model |
+| `dream.max_reflect_tokens` | int | 2048 | Phase 2 LLM 最大输出 token |
+
+### compaction — 上下文压缩
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `compaction.enabled` | bool | true | 是否启用自动压缩 |
+| `compaction.max_tokens` | int | 60000 | 触发压缩的 token 阈值 |
+| `compaction.keep_rounds` | int | 6 | 压缩时保留的最近轮数 |
+| `compaction.model` | string | - | 压缩用模型。空=当前 active model |
+| `compaction.summary_max_tokens` | int | 512 | 摘要最大输出 token |
+| `compaction.token_ratio` | int | 4 | token 估算比率（字符/token） |
+
+### session — 会话存储
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `session.dir` | string | .dolphin/sessions | 会话数据目录 |
+| `session.dump_dir` | string | .dolphin/dumps | /dump 导出目录 |
+| `session.window` | int | 40 | 保留的最大消息数 |
+| `session.expire_after` | duration | 1h | 空闲超时（开启新会话）。0=永不 |
+
+### brain — 知识库
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `brain.dir` | string | .dolphin/brain | Brain git 仓库目录 |
+
+### mcp_servers — MCP 服务器
+
+数组结构，每个元素：
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `name` | string | - | 服务名称 |
+| `type` | string | - | `url`/`http`/`stdio`/`builtin` |
+| `enabled` | bool | true | 是否启用 |
+| `url` | string | - | HTTP/SSE 端点（type=url 时） |
+| `command` | string | - | 可执行文件路径（type=stdio 时） |
+| `args` | string[] | - | 命令行参数 |
+
+### 传输通道
+
+每类传输通过 `<transport>.enabled` 控制：
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `tui.enabled` | bool | true | 终端 TUI |
+| `tui.theme` | string | - | TUI 主题 |
+| `tui.show_tools` | bool | false | 默认展示工具调用 |
+| `tui.show_thinking` | bool | false | 默认展示思考链 |
+| `dingtalk.enabled` | bool | false | 钉钉机器人 |
+| `dingtalk.client_id/secret/webhook_url` | string | - | 钉钉凭证 |
+| `wework.enabled` | bool | false | 企业微信 |
+| `wework.bot_id/bot_secret` | string | - | 企业微信凭证 |
+| `email.enabled` | bool | false | 邮件通道 |
+| `email.address/password` | string | - | 邮箱凭证 |
+| `email.imap_server/imap_port` | string | - | 收件配置 |
+| `email.smtp_server/smtp_port` | string | - | 发件配置 |
+| `panda.enabled` | bool | false | Panda 协议 |
+| `panda.server/account/password` | string | - | Panda 凭证 |
+| `a2a.enabled` | bool | false | Agent-to-Agent |
+| `a2a.addr/url/name/description/version` | string | - | A2A 配置 |
+
+### log — 日志
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `log.level` | string | info | 日志级别（debug/info/warn/error） |
+| `log.file` | string | - | 日志文件路径。空=仅标准输出 |
+| `log.compress` | bool | true | 是否压缩轮转后的日志 |
+| `log.max_size` | int | 100 | 单文件最大 MB |
+| `log.max_backups` | int | 30 | 保留的备份文件数 |
+| `log.max_age` | int | 30 | 日志最长保留天数 |
+| `log.rotate_interval` | duration | - | 轮转间隔 |
+
+### 其他
+
+| 配置项 | 类型 | 默认 | 说明 |
+|--------|------|------|------|
+| `lang` | string | - | 界面语言（en/zh，默认从系统检测） |
+| `otel.enabled` | bool | false | 是否启用 OpenTelemetry |
+| `memory.dir` | string | .dolphin/memory | 内存/历史存储目录 |
+
 ---
 
 ## 命令
