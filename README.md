@@ -5,6 +5,78 @@
 
 你卓尔不凡
 
+**Dolphin** 是一个拥有自我进化能力的终端 AI 伙伴。它维护一个 git 版本化的知识库（Brain），在后台分析对话模式并**自动改进自己的指令和知识**，越用越聪明。
+
+## 特性
+
+### 🧠 Brain — Git 版本化知识库
+对话中积累的知识、偏好、命令和技能持久化在一个 git 仓库中。支持 push/pull 在设备间同步，LLM 在每次对话中自动加载。越用越有「你」的风格。
+
+### 🌙 Dream — 离线自我编辑
+你离开 20 分钟后，Dream 自动启动：扫描所有新对话 → 发现纠正信号和重复模式 → 调用 LLM 精炼 Brain 内容 → git 分支提交 → 等你审核或自动合并。修错、去重、淘汰，全自动。
+
+### 🖥️ TUI — 功能完整的终端界面
+Bubble Tea 构建的原生 TUI。实时流式输出、思考链折叠、工具调用可视化、鼠标文本选择 + 复制、滑动日志、队列面板、快捷切换侧栏。全键盘操作，零鼠标依赖。
+
+### 🔗 多传输通道
+一个 agent 实例可同时服务多个通道：**TUI**（终端交互）、**WeWork** / **DingTalk**（企业 IM）、**Email**（SMTP/IMAP）、**Panda**（自定义协议）、**A2A**（Agent-to-Agent）。每条消息自动绑定对应会话。
+
+### 🔧 MCP 生态
+原生支持 Model Context Protocol。HTTP/SSE 和 Stdio 两种传输，所有 MCP 服务异步加载不阻塞启动。内置 `mcp_search` 和 `mcp_load` 工具，运行时可动态接入新 MCP 服务。
+
+### 📦 完整工具链
+Shell 命令、文件读写、Brain CRUD、技能管理、工作流引擎、定时任务、订阅推送——全部以工具形式暴露给 LLM。权限系统支持按工具粒度的 always/once/deny，内置危险命令拦截。
+
+### 🌍 多模型 / 多语言
+支持 OpenAI、Anthropic、DeepSeek 等多厂商。按模型粒度配置 temperature、reasoning_effort、thinking、自定义 HTTP headers。界面支持中英文双语，一键切换。
+
+### 🔄 会话管理
+多会话独立上下文。自动 compaction 在接近上下文窗口时触发，用 LLM 生成摘要替代旧消息。支持 dump 导出、switch 切换、pause/continue 暂停恢复。
+
+---
+
+## 快速开始
+
+一键安装：
+
+```shell
+curl -fsSL https://raw.githubusercontent.com/dolphinZzv/dolphin-ai/main/install.sh | bash
+```
+
+或通过 Go 安装：
+
+```shell
+go install github.com/dolphinZzv/dolphin-ai/cmd/dolphin@latest
+```
+
+创建 `config.yaml`：
+
+```yaml
+llm:
+  deepseek_anthropic:
+    provider: deepseek
+    api_type: anthropic
+    api_key: "sk-xxx"
+    base_url: "https://api.deepseek.com/anthropic"
+    models:
+      - name: deepseek-v4-pro
+      - name: deepseek-v4-flash
+```
+
+启动：
+
+```shell
+dolphin
+```
+
+如需加载自定义配置文件：
+
+```shell
+dolphin --config /path/to/config.yaml
+```
+
+---
+
 ## 命令
 
 所有命令以 `/` 开头，在 TUI 输入框中输入。
@@ -92,44 +164,3 @@
 | `/thinking` | 切换思考链显示 |
 | `/windows` | 切换侧边状态面板 |
 | `/exit` | 退出程序 |
-
-## 快速开始
-
-一键安装：
-
-```shell
-curl -fsSL https://raw.githubusercontent.com/dolphinZzv/dolphin-ai/main/install.sh | bash
-```
-
-或通过 Go 安装：
-
-```shell
-go install github.com/dolphinZzv/dolphin-ai/cmd/dolphin@latest
-```
-
-创建 `config.yaml`：
-
-```yaml
-llm:
-  deepseek_anthropic:
-    provider: deepseek
-    api_type: anthropic
-    api_key: "sk-xxx"
-    base_url: "https://api.deepseek.com/anthropic"
-    models:
-      - name: deepseek-v4-pro
-      - name: deepseek-v4-flash
-```
-
-启动：
-
-```shell
-dolphin
-```
-
-如需加载自定义配置文件：
-
-```shell
-dolphin --config /path/to/config.yaml
-```
-
