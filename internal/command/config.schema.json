@@ -73,6 +73,29 @@
         "token_ratio": { "type": "integer", "default": 4, "description": "Runes per estimated token for token counting." }
       }
     },
+    "dream": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Offline self-edit system that scans recent sessions after user inactivity and applies improvements to brain files on a git branch.",
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "Enable the offline self-editing system. Set to false to disable all dream runs." },
+        "idle_minutes": { "type": "integer", "minimum": 0, "default": 20, "description": "Minutes of user inactivity before dream triggers. 0 disables idle-triggered dreams (but /dream now still works)." },
+        "exit_idle_minutes": { "type": "integer", "minimum": 1, "default": 2, "description": "Accelerated idle window after /exit command. Dream waits this many minutes instead of idle_minutes." },
+        "auto_apply": { "type": "boolean", "default": true, "description": "Auto-merge dream edits to main branch. false = create branch and wait for /dream review." },
+        "min_sessions": { "type": "integer", "minimum": 0, "default": 2, "description": "Minimum new sessions since last dream to trigger Phase 0 gate." },
+        "min_user_messages": { "type": "integer", "minimum": 0, "default": 8, "description": "Minimum user messages in new sessions to trigger Phase 0 gate." },
+        "max_consecutive_empty": { "type": "integer", "minimum": 1, "default": 3, "description": "Maximum consecutive empty dream runs before the gate requires more sessions." },
+        "min_impact_threshold": { "type": "number", "minimum": 0, "default": 0.5, "description": "Edits below this impact score skip Phase 2 LLM and go through rule-only processing." },
+        "file_cooldown_dreams": { "type": "integer", "minimum": 0, "default": 5, "description": "Number of dream runs before the same file can be edited again. Prevents repeated editing loops." },
+        "max_edits_per_dream": { "type": "integer", "minimum": 1, "default": 10, "description": "Maximum edit proposals per dream run. Extra proposals are truncated." },
+        "calibration_window": { "type": "integer", "minimum": 1, "default": 10, "description": "Sliding window size for Phase 4 calibration adopt-rate tracking." },
+        "calibration_min_step": { "type": "number", "minimum": 0.01, "default": 0.05, "description": "Minimum threshold adjustment step in calibration. Prevents oscillation." },
+        "calibration_confidence_floor": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.3, "description": "Lowest allowed confidence threshold after calibration adjustments." },
+        "calibration_confidence_ceiling": { "type": "number", "minimum": 0, "maximum": 1, "default": 0.95, "description": "Highest allowed confidence threshold after calibration adjustments." },
+        "reflect_model": { "type": "string", "description": "Model used for Phase 2 LLM reflection. Empty = active model." },
+        "max_reflect_tokens": { "type": "integer", "minimum": 1, "default": 2048, "description": "Maximum output tokens for Phase 2 LLM call." }
+      }
+    },
     "session": {
       "type": "object",
       "additionalProperties": false,
