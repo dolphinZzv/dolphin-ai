@@ -3,9 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { gql } from "@/lib/graphql";
-import Markdown from "react-markdown";
-import rehypeSanitize from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
+import { MarkdownContent } from "@/components/shared/MarkdownContent";
 
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -148,14 +146,6 @@ function relativeTime(dateStr: string): string {
   if (days === 1) return "昨天";
   if (days < 7) return `${days} 天前`;
   return dateStr.slice(0, 10);
-}
-
-function MarkdownContent({ content }: { content: string }) {
-  return (
-    <div className="prose prose-sm dark:prose-invert max-w-none">
-      <Markdown rehypePlugins={[rehypeSanitize]} remarkPlugins={[remarkGfm]}>{content}</Markdown>
-    </div>
-  );
 }
 
 function Timeline({ events }: { events: TimelineEvent[] }) {

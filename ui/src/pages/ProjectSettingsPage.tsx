@@ -33,7 +33,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ErrorFallback } from "@/components/shared/ErrorFallback";
 import { EmptyState } from "@/components/shared/EmptyState";
-import { Plus, Trash2, AlertTriangle, Copy, Check, Bell } from "lucide-react";
+import { Plus, Trash2, AlertTriangle, Copy, Check } from "lucide-react";
 import { toast } from "sonner";
 
 interface Label {
@@ -1098,11 +1098,11 @@ interface NotifSetting {
   channel: string;
 }
 
-function ProjectNotificationsTab({ projectId, members }: { projectId: string; members: Member[] }) {
+function ProjectNotificationsTab({ members }: { projectId: string; members: Member[] }) {
   const [notifTypes, setNotifTypes] = useState<NotifTypeInfo[]>([]);
   const [notifSettings, setNotifSettings] = useState<NotifSetting[]>([]);
   const [selectedMember, setSelectedMember] = useState<string | null>(null);
-  const [notifLoading, setNotifLoading] = useState(false);
+  const [notifLoading] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(false);
   const [notifUpdating, setNotifUpdating] = useState<string | null>(null);
 

@@ -3,6 +3,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSubscription } from "@/hooks/useSubscription";
 import { LogOut, Sun, Moon, Bell, CheckCheck, MessageSquare, UserPlus, ArrowRightCircle, AlertCircle, FileText, GitPullRequest, CheckSquare, UserCheck, RefreshCw, Radio, Star } from "lucide-react";
 import { useEffect, useState, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { gql } from "@/lib/graphql";
 import { cn } from "@/lib/utils";
@@ -50,10 +51,14 @@ function relativeTime(dateStr: string): string {
 
 export function TopBar() {
   const { logout, agent } = useAuth();
+  const navigate = useNavigate();
   const { theme, setTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<"unread" | "all">("unread");
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const agentId = agent?.agentId;
@@ -88,6 +93,15 @@ export function TopBar() {
     }
   );
 
+  // Reset pagination on tab switch
+  useEffect(() => { setPage(1); }, [tab]);
+
+  const unreadNotifs = notifs.filter(n => !n.read);
+  const allNotifs = notifs;
+  const displayedNotifs = tab === "unread" ? unreadNotifs : allNotifs;
+  const paginatedNotifs = displayedNotifs.slice(0, page * pageSize);
+  const hasMore = paginatedNotifs.length < displayedNotifs.length;
+
   // Close dropdown on outside click
   useEffect(() => {
     if (!open) return;
@@ -100,7 +114,7 @@ export function TopBar() {
     return () => document.removeEventListener("mousedown", handler);
   }, [open]);
 
-  const unreadCount = notifs.filter(n => !n.read).length;
+  const unreadCount = notifs.slice(0, 99).filter(n => !n.read).length;
 
   const handleMarkRead = useCallback(async (id: string) => {
     try {
@@ -111,6 +125,42 @@ export function TopBar() {
       setNotifs(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
     } catch { /* ignore */ }
   }, []);
+
+  const handleNotifClick = useCallback((n: Notification) => {
+    // Determine navigation target
+    let path = "";
+    switch (n.notificationType) {
+      case "issue_assigned":
+      case "comment_mention":
+      case "issue_state_changed":
+      case "status_change_request":
+        if (n.issueID) path = `/issues/${n.issueID}`;
+        break;
+      case "proposal_created":
+      case "proposal_state_changed":
+        if (n.proposalID) path = `/proposals/${n.proposalID}`;
+        break;
+      case "task_created":
+      case "task_assigned":
+      case "task_state_changed":
+        if (n.taskID) path = `/tasks/${n.taskID}`;
+        break;
+      case "feedback_received":
+        if (n.issueID) path = `/issues/${n.issueID}`;
+        else if (n.proposalID) path = `/proposals/${n.proposalID}`;
+        break;
+      default:
+        if (n.issueID) path = `/issues/${n.issueID}`;
+        else if (n.proposalID) path = `/proposals/${n.proposalID}`;
+        else if (n.taskID) path = `/tasks/${n.taskID}`;
+        break;
+    }
+    // Mark as read
+    if (!n.read) handleMarkRead(n.id);
+    // Navigate and close dropdown
+    if (path) navigate(path);
+    setOpen(false);
+  }, [handleMarkRead, navigate]);
 
   const handleMarkAllRead = useCallback(async () => {
     if (!agentId) return;
@@ -151,7 +201,30 @@ export function TopBar() {
           <div className="absolute top-full right-0 mt-2 w-80 sm:w-96 rounded-lg border bg-card shadow-lg z-50 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="text-sm font-semibold">通知</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold">通知</h3>
+                {/* Tabs */}
+                <div className="flex bg-muted rounded-md p-0.5">
+                  <button
+                    className={cn(
+                      "px-2 py-0.5 text-xs font-medium rounded transition-colors",
+                      tab === "unread" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setTab("unread")}
+                  >
+                    未读 {unreadCount > 0 && `(${unreadCount})`}
+                  </button>
+                  <button
+                    className={cn(
+                      "px-2 py-0.5 text-xs font-medium rounded transition-colors",
+                      tab === "all" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+                    )}
+                    onClick={() => setTab("all")}
+                  >
+                    全部
+                  </button>
+                </div>
+              </div>
               {unreadCount > 0 && (
                 <Button variant="ghost" size="sm" className="h-7 text-xs gap-1" onClick={handleMarkAllRead}>
                   <CheckCheck className="h-3.5 w-3.5" />
@@ -162,14 +235,14 @@ export function TopBar() {
 
             {/* List */}
             <div className="max-h-96 overflow-y-auto">
-              {notifs.length === 0 ? (
+              {displayedNotifs.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
                   <Bell className="h-8 w-8 mb-2" />
-                  <p className="text-sm">暂无通知</p>
+                  <p className="text-sm">{tab === "unread" ? "没有未读通知" : "暂无通知"}</p>
                 </div>
               ) : (
                 <div className="divide-y">
-                  {notifs.map(n => {
+                  {paginatedNotifs.map(n => {
                     const Icon = notifIconMap[n.notificationType] || Bell;
                     return (
                       <button
@@ -178,7 +251,7 @@ export function TopBar() {
                           "w-full text-left px-4 py-3 hover:bg-accent transition-colors flex items-start gap-3",
                           !n.read && "bg-accent/30"
                         )}
-                        onClick={() => { if (!n.read) handleMarkRead(n.id); }}
+                        onClick={() => handleNotifClick(n)}
                       >
                         <Icon className={cn(
                           "h-4 w-4 mt-0.5 shrink-0",
@@ -198,6 +271,14 @@ export function TopBar() {
                       </button>
                     );
                   })}
+                  {hasMore && (
+                    <button
+                      className="w-full px-4 py-2.5 text-xs text-center text-muted-foreground hover:text-foreground hover:bg-accent transition-colors border-t"
+                      onClick={() => setPage(p => p + 1)}
+                    >
+                      加载更多 ({displayedNotifs.length - paginatedNotifs.length} 条)
+                    </button>
+                  )}
                 </div>
               )}
             </div>
