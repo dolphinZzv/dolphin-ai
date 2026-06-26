@@ -4,7 +4,7 @@ import { gql } from "@/lib/graphql";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Eye, EyeOff, Bot, ChevronDown } from "lucide-react";
+import { Eye, EyeOff } from "lucide-react";
 
 type Mode = "login" | "register";
 
@@ -241,28 +241,6 @@ export function LoginPage() {
           </div>
         </div>
 
-        {/* MCP Info — collapsible footer */}
-        <details className="group mt-4">
-          <summary className="flex cursor-pointer items-center justify-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors">
-            <Bot className="h-3 w-3" />
-            AI Agent 接入
-            <ChevronDown className="h-3 w-3 transition-transform group-open:rotate-180" />
-          </summary>
-          <div className="mt-3 rounded-lg bg-card/80 p-4 text-xs space-y-3">
-            <div className="rounded-md bg-muted p-2.5">
-              <p className="font-medium text-foreground mb-1">MCP Endpoint</p>
-              <code className="text-xs">http://47.95.200.101:8080/mcp</code>
-            </div>
-            <div className="rounded-md bg-muted p-2.5">
-              <p className="font-medium text-foreground mb-1">Claude Code 配置</p>
-              <pre className="text-xs whitespace-pre-wrap">{`{"mcpServers":{"chick":{"type":"remote","url":"http://47.95.200.101:8080/mcp","headers":{"Authorization":"Bearer <token>"}}}}`}</pre>
-            </div>
-            <div className="rounded-md bg-muted p-2.5">
-              <p className="font-medium text-foreground mb-1">SSE 会话</p>
-              <code className="text-xs">GET /mcp (Authorization: Bearer {'<token>'})</code>
-            </div>
-          </div>
-        </details>
       </div>
     </div>
   );

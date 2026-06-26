@@ -221,8 +221,8 @@ func TestPanda_NewPanda_AllowUsersEmpty(t *testing.T) {
 
 func TestPanda_IsSenderAllowed_EmptyList(t *testing.T) {
 	p := NewPanda(PandaConfig{}, nil, "test")
-	if p.isSenderAllowed("anyone") {
-		t.Fatal("expected false for empty allow list")
+	if !p.isSenderAllowed("anyone") {
+		t.Fatal("expected true for empty allow list (whitelist disabled, allow all)")
 	}
 }
 
@@ -395,6 +395,128 @@ func TestPanda_HandleMsgPush_MsgChanFull(t *testing.T) {
 	// Channel should still be full, message dropped without error
 	if len(p.msgChan) != cap(p.msgChan) {
 		t.Fatalf("expected channel full (%d), got %d", cap(p.msgChan), len(p.msgChan))
+	}
+}
+
+// --- handleMsgPush @mention ---
+
+func TestPanda_HandleMsgPush_AtMention_Enabled_SkipsWithoutMention(t *testing.T) {
+	p := NewPanda(PandaConfig{AtMention: true}, nil, "mybot")
+	p.userID = "bot"
+	// Mention field does not contain "mybot"
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "hello world", Mention: []string{"otheruser"}}
+	data, _ := json.Marshal(push)
+
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 0 {
+		t.Fatal("expected message without agent in Mention to be filtered when at_mention enabled")
+	}
+}
+
+func TestPanda_HandleMsgPush_AtMention_Enabled_AllowsWithMention(t *testing.T) {
+	p := NewPanda(PandaConfig{AtMention: true}, nil, "mybot")
+	p.userID = "bot"
+	// Mention field contains "mybot"
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "hello @mybot how are you", Mention: []string{"mybot"}}
+	data, _ := json.Marshal(push)
+
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message with agent in Mention to pass when at_mention enabled")
+	}
+}
+
+func TestPanda_HandleMsgPush_AtMention_Disabled_AllowsAll(t *testing.T) {
+	p := NewPanda(PandaConfig{AtMention: false}, nil, "mybot")
+	p.userID = "bot"
+	// Mention is empty, but at_mention is disabled so should pass
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "hello world"}
+	data, _ := json.Marshal(push)
+
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message to pass when at_mention disabled")
+	}
+}
+
+func TestPanda_HandleMsgPush_AtMention_ExactMatch(t *testing.T) {
+	// agentName "mybot" should not match "mybot2" in the Mention list
+	p := NewPanda(PandaConfig{AtMention: true}, nil, "mybot")
+	p.userID = "bot"
+	// Mention contains "mybot2" but not "mybot"
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "hello", Mention: []string{"mybot2", "supermybot"}}
+	data, _ := json.Marshal(push)
+
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 0 {
+		t.Fatal("expected message without exact agentName in Mention to be filtered")
+	}
+}
+
+func TestPanda_HandleMsgPush_AtMention_MultipleMentions(t *testing.T) {
+	// Multiple mentions including agentName
+	p := NewPanda(PandaConfig{AtMention: true}, nil, "mybot")
+	p.userID = "bot"
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "hello @alice @mybot", Mention: []string{"alice", "mybot"}}
+	data, _ := json.Marshal(push)
+
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message with agentName among Mention list to pass")
+	}
+}
+
+func TestPanda_HandleMsgPush_AtMention_CombinedWithWhitelist(t *testing.T) {
+	// Both @mention and whitelist enabled: both must pass
+	p := NewPanda(PandaConfig{AtMention: true, AllowUsers: "alice,bob"}, nil, "mybot")
+	p.userID = "bot"
+
+	// Allowed sender with @mention
+	push := msgPushPayload{SenderID: "alice", ConvID: "conv1", ContentType: 0, Body: "hey @mybot", Mention: []string{"mybot"}}
+	data, _ := json.Marshal(push)
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message from allowed sender with @mention to pass")
+	}
+
+	// Allowed sender without @mention — should be filtered
+	push2 := msgPushPayload{SenderID: "alice", ConvID: "conv1", ContentType: 0, Body: "hey there"}
+	data2, _ := json.Marshal(push2)
+	err = p.handleMsgPush(data2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message from allowed sender without @mention to be filtered")
+	}
+
+	// Not allowed sender with @mention — should be filtered
+	push3 := msgPushPayload{SenderID: "eve", ConvID: "conv1", ContentType: 0, Body: "hey @mybot", Mention: []string{"mybot"}}
+	data3, _ := json.Marshal(push3)
+	err = p.handleMsgPush(data3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message from unallowed sender (even with @mention) to be filtered")
 	}
 }
 

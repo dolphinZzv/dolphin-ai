@@ -196,7 +196,8 @@
         "account": { "type": "string" },
         "password": { "type": "string" },
         "allow_users": { "type": "array", "items": { "type": "string" } },
-        "allow_convs": { "type": "array", "items": { "type": "string" } }
+        "allow_convs": { "type": "array", "items": { "type": "string" } },
+        "at_mention": { "type": "boolean", "default": false, "description": "If true, only process messages that @mention the agent name" }
       }
     },
     "prometheus": {

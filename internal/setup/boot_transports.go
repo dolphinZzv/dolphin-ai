@@ -231,6 +231,7 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 					"conv_id":     cfg.GetString("panda.conv_id"),
 					"allow_users": configListOrString(cfg, "panda.allow_users"),
 					"allow_convs": configListOrString(cfg, "panda.allow_convs"),
+					"at_mention":  cfg.GetBool("panda.at_mention"),
 				},
 			})
 		}

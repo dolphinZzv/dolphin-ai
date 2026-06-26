@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +48,7 @@ func init() {
 			ConvID:     valOr(cfg, "conv_id", ""),
 			AllowUsers: valOr(cfg, "allow_users", ""),
 			AllowConvs: valOr(cfg, "allow_convs", ""),
+			AtMention:  boolValOr(cfg, "at_mention", false),
 		}, logger, agentName), nil
 	})
 }
@@ -60,14 +62,24 @@ func valOr(cfg map[string]any, key, def string) string {
 	return def
 }
 
+func boolValOr(cfg map[string]any, key string, def bool) bool {
+	if v, ok := cfg[key]; ok && v != nil {
+		if b, ok := v.(bool); ok {
+			return b
+		}
+	}
+	return def
+}
+
 // PandaConfig holds panda-ai server connection configuration.
 type PandaConfig struct {
 	Server     string // HTTP base URL (e.g. http://127.0.0.1:8080)
 	Account    string // login account
 	Password   string // login password
 	ConvID     string // optional: fixed conversation to send/receive; empty = auto-reply to incoming conv
-	AllowUsers string // comma-separated allowed sender user IDs; empty = deny all
+	AllowUsers string // comma-separated allowed sender user IDs; empty = allow all (whitelist disabled)
 	AllowConvs string // comma-separated allowed conversation IDs; empty = allow all
+	AtMention bool   // if true, only process messages that @mention the agent name
 }
 
 // Panda is a transport that connects to a panda-ai IM server via WebSocket.
@@ -93,8 +105,9 @@ type Panda struct {
 
 	mu         sync.Mutex
 	closed     bool
-	allowUsers []string // user ID glob patterns; nil = deny all
-	allowConvs []string // conversation ID glob patterns; nil = allow all
+	allowUsers []string // user ID glob patterns; nil/empty = allow all (whitelist disabled)
+	allowConvs []string // conversation ID glob patterns; nil/empty = allow all
+	atMention  bool     // if true, only process messages that @mention agentName
 
 	// track from incoming MsgPush for reply routing
 	lastSenderID string
@@ -153,6 +166,7 @@ func NewPanda(cfg PandaConfig, logger *zap.Logger, agentName string) *Panda {
 		closeCh:       make(chan struct{}),
 		allowUsers:    allowUsers,
 		allowConvs:    allowConvs,
+		atMention:     cfg.AtMention,
 		firstConnect:  true,
 	}
 }
@@ -1140,7 +1154,7 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 		return nil
 	}
 
-	// Sender allowlist check
+	// Sender allowlist check (whitelist mode: only enforced when allowUsers is non-empty)
 	if !p.isSenderAllowed(push.SenderID) {
 		p.logger.Debug("panda: sender not allowed", zap.String("sender_id", push.SenderID))
 		return nil
@@ -1159,6 +1173,12 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 
 	// Only handle text messages
 	if push.ContentType != 0 {
+		return nil
+	}
+
+	// @ mention check: if enabled, only process messages that @mention the agent name
+	if p.atMention && !slices.Contains(push.Mention, p.agentName) {
+		p.logger.Debug("panda: message does not @mention agent", zap.String("agent_name", p.agentName))
 		return nil
 	}
 
@@ -1184,10 +1204,10 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 }
 
 // isSenderAllowed checks if a sender user ID matches the allowlist.
-// Empty allowUsers means deny all.
+// Empty allowUsers means allow all (whitelist disabled).
 func (p *Panda) isSenderAllowed(userID string) bool {
 	if len(p.allowUsers) == 0 {
-		return false
+		return true
 	}
 	for _, pattern := range p.allowUsers {
 		if ok, _ := path.Match(pattern, userID); ok {

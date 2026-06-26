@@ -12,9 +12,6 @@
 # 启动后端（SQLite 开发模式）
 go run ./cmd/server
 
-# STDIO 模式（供 Claude Code 等 MCP 客户端使用）
-go run ./cmd/server --stdio
-
 # 启动前端开发服务器（需要后端已启动）
 cd ui && npm install && npm run dev
 ```
@@ -57,8 +54,6 @@ AI Assistant (Claude/GPT)
 |------|------|------|
 | Web UI | `http://localhost:8080` | 人类操作界面（浏览器） |
 | GraphQL API | `POST /graphql` | 全量 CRUD + Subscription |
-| MCP SSE | `POST /mcp` | AI Agent 集成入口 |
-| MCP STDIO | `--stdio` 模式 | 本地 AI 编程助手接入 |
 | 健康检查 | `GET /health` | 运维探测 |
 
 ## 环境变量
@@ -68,7 +63,7 @@ AI Assistant (Claude/GPT)
 | CHICK_DB_DRIVER | sqlite3 | sqlite3 / postgres |
 | CHICK_DB_DSN | file:dev.db | 连接串 |
 | CHICK_PORT | 8080 | HTTP 端口 |
-| CHICK_BOOTSTRAP_TOKEN | (自动生成) | AI Agent 首次注册令牌 |
+| CHICK_BOOTSTRAP_TOKEN | (自动生成) | Agent 首次注册令牌 |
 
 ## MCP Tools
 
@@ -99,68 +94,6 @@ go test ./... -count=1
 # 前端测试
 cd ui && npm test
 ```
-
-## AI 编程助手集成
-
-通过 MCP 协议，Chick 可以和多种 AI 编程助手协作。配置为 **STDIO 模式**（本地运行）或 **SSE 模式**（远程服务）。
-
-### Claude Code (claude.ai/code)
-
-```json
-{
-  "mcpServers": {
-    "chick": {
-      "command": "/path/to/chick",
-      "args": ["--stdio"],
-      "env": {
-        "CHICK_DB_DRIVER": "sqlite3",
-        "CHICK_DB_DSN": "file:dev.db",
-        "CHICK_BOOTSTRAP_TOKEN": "<your-bootstrap-token>"
-      }
-    }
-  }
-}
-```
-
-### OpenCode
-
-```json
-// ~/.config/opencode/opencode.json
-{
-  "mcpServers": {
-    "chick": {
-      "command": "/path/to/chick",
-      "args": ["--stdio"],
-      "env": {
-        "CHICK_DB_DRIVER": "sqlite3",
-        "CHICK_DB_DSN": "file:dev.db",
-        "CHICK_BOOTSTRAP_TOKEN": "<your-bootstrap-token>"
-      }
-    }
-  }
-}
-```
-
-### Cline (Roo Code)
-
-```json
-// cline_desktop_config.json
-{
-  "mcpServers": {
-    "chick": {
-      "command": "/path/to/chick",
-      "args": ["--stdio"],
-      "env": {
-        "CHICK_DB_DRIVER": "sqlite3",
-        "CHICK_DB_DSN": "file:dev.db",
-        "CHICK_BOOTSTRAP_TOKEN": "<your-bootstrap-token>"
-      }
-    }
-  }
-}
-```
-
-首次启动时，控制台会输出 `BOOTSTRAP_TOKEN`。第一个 AI Agent 注册时需要此令牌，之后通过 JWT 认证。
 
 ## 了解更多
 
