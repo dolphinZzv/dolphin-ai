@@ -12,8 +12,8 @@ import (
 	"chick/internal/models"
 	"chick/internal/notifications"
 	gormrepo "chick/internal/repository/gorm"
-	"chick/internal/service"
 	"chick/internal/server"
+	"chick/internal/service"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -178,7 +178,7 @@ func TestIntegration_CheckNotifications(t *testing.T) {
 
 	// Call check_notifications
 	result := call(t, srv, "tools/call", map[string]interface{}{
-		"name": "check_notifications",
+		"name":      "check_notifications",
 		"arguments": map[string]interface{}{},
 	}, agent.ID)
 

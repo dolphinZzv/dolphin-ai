@@ -43,14 +43,14 @@ type AgentRepository interface {
 	FindTimedOut(cutoffTime time.Time) ([]models.Agent, error)
 	List(filter models.AgentFilter) ([]models.Agent, error)
 	CountByKind(kind models.AgentKind) (int64, error)
-		NextNumber() (uint, error)
-		UpdateIP(id uint, ip string) error
-		FindByToken(token string) (*models.Agent, error)
-		UpdateAllowedCIDRs(id uint, cidrs []string) error
-		UpdateDisabled(id uint, disabled bool) error
-		Update(id uint, changes map[string]interface{}) error
-		Delete(id uint) error
-	}
+	NextNumber() (uint, error)
+	UpdateIP(id uint, ip string) error
+	FindByToken(token string) (*models.Agent, error)
+	UpdateAllowedCIDRs(id uint, cidrs []string) error
+	UpdateDisabled(id uint, disabled bool) error
+	Update(id uint, changes map[string]interface{}) error
+	Delete(id uint) error
+}
 
 // ─── Issue ─────────────────────────────────────────────────
 
@@ -157,17 +157,17 @@ type TaskRepository interface {
 // ─── Aggregate ─────────────────────────────────────────────
 
 type Repositories struct {
-	Project        ProjectRepository
-	ProjectMember  ProjectMemberRepository
-	Agent          AgentRepository
-	Issue          IssueRepository
-	IssueAssignee  IssueAssigneeRepository
-	Comment        CommentRepository
-	Label          LabelRepository
-	Milestone      MilestoneRepository
-	Timeline       TimelineRepository
-	Feedback       FeedbackRepository
-	Proposal       ProposalRepository
-	Task           TaskRepository
-	DB             *gorm.DB
+	Project       ProjectRepository
+	ProjectMember ProjectMemberRepository
+	Agent         AgentRepository
+	Issue         IssueRepository
+	IssueAssignee IssueAssigneeRepository
+	Comment       CommentRepository
+	Label         LabelRepository
+	Milestone     MilestoneRepository
+	Timeline      TimelineRepository
+	Feedback      FeedbackRepository
+	Proposal      ProposalRepository
+	Task          TaskRepository
+	DB            *gorm.DB
 }

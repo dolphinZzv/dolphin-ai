@@ -79,7 +79,7 @@ type PandaConfig struct {
 	ConvID     string // optional: fixed conversation to send/receive; empty = auto-reply to incoming conv
 	AllowUsers string // comma-separated allowed sender user IDs; empty = allow all (whitelist disabled)
 	AllowConvs string // comma-separated allowed conversation IDs; empty = allow all
-	AtMention bool   // if true, only process messages that @mention the agent name
+	AtMention  bool   // if true, only process messages that @mention the agent name
 }
 
 // Panda is a transport that connects to a panda-ai IM server via WebSocket.

@@ -18,19 +18,19 @@ const (
 )
 
 type Comment struct {
-	ID              uint               `gorm:"primaryKey;autoIncrement"`
-	IssueID         *uint              `gorm:"index"`
-	ProposalID      *uint              `gorm:"index"`
-	TaskID          *uint              `gorm:"index"`
-	AuthorID        uint               `gorm:"not null;index"`
-	ParentID        *uint              `gorm:"index"`
-	Body            string             `gorm:"type:text;not null"`
-	ContentType     CommentContentType `gorm:"type:varchar(30);not null;default:markdown"`
-	ToolCallData    JSONMap            `gorm:"type:jsonb;serializer:json"`
-	StructuredData  JSONMap            `gorm:"type:jsonb;serializer:json"`
-	Metadata        JSONMap            `gorm:"type:jsonb;serializer:json"`
-	CreatedAt       time.Time          `gorm:"autoCreateTime"`
-	UpdatedAt       time.Time          `gorm:"autoUpdateTime"`
+	ID             uint               `gorm:"primaryKey;autoIncrement"`
+	IssueID        *uint              `gorm:"index"`
+	ProposalID     *uint              `gorm:"index"`
+	TaskID         *uint              `gorm:"index"`
+	AuthorID       uint               `gorm:"not null;index"`
+	ParentID       *uint              `gorm:"index"`
+	Body           string             `gorm:"type:text;not null"`
+	ContentType    CommentContentType `gorm:"type:varchar(30);not null;default:markdown"`
+	ToolCallData   JSONMap            `gorm:"type:jsonb;serializer:json"`
+	StructuredData JSONMap            `gorm:"type:jsonb;serializer:json"`
+	Metadata       JSONMap            `gorm:"type:jsonb;serializer:json"`
+	CreatedAt      time.Time          `gorm:"autoCreateTime"`
+	UpdatedAt      time.Time          `gorm:"autoUpdateTime"`
 
 	Issue    *Issue    `gorm:"foreignKey:IssueID;constraint:OnDelete:CASCADE"`
 	Proposal *Proposal `gorm:"foreignKey:ProposalID;constraint:OnDelete:CASCADE"`

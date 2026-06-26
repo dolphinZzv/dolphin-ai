@@ -34,10 +34,10 @@ func Load() *Config {
 		AllowHumanRegistration:      getEnv("CHICK_ALLOW_HUMAN_REGISTRATION", "false") == "true",
 		MCPAllowedCIDRs:             splitCIDRs(getEnv("CHICK_MCP_ALLOWED_CIDRS", "")),
 		DefaultRequirementProjectID: uint(getEnvInt("CHICK_REQUIREMENT_PROJECT_ID", 0)),
-		PprofEnabled:  getEnv("CHICK_PPROF_ENABLED", "true") == "true",
-		RedisAddr:     getEnv("CHICK_REDIS_ADDR", "localhost:6379"),
-		RedisPassword: getEnv("CHICK_REDIS_PASSWORD", ""),
-		RedisDB:       getEnvInt("CHICK_REDIS_DB", 1),
+		PprofEnabled:                getEnv("CHICK_PPROF_ENABLED", "true") == "true",
+		RedisAddr:                   getEnv("CHICK_REDIS_ADDR", "localhost:6379"),
+		RedisPassword:               getEnv("CHICK_REDIS_PASSWORD", ""),
+		RedisDB:                     getEnvInt("CHICK_REDIS_DB", 1),
 	}
 }
 

@@ -15,12 +15,12 @@ import (
 )
 
 type IssueService struct {
-	db            *gorm.DB
-	issueRepo     repository.IssueRepository
-	assigneeRepo  repository.IssueAssigneeRepository
-	timelineRepo  repository.TimelineRepository
-	projectRepo   repository.ProjectRepository
-	eventBus      *events.Bus
+	db           *gorm.DB
+	issueRepo    repository.IssueRepository
+	assigneeRepo repository.IssueAssigneeRepository
+	timelineRepo repository.TimelineRepository
+	projectRepo  repository.ProjectRepository
+	eventBus     *events.Bus
 }
 
 func NewIssueService(

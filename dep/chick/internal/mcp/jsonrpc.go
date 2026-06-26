@@ -50,15 +50,15 @@ func NewInternalError(id json.RawMessage, msg string) Response {
 
 // Standard MCP method names
 const (
-	MethodInitialize              = "initialize"
-	MethodToolsList               = "tools/list"
-	MethodToolsCall               = "tools/call"
-	MethodResourcesList           = "resources/list"
-	MethodResourcesTemplatesList  = "resources/templates/list"
-	MethodResourcesRead           = "resources/read"
-	MethodPromptsList             = "prompts/list"
-	MethodPromptsGet              = "prompts/get"
-	MethodPing                    = "ping"
+	MethodInitialize               = "initialize"
+	MethodToolsList                = "tools/list"
+	MethodToolsCall                = "tools/call"
+	MethodResourcesList            = "resources/list"
+	MethodResourcesTemplatesList   = "resources/templates/list"
+	MethodResourcesRead            = "resources/read"
+	MethodPromptsList              = "prompts/list"
+	MethodPromptsGet               = "prompts/get"
+	MethodPing                     = "ping"
 	MethodNotificationsInitialized = "notifications/initialized"
 )
 
@@ -90,8 +90,8 @@ type ResourceTemplate struct {
 
 // Prompt definition
 type PromptDefinition struct {
-	Name        string          `json:"name"`
-	Description string          `json:"description,omitempty"`
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
 	Arguments   []PromptArgument `json:"arguments,omitempty"`
 }
 

@@ -396,10 +396,10 @@ func handleMCPEvents(srv *server.Server) http.HandlerFunc {
 			data, _ := json.Marshal(map[string]interface{}{
 				"type": "comment.added",
 				"payload": map[string]interface{}{
-					"commentId":  fmt.Sprintf("%d", p.CommentID),
-					"issueId":    fmt.Sprintf("%d", p.IssueID),
-					"projectId":  fmt.Sprintf("%d", p.ProjectID),
-					"authorId":   fmt.Sprintf("%d", p.AuthorID),
+					"commentId": fmt.Sprintf("%d", p.CommentID),
+					"issueId":   fmt.Sprintf("%d", p.IssueID),
+					"projectId": fmt.Sprintf("%d", p.ProjectID),
+					"authorId":  fmt.Sprintf("%d", p.AuthorID),
 				},
 			})
 			select {

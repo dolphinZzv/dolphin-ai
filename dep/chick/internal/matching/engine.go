@@ -11,10 +11,10 @@ import (
 
 // Engine matches issues to agents based on label→capability mapping.
 type Engine struct {
-	agentRepo   repository.AgentRepository
-	labelRepo   repository.LabelRepository
+	agentRepo    repository.AgentRepository
+	labelRepo    repository.LabelRepository
 	assigneeRepo repository.IssueAssigneeRepository
-	issueRepo   repository.IssueRepository
+	issueRepo    repository.IssueRepository
 }
 
 func NewEngine(

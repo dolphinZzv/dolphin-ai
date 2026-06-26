@@ -11,12 +11,12 @@ import (
 )
 
 type Resources struct {
-	resources  []ResourceDefinition
-	projectSvc *service.ProjectService
-	agentSvc   *service.AgentService
-	issueSvc   *service.IssueService
+	resources   []ResourceDefinition
+	projectSvc  *service.ProjectService
+	agentSvc    *service.AgentService
+	issueSvc    *service.IssueService
 	proposalSvc *service.ProposalService
-	taskSvc    *service.TaskService
+	taskSvc     *service.TaskService
 }
 
 func NewResources(projectSvc *service.ProjectService, agentSvc *service.AgentService, issueSvc *service.IssueService, proposalSvc *service.ProposalService, taskSvc *service.TaskService) *Resources {
@@ -249,7 +249,7 @@ func (r *Resources) readAgent(uri string, id uint) (interface{}, error) {
 		"deviceInfo":   a.DeviceInfo,
 		"modelInfo":    a.ModelInfo,
 		"lastIp":       a.LastIP,
-			"tokenPreview": maskToken(a.Token),
+		"tokenPreview": maskToken(a.Token),
 	})
 	return map[string]interface{}{
 		"uri":      uri,
@@ -294,7 +294,7 @@ func (r *Resources) readProposal(uri string, projectID uint, number uint) (inter
 func (r *Resources) readTask(uri string, proposalID uint, number uint) (interface{}, error) {
 	tasks, _, err := r.taskSvc.List(models.TaskFilter{
 		ProposalID: &proposalID,
-		Limit:     1,
+		Limit:      1,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("task not found: %w", err)

@@ -1408,7 +1408,6 @@ func (r *queryResolver) Feedback(ctx context.Context, targetType FeedbackTargetT
 	return nil, errors.New("unknown target type")
 }
 
-
 // Notifications is the resolver for the notifications field.
 func (r *queryResolver) Notifications(ctx context.Context, agentID string) ([]*NotificationEvent, error) {
 	pid := parseID(agentID)

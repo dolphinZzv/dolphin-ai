@@ -178,7 +178,7 @@ func TestPromptsGet_Unknown(t *testing.T) {
 	srv, _, _, _ := setupTest(t)
 
 	params, _ := json.Marshal(map[string]interface{}{
-		"name": "nonexistent",
+		"name":      "nonexistent",
 		"arguments": map[string]string{},
 	})
 	req := &mcp.Request{

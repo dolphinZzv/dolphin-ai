@@ -8,8 +8,8 @@ import (
 
 func TestNewServer(t *testing.T) {
 	srv, err := New(&config.Config{
-		DBDriver: "sqlite3",
-		DBDSN:    "file::memory:",
+		DBDriver:  "sqlite3",
+		DBDSN:     "file::memory:",
 		JWTSecret: "test-secret",
 	})
 	if err != nil {

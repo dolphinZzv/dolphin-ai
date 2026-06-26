@@ -51,8 +51,8 @@ func TestProjectRepo_UpdateConfig(t *testing.T) {
 
 	// Update config fields
 	err := repo.Update(p.ID, map[string]interface{}{
-		"allow_creator_transition":        false,
-		"require_creator_close_approval":  true,
+		"allow_creator_transition":       false,
+		"require_creator_close_approval": true,
 	})
 	if err != nil {
 		t.Fatalf("update config: %v", err)

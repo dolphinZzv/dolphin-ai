@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- **Gofmt dep/chick + panda.go**: formatting compliance for push hook.
 - **Chick subtree + cleanup**: added `dep/chick` as git subtree from `dolphinZzv/chick:dev`. Removed AI agent access panel from chick login page and AI programming assistant integration section from chick README.
 - **Rename deps/ → experiment/**: moved behavior-capture HTTP server and all references from `deps/` to `experiment/` directory. Formatted Go sources.
 - **Dream fix**: zero-time display shows "never" instead of 0001-01-01; bootstrap sets LastDreamAt to now.

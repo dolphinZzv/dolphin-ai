@@ -17,7 +17,7 @@ func TestAgentHeartbeat(t *testing.T) {
 	}
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
-		"name": "agent_heartbeat",
+		"name":      "agent_heartbeat",
 		"arguments": map[string]interface{}{},
 	}, agent.ID)
 	if result["success"] != true {
@@ -87,7 +87,7 @@ func TestListAgentsAll(t *testing.T) {
 	agentSvc.Register("agent-2", "human", "la-002", "pass", nil, "", "")
 
 	result := call(t, srv, "tools/call", map[string]interface{}{
-		"name": "list_agents",
+		"name":      "list_agents",
 		"arguments": map[string]interface{}{},
 	}, 0)
 	data, _ := json.Marshal(result["items"])

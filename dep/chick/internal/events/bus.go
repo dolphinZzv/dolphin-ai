@@ -22,15 +22,15 @@ const (
 )
 
 type Event struct {
-	Type   EventType
+	Type    EventType
 	Payload interface{}
 }
 
 type Handler func(Event)
 
 type registeredHandler struct {
-	id  string
-	fn  func(Event)
+	id string
+	fn func(Event)
 }
 
 type Bus struct {

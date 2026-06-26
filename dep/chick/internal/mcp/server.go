@@ -67,7 +67,7 @@ func (s *Server) handleInitialize(id json.RawMessage, params json.RawMessage) Re
 				"subscribe": false,
 			},
 			"resourceTemplates": map[string]interface{}{},
-			"prompts": map[string]interface{}{},
+			"prompts":           map[string]interface{}{},
 		},
 		"serverInfo": map[string]interface{}{
 			"name":    "chick",

@@ -12,8 +12,8 @@ import (
 	"chick/internal/models"
 	"chick/internal/notifications"
 	gormrepo "chick/internal/repository/gorm"
-	"chick/internal/service"
 	"chick/internal/server"
+	"chick/internal/service"
 
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -459,7 +459,6 @@ func TestSubmitRequirement_NoTitle(t *testing.T) {
 	}
 }
 
-
 func TestSearchIssues(t *testing.T) {
 	srv, projectSvc, agentSvc, issueSvc := setupTest(t)
 
@@ -544,7 +543,7 @@ func TestMCPCreateIssue_MissingRequired(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			params, _ := json.Marshal(map[string]interface{}{
-				"name": "create_issue",
+				"name":      "create_issue",
 				"arguments": tt.args,
 			})
 			req := &mcp.Request{

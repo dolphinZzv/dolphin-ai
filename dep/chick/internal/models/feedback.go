@@ -5,9 +5,9 @@ import "time"
 type FeedbackTargetType string
 
 const (
-	FeedbackTargetIssue     FeedbackTargetType = "issue"
-	FeedbackTargetComment   FeedbackTargetType = "comment"
-	FeedbackTargetAgent     FeedbackTargetType = "agent"
+	FeedbackTargetIssue      FeedbackTargetType = "issue"
+	FeedbackTargetComment    FeedbackTargetType = "comment"
+	FeedbackTargetAgent      FeedbackTargetType = "agent"
 	FeedbackTargetAssignment FeedbackTargetType = "assignment"
 )
 

@@ -1,10 +1,10 @@
 package gorm
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"chick/internal/models"
 	"chick/internal/repository"
+	"crypto/rand"
+	"encoding/hex"
 	"time"
 
 	"gorm.io/gorm"

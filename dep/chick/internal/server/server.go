@@ -15,21 +15,21 @@ import (
 )
 
 type Server struct {
-	Config          *config.Config
-	DB              *gorm.DB
-	EventBus        *events.Bus
+	Config   *config.Config
+	DB       *gorm.DB
+	EventBus *events.Bus
 
-	ProjectService   *service.ProjectService
-	AgentService     *service.AgentService
-	IssueService     *service.IssueService
-	CommentService   *service.CommentService
-	ProposalService  *service.ProposalService
-	TaskService      *service.TaskService
-	WorkflowService  *service.WorkflowService
-	FeedbackService  *service.FeedbackService
-	Authenticator    *auth.Authenticator
-	NotifService     *notifications.Service
-	MatchingEngine   *matching.Engine
+	ProjectService  *service.ProjectService
+	AgentService    *service.AgentService
+	IssueService    *service.IssueService
+	CommentService  *service.CommentService
+	ProposalService *service.ProposalService
+	TaskService     *service.TaskService
+	WorkflowService *service.WorkflowService
+	FeedbackService *service.FeedbackService
+	Authenticator   *auth.Authenticator
+	NotifService    *notifications.Service
+	MatchingEngine  *matching.Engine
 }
 
 func New(cfg *config.Config) (*Server, error) {
@@ -81,20 +81,20 @@ func New(cfg *config.Config) (*Server, error) {
 	feedbackSvc := service.NewFeedbackService(feedbackRepo, bus)
 
 	srv := &Server{
-		Config:           cfg,
-		DB:               db,
-		EventBus:         bus,
-		ProjectService:   projectSvc,
-		AgentService:     agentSvc,
-		IssueService:     issueSvc,
-		CommentService:   commentSvc,
-		ProposalService:  proposalSvc,
-		TaskService:      taskSvc,
-		WorkflowService:  workflowSvc,
-		FeedbackService:  feedbackSvc,
-		Authenticator:    authn,
-		NotifService:     notifSvc,
-		MatchingEngine:   matchingEngine,
+		Config:          cfg,
+		DB:              db,
+		EventBus:        bus,
+		ProjectService:  projectSvc,
+		AgentService:    agentSvc,
+		IssueService:    issueSvc,
+		CommentService:  commentSvc,
+		ProposalService: proposalSvc,
+		TaskService:     taskSvc,
+		WorkflowService: workflowSvc,
+		FeedbackService: feedbackSvc,
+		Authenticator:   authn,
+		NotifService:    notifSvc,
+		MatchingEngine:  matchingEngine,
 	}
 
 	log.Println("[server] initialized")

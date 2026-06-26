@@ -36,9 +36,9 @@ type Proposal struct {
 	UpdatedAt   time.Time `gorm:"autoUpdateTime"`
 
 	// Relations
-	Project  Project  `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
-	Author   Agent    `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
-	Reviewer *Agent   `gorm:"foreignKey:ReviewerID"`
-	Tasks    []Task   `gorm:"foreignKey:ProposalID"`
-	Labels   []Label  `gorm:"many2many:proposal_labels;"`
+	Project  Project `gorm:"foreignKey:ProjectID;constraint:OnDelete:CASCADE"`
+	Author   Agent   `gorm:"foreignKey:AuthorID;constraint:OnDelete:CASCADE"`
+	Reviewer *Agent  `gorm:"foreignKey:ReviewerID"`
+	Tasks    []Task  `gorm:"foreignKey:ProposalID"`
+	Labels   []Label `gorm:"many2many:proposal_labels;"`
 }

@@ -79,8 +79,8 @@ func (r *ProposalRepo) List(filter models.ProposalFilter) ([]models.Proposal, in
 
 	var proposals []models.Proposal
 	err := q.Preload("Author").Preload("Reviewer").Preload("Labels").Preload("Tasks", func(db *gorm.DB) *gorm.DB {
-			return db.Order("number ASC")
-		}).Find(&proposals).Error
+		return db.Order("number ASC")
+	}).Find(&proposals).Error
 	return proposals, total, err
 }
 

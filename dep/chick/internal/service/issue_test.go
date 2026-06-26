@@ -37,7 +37,7 @@ func setupIssueTest(t *testing.T) (*service.IssueService, *service.AgentService,
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	proposalRepo := gormrepo.NewProposalRepo(db)
 	taskRepo := gormrepo.NewTaskRepo(db)
-		commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
 	workflowSvc := service.NewWorkflowService(issueSvc)
 
@@ -220,7 +220,6 @@ func TestUpdateIssue_ExtraFields(t *testing.T) {
 
 	env := "production"
 	diff := 5
-	
 
 	updated, err := issueSvc.Update(issue.ID, "", "", models.Priority(""), nil, nil, &env, nil, nil, nil, nil, &diff)
 	if err != nil {
@@ -267,7 +266,7 @@ func TestAddComment(t *testing.T) {
 	projectSvc := service.NewProjectService(projectRepo, memberRepo, labelRepo, milestoneRepo)
 	agentSvc := service.NewAgentService(agentRepo, bus, nil, true)
 	issueSvc := service.NewIssueService(db, issueRepo, assigneeRepo, timelineRepo, projectRepo, bus)
-commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
+	commentSvc := service.NewCommentService(db, commentRepo, timelineRepo, issueRepo, proposalRepo, taskRepo, bus)
 
 	p, _ := projectSvc.Create("Test", "")
 	agent, _ := agentSvc.Register("user", models.AgentKindHuman, "user-1", "secret", nil, "", "")

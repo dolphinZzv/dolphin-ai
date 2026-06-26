@@ -118,7 +118,7 @@ func TestAgentWorkflowE2E(t *testing.T) {
 
 	// ── Step 10: Agent heartbeat ──
 	hbResult := call(t, srv, "tools/call", map[string]interface{}{
-		"name": "agent_heartbeat",
+		"name":      "agent_heartbeat",
 		"arguments": map[string]interface{}{},
 	}, agentID)
 	if hbResult["success"] != true {

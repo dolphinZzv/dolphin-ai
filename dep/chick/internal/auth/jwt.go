@@ -13,7 +13,7 @@ import (
 type contextKey string
 
 const (
-	ContextKeyAgentID contextKey = "agent_id"
+	ContextKeyAgentID  contextKey = "agent_id"
 	ContextKeyClientIP contextKey = "client_ip"
 )
 
