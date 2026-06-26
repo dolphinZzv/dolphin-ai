@@ -489,3 +489,49 @@ func TestDiscoverModels_HTTPError(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestDecodeError(t *testing.T) {
+	t.Run("valid error", func(t *testing.T) {
+		err := DecodeError(400, []byte(`{"error":{"message":"rate limited"}}`))
+		if err == nil || err.Error() != "llm: rate limited (status 400)" {
+			t.Fatalf("unexpected: %v", err)
+		}
+	})
+
+	t.Run("invalid json returns nil", func(t *testing.T) {
+		err := DecodeError(400, []byte(`not json`))
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("empty message returns nil", func(t *testing.T) {
+		err := DecodeError(400, []byte(`{"error":{"message":""}}`))
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+
+	t.Run("non-error body returns nil", func(t *testing.T) {
+		err := DecodeError(400, []byte(`{"id":"msg-1"}`))
+		if err != nil {
+			t.Fatalf("expected nil, got %v", err)
+		}
+	})
+}
+
+func TestDefaultSchema(t *testing.T) {
+	t.Run("empty schema returns default", func(t *testing.T) {
+		s := DefaultSchema(nil)
+		if string(s) != `{"type":"object"}` {
+			t.Fatalf("unexpected: %s", string(s))
+		}
+	})
+
+	t.Run("non-empty schema returned as-is", func(t *testing.T) {
+		s := DefaultSchema(json.RawMessage(`{"type":"string"}`))
+		if string(s) != `{"type":"string"}` {
+			t.Fatalf("unexpected: %s", string(s))
+		}
+	})
+}

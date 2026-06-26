@@ -140,6 +140,20 @@ func TestRecorderDir(t *testing.T) {
 	}
 }
 
+func TestWrite_MkdirAllFails(t *testing.T) {
+	f, err := os.CreateTemp(t.TempDir(), "notadir")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	r := NewRecorder(f.Name() + "/subdir")
+	r.Record(&TurnDump{SessionID: "sess_fail", Input: "x"})
+	_, err = r.Write("sess_fail")
+	if err == nil {
+		t.Fatal("expected error when MkdirAll fails")
+	}
+}
+
 func TestConcurrentRecordAndLast(t *testing.T) {
 	r := NewRecorder("/tmp/dumps")
 	done := make(chan struct{})

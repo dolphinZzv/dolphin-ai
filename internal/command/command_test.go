@@ -1367,5 +1367,76 @@ func TestRegisterConfig(t *testing.T) {
 	})
 }
 
+func TestFormatCount(t *testing.T) {
+	tests := []struct {
+		n    int64
+		want string
+	}{
+		{-5, "-5"},
+		{0, "0"},
+		{999, "999"},
+		{1000, "1k"},
+		{1100, "1.1k"},
+		{500000, "500k"},
+		{999999, "1000.0k"},
+		{1000000, "1m"},
+		{2500000, "2.5m"},
+		{1000000000, "1b"},
+		{5000000000000, "5t"},
+	}
+	for _, tt := range tests {
+		if got := formatCount(tt.n); got != tt.want {
+			t.Errorf("formatCount(%d) = %q, want %q", tt.n, got, tt.want)
+		}
+	}
+}
+
+func TestSlicesContains(t *testing.T) {
+	tests := []struct {
+		slice []string
+		s     string
+		want  bool
+	}{
+		{[]string{"a", "b", "c"}, "b", true},
+		{[]string{"a", "b", "c"}, "d", false},
+		{nil, "x", false},
+		{[]string{}, "x", false},
+		{[]string{"same"}, "same", true},
+	}
+	for _, tt := range tests {
+		if got := slicesContains(tt.slice, tt.s); got != tt.want {
+			t.Errorf("slicesContains(%v, %q) = %v, want %v", tt.slice, tt.s, got, tt.want)
+		}
+	}
+}
+
+func TestCompletions(t *testing.T) {
+	mgr := session.NewManager(t.TempDir())
+	sb := signal.NewBus()
+	r := NewRegistry(mgr, sb)
+
+	comps := r.Completions("")
+	if len(comps) == 0 {
+		t.Fatal("expected non-empty completions for empty prefix")
+	}
+
+	comps = r.Completions("/version")
+	if len(comps) != 1 || comps[0] != "/version" {
+		t.Fatalf("expected [/version], got %v", comps)
+	}
+
+	comps = r.Completions("session")
+	found := false
+	for _, c := range comps {
+		if c == "/session" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("expected /session in completions, got %v", comps)
+	}
+}
+
 // Ensure Registry implements expected interface.
 var _ = (*Registry)(nil)

@@ -460,3 +460,97 @@ func TestSessionHolder_WriteToolResult(t *testing.T) {
 		t.Errorf("WriteToolResult should return nil, got %v", err)
 	}
 }
+
+func TestNullTransport_Confirm(t *testing.T) {
+	n := NewNullTransport("null")
+	got, err := n.Confirm(context.Background(), "test?")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got {
+		t.Fatal("expected false from NullTransport.Confirm")
+	}
+}
+
+func TestStdio_Confirm_yes(t *testing.T) {
+	// "1" = once → yes
+	stdinR, stdinW, _ := os.Pipe()
+	stdoutR, stdoutW, _ := os.Pipe()
+
+	oldStdin := os.Stdin
+	oldStdout := os.Stdout
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		os.Stdout = oldStdout
+	})
+	os.Stdin = stdinR
+	os.Stdout = stdoutW
+
+	s := NewStdio("test", "Dolphin")
+	s.rl = nil
+
+	go func() {
+		stdinW.WriteString("1\n")
+		stdinW.Close()
+		stdoutW.Close()
+	}()
+
+	got, err := s.Confirm(context.Background(), "allow?")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if !got {
+		t.Fatal("expected true from Confirm for 'once'")
+	}
+	go io.Copy(io.Discard, stdoutR)
+}
+
+func TestStdio_Confirm_no(t *testing.T) {
+	// "3" = deny → no
+	stdinR, stdinW, _ := os.Pipe()
+	stdoutR, stdoutW, _ := os.Pipe()
+
+	oldStdin := os.Stdin
+	oldStdout := os.Stdout
+	t.Cleanup(func() {
+		os.Stdin = oldStdin
+		os.Stdout = oldStdout
+	})
+	os.Stdin = stdinR
+	os.Stdout = stdoutW
+
+	s := NewStdio("test", "Dolphin")
+	s.rl = nil
+
+	go func() {
+		stdinW.WriteString("3\n")
+		stdinW.Close()
+		stdoutW.Close()
+	}()
+
+	got, err := s.Confirm(context.Background(), "allow?")
+	if err != nil {
+		t.Fatalf("expected nil error, got %v", err)
+	}
+	if got {
+		t.Fatal("expected false from Confirm for 'deny'")
+	}
+	go io.Copy(io.Discard, stdoutR)
+}
+
+func TestTestTransport_Confirm(t *testing.T) {
+	tr := NewTestTransport("test-id")
+	got, err := tr.Confirm(context.Background(), "confirm-msg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got {
+		t.Fatal("expected true from TestTransport.Confirm")
+	}
+	tr.mu.Lock()
+	output := tr.output.String()
+	tr.mu.Unlock()
+	if !strings.Contains(output, "confirm-msg") {
+		t.Fatalf("expected output to contain confirm-msg, got %q", output)
+	}
+}

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fox</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 320px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; font-size: 13px; color: #333; background: #fafafa; }
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #fff; border-bottom: 1px solid #eee; }
+  .header h1 { font-size: 16px; font-weight: 600; color: #e65100; }
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .status-dot.online { background: #4caf50; }
+  .status-dot.offline { background: #9e9e9e; }
+  .status-dot.recording { background: #f44336; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.4 } }
+  .server-status { font-size: 11px; color: #888; padding: 4px 16px; background: #f5f5f5; display: flex; align-items: center; }
+  .body-pad { padding: 12px 16px; }
+
+  /* mode tabs */
+  .mode-tabs { display: flex; border-bottom: 2px solid #eee; margin-bottom: 12px; }
+  .mode-tab { flex: 1; padding: 8px 0; border: none; background: none; font-size: 12px; font-weight: 500; color: #999; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; }
+  .mode-tab.active { color: #e65100; border-bottom-color: #e65100; }
+  .mode-tab:hover:not(.active) { color: #666; }
+
+  /* silent mode */
+  .silent-section { display: none; }
+  .silent-section.show { display: block; }
+  .silent-hint { font-size: 11px; color: #888; margin-bottom: 10px; line-height: 1.5; }
+  .silent-hint strong { color: #e65100; }
+
+  /* teach mode */
+  .teach-section { display: none; }
+  .teach-section.show { display: block; }
+  .label-input { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; margin-bottom: 10px; }
+  .label-input:focus { outline: none; border-color: #e65100; }
+  .label-input:disabled { background: #f5f5f5; }
+
+  /* controls */
+  .controls { display: flex; gap: 8px; }
+  .btn { flex: 1; padding: 10px 0; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; transition: background 0.2s; }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn-start { background: #e65100; color: #fff; }
+  .btn-start:hover:not(:disabled) { background: #bf360c; }
+  .btn-pause { background: #ff9800; color: #fff; }
+  .btn-stop { background: #f44336; color: #fff; }
+
+  .stats { padding: 0 16px 12px; display: flex; gap: 16px; font-size: 12px; color: #666; }
+  .stats span { font-weight: 600; color: #333; }
+
+  .section-title { padding: 8px 16px; font-size: 11px; font-weight: 600; text-transform: uppercase; color: #999; letter-spacing: 0.5px; border-top: 1px solid #eee; }
+  .session-item { padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #f0f0f0; background: #fff; cursor: pointer; }
+  .session-item:hover { background: #f9f9f9; }
+  .session-info { flex: 1; min-width: 0; }
+  .session-label { font-weight: 500; }
+  .session-meta { font-size: 11px; color: #888; margin-top: 2px; }
+  .session-actions { display: flex; gap: 4px; }
+  .icon-btn { padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; font-size: 11px; }
+  .icon-btn:hover { background: #eee; }
+  .icon-btn.danger { border-color: #fcc; color: #e53935; }
+  .footer { padding: 12px 16px; border-top: 1px solid #eee; }
+  .copy-btn { width: 100%; padding: 8px; border: 1px dashed #ccc; border-radius: 6px; background: #fff; cursor: pointer; font-size: 12px; color: #666; text-align: left; }
+  .copy-btn:hover { border-color: #e65100; color: #e65100; }
+  .empty { padding: 24px 16px; text-align: center; color: #999; font-size: 12px; }
+  .settings-link { color: #999; cursor: pointer; font-size: 18px; text-decoration: none; }
+  .settings-link:hover { color: #e65100; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; font-weight: 600; margin-left: 4px; }
+  .tag.silent { background: #e3f2fd; color: #1565c0; }
+  .tag.teach { background: #fff3e0; color: #e65100; }
+  .recording-badge { font-size: 11px; color: #e65100; padding: 4px 0; display: none; }
+  .recording-badge.show { display: block; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🦊 Fox</h1>
+  <a class="settings-link" href="#" id="openOptions" title="Settings">⚙</a>
+</div>
+<div class="server-status" id="serverStatus">
+  <span class="status-dot online" id="statusDot"></span>
+  <span id="statusText">Server: checking...</span>
+</div>
+
+<div class="body-pad">
+  <div class="mode-tabs">
+    <button class="mode-tab active" data-mode="silent" id="tabSilent">🕶 Silent</button>
+    <button class="mode-tab" data-mode="teach" id="tabTeach">🎓 Teach</button>
+  </div>
+
+  <!-- Silent mode -->
+  <div class="silent-section show" id="silentSection">
+    <div class="silent-hint">
+      Passively record your browsing. No labels, no interruptions.<br>
+      Agent analyzes patterns <strong>later</strong>.
+    </div>
+    <div class="controls">
+      <button class="btn btn-start" id="btnSilentStart">▶ Record</button>
+      <button class="btn btn-stop" id="btnSilentStop" disabled>⏹ Stop</button>
+    </div>
+  </div>
+
+  <!-- Teach mode -->
+  <div class="teach-section" id="teachSection">
+    <input type="text" class="label-input" id="labelInput"
+      placeholder="What are you teaching? (e.g. Jira login flow)">
+    <div class="controls">
+      <button class="btn btn-start" id="btnTeachStart">▶ Demo</button>
+      <button class="btn btn-stop" id="btnTeachStop" disabled>⏹ Done</button>
+    </div>
+  </div>
+
+  <div class="recording-badge" id="recordingBadge"></div>
+</div>
+
+<div class="stats">
+  <div>Steps: <span id="eventCount">0</span></div>
+  <div>Pages: <span id="domainCount">0</span></div>
+</div>
+
+<div class="section-title">Sessions</div>
+<div id="sessionList"><div class="empty">No sessions yet</div></div>
+
+<div class="footer">
+  <button class="copy-btn" id="copyPrompt">📋 Copy Agent Prompt</button>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>

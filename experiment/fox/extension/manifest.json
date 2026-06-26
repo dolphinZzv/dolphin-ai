@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Fox",
+  "version": "0.1.0",
+  "description": "Capture browser behavior for Dolphin AI agent skill generation",
+  "permissions": ["storage", "activeTab", "scripting", "tabs", "webNavigation"],
+  "host_permissions": ["<all_urls>", "http://127.0.0.1:9200/*"],
+  "background": { "service_worker": "background/service-worker.js" },
+  "content_scripts": [{
+    "matches": ["<all_urls>"],
+    "js": [
+      "content/selector-builder.js",
+      "content/spa-detector.js",
+      "content/auth-detector.js",
+      "content/observer.js",
+      "content/widget.js"
+    ],
+    "run_at": "document_idle"
+  }],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Fox - Behavior Capture"
+  },
+  "options_page": "options/options.html"
+}

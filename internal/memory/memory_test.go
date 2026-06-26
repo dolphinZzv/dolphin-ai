@@ -3,12 +3,15 @@ package memory
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
 	"dolphin/internal/session"
 	"dolphin/internal/types"
 )
+
+var errReadFailed = errors.New("read failed")
 
 // testSessionStore is a minimal in-memory store for testing FileMemory.
 type testSessionStore struct {
@@ -465,6 +468,62 @@ func TestDroppingMemoryReplaceDelegates(t *testing.T) {
 	msgs, _ := dm.Read(ctx, "s1")
 	if len(msgs) != 1 || !msgs[0].IsSummary {
 		t.Fatalf("replace did not delegate to inner: %+v", msgs)
+	}
+}
+
+type errReader struct{ Memory }
+
+func (e *errReader) Read(_ context.Context, _ string) ([]types.Message, error) {
+	return nil, errReadFailed
+}
+
+func TestDroppingMemoryReadError(t *testing.T) {
+	dm := NewDroppingMemory(&errReader{}, 5)
+	_, err := dm.Read(context.Background(), "s1")
+	if err == nil {
+		t.Fatal("expected error from inner Read")
+	}
+}
+
+func TestFileMemoryWrite_DecodeError(t *testing.T) {
+	sess := &session.Session{ID: "s1"}
+	store := &testSessionStore{sessions: map[string]*session.Session{"s1": sess}}
+	m := NewFileMemory(store)
+	ctx := context.Background()
+
+	sess.Set("memory", []interface{}{map[string]interface{}{"role": 42}})
+
+	err := m.Write(ctx, "s1", types.Message{Role: types.RoleUser, Content: "x"})
+	if err == nil {
+		t.Fatal("expected error from corrupt memory data during Write")
+	}
+}
+
+func TestFileMemoryReplace_NilMsgs(t *testing.T) {
+	store := newTestStore("s1")
+	m := NewFileMemory(store)
+	if err := m.Replace(context.Background(), "s1", nil); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := m.Read(context.Background(), "s1")
+	if len(msgs) != 0 {
+		t.Fatalf("expected 0 messages after nil Replace, got %d", len(msgs))
+	}
+}
+
+func TestFileMemoryReplace_NoSession(t *testing.T) {
+	store := &testSessionStore{sessions: map[string]*session.Session{}}
+	m := NewFileMemory(store)
+	if err := m.Replace(context.Background(), "nonexistent", nil); err != nil {
+		t.Fatal("expected no error for non-existent session")
+	}
+}
+
+func TestDecodeMessages_UnmarshalError(t *testing.T) {
+	raw := []interface{}{map[string]interface{}{"role": []interface{}{"nested", "array"}}}
+	_, err := decodeMessages(raw)
+	if err == nil {
+		t.Fatal("expected unmarshal error")
 	}
 }
 

@@ -336,3 +336,87 @@ func TestSessionJSONPersistence(t *testing.T) {
 		})
 	})
 }
+
+func TestManagerTouch(t *testing.T) {
+	Convey("Manager.Touch", t, func() {
+		Convey("updates UpdatedAt on active session", func() {
+			mgr := NewManager(t.TempDir())
+			s := mgr.Create(context.Background())
+			orig := s.UpdatedAt
+
+			mgr.Touch(s.ID)
+			So(s.UpdatedAt.After(orig), ShouldBeTrue)
+		})
+
+		Convey("no-ops when id does not match active session", func() {
+			mgr := NewManager(t.TempDir())
+			mgr.Create(context.Background())
+			orig := mgr.Active().UpdatedAt
+
+			mgr.Touch("nonexistent-id")
+			So(mgr.Active().UpdatedAt.Equal(orig), ShouldBeTrue)
+		})
+
+		Convey("no-ops when no active session", func() {
+			mgr := NewManager(t.TempDir())
+			So(func() { mgr.Touch("anything") }, ShouldNotPanic)
+		})
+	})
+}
+
+func TestManagerList_ReadDirError(t *testing.T) {
+	Convey("Manager.List with unreadable directory", t, func() {
+		Convey("returns only known sessions when dir does not exist", func() {
+			mgr := NewManager("/nonexistent/path/xyz123")
+			ctx := context.Background()
+
+			sessions, err := mgr.List(ctx)
+			So(err, ShouldBeNil)
+			So(sessions, ShouldBeEmpty)
+		})
+
+		Convey("falls back to known sessions when ReadDir fails", func() {
+			dir := t.TempDir()
+			mgr := NewManager(dir)
+			s := mgr.NewSession(context.Background())
+
+			os.RemoveAll(dir)
+			f, _ := os.Create(dir)
+			f.Close()
+
+			sessions, err := mgr.List(context.Background())
+			So(err, ShouldBeNil)
+			So(sessions, ShouldNotBeEmpty)
+			So(sessions[0].ID, ShouldEqual, s.ID)
+		})
+	})
+}
+
+func TestManagerSwitchTo_NoCurrent(t *testing.T) {
+	Convey("Manager.SwitchTo without current session", t, func() {
+		dir := t.TempDir()
+		mgr := NewManager(dir)
+		s := mgr.Create(context.Background())
+
+		mgr2 := NewManager(dir)
+		switched, err := mgr2.SwitchTo(context.Background(), s.ID)
+		So(err, ShouldBeNil)
+		So(switched.ID, ShouldEqual, s.ID)
+		So(mgr2.Active().ID, ShouldEqual, s.ID)
+	})
+}
+
+func TestManagerLoadActive_EmptyDir(t *testing.T) {
+	Convey("Manager.LoadActive with empty directory", t, func() {
+		mgr := NewManager(t.TempDir())
+		mgr.LoadActive(context.Background())
+		So(mgr.Active(), ShouldBeNil)
+	})
+}
+
+func TestManagerSaveActive_NoOp(t *testing.T) {
+	Convey("Manager.SaveActive with no active session", t, func() {
+		mgr := NewManager(t.TempDir())
+		So(func() { mgr.SaveActive() }, ShouldNotPanic)
+	})
+}

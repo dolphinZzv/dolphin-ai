@@ -48,6 +48,21 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNewWithRotateInterval(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := config.LoadConfigFromMap(map[string]any{
+		"log.level":           "info",
+		"log.file":            filepath.Join(tmpDir, "rotate.log"),
+		"log.rotate_interval": "10ms",
+	})
+	logger := New(cfg)
+	if logger == nil {
+		t.Fatal("New() returned nil")
+	}
+	logger.Info("rotate test")
+	logger.Sync()
+}
+
 func TestNewDefaultValues(t *testing.T) {
 	tmpDir := t.TempDir()
 
