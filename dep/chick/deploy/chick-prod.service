@@ -1,0 +1,21 @@
+[Unit]
+Description=Chick Agent Platform (Production)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/chick
+ExecStart=/opt/chick/chick-server
+Restart=always
+RestartSec=3
+EnvironmentFile=-/etc/default/chick-prod
+Environment=CHICK_DB_DRIVER=postgres
+Environment=CHICK_DB_DSN=postgres://chick:chick@localhost:5432/chick?sslmode=disable
+Environment=CHICK_PORT=18080
+Environment=CHICK_ALLOWED_ORIGINS=*
+StandardOutput=append:/var/log/chick-prod.log
+StandardError=append:/var/log/chick-prod.log
+
+[Install]
+WantedBy=multi-user.target

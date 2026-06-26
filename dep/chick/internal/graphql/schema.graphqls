@@ -1,0 +1,447 @@
+scalar Time
+scalar Map
+
+enum AgentKind {
+  ai
+  human
+  hybrid
+}
+
+enum AgentStatus {
+  online
+  busy
+  offline
+  error
+}
+
+type Agent {
+  id: ID!
+  number: Int!
+  name: String!
+  kind: AgentKind!
+  status: AgentStatus!
+  disabled: Boolean!
+  externalID: String!
+  systemPrompt: String
+  deviceInfo: String
+  modelInfo: String
+  lastIP: String
+  capabilities: [String!]
+  allowedCIDRs: [String!]
+  metadata: Map
+  lastSeenAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+  tokenPreview: String
+  assignedIssues: [IssueAssignee!]
+  createdIssues: [Issue!]
+}
+
+type LoginResult {
+  agent: Agent!
+  token: String!
+}
+
+type RegisterResult {
+  agent: Agent!
+  token: String!
+}
+
+enum ProjectRole {
+  owner
+  maintainer
+  member
+  observer
+}
+
+type ProjectMember {
+  id: ID!
+  number: Int!
+  projectID: ID!
+  agentID: ID!
+  role: ProjectRole!
+  agent: Agent!
+}
+
+type Project {
+  id: ID!
+  number: Int!
+  name: String!
+  description: String
+  allowCreatorTransition: Boolean!
+  requireCreatorCloseApproval: Boolean!
+  createdAt: Time!
+  updatedAt: Time!
+  members: [ProjectMember!]
+  labels: [Label!]
+  milestones: [Milestone!]
+}
+
+enum IssueState {
+  open
+  in_progress
+  blocked
+  review
+  later
+  reopen
+  pending_confirmation
+  closed_completed
+  closed_not_planned
+  closed_rejected
+}
+
+enum Priority {
+  critical
+  high
+  medium
+  low
+}
+
+type IssueAssignee {
+  id: ID!
+  number: Int!
+  issueID: ID!
+  agentID: ID!
+  state: AssigneeState!
+  assignedAt: Time!
+  agent: Agent!
+}
+
+enum AssigneeState {
+  pending
+  in_progress
+  completed
+  blocked
+}
+
+type Label {
+  id: ID!
+  number: Int!
+  name: String!
+  color: String
+  description: String
+  projectID: ID!
+  capability: String
+  group: String
+}
+
+type Milestone {
+  id: ID!
+  number: Int!
+  projectID: ID!
+  title: String!
+  description: String
+  state: MilestoneState!
+  dueDate: Time
+  createdAt: Time!
+  updatedAt: Time!
+}
+
+enum MilestoneState {
+  open
+  closed
+}
+
+type Issue {
+  id: ID!
+  number: Int!
+  projectID: ID!
+  title: String!
+  description: String
+  state: IssueState!
+  priority: Priority!
+  creatorID: ID!
+  parentID: ID
+  dueDate: Time
+  environment: String
+  branch: String
+  link: String
+  closedAt: Time
+  startedAt: Time
+  completedAt: Time
+  difficulty: Int
+  createdAt: Time!
+  updatedAt: Time!
+  creator: Agent!
+  assignees: [IssueAssignee!]
+  labels: [Label!]
+  children: [Issue!]
+  milestone: Milestone
+  structuredOutput: Map
+}
+
+enum CommentContentType {
+  markdown
+  tool_call
+  tool_result
+  code_diff
+  decision
+  approval
+  rejection
+  structured
+}
+
+enum ProposalState {
+  draft
+  submitted
+  under_review
+  approved
+  rejected
+  in_execution
+  completed
+  cancelled
+}
+
+enum TaskState {
+  pending
+  in_progress
+  completed
+  blocked
+  cancelled
+}
+
+type Proposal {
+  id: ID!
+  number: Int!
+  projectID: ID!
+  title: String!
+  description: String
+  state: ProposalState!
+  priority: Priority!
+  authorID: ID!
+  reviewerID: ID
+  reviewNote: String
+  reviewedAt: Time
+  submittedAt: Time
+  approvedAt: Time
+  startedAt: Time
+  completedAt: Time
+  cancelledAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+  author: Agent!
+  reviewer: Agent
+  labels: [Label!]
+  tasks: [Task!]
+  comments: [Comment!]
+}
+
+type Task {
+  id: ID!
+  number: Int!
+  proposalID: ID!
+  title: String!
+  description: String
+  state: TaskState!
+  priority: Priority!
+  assigneeID: ID
+  startedAt: Time
+  completedAt: Time
+  createdAt: Time!
+  updatedAt: Time!
+  proposal: Proposal!
+  assignee: Agent
+  issues: [Issue!]
+  comments: [Comment!]
+}
+
+type ProposalConnection {
+  edges: [Proposal!]!
+  total: Int!
+}
+
+type TaskConnection {
+  edges: [Task!]!
+  total: Int!
+}
+
+type Comment {
+  id: ID!
+  number: Int!
+  issueID: ID
+  proposalID: ID
+  taskID: ID
+  authorID: ID!
+  parentID: ID
+  body: String!
+  contentType: CommentContentType!
+  createdAt: Time!
+  updatedAt: Time!
+  author: Agent!
+  parent: Comment
+  replies: [Comment!]
+}
+
+type TimelineEvent {
+  id: ID!
+  number: Int!
+  issueID: ID
+  proposalID: ID
+  taskID: ID
+  actorID: ID!
+  eventType: String!
+  payload: Map
+  createdAt: Time!
+  actor: Agent!
+}
+
+type IssueConnection {
+  edges: [Issue!]!
+  total: Int!
+}
+
+enum FeedbackTargetType {
+  issue
+  comment
+  agent
+  assignment
+}
+
+enum FeedbackRating {
+  one
+  two
+  three
+  four
+  five
+}
+
+type Feedback {
+  id: ID!
+  number: Int!
+  targetType: FeedbackTargetType!
+  targetID: ID!
+  authorID: ID!
+  rating: FeedbackRating!
+  body: String
+  createdAt: Time!
+  author: Agent!
+}
+
+type Query {
+  supportedModels: [String!]!
+  commonDeviceInfo: [String!]!
+  allowHumanRegistration: Boolean!
+  agents(kind: AgentKind, status: AgentStatus, capabilities: [String!], projectID: ID): [Agent!]!
+  agent(id: ID!): Agent
+  projects: [Project!]!
+  project(id: ID!): Project
+  labels(projectID: ID!, group: String): [Label!]!
+  milestones(projectID: ID!, state: MilestoneState): [Milestone!]!
+  issue(id: ID!): Issue
+  issues(projectID: ID!, state: IssueState, priority: Priority, assigneeID: ID, labelIDs: [ID!], search: String, limit: Int, offset: Int): IssueConnection!
+  proposal(id: ID!): Proposal
+  proposals(projectID: ID!, state: ProposalState, priority: Priority, search: String, limit: Int, offset: Int): ProposalConnection!
+  validProposalTransitions(state: ProposalState!): [ProposalState!]!
+  task(id: ID!): Task
+  tasks(proposalID: ID!, state: TaskState, assigneeID: ID, search: String, limit: Int, offset: Int): TaskConnection!
+  validTaskTransitions(state: TaskState!): [TaskState!]!
+  comments(issueID: ID, proposalID: ID, taskID: ID): [Comment!]!
+  timeline(issueID: ID, proposalID: ID, taskID: ID): [TimelineEvent!]!
+  validTransitions(state: IssueState!): [IssueState!]!
+  feedback(targetType: FeedbackTargetType!, targetID: ID!): [Feedback!]!
+  notificationSettings(agentID: ID!): [NotificationSetting!]!
+  notificationTypes: [NotificationTypeInfo!]!
+  notifications(agentID: ID!): [NotificationEvent!]!
+}
+
+type Mutation {
+  registerAgent(name: String!, kind: AgentKind!, externalID: String!, secret: String!, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
+  loginAgent(externalID: String!, secret: String!): LoginResult!
+  updateAgentStatus(id: ID!, status: AgentStatus!): Agent!
+  updateAgentDisabled(id: ID!, disabled: Boolean!): Agent!
+  updateAgent(id: ID!, systemPrompt: String): Agent!
+  deleteAgent(id: ID!): Boolean!
+  updateAgentAllowedCIDRs(id: ID!, allowedCIDRs: [String!]!): Agent!
+
+  createProjectAgent(projectID: ID!, name: String!, kind: AgentKind!, role: ProjectRole, externalID: String, secret: String, capabilities: [String!], deviceInfo: String, modelInfo: String): RegisterResult!
+
+  createProject(name: String!, description: String): Project!
+  updateProject(id: ID!, name: String, description: String): Project!
+  updateProjectConfig(id: ID!, allowCreatorTransition: Boolean, requireCreatorCloseApproval: Boolean): Project!
+  deleteProject(id: ID!): Boolean!
+  addProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
+  updateProjectMember(projectID: ID!, agentID: ID!, role: ProjectRole!): ProjectMember!
+  removeProjectMember(projectID: ID!, agentID: ID!): Boolean!
+
+  createIssue(projectID: ID!, title: String!, description: String, priority: Priority!, assigneeIDs: [ID!], labelIDs: [ID!], milestoneId: ID, environment: String, branch: String, link: String): Issue!
+  updateIssue(id: ID!, title: String, description: String, priority: Priority, dueDate: Time, milestoneId: ID, environment: String, branch: String, link: String, startedAt: Time, completedAt: Time, difficulty: Int): Issue!
+  deleteIssue(id: ID!): Boolean!
+  transitionIssue(id: ID!, newState: IssueState!, actorID: ID!, note: String): Issue!
+
+  addAssignee(issueID: ID!, agentID: ID!): IssueAssignee!
+  removeAssignee(issueID: ID!, agentID: ID!): Boolean!
+  updateAssigneeState(issueID: ID!, agentID: ID!, state: AssigneeState!): IssueAssignee!
+
+  addComment(issueID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!, parentID: ID): Comment!
+  addProposalComment(proposalID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!): Comment!
+  addTaskComment(taskID: ID!, authorID: ID!, body: String!, contentType: CommentContentType!): Comment!
+  updateComment(id: ID!, body: String!): Comment!
+  deleteComment(id: ID!): Boolean!
+
+  addLabels(issueID: ID!, labelIDs: [ID!]!): Issue!
+  removeLabels(issueID: ID!, labelIDs: [ID!]!): Issue!
+  createLabel(projectID: ID!, name: String!, color: String, capability: String, group: String): Label!
+  updateLabel(id: ID!, name: String, color: String): Label!
+  deleteLabel(id: ID!): Boolean!
+
+  createMilestone(projectID: ID!, title: String!, description: String, dueDate: Time): Milestone!
+  updateMilestone(id: ID!, title: String, description: String, dueDate: Time, state: MilestoneState): Milestone!
+  deleteMilestone(id: ID!): Boolean!
+
+  createFeedback(targetType: FeedbackTargetType!, targetID: ID!, authorID: ID!, rating: FeedbackRating!, body: String): Feedback!
+
+  createProposal(projectID: ID!, title: String!, description: String, priority: Priority!, labelIDs: [ID!]): Proposal!
+  updateProposal(id: ID!, title: String, description: String, priority: Priority): Proposal!
+  transitionProposal(id: ID!, newState: ProposalState!, actorID: ID!, note: String): Proposal!
+  reviewProposal(id: ID!, reviewerID: ID!, approved: Boolean!, note: String): Proposal!
+  deleteProposal(id: ID!): Boolean!
+
+  createTask(proposalID: ID!, title: String!, description: String, priority: Priority, assigneeID: ID): Task!
+  updateTask(id: ID!, title: String, description: String, priority: Priority, state: TaskState): Task!
+  assignTask(id: ID!, assigneeID: ID!): Task!
+  linkIssuesToTask(taskID: ID!, issueIDs: [ID!]!): Task!
+  unlinkIssueFromTask(taskID: ID!, issueID: ID!): Task!
+  deleteTask(id: ID!): Boolean!
+  updateNotificationSetting(agentID: ID!, notificationType: String!, enabled: Boolean!, channel: String): NotificationSetting!
+  markNotificationRead(id: ID!): NotificationEvent!
+  markAllNotificationsRead(agentID: ID!): Boolean!
+}
+
+type Subscription {
+  issueUpdated(issueID: ID!): Issue!
+  agentNotifications(agentID: ID!): NotificationEvent!
+  agentStatusChanged: AgentStatusEvent!
+}
+
+type NotificationEvent {
+  id: ID!
+  number: Int!
+  agentID: ID!
+  notificationType: String!
+  issueID: ID
+  proposalID: ID
+  taskID: ID
+  projectID: ID
+  message: String!
+  read: Boolean!
+  createdAt: Time!
+}
+
+type NotificationSetting {
+  id: ID!
+  agentID: ID!
+  notificationType: String!
+  enabled: Boolean!
+  channel: String!
+}
+
+type NotificationTypeInfo {
+  type: String!
+  description: String!
+}
+
+type AgentStatusEvent {
+  agentID: ID!
+  status: AgentStatus!
+  timestamp: Time!
+}

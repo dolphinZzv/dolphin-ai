@@ -1,0 +1,22 @@
+.claude/
+internal/graphql/generated.go
+internal/graphql/models_gen.go
+coverage.out
+*.db
+/server
+/bin/
+
+# binaries
+chick-server
+chick
+
+# root node_modules (misplaced)
+node_modules/
+package.json
+package-lock.json
+
+# frontend build output
+ui/dist/
+
+# todo notes
+todo/

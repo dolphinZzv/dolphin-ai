@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "chick": {
+      "type": "http",
+      "url": "http://47.95.200.101:18080/mcp",
+      "headers": {
+        "Authorization": "Bearer 3347b981b723a5f59d2978f9f6523f74e5fa94b7f1e30af66b39b7a819642dcf"
+      }
+    }
+  }
+}
