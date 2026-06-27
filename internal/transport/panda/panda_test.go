@@ -481,6 +481,23 @@ func TestPanda_HandleMsgPush_AtMention_MultipleMentions(t *testing.T) {
 	}
 }
 
+func TestPanda_HandleMsgPush_AtMention_AllowsByUserID(t *testing.T) {
+	// Mention contains p.userID but not p.agentName — should still pass.
+	p := NewPanda(PandaConfig{AtMention: true}, nil, "mybot")
+	p.userID = "u_12345"
+	// agentName "mybot" is not in Mention, but userID "u_12345" is
+	push := msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 0, Body: "hello", Mention: []string{"u_12345"}}
+	data, _ := json.Marshal(push)
+
+	err := p.handleMsgPush(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected message mentioning p.userID to pass when at_mention enabled")
+	}
+}
+
 func TestPanda_HandleMsgPush_AtMention_CombinedWithWhitelist(t *testing.T) {
 	// Both @mention and whitelist enabled: both must pass
 	p := NewPanda(PandaConfig{AtMention: true, AllowUsers: "alice,bob"}, nil, "mybot")

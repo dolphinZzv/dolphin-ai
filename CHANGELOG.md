@@ -3,6 +3,8 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- **Panda transport @mention 增强**: `handleMsgPush` 的 @mention 检查现在既匹配 `agentName`（Dolphin 配置）也匹配 `userID`（服务器登录时分配），修复了 server 端 Mention 列表使用 userID 而非 name 时消息被忽略的问题。日志从 Debug 升级为 Info，增加更多上下文（agent_name、user_id、mention 列表等）。新增 `TestPanda_HandleMsgPush_AtMention_AllowsByUserID` 测试用例。
+
 - **Ignore .mcp.json**: untracked chick `.mcp.json` files, added to `.gitignore`.
 - **Gofmt dep/chick + panda.go**: formatting compliance for push hook.
 - **Chick subtree + cleanup**: added `dep/chick` as git subtree from `dolphinZzv/chick:dev`. Removed AI agent access panel from chick login page and AI programming assistant integration section from chick README.

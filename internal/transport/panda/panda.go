@@ -1176,9 +1176,17 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 		return nil
 	}
 
-	// @ mention check: if enabled, only process messages that @mention the agent name
-	if p.atMention && !slices.Contains(push.Mention, p.agentName) {
-		p.logger.Debug("panda: message does not @mention agent", zap.String("agent_name", p.agentName))
+	// @ mention check: if enabled, only process messages that @mention the agent.
+	// The Mention list may contain either the agent name (Dolphin config) or the
+	// panda user ID (assigned by the server at login), so we check both.
+	if p.atMention && !slices.Contains(push.Mention, p.agentName) && !slices.Contains(push.Mention, p.userID) {
+		p.logger.Info("panda: ignoring message — agent not mentioned",
+			zap.String("agent_name", p.agentName),
+			zap.String("user_id", p.userID),
+			zap.Strings("mention", push.Mention),
+			zap.String("sender", push.SenderID),
+			zap.Int64("msg_id", push.MsgID),
+		)
 		return nil
 	}
 
