@@ -3,6 +3,7 @@
 All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
+- **Ignore .mcp.json**: untracked chick `.mcp.json` files, added to `.gitignore`.
 - **Gofmt dep/chick + panda.go**: formatting compliance for push hook.
 - **Chick subtree + cleanup**: added `dep/chick` as git subtree from `dolphinZzv/chick:dev`. Removed AI agent access panel from chick login page and AI programming assistant integration section from chick README.
 - **Rename deps/ → experiment/**: moved behavior-capture HTTP server and all references from `deps/` to `experiment/` directory. Formatted Go sources.

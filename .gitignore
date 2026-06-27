@@ -56,3 +56,4 @@ todo.md
 .workflow.yaml
 __pycache__
 coverage.html
+.mcp.json
