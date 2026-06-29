@@ -798,6 +798,10 @@ func queueCounts(aio *agentio.AgentIO) (active, pending int) {
 	return len(a), len(p)
 }
 
+// queueMaxBodyLines caps the total queue body lines (excluding the header).
+// The queue area is kept compact so the input area stays prominent.
+const queueMaxBodyLines = 2
+
 // Per-category display caps for the queue area. Each category shows its
 // most relevant slice and a "+N more" indicator when truncated, instead of
 // silently dropping items.
@@ -831,7 +835,7 @@ func queueBodyLines(active, pending, completed int) int {
 	if completed > cShown {
 		n++ // "+N done"
 	}
-	return n
+	return min(n, queueMaxBodyLines)
 }
 
 func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) string {
@@ -925,6 +929,25 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 	}
 	if len(completed) > len(cShown) {
 		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_done"), len(completed)-len(cShown))))
+	}
+	// Cap the total body lines (everything after the header) to keep the
+	// queue compact so the input area stays prominent.
+	if len(lines) > queueMaxBodyLines+1 {
+		lines = lines[:queueMaxBodyLines+1]
+		// Replace the last shown line with a compact "+N more" indicator.
+		remaining := 0
+		if activeRemaining := len(activeIDs) - min(len(activeIDs), queueMaxActive); activeRemaining > 0 {
+			remaining += activeRemaining
+		}
+		if pendingRemaining := len(pending) - min(len(pending), queueMaxPending); pendingRemaining > 0 {
+			remaining += pendingRemaining
+		}
+		if completedRemaining := len(completed) - min(len(completed), queueMaxCompleted); completedRemaining > 0 {
+			remaining += completedRemaining
+		}
+		if remaining > 0 {
+			lines[queueMaxBodyLines] = moreLine(fmt.Sprintf(i18n.T("tui.queue_more_queued"), remaining))
+		}
 	}
 	return strings.Join(lines, "\n")
 }

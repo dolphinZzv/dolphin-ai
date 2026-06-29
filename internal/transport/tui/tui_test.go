@@ -1188,15 +1188,15 @@ func TestQueueBodyLines(t *testing.T) {
 	})
 
 	t.Run("pending overflow adds indicator", func(t *testing.T) {
-		// 3 shown + 1 "+N queued" indicator.
-		if n := queueBodyLines(0, 5, 0); n != 4 {
-			t.Errorf("expected 4 (3 shown + 1 indicator), got %d", n)
+		// 3 shown + 1 "+N queued" indicator → capped to queueMaxBodyLines.
+		if n := queueBodyLines(0, 5, 0); n != 2 {
+			t.Errorf("expected 2 (capped by queueMaxBodyLines), got %d", n)
 		}
 	})
 
 	t.Run("completed overflow adds indicator", func(t *testing.T) {
-		if n := queueBodyLines(0, 0, 10); n != 4 {
-			t.Errorf("expected 4 (3 shown + 1 indicator), got %d", n)
+		if n := queueBodyLines(0, 0, 10); n != 2 {
+			t.Errorf("expected 2 (capped by queueMaxBodyLines), got %d", n)
 		}
 	})
 
