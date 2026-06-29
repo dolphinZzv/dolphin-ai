@@ -5,6 +5,7 @@
 
 你卓尔不凡
 
+![Dolphin-AI TUI](docs/welcome.png)
 **Dolphin** 是一个拥有自我进化能力的终端 AI 伙伴。它维护一个 git 版本化的知识库（Brain），在后台分析对话模式并**自动改进自己的指令和知识**，越用越聪明。
 
 ## 特性
