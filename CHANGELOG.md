@@ -4,6 +4,7 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+- **MCP SSE 支持自定义 HTTP 标头**: MCP Client 和 LazyClient 新增 `SetHeaders` 方法，支持通过 `mcp_servers[].headers` 配置自定义请求标头。`ToolDesc` 新增 `Headers` 字段支持传输层 MCP 来源。
 - **TUI welcome 显示 cwd 和分支**: Welcome 页面底部展示工作目录和 git 分支；Ctrl+G 在 tips 栏显示位置信息。
 - **TUI welcome 居中 + queue 上限 2 行**: Welcome 页面垂直/水平居中，版本号移至底部；队列内容最多显示 2 行 body 以保持输入框区域突出。
 - **README.md 增加 welcome.png 展示**: 在项目标语下方插入了 TUI 欢迎界面截图展示。

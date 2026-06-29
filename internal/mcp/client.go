@@ -14,6 +14,16 @@ import (
 	"dolphin/internal/types"
 )
 
+// ClientOption configures an MCP Client.
+type ClientOption func(*Client)
+
+// WithHeaders sets custom HTTP headers sent with every request.
+func WithHeaders(headers map[string]string) ClientOption {
+	return func(c *Client) {
+		c.headers = headers
+	}
+}
+
 // Client is an MCP Streamable HTTP client implementing JSON-RPC over HTTP
 // with support for SSE streaming responses (MCP Streamable HTTP transport).
 // Reference: https://spec.modelcontextprotocol.io/specification/2025-03-26/#streamable-http
@@ -24,13 +34,18 @@ type Client struct {
 	mu         sync.Mutex
 	nextID     int
 	onProgress func(event string, data json.RawMessage)
+	headers    map[string]string
 }
 
-func NewClient(baseURL string) *Client {
-	return &Client{
+func NewClient(baseURL string, opts ...ClientOption) *Client {
+	c := &Client{
 		baseURL: baseURL,
 		http:    &http.Client{},
 	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
 }
 
 // SetOnProgress sets a callback that receives intermediate SSE events
@@ -38,6 +53,11 @@ func NewClient(baseURL string) *Client {
 // The callback is called synchronously from the readSSE loop.
 func (c *Client) SetOnProgress(fn func(event string, data json.RawMessage)) {
 	c.onProgress = fn
+}
+
+// SetHeaders sets custom HTTP headers sent with every request.
+func (c *Client) SetHeaders(headers map[string]string) {
+	c.headers = headers
 }
 
 func (c *Client) List(ctx context.Context) ([]types.ToolDef, error) {
@@ -129,6 +149,9 @@ func (c *Client) call(ctx context.Context, method string, params any) (*jsonRPCR
 	if c.sessionID != "" {
 		httpReq.Header.Set("Mcp-Session-Id", c.sessionID)
 	}
+	for k, v := range c.headers {
+		httpReq.Header.Set(k, v)
+	}
 
 	resp, err := c.http.Do(httpReq)
 	if err != nil {
@@ -168,13 +191,25 @@ func (c *Client) call(ctx context.Context, method string, params any) (*jsonRPCR
 // server sources to be registered at boot time even if the server isn't
 // running yet. Each call creates the real Client on demand.
 type LazyClient struct {
-	url    string
-	client *Client
-	mu     sync.Mutex
+	url     string
+	headers map[string]string
+	client  *Client
+	mu      sync.Mutex
 }
 
 func NewLazyClient(url string) *LazyClient {
 	return &LazyClient{url: url}
+}
+
+// SetHeaders sets custom HTTP headers for the lazy client.
+// Must be called before the first List/Execute call.
+func (l *LazyClient) SetHeaders(headers map[string]string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.headers = headers
+	if l.client != nil {
+		l.client.headers = headers
+	}
 }
 
 func (l *LazyClient) List(ctx context.Context) ([]types.ToolDef, error) {
@@ -190,6 +225,7 @@ func (l *LazyClient) getClient() *Client {
 	defer l.mu.Unlock()
 	if l.client == nil {
 		l.client = NewClient(l.url)
+		l.client.headers = l.headers
 	}
 	return l.client
 }

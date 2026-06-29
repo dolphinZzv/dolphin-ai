@@ -120,6 +120,9 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 			case td.URL != "":
 				ac := mcp.NewAsyncClient(func(ctx context.Context) (mcp.ClientExecutor, []types.ToolDef, error) {
 					client := mcp.NewClient(td.URL)
+					if len(td.Headers) > 0 {
+						client.SetHeaders(td.Headers)
+					}
 					defs, err := client.List(ctx)
 					if err != nil {
 						return nil, nil, err

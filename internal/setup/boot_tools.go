@@ -115,12 +115,16 @@ func loadMCPServers(cfg *config.Config, reg *tool.Registry, logger *zap.Logger) 
 		switch mtype {
 		case "url", "http":
 			url := cfg.GetString(prefix + ".url")
+			headers := cfg.GetStringMap(prefix + ".headers")
 			if url == "" {
 				logger.Warn("mcp server missing url", zap.String("name", name))
 				continue
 			}
 			ac := mcp.NewAsyncClient(func(ctx context.Context) (mcp.ClientExecutor, []types.ToolDef, error) {
 				client := mcp.NewClient(url)
+				if len(headers) > 0 {
+					client.SetHeaders(headers)
+				}
 				defs, err := client.List(ctx)
 				if err != nil {
 					return nil, nil, err
