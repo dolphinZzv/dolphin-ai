@@ -27,14 +27,14 @@ func searchFiles(workspace string, names ...string) ([]byte, error) {
 }
 
 // Base section reads AGENTS.md or CLAUDE.md, or falls back to default text.
-type Base struct {
+type Agent struct {
 	Workspace   string
 	DefaultText string
 }
 
-func (s *Base) Name() string { return "base" }
-func (s *Base) Index() int   { return 0 }
-func (s *Base) BuildContent(_ stdctx.Context) (string, error) {
+func (s *Agent) Name() string { return "agent" }
+func (s *Agent) Index() int   { return 0 }
+func (s *Agent) BuildContent(_ stdctx.Context) (string, error) {
 	if s.DefaultText != "" {
 		return s.DefaultText, nil
 	}

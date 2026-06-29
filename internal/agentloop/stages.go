@@ -326,7 +326,7 @@ func (s *ContextBuilderStage) initRegistry() {
 		return
 	}
 	s.reg = appctx.NewRegistry()
-	s.reg.Register(&appctx.Base{
+	s.reg.Register(&appctx.Agent{
 		Workspace:   s.Workspace,
 		DefaultText: s.BaseSystemPrompt,
 	})

@@ -114,24 +114,24 @@ func TestRegistrySections(t *testing.T) {
 func TestBaseSection(t *testing.T) {
 	Convey("Base section", t, func() {
 		Convey("Name returns 'base'", func() {
-			s := &Base{}
+			s := &Agent{}
 			So(s.Name(), ShouldEqual, "base")
 		})
 
 		Convey("Index returns 0", func() {
-			s := &Base{}
+			s := &Agent{}
 			So(s.Index(), ShouldEqual, 0)
 		})
 
 		Convey("BuildContent returns DefaultText when set", func() {
-			s := &Base{DefaultText: "custom prompt"}
+			s := &Agent{DefaultText: "custom prompt"}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
 			So(content, ShouldEqual, "custom prompt")
 		})
 
 		Convey("BuildContent returns i18n default prompt when no workspace", func() {
-			s := &Base{}
+			s := &Agent{}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
 			So(content, ShouldNotBeBlank)
@@ -140,7 +140,7 @@ func TestBaseSection(t *testing.T) {
 		Convey("BuildContent reads AGENTS.md from workspace", func() {
 			dir := t.TempDir()
 			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agent"), 0o644)
-			s := &Base{Workspace: dir}
+			s := &Agent{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
 			So(content, ShouldEqual, "# Agent")
@@ -149,7 +149,7 @@ func TestBaseSection(t *testing.T) {
 		Convey("BuildContent reads CLAUDE.md from workspace", func() {
 			dir := t.TempDir()
 			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude"), 0o644)
-			s := &Base{Workspace: dir}
+			s := &Agent{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
 			So(content, ShouldEqual, "# Claude")
@@ -159,7 +159,7 @@ func TestBaseSection(t *testing.T) {
 			dir := t.TempDir()
 			os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte("# Agent"), 0o644)
 			os.WriteFile(filepath.Join(dir, "CLAUDE.md"), []byte("# Claude"), 0o644)
-			s := &Base{Workspace: dir}
+			s := &Agent{Workspace: dir}
 			content, err := s.BuildContent(stdctx.Background())
 			So(err, ShouldBeNil)
 			So(content, ShouldEqual, "# Agent")

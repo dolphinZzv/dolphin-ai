@@ -105,7 +105,7 @@ type model struct {
 	showTools          bool
 	showThinking       bool
 	showSideStatus     bool
-		toolCallNames      map[string]string // ToolCallID -> tool name, for error surfacing
+	toolCallNames      map[string]string // ToolCallID -> tool name, for error surfacing
 	workmode           string
 	poolSize           int
 	toolParallelism    int
@@ -193,11 +193,11 @@ func newModel() model {
 		showTools:      false,
 		showThinking:   false,
 		showSideStatus: true,
-		cwd:                cwd,
-		branch:             branch,
-		toolCallNames:      make(map[string]string),
+		cwd:            cwd,
+		branch:         branch,
+		toolCallNames:  make(map[string]string),
 	}
-		return m
+	return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -359,7 +359,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_thinking"), onOff(m.showThinking))
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
-			m.updateViewportHeight()
+				m.updateViewportHeight()
 			}
 			if input == "/windows" || input == "/windows status" {
 				m.showSideStatus = !m.showSideStatus
@@ -1124,7 +1124,7 @@ func (m model) View() tea.View {
 	// Left side holds identity and hints; the session id is pinned to the
 	// right edge.
 	var leftParts []string
-		leftParts = append(leftParts, "🐬 "+m.agentName)
+	leftParts = append(leftParts, "🐬 "+m.agentName)
 	var rightParts []string
 	if m.msgStatus == "pending" {
 		frame := spinnerFrames[m.spinFrame%len(spinnerFrames)]
@@ -1204,7 +1204,9 @@ func (m model) View() tea.View {
 	// Overlay scroll percentage at the bottom-right of the viewport.
 	if scrolled && m.viewport.ScrollPercent() >= 0 {
 		pct := m.viewport.ScrollPercent()
-		if pct > 1 { pct = 1 }
+		if pct > 1 {
+			pct = 1
+		}
 		pctStr := lipgloss.NewStyle().
 			Foreground(adaptiveFaint).
 			Render(fmt.Sprintf(" %d%%", int(pct*100+0.5)))
@@ -1574,7 +1576,6 @@ func renderScrollIndicator(width int, scrollPct float64) string {
 		Width(width).
 		Render(text)
 }
-
 
 func getGitBranch(cwd string) string {
 	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
