@@ -42,11 +42,18 @@ func (m model) renderWelcome() string {
 	artStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("75"))
 
-	// Version line: shown at the bottom in a subdued style.
-	versionLine := fmt.Sprintf("🐬 %s %s", m.agentName, m.version)
+	// Location line: current directory and git branch.
+	locParts := []string{m.cwd}
+	if m.branch != "" {
+		locParts = append(locParts, "⎇ "+m.branch)
+	}
+	locLine := strings.Join(locParts, "  ")
 	faintStyle := lipgloss.NewStyle().
 		Foreground(adaptiveFaint).
 		Italic(true)
+
+	// Version line: shown at the bottom in a subdued style.
+	versionLine := fmt.Sprintf("🐬 %s %s", m.agentName, m.version)
 
 	// Tips line: brief hint pointing to /help.
 	tipLine := lipgloss.NewStyle().
@@ -69,6 +76,7 @@ func (m model) renderWelcome() string {
 	lines = append(lines, "")
 	lines = append(lines, tipLine)
 	lines = append(lines, "")
+	lines = append(lines, faintStyle.Render(locLine))
 	lines = append(lines, faintStyle.Render(versionLine))
 
 	body := strings.Join(lines, "\n")

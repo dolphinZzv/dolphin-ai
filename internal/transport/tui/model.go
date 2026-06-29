@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"sort"
 	"strings"
 	"time"
@@ -94,6 +96,8 @@ type model struct {
 	getCompletions     func(prefix string) []string
 	username           string
 	agentName          string
+	cwd                string
+	branch             string
 	version            string
 	modelName          string
 	newReply           bool
@@ -180,12 +184,17 @@ func newModel() model {
 	vp.Style = lipgloss.NewStyle()
 	vp.SetContent("")
 
+	cwd, _ := os.Getwd()
+	branch := getGitBranch(cwd)
+
 	m := model{
 		textarea:       ta,
 		viewport:       vp,
 		showTools:      false,
 		showThinking:   false,
 		showSideStatus: true,
+		cwd:                cwd,
+		branch:             branch,
 		toolCallNames:      make(map[string]string),
 	}
 		return m
@@ -297,6 +306,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "ctrl+g":
 			m.viewport.GotoBottom()
 			m.updateViewportHeight()
+			tip := "📍 " + m.cwd
+			if m.branch != "" {
+				tip += "  ⎇ " + m.branch
+			}
+			m.tipsText = tip
 			return m, textarea.Blink
 
 		case "tab":
@@ -1559,4 +1573,15 @@ func renderScrollIndicator(width int, scrollPct float64) string {
 		Padding(0, 1).
 		Width(width).
 		Render(text)
+}
+
+
+func getGitBranch(cwd string) string {
+	cmd := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+	cmd.Dir = cwd
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
