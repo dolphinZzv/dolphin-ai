@@ -1,0 +1,257 @@
+# yaml-language-server: $schema=./workflow.schema.json
+version: "1"
+name: multi-model-review
+description: "4 个 LLM 模型从不同维度并行审查任意代码，汇总输出统一报告（支持代码段、文件、diff、PR）"
+
+steps:
+  # ── Step 1: 整理待审内容 ──────────────────────────────────────────
+  - id: collect_content
+    prompt: |
+      整理需要审查的代码内容。用户已经通过对话上下文提供了待审查的代码/变更，
+      你只需要将其格式化为结构化 JSON。
+
+      - 如果用户贴了 git diff 或 PR diff，完整保留到 diff_text
+      - 如果用户贴了代码段/文件，完整保留到 code
+      - 如果两者都有，都填上
+      - 语言自动识别
+
+      输出 JSON：
+      {
+        "code": "需要审查的完整代码（非 diff 时）",
+        "diff_text": "git diff 或 PR diff 文本（有则填）",
+        "changed_files": ["文件1.go", "文件2.go"],
+        "summary": "变更概要（中文，200字以内）",
+        "language": "Go / Python / TypeScript / 等",
+        "context": "用户提供的审查背景说明"
+      }
+    output_schema:
+      code: string
+      diff_text: string
+      changed_files: [string]
+      summary: string
+      language: string
+      context: string
+
+  # ── 模型 A: Kimi K2.7 — 代码正确性与模式 ──────────────────────────
+  - id: kimi_review
+    prompt: |
+      你是一个资深的代码审查专家（Kimi 代码模式）。
+      请对以下代码进行全面审查，重点关注 **代码正确性与设计模式**。
+
+      {{if index . "collect_content" "diff_text"}}{{if ne (index . "collect_content" "diff_text") ""}}
+      diff：
+      ```
+      {{index . "collect_content" "diff_text"}}
+      ```
+      {{end}}{{end}}
+      {{if index . "collect_content" "code"}}{{if ne (index . "collect_content" "code") ""}}
+      代码：
+      ```
+      {{index . "collect_content" "code"}}
+      ```
+      {{end}}{{end}}
+
+      变更概览：{{index . "collect_content" "summary"}}
+      语言：{{index . "collect_content" "language"}}
+
+      审查维度：
+      1. **逻辑正确性** — 条件判断、循环、类型转换、并发安全是否正确？
+      2. **错误处理** — 错误是否被正确处理（而非沉默忽略）？defer/panic 使用是否恰当？
+      3. **边界条件** — 空值、空切片、nil、零值、越界是否被处理？
+      4. **测试覆盖** — 变更部分是否有对应测试？关键路径是否覆盖？
+      5. **代码健康** — 是否有不必要的复杂度、重复代码、过长函数？
+
+      输出 JSON（精确格式）：
+      {"findings":[{"file":"","line":"","type":"bug|security|performance|maintainability|architecture","severity":"critical|major|minor|info","title":"","description":"","suggestion":""}],"summary":"","score":0,"positives":[""]}
+    model: "volcengine_agent/kimi-k2.7-code"
+    depends_on: [collect_content]
+    output_schema:
+      findings: [string]
+      summary: string
+      score: number
+      positives: [string]
+
+  # ── 模型 B: MiniMax M3 — 安全与防御性编程 ─────────────────────────
+  - id: minimax_review
+    prompt: |
+      作为安全性与健壮性审查专家（MiniMax），请以防御性编程视角审查以下代码。
+
+      {{if index . "collect_content" "diff_text"}}{{if ne (index . "collect_content" "diff_text") ""}}
+      diff：
+      ```
+      {{index . "collect_content" "diff_text"}}
+      ```
+      {{end}}{{end}}
+      {{if index . "collect_content" "code"}}{{if ne (index . "collect_content" "code") ""}}
+      代码：
+      ```
+      {{index . "collect_content" "code"}}
+      ```
+      {{end}}{{end}}
+
+      变更概览：{{index . "collect_content" "summary"}}
+      语言：{{index . "collect_content" "language"}}
+
+      审查维度：
+      1. **输入验证** — 外部输入/用户输入是否经过充分校验（边界值、空值、恶意输入）？
+      2. **安全风险** — 是否存在注入（XSS/SQL/命令注入）、权限绕过、敏感信息泄露？
+      3. **资源管理** — 文件句柄、网络连接、锁是否确保释放？是否有内存泄漏风险？
+      4. **并发安全** — 共享变量是否有竞态？锁粒度是否合适？是否有死锁可能？
+      5. **错误恢复** — panic 恢复是否完备？部分失败是否会导致状态不一致？
+
+      输出 JSON（格式同上）：
+      {"findings":[...],"summary":"","score":0,"positives":[""]}
+    model: "volcengine_agent/minimax-m3"
+    depends_on: [collect_content]
+    output_schema:
+      findings: [string]
+      summary: string
+      score: number
+      positives: [string]
+
+  # ── 模型 C: Doubao Seed 2.0 — 性能与边界条件 ──────────────────────
+  - id: doubao_review
+    prompt: |
+      作为性能与边界条件审查专家（Doubao），请从性能角度审查以下代码。
+
+      {{if index . "collect_content" "diff_text"}}{{if ne (index . "collect_content" "diff_text") ""}}
+      diff：
+      ```
+      {{index . "collect_content" "diff_text"}}
+      ```
+      {{end}}{{end}}
+      {{if index . "collect_content" "code"}}{{if ne (index . "collect_content" "code") ""}}
+      代码：
+      ```
+      {{index . "collect_content" "code"}}
+      ```
+      {{end}}{{end}}
+
+      变更概览：{{index . "collect_content" "summary"}}
+      语言：{{index . "collect_content" "language"}}
+
+      审查维度：
+      1. **计算效率** — 是否有不必要的循环、重复计算、冗余数据结构？
+      2. **资源消耗** — 是否有潜在的内存泄漏、goroutine 泄漏、连接未复用？
+      3. **数据访问** — 是否有 N+1 查询、不合理的频繁 I/O、大对象拷贝？
+      4. **扩展性** — 算法复杂度是否不可控？是否会在大数据量下退化？
+      5. **竞态/阻塞** — 锁竞争、channel 阻塞、死锁风险？
+
+      输出 JSON（格式同上）：
+      {"findings":[...],"summary":"","score":0,"positives":[""]}
+    model: "volcengine_agent/doubao-seed-2.0-code"
+    depends_on: [collect_content]
+    output_schema:
+      findings: [string]
+      summary: string
+      score: number
+      positives: [string]
+
+  # ── 模型 D: GLM 5.2 — 架构与最佳实践 ──────────────────────────────
+  - id: glm_review
+    prompt: |
+      作为架构与最佳实践审查专家（GLM），请从架构层面审查以下代码。
+
+      {{if index . "collect_content" "diff_text"}}{{if ne (index . "collect_content" "diff_text") ""}}
+      diff：
+      ```
+      {{index . "collect_content" "diff_text"}}
+      ```
+      {{end}}{{end}}
+      {{if index . "collect_content" "code"}}{{if ne (index . "collect_content" "code") ""}}
+      代码：
+      ```
+      {{index . "collect_content" "code"}}
+      ```
+      {{end}}{{end}}
+
+      变更概览：{{index . "collect_content" "summary"}}
+      语言：{{index . "collect_content" "language"}}
+
+      审查维度：
+      1. **架构一致性** — 代码是否与常见架构规范一致？职责划分是否清晰？
+      2. **耦合/内聚** — 是否引入了不必要的依赖关系或循环依赖？
+      3. **接口设计** — 公开 API/接口是否清晰、一致、易用？
+      4. **可维护性** — 命名、注释、文件组织是否规范？
+      5. **抽象层次** — 是否有合适的抽象？是否存在过度设计或设计不足？
+
+      输出 JSON（格式同上）：
+      {"findings":[...],"summary":"","score":0,"positives":[""]}
+    model: "volcengine_agent/glm-5.2"
+    depends_on: [collect_content]
+    output_schema:
+      findings: [string]
+      summary: string
+      score: number
+      positives: [string]
+
+  # ── Step 6: 综合评审 ──────────────────────────────────────────────
+  - id: synthesize
+    prompt: |
+      你是一个评审聚合专家。综合以下 4 个模型的审查结果，去重、裁决、排序后输出统一报告。
+
+      {{if index . "kimi_review"}}
+      ## Kimi K2.7 审查（正确性与模式）
+      评分：{{index . "kimi_review" "score"}}
+      总结：{{index . "kimi_review" "summary"}}
+      发现：
+      {{range (index . "kimi_review" "findings")}}
+      - [{{.severity}}] **{{.title}}** ({{.file}})
+        {{.description}} | 建议: {{.suggestion}}
+      {{end}}{{end}}
+
+      {{if index . "minimax_review"}}
+      ## MiniMax M3 审查（安全与防御）
+      评分：{{index . "minimax_review" "score"}}
+      总结：{{index . "minimax_review" "summary"}}
+      发现：
+      {{range (index . "minimax_review" "findings")}}
+      - [{{.severity}}] **{{.title}}** ({{.file}})
+        {{.description}} | 建议: {{.suggestion}}
+      {{end}}{{end}}
+
+      {{if index . "doubao_review"}}
+      ## Doubao Seed 2.0 审查（性能与边界）
+      评分：{{index . "doubao_review" "score"}}
+      总结：{{index . "doubao_review" "summary"}}
+      发现：
+      {{range (index . "doubao_review" "findings")}}
+      - [{{.severity}}] **{{.title}}** ({{.file}})
+        {{.description}} | 建议: {{.suggestion}}
+      {{end}}{{end}}
+
+      {{if index . "glm_review"}}
+      ## GLM 5.2 审查（架构与最佳实践）
+      评分：{{index . "glm_review" "score"}}
+      总结：{{index . "glm_review" "summary"}}
+      发现：
+      {{range (index . "glm_review" "findings")}}
+      - [{{.severity}}] **{{.title}}** ({{.file}})
+        {{.description}} | 建议: {{.suggestion}}
+      {{end}}{{end}}
+
+      请执行：
+      1. **去重** — 合并跨模型的相同发现（保留最详细描述）
+      2. **严重性裁决** — 同一问题不同级别时取最高
+      3. **冲突解决** — 发现项矛盾时说明判断依据
+      4. **优先级排序** — 按 修复难度 × 影响范围 × 严重性 排序
+      5. **补充** — 四个模型都遗漏的重要维度，补充说明
+
+      输出 JSON（精确格式）：
+      {"summary":"","consensus_score":0,"critical_findings":[""],"major_findings":[""],"minor_findings":[""],"positives":[""],"action_items":[{"priority":"P0|P1|P2|P3","file":"","title":"","description":""}],"model_assessment":""}
+
+      注意：summary 用中文（300字以内）；action_items 按 P0→P3 排列；critical_findings 是最严重的发现标题列表。
+    depends_on:
+      - kimi_review
+      - minimax_review
+      - doubao_review
+      - glm_review
+    output_schema:
+      summary: string
+      consensus_score: number
+      critical_findings: [string]
+      major_findings: [string]
+      minor_findings: [string]
+      positives: [string]
+      action_items: string
+      model_assessment: string

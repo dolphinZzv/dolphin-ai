@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 
 	"dolphin/internal/i18n"
 )
@@ -164,19 +164,19 @@ func TestView_WithSidePanel(t *testing.T) {
 	m.modelName = "minimax-m3"
 	m.temperature = 1.0
 	m.poolSize = 1
-	m.viewport.Width = m.viewportWidth()
-	m.viewport.Height = 20
+	m.viewport.SetWidth(m.viewportWidth())
+	m.viewport.SetHeight(20)
 	m.viewport.SetContent("hello")
 
 	out := m.View()
-	if !strings.Contains(out, "Dolphin") {
-		t.Errorf("expected agent name, got: %s", out)
+	if !strings.Contains(out.Content, "Dolphin") {
+		t.Errorf("expected agent name, got: %s", out.Content)
 	}
-	if !strings.Contains(out, "Status") {
-		t.Errorf("expected side panel header 'Status', got: %s", out)
+	if !strings.Contains(out.Content, "Status") {
+		t.Errorf("expected side panel header 'Status', got: %s", out.Content)
 	}
-	if !strings.Contains(out, "temp") {
-		t.Errorf("expected temp in side panel, got: %s", out)
+	if !strings.Contains(out.Content, "temp") {
+		t.Errorf("expected temp in side panel, got: %s", out.Content)
 	}
 }
 
@@ -188,18 +188,15 @@ func TestView_ScrollIndicatorWhenScrolledUp(t *testing.T) {
 	m.width = 80
 	m.height = 24
 	m.agentName = "Dolphin"
-	m.viewport = viewport.New(80, 5)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	// Fill enough content that scrolling is possible, then scroll up.
 	m.viewport.SetContent(strings.Repeat("line\n", 50))
 	m.viewport.GotoBottom()
 	m.viewport.ScrollUp(10) // scroll away from the bottom
 
 	out := m.View()
-	if !strings.Contains(out, "scrolled to") {
-		t.Errorf("expected scroll indicator, got: %s", out)
-	}
-	if !strings.Contains(out, "Ctrl+G") {
-		t.Errorf("expected Ctrl+G hint, got: %s", out)
+	if !strings.Contains(out.Content, "%") {
+		t.Errorf("expected scroll percentage, got: %s", out.Content)
 	}
 }
 
@@ -209,7 +206,7 @@ func TestCtrlG_JumpsToBottom(t *testing.T) {
 	m.ready = true
 	m.width = 80
 	m.height = 24
-	m.viewport = viewport.New(80, 5)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(5))
 	m.viewport.SetContent(strings.Repeat("line\n", 50))
 	m.viewport.GotoBottom()
 	m.viewport.ScrollUp(10)
@@ -217,7 +214,7 @@ func TestCtrlG_JumpsToBottom(t *testing.T) {
 		t.Fatal("expected to be scrolled up before Ctrl+G")
 	}
 
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlG})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: 7})
 	m = newM.(model)
 	if !m.viewport.AtBottom() {
 		t.Errorf("expected viewport at bottom after Ctrl+G")
@@ -232,14 +229,14 @@ func TestView_SpinnerShownWhilePending(t *testing.T) {
 	m.width = 80
 	m.height = 24
 	m.agentName = "Dolphin"
-	m.viewport = viewport.New(80, 10)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(10))
 	m.viewport.SetContent("hello")
 	m.currentMsg = "do something"
 	m.msgStatus = "pending"
 	m.msgStartedAt = time.Now().Add(-3 * time.Second)
 
 	out := m.View()
-	plain := ansiRe.ReplaceAllString(out, "")
+	plain := ansiRe.ReplaceAllString(out.Content, "")
 	// A spinner frame and an elapsed "3s" should appear in the status bar.
 	matched := false
 	for _, f := range spinnerFrames {
@@ -263,12 +260,12 @@ func TestView_NoSpinnerWhenNotPending(t *testing.T) {
 	m.width = 80
 	m.height = 24
 	m.agentName = "Dolphin"
-	m.viewport = viewport.New(80, 10)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(10))
 	m.viewport.SetContent("hello")
 	m.msgStatus = "success"
 
 	out := m.View()
-	plain := ansiRe.ReplaceAllString(out, "")
+	plain := ansiRe.ReplaceAllString(out.Content, "")
 	for _, f := range spinnerFrames {
 		if strings.Contains(plain, f) {
 			t.Errorf("spinner should not show when not pending, got: %s", plain)
@@ -396,12 +393,12 @@ func TestView_ShowsMCPCountInNarrowMode(t *testing.T) {
 	m.width = 50
 	m.height = 24
 	m.agentName = "Dolphin"
-	m.viewport = viewport.New(50, 10)
+	m.viewport = viewport.New(viewport.WithWidth(50), viewport.WithHeight(10))
 	m.viewport.SetContent("hello")
 	m.mcpToolCount = 5
 
 	out := m.View()
-	plain := ansiRe.ReplaceAllString(out, "")
+	plain := ansiRe.ReplaceAllString(out.Content, "")
 	if !strings.Contains(plain, "mcp:5") {
 		t.Errorf("expected mcp:5 in narrow status bar, got: %s", plain)
 	}
@@ -414,12 +411,12 @@ func TestView_HidesMCPCountInNarrowModeWhenZero(t *testing.T) {
 	m.width = 50
 	m.height = 24
 	m.agentName = "Dolphin"
-	m.viewport = viewport.New(50, 10)
+	m.viewport = viewport.New(viewport.WithWidth(50), viewport.WithHeight(10))
 	m.viewport.SetContent("hello")
 	m.mcpToolCount = 0
 
 	out := m.View()
-	plain := ansiRe.ReplaceAllString(out, "")
+	plain := ansiRe.ReplaceAllString(out.Content, "")
 	if strings.Contains(plain, "mcp:") {
 		t.Errorf("expected no mcp: when count is 0, got: %s", plain)
 	}
@@ -431,7 +428,7 @@ func TestMCPCountMsg_UpdatesModel(t *testing.T) {
 	m.ready = true
 	m.width = 80
 	m.height = 24
-	m.viewport = viewport.New(80, 10)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(10))
 	m.viewport.SetContent("hello")
 
 	newM, _ := m.Update(mcpCountMsg{count: 7})

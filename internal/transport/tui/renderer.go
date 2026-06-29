@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -28,13 +28,16 @@ var (
 	mdRendererMu sync.Mutex
 )
 
+// viewportWidth is set by the model on each resize so that styled
+// entries (e.g. user_text with a background) can render full-width.
+var viewportWidth int
+
 func init() {
 	styleThinking = lipgloss.NewStyle().
-		Foreground(adaptiveThinking).
-		Italic(true)
+		Foreground(adaptiveThinking)
 
 	styleToolCall = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "26", Dark: "117"})
+		Foreground(lipgloss.Color("117"))
 
 	styleToolResult = lipgloss.NewStyle().
 		Foreground(adaptiveToolResult)
@@ -51,13 +54,12 @@ func init() {
 	styleSeparatorFaint = lipgloss.NewStyle().
 		Foreground(adaptiveFaint)
 
-	styleUserText = lipgloss.NewStyle().
-		Foreground(adaptiveUserLabel)
+	styleUserText = lipgloss.NewStyle()
 
 	styleQueueActive = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "28", Dark: "40"})
+		Foreground(lipgloss.Color("40"))
 	styleQueueWait = lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "178"})
+		Foreground(lipgloss.Color("178"))
 	styleQueueTime = lipgloss.NewStyle().
 		Foreground(adaptiveFaint)
 
@@ -76,17 +78,32 @@ func renderStyled(e renderEntry) string {
 	case "separator_faint":
 		return styleSeparatorFaint.Render(e.content)
 	case "thinking":
-		return styleThinking.Render(e.content)
+		return styleThinking.Render("\n" + e.content)
 	case "tool_call":
-		return styleToolCall.Render(e.content)
+		return styleToolCall.Render("\n" + e.content)
 	case "tool_result":
-		return styleToolResult.Render(padLines(e.content, 3))
+		return styleToolResult.Render("\n" + padLines(e.content, 3))
 	case "tool_error":
-		return styleToolError.Render(padLines(e.content, 3))
+		return styleToolError.Render("\n" + padLines(e.content, 3))
 	case "system":
 		return styleSystem.Render(e.content)
 	case "user_text":
-		return styleUserText.Render(padLines(e.content, 3))
+		content := padLines(e.content, 3)
+		// Pad each line to viewportWidth so the background fills
+		// the entire line, not just the text area.
+		if viewportWidth > 0 {
+			lines := strings.Split(content, "\n")
+			for i, line := range lines {
+				if w := lipgloss.Width(line); w < viewportWidth {
+					lines[i] = line + strings.Repeat(" ", viewportWidth-w)
+				}
+			}
+			content = strings.Join(lines, "\n")
+		}
+		// Leading \n is padding between entries — no background.
+		return "\n" + styleUserText.
+			Background(adaptiveUserTextBg).
+			Render(content)
 	default:
 		return e.content
 	}

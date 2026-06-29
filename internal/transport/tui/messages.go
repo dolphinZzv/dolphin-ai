@@ -227,7 +227,7 @@ func (b *messageBuffer) renderBlocks(startIdx int) string {
 				buf.WriteString(b.messages[i].content)
 				i++
 			}
-			out.WriteString(renderMarkdown(buf.String()))
+			out.WriteString("\n" + renderMarkdown(buf.String()))
 		} else {
 			out.WriteString(renderStyled(entry))
 			i++
@@ -287,7 +287,7 @@ func (b *messageBuffer) fullRebuild() {
 				buf.WriteString(b.messages[i].content)
 				i++
 			}
-			out.WriteString(renderMarkdown(buf.String()))
+			out.WriteString("\n" + renderMarkdown(buf.String()))
 		} else {
 			out.WriteString(renderStyled(entry))
 			i++

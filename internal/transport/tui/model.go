@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/bubbles/textarea"
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/i18n"
@@ -63,8 +63,9 @@ type (
 
 // renderEntry is a rendered line or block in the conversation viewport.
 type renderEntry struct {
-	content string
-	style   string // "text", "user", "thinking", "tool_call", "tool_result", "system"
+	content    string
+	style      string // "text", "user", "thinking", "tool_call", "tool_result", "system"
+	toolCallID string // set on tool_call entries; tool_result uses it to find the matching call
 }
 
 type completedItem struct {
@@ -100,6 +101,7 @@ type model struct {
 	showTools          bool
 	showThinking       bool
 	showSideStatus     bool
+		toolCallNames      map[string]string // ToolCallID -> tool name, for error surfacing
 	workmode           string
 	poolSize           int
 	toolParallelism    int
@@ -154,16 +156,39 @@ func newModel() model {
 	ta.SetHeight(1)
 	ta.Focus()
 
-	vp := viewport.New(80, 20)
+	// Adaptive background + text so typed input is readable in both
+	// light and dark terminals. Colors defined in theme.go.
+	styles := ta.Styles()
+	styles.Focused.Base = styles.Focused.Base.Background(adaptiveInputBg)
+	styles.Focused.Text = styles.Focused.Text.Background(adaptiveInputBg).Foreground(adaptiveInputFg)
+	styles.Focused.Placeholder = styles.Focused.Placeholder.Foreground(adaptiveInputPh)
+	styles.Focused.CursorLine = styles.Focused.CursorLine.Background(adaptiveInputBg)
+	styles.Blurred.Base = styles.Blurred.Base.Background(adaptiveInputBg)
+	styles.Blurred.Text = styles.Blurred.Text.Background(adaptiveInputBg).Foreground(adaptiveInputFg)
+	styles.Blurred.CursorLine = styles.Blurred.CursorLine.Background(adaptiveInputBg)
+	styles.Blurred.Placeholder = styles.Blurred.Placeholder.Foreground(adaptiveInputPh)
+	styles.Cursor = textarea.CursorStyle{
+		Color: adaptiveCursor,
+		Shape: tea.CursorBlock,
+		Blink: true,
+	}
+	ta.SetStyles(styles)
+
+	viewportWidth = 80
+
+	vp := viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	vp.Style = lipgloss.NewStyle()
 	vp.SetContent("")
 
-	return model{
+	m := model{
 		textarea:       ta,
 		viewport:       vp,
 		showTools:      false,
 		showThinking:   false,
 		showSideStatus: true,
+		toolCallNames:      make(map[string]string),
 	}
+		return m
 }
 
 func (m model) Init() tea.Cmd {
@@ -182,10 +207,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		viewportWidth = m.viewportWidth()
 		if !m.ready {
 			m.ready = true
 		}
-		m.viewport.Width = msg.Width
+		m.viewport.SetWidth(msg.Width)
 		m.updateViewportHeight()
 		m.textarea.SetWidth(m.viewportWidth() - 1)
 		cmds = append(cmds, tea.ClearScreen)
@@ -196,11 +222,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.permDialog != nil {
 			break
 		}
-		switch msg.Button { //nolint:exhaustive // non-wheel buttons handled by default via handleMouse.
-		case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown,
-			tea.MouseButtonWheelLeft, tea.MouseButtonWheelRight:
+		switch msg.Mouse().Button { //nolint:exhaustive // non-wheel buttons handled by default via handleMouse.
+		case tea.MouseWheelUp, tea.MouseWheelDown,
+			tea.MouseWheelLeft, tea.MouseWheelRight:
 			break // pass through to viewport.Update
 		default:
+			// Click on the side panel header (first row) toggles visibility.
+			if msg.Mouse().Button == tea.MouseLeft {
+				sideX := m.viewportWidth() + 1
+				if msg.Mouse().X >= sideX && msg.Mouse().Y == 0 {
+					m.showSideStatus = !m.showSideStatus
+					m.updateViewportHeight()
+					m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_sidepanel"), onOff(m.showSideStatus))
+					m.notifyPrefsChanged()
+					break
+				}
+			}
 			if cmd := m.handleMouse(msg); cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -247,10 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		switch msg.String() {
 		case "alt+enter":
-			ta, _ := m.textarea.Update(tea.KeyMsg{
-				Type:  tea.KeyRunes,
-				Runes: []rune{'\n'},
-			})
+			ta, _ := m.textarea.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			m.textarea = ta
 
 		case "ctrl+p":
@@ -299,16 +333,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Quit
 			}
 			if input == "/tools" {
+				m.updateViewportHeight()
 				m.showTools = !m.showTools
 				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_tools"), onOff(m.showTools))
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
+			m.updateViewportHeight()
 			if input == "/thinking" {
 				m.showThinking = !m.showThinking
 				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_thinking"), onOff(m.showThinking))
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
+			m.updateViewportHeight()
 			}
 			if input == "/windows" || input == "/windows status" {
 				m.showSideStatus = !m.showSideStatus
@@ -354,23 +391,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.thinking += msg.text
 			n := len(m.messages)
 			if n > 0 && m.messages[n-1].style == "thinking" {
-				m.messages[n-1].content = "💭 " + padThinkingCont(m.thinking)
+				m.messages[n-1].content = "✽ " + padThinkingCont(m.thinking)
 				m.rebuildViewport()
 			}
 		} else {
 			m.inThinking = true
 			m.thinking = msg.text
-			m.appendEntry(renderEntry{content: "💭 " + padThinkingCont(msg.text), style: "thinking"})
+			m.appendEntry(renderEntry{content: "✽ " + padThinkingCont(msg.text), style: "thinking"})
 		}
 		m.viewport.GotoBottom()
 
 	case toolCallMsg:
+		m.toolCallNames[msg.call.ID] = msg.call.Name
 		if !m.showTools {
 			break
 		}
 		m.appendEntry(renderEntry{
-			content: fmt.Sprintf("🔧 %s(%s)", msg.call.Name, msg.call.Arguments),
-			style:   "tool_call",
+			content:    fmt.Sprintf("⏺ %s(%s)", msg.call.Name, msg.call.Arguments),
+			style:      "tool_call",
+			toolCallID: msg.call.ID,
 		})
 		m.viewport.GotoBottom()
 
@@ -378,10 +417,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Tool errors are always surfaced — even when showTools is off —
 		// so a failed tool call is never silently invisible. Non-error
 		// results stay gated behind the showTools toggle.
+		content := strings.TrimRight(msg.result.Content, "\n")
 		if msg.result.IsError {
 			m.msgStatus = "error"
+			// Color the ⏺ icon red in the matching tool_call entry.
+			for i := len(m.messages) - 1; i >= 0; i-- {
+				if m.messages[i].style == "tool_call" && m.messages[i].toolCallID == msg.result.ToolCallID {
+					c := m.messages[i].content
+					if strings.HasPrefix(c, "⏺") {
+						rest := strings.TrimPrefix(c, "⏺")
+						m.messages[i].content = lipgloss.NewStyle().Foreground(adaptiveToolIconError).Render("⏺") + rest
+					}
+					break
+				}
+			}
+			// If showTools is off, no tool_call entry exists — create one now.
+			found := false
+			for i := len(m.messages) - 1; i >= 0; i-- {
+				if m.messages[i].style == "tool_call" && m.messages[i].toolCallID == msg.result.ToolCallID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				name := m.toolCallNames[msg.result.ToolCallID]
+				if name == "" {
+					name = "tool"
+				}
+				entry := renderEntry{
+					content:    lipgloss.NewStyle().Foreground(adaptiveToolIconError).Render("⏺ " + name + "(...)"),
+					style:      "tool_call",
+					toolCallID: msg.result.ToolCallID,
+				}
+				m.messages = append(m.messages, entry)
+			}
+			m.fullRebuild()
 			m.appendEntry(renderEntry{
-				content: fmt.Sprintf("❌ %s", strings.TrimRight(msg.result.Content, "\n")),
+				content: fmt.Sprintf("  %s", content),
 				style:   "tool_error",
 			})
 			m.viewport.GotoBottom()
@@ -390,17 +462,43 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !m.showTools {
 			break
 		}
-		m.appendEntry(renderEntry{
-			content: strings.TrimRight(msg.result.Content, "\n"),
-			style:   "tool_result",
-		})
+		// Match result to the right tool call by ID so parallel
+		// tools don't interleave: 🔧 A \n result-a / 🔧 B \n result-b
+		idx := -1
+		for i := len(m.messages) - 1; i >= 0; i-- {
+			if m.messages[i].style == "tool_call" && m.messages[i].toolCallID == msg.result.ToolCallID {
+				idx = i
+				break
+			}
+		}
+		if idx >= 0 {
+			truncated := strings.TrimSpace(content)
+			if len(truncated) > 600 {
+				truncated = truncated[:600] + "..."
+			}
+			// Update the \u23fa icon to deep green on success.
+			callContent := m.messages[idx].content
+			if strings.HasPrefix(callContent, "\u23fa") {
+				callContent = lipgloss.NewStyle().Foreground(adaptiveToolIconOk).Render("\u23fa") + strings.TrimPrefix(callContent, "\u23fa")
+			}
+			m.messages[idx].content = callContent + "\n  " + truncated
+			m.fullRebuild()
+			m.syncViewport()
+		} else {
+			m.appendEntry(renderEntry{
+				content: content,
+				style:   "tool_result",
+			})
+		}
 		m.viewport.GotoBottom()
 
 	case flushMsg:
 		m.msgStatus = "success"
-		if m.currentMsg != "" {
+		p := m.currentMsg
+		m.currentMsg = ""
+		if p != "" {
 			m.completedItems = append(m.completedItems, completedItem{
-				input:    m.currentMsg,
+				input:    p,
 				ago:      time.Now().Round(time.Second).Format("15:04:05"),
 				duration: time.Since(m.msgStartedAt).Round(time.Second),
 			})
@@ -437,6 +535,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tipsMsg:
 		m.tipsText = msg.text
+		m.updateViewportHeight()
 		d := msg.duration
 		if d <= 0 {
 			d = 3 * time.Second
@@ -445,6 +544,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case clearTipsMsg:
 		m.tipsText = ""
+		m.updateViewportHeight()
 
 	case usageMsg:
 		m.inputTokens = msg.inputTokens
@@ -495,6 +595,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.msgStatus = "pending"
 		m.msgStartedAt = time.Now()
 		m.closeBlock = false
+		m.updateViewportHeight()
 		if m.msgChan != nil {
 			select {
 			case m.msgChan <- msg.text:
@@ -516,6 +617,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.currentMsg = msg.text
 		m.msgStatus = "pending"
 		m.closeBlock = false
+		m.updateViewportHeight()
 		if m.msgChan != nil {
 			select {
 			case m.msgChan <- msg.text:
@@ -738,7 +840,7 @@ func (m *model) updateViewportHeight() {
 	}
 	// Keep viewport width in sync with the current main-column width
 	// (terminal width minus side panel when visible).
-	m.viewport.Width = m.viewportWidth()
+	m.viewport.SetWidth(m.viewportWidth())
 	// Textarea grows 1-5 lines as the user types multi-line input.
 	taLines := strings.Count(m.textarea.Value(), "\n") + 1
 	if taLines < 1 {
@@ -762,14 +864,14 @@ func (m *model) updateViewportHeight() {
 	}
 	// Floating bar — the current-message bar and/or a scroll indicator —
 	// shown whenever the viewport is scrolled away from the bottom.
-	if !m.viewport.AtBottom() {
-		fixed++
+	if m.currentMsg != "" {
+		fixed += 2
 	}
 	h := m.height - fixed
 	if h < 3 {
 		h = 3
 	}
-	m.viewport.Height = h
+	m.viewport.SetHeight(h)
 }
 
 // viewportWidth returns the width available to the message viewport.
@@ -850,7 +952,7 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 
 	var lines []string
 	header := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+		Foreground(lipgloss.Color("208")).
 		Bold(true).
 		Render(i18n.T("tui.queue_title"))
 	lines = append(lines, header)
@@ -986,9 +1088,16 @@ func (m *model) rebuildViewport() {
 	m.syncViewport()
 }
 
-func (m model) View() string {
+func newTuiView(s string) tea.View {
+	v := tea.NewView(s)
+	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
+	return v
+}
+
+func (m model) View() tea.View {
 	if !m.ready {
-		return i18n.T("tui.initializing")
+		return newTuiView(i18n.T("tui.initializing"))
 	}
 
 	// Side status panel shows on the right when the terminal is wide
@@ -1001,22 +1110,14 @@ func (m model) View() string {
 	// Left side holds identity and hints; the session id is pinned to the
 	// right edge.
 	var leftParts []string
-	leftParts = append(leftParts, "🐬 "+m.agentName+" "+m.version)
-	if idx := strings.LastIndex(m.version, "-"); idx > 0 {
-		leftParts = append(leftParts, "git:"+m.version[idx+1:])
-	}
+		leftParts = append(leftParts, "🐬 "+m.agentName)
 	var rightParts []string
 	if m.msgStatus == "pending" {
 		frame := spinnerFrames[m.spinFrame%len(spinnerFrames)]
 		elapsed := time.Since(m.msgStartedAt).Round(time.Second)
 		rightParts = append(rightParts, lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+			Foreground(lipgloss.Color("208")).
 			Render(frame+" "+elapsed.String()))
-	}
-	if m.sel.active {
-		rightParts = append(rightParts, lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "26", Dark: "75"}).
-			Render("Copied"))
 	}
 	if m.sessionID != "" {
 		rightParts = append(rightParts, "session:"+truncateSessionID(m.sessionID))
@@ -1071,25 +1172,41 @@ func (m model) View() string {
 
 	// === Row 1: viewport + side status panel (split horizontally) ===
 	viewWidth := m.viewportWidth()
+	scrolled := !m.viewport.AtBottom()
+	// Reserve 5 chars on the right for the scroll percentage overlay.
+	if scrolled {
+		viewWidth -= 5
+	}
 	var viewportView string
 	switch { //nolint:gocritic // ifElseChain: three mixed-condition branches read better as if/else.
 	case m.sel.active:
 		viewportView = m.renderViewportContent()
 	case m.showingWelcome():
-		// Empty-state welcome banner: shown only before the first message
-		// arrives and no turn is running. Pure overlay — never enters the
-		// message buffer, so it vanishes the moment real content appears.
 		viewportView = m.renderWelcome()
 	default:
+		m.viewport.SetWidth(viewWidth)
 		viewportView = m.viewport.View()
+	}
+	// Overlay scroll percentage at the bottom-right of the viewport.
+	if scrolled && m.viewport.ScrollPercent() >= 0 {
+		pct := m.viewport.ScrollPercent()
+		if pct > 1 { pct = 1 }
+		pctStr := lipgloss.NewStyle().
+			Foreground(adaptiveFaint).
+			Render(fmt.Sprintf(" %d%%", int(pct*100+0.5)))
+		vpLines := strings.Split(viewportView, "\n")
+		if len(vpLines) > 0 {
+			vpLines[len(vpLines)-1] += pctStr
+		}
+		viewportView = strings.Join(vpLines, "\n")
 	}
 
 	var viewportElements []string
-	scrolled := !m.viewport.AtBottom()
-	if m.currentMsg != "" && scrolled {
+	if m.currentMsg != "" {
+		// Always show the in-flight message bar at the top when
+		// a turn is processing, so the user never loses sight of
+		// what they asked.
 		viewportElements = append(viewportElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, viewWidth, m.viewport.ScrollPercent()))
-	} else if scrolled {
-		viewportElements = append(viewportElements, renderScrollIndicator(viewWidth, m.viewport.ScrollPercent()))
 	}
 	viewportElements = append(viewportElements, viewportView)
 	viewportColumn := lipgloss.JoinVertical(lipgloss.Left, viewportElements...)
@@ -1149,15 +1266,15 @@ func (m model) View() string {
 				lines[idx] = pad + dl
 			}
 		}
-		return strings.Join(lines, "\n")
+		return newTuiView(strings.Join(lines, "\n"))
 	}
 
-	return mainView
+	return newTuiView(mainView)
 }
 
 func renderStatusBar(leftParts, rightParts []string, width int) string {
 	s := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+		Foreground(lipgloss.Color("252")).
 		Background(adaptiveStatusBg).
 		Width(width).
 		Padding(0, 1)
@@ -1316,15 +1433,15 @@ func (m model) renderSideStatus() string {
 	}
 
 	labelStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"}).
+		Foreground(lipgloss.Color("241")).
 		Width(sideLabelWidth)
 	valueStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+		Foreground(lipgloss.Color("252")).
 		MaxWidth(maxValWidth)
 
 	lines := []string{
 		lipgloss.NewStyle().
-			Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+			Foreground(lipgloss.Color("252")).
 			Render(i18n.T("tui.status_title")),
 		sep,
 	}
@@ -1345,9 +1462,9 @@ func (m model) renderSideStatus() string {
 	// Total height = viewport row height (viewport.Height plus optional
 	// current-message bar). lipgloss pads the box with blank lines so
 	// its bottom border aligns with the separator above the queue.
-	targetHeight := m.viewport.Height
-	if m.currentMsg != "" && !m.viewport.AtBottom() {
-		targetHeight++
+	targetHeight := m.viewport.Height()
+	if m.currentMsg != "" {
+		targetHeight += 2
 	}
 	if targetHeight < 4 {
 		targetHeight = 4
@@ -1379,7 +1496,7 @@ func (m model) renderSideStatus() string {
 
 	boxStyle := lipgloss.NewStyle().
 		Border(sidePanelBorder).
-		BorderForeground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
+		BorderForeground(lipgloss.Color("238")).
 		Padding(0, 2).
 		Width(contentWidth).
 		Height(contentHeight)
@@ -1395,7 +1512,7 @@ func renderCurrentMsg(msg, username, status string, width int, scrollPct float64
 		icon = "❌"
 	}
 	label := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+		Foreground(lipgloss.Color("208")).
 		Render(icon + " " + username + ":")
 	// When scrolled up, append a scroll-position + jump hint on the right
 	// so the user knows how far up they are and how to return.
@@ -1410,7 +1527,7 @@ func renderCurrentMsg(msg, username, status string, width int, scrollPct float64
 		avail = 4
 	}
 	body := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
+		Foreground(lipgloss.Color("252")).
 		MaxWidth(avail).
 		Render(msg)
 	// Pad body so the scroll suffix right-aligns.

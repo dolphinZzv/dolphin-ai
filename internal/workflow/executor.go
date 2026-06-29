@@ -46,6 +46,7 @@ func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceRe
 
 	for round := 0; round < maxToolRounds; round++ {
 		ch, err := e.llmProvider.CompleteStream(ctx, llm.LLMRequest{
+			Model:     inst.Model,
 			Messages:  messages,
 			MaxTokens: maxTokens,
 			Tools:     tools,

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -24,8 +24,8 @@ func TestMouseInViewport(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.viewport.SetContent(strings.Repeat("a\n", 30))
 
 	// Within viewport.
@@ -53,8 +53,8 @@ func TestMouseInViewport(t *testing.T) {
 func TestMouseToContentLine(t *testing.T) {
 	m := newModel()
 	m.ready = true
-	m.viewport.Width = 80
-	m.viewport.Height = 10
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(10)
 	// renderedContent must be non-empty for mouseToContentLine.
 	m.renderedContent = strings.Repeat("line\n", 20)
 	m.viewport.SetContent(m.renderedContent)
@@ -69,7 +69,7 @@ func TestMouseToContentLine(t *testing.T) {
 	}
 
 	// Scroll down.
-	m.viewport.YOffset = 10
+	m.viewport.SetYOffset(10)
 	if got := m.mouseToContentLine(0); got != 10 {
 		t.Errorf("mouseToContentLine(0) after scroll = %d, want 10", got)
 	}
@@ -508,18 +508,13 @@ func TestHandleMouse_WheelUnaffected(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line\n"
 	m.viewport.SetContent(m.renderedContent)
 
 	// Wheel up event should NOT trigger selection.
-	msg := tea.MouseMsg{
-		X:      10,
-		Y:      5,
-		Button: tea.MouseButtonWheelUp,
-		Action: tea.MouseActionPress,
-	}
+	msg := tea.MouseWheelMsg{X: 10, Y: 5, Button: tea.MouseWheelUp}
 	m.handleMouse(msg)
 	if m.sel.active {
 		t.Error("wheel event should not activate selection")
@@ -531,8 +526,8 @@ func TestHandleMouse_ClickOutsideViewport(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line\n"
 	m.viewport.SetContent(m.renderedContent)
 
@@ -542,12 +537,7 @@ func TestHandleMouse_ClickOutsideViewport(t *testing.T) {
 	m.sel.endLine = 0
 
 	// Click outside viewport (Y below viewport).
-	msg := tea.MouseMsg{
-		X:      10,
-		Y:      25, // outside viewport (viewport height is 20)
-		Button: tea.MouseButtonLeft,
-		Action: tea.MouseActionPress,
-	}
+	msg := tea.MouseClickMsg{X: 10, Y: 25, Button: tea.MouseLeft} // outside viewport (viewport height is 20)
 	m.handleMouse(msg)
 	if m.sel.active {
 		t.Error("click outside viewport should clear selection")
@@ -559,17 +549,12 @@ func TestHandleMouse_ClickInsideViewport(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line one\nline two\n"
 	m.viewport.SetContent(m.renderedContent)
 
-	msg := tea.MouseMsg{
-		X:      3,
-		Y:      0, // inside viewport
-		Button: tea.MouseButtonLeft,
-		Action: tea.MouseActionPress,
-	}
+	msg := tea.MouseClickMsg{X: 3, Y: 0, Button: tea.MouseLeft} // inside viewport
 	m.handleMouse(msg)
 	if !m.sel.active {
 		t.Error("left click inside viewport should start selection")
@@ -582,17 +567,12 @@ func TestHandleMouse_ClickInsideViewport(t *testing.T) {
 func TestHandleMouse_ClickWithEmptyContent(t *testing.T) {
 	m := newModel()
 	m.ready = true
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = ""
 	m.viewport.SetContent(m.renderedContent)
 
-	msg := tea.MouseMsg{
-		X:      3,
-		Y:      0,
-		Button: tea.MouseButtonLeft,
-		Action: tea.MouseActionPress,
-	}
+	msg := tea.MouseClickMsg{X: 3, Y: 0, Button: tea.MouseLeft}
 	m.handleMouse(msg)
 	if m.sel.active {
 		t.Error("click with empty content should not start selection")
@@ -604,15 +584,15 @@ func TestHandleMouse_DragMotion(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line one\nline two\nline three\n"
 	m.viewport.SetContent(m.renderedContent)
 
 	// Start selection.
-	m.handleMouse(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.handleMouse(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
 	// Drag to extend.
-	m.handleMouse(tea.MouseMsg{X: 5, Y: 2, Action: tea.MouseActionMotion})
+	m.handleMouse(tea.MouseMotionMsg{X: 5, Y: 2})
 	// Selection should now span lines 0-2.
 	if m.sel.startLine != 0 || m.sel.endLine != 2 {
 		t.Errorf("drag selection: (%d,%d) to (%d,%d), want start=(0,0) end=(2,5)",
@@ -628,8 +608,8 @@ func TestHandleMouse_ReleaseKeepsSelection(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line\n"
 	m.viewport.SetContent(m.renderedContent)
 
@@ -640,7 +620,7 @@ func TestHandleMouse_ReleaseKeepsSelection(t *testing.T) {
 	m.sel.endCol = 3
 
 	// Release event — selection should persist.
-	m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonNone, Action: tea.MouseActionRelease})
+	m.handleMouse(tea.MouseReleaseMsg{X: 5, Y: 0, Button: 0})
 	if !m.sel.active {
 		t.Error("selection should persist after release")
 	}
@@ -657,16 +637,16 @@ func TestHandleMouse_ReleaseCopiesSGR(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "hello world\n"
 	m.viewport.SetContent(m.renderedContent)
 
 	// Press + drag to build a real selection, then release SGR-style.
-	m.handleMouse(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m.handleMouse(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
+	m.handleMouse(tea.MouseMotionMsg{X: 5, Y: 0, Button: tea.MouseLeft})
 
-	cmd := m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	cmd := m.handleMouse(tea.MouseReleaseMsg{X: 5, Y: 0, Button: tea.MouseLeft})
 	if cmd == nil {
 		t.Fatal("SGR left-button release should return a copy cmd, got nil")
 	}
@@ -682,15 +662,15 @@ func TestHandleMouse_ReleaseCopiesX10(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "hello world\n"
 	m.viewport.SetContent(m.renderedContent)
 
-	m.handleMouse(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m.handleMouse(tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseLeft})
+	m.handleMouse(tea.MouseMotionMsg{X: 5, Y: 0, Button: tea.MouseLeft})
 
-	cmd := m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonNone, Action: tea.MouseActionRelease})
+	cmd := m.handleMouse(tea.MouseReleaseMsg{X: 5, Y: 0, Button: 0})
 	if cmd == nil {
 		t.Fatal("X10 release should return a copy cmd, got nil")
 	}
@@ -701,15 +681,15 @@ func TestHandleMouse_NonLeftClickClears(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line\n"
 	m.viewport.SetContent(m.renderedContent)
 
 	m.sel.active = true
 
 	// Right click in viewport should clear selection.
-	m.handleMouse(tea.MouseMsg{X: 5, Y: 0, Button: tea.MouseButtonRight, Action: tea.MouseActionPress})
+	m.handleMouse(tea.MouseClickMsg{X: 5, Y: 0, Button: tea.MouseRight})
 	if m.sel.active {
 		t.Error("right click should clear selection")
 	}
@@ -720,13 +700,13 @@ func TestHandleMouse_PermDialogBlocks(t *testing.T) {
 	m.ready = true
 	m.width = 100
 	m.height = 40
-	m.viewport.Width = 80
-	m.viewport.Height = 20
+	m.viewport.SetWidth(80)
+	m.viewport.SetHeight(20)
 	m.renderedContent = "line\n"
 	m.viewport.SetContent(m.renderedContent)
 	m.permDialog = &permDialog{prompt: "test", choices: []string{"y", "n"}, active: 0}
 
-	m.handleMouse(tea.MouseMsg{X: 3, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.handleMouse(tea.MouseClickMsg{X: 3, Y: 0, Button: tea.MouseLeft})
 	if m.sel.active {
 		t.Error("mouse events should be blocked during permission dialog")
 	}
@@ -737,41 +717,41 @@ func TestHandleMouse_PermDialogBlocks(t *testing.T) {
 func TestAutoScrollDuringDrag_NearTop(t *testing.T) {
 	m := newModel()
 	m.ready = true
-	m.viewport.Height = 20
+	m.viewport.SetHeight(20)
 	m.renderedContent = strings.Repeat("line\n", 50)
 	m.viewport.SetContent(m.renderedContent)
-	m.viewport.YOffset = 5 // scrolled away from top
+	m.viewport.SetYOffset(5) // scrolled away from top
 	m.sel.active = true
 
-	m.autoScrollDuringDrag(tea.MouseMsg{X: 10, Y: 1, Action: tea.MouseActionMotion})
-	if m.viewport.YOffset != 4 {
-		t.Errorf("should scroll up near top edge, YOffset = %d, want 4", m.viewport.YOffset)
+	m.autoScrollDuringDrag(tea.MouseMotionMsg{X: 10, Y: 1})
+	if m.viewport.YOffset() != 4 {
+		t.Errorf("should scroll up near top edge, YOffset = %d, want 4", m.viewport.YOffset())
 	}
 }
 
 func TestAutoScrollDuringDrag_NearBottom(t *testing.T) {
 	m := newModel()
 	m.ready = true
-	m.viewport.Height = 20
+	m.viewport.SetHeight(20)
 	m.renderedContent = strings.Repeat("line\n", 50)
 	m.viewport.SetContent(m.renderedContent)
 	m.sel.active = true
 
-	m.autoScrollDuringDrag(tea.MouseMsg{X: 10, Y: 19, Action: tea.MouseActionMotion})
-	if m.viewport.YOffset != 1 {
-		t.Errorf("should scroll down near bottom edge, YOffset = %d, want 1", m.viewport.YOffset)
+	m.autoScrollDuringDrag(tea.MouseMotionMsg{X: 10, Y: 19})
+	if m.viewport.YOffset() != 1 {
+		t.Errorf("should scroll down near bottom edge, YOffset = %d, want 1", m.viewport.YOffset())
 	}
 }
 
 func TestAutoScrollDuringDrag_NotActive(t *testing.T) {
 	m := newModel()
 	m.ready = true
-	m.viewport.Height = 20
+	m.viewport.SetHeight(20)
 	m.renderedContent = strings.Repeat("line\n", 50)
 	m.viewport.SetContent(m.renderedContent)
 
-	m.autoScrollDuringDrag(tea.MouseMsg{X: 10, Y: 1, Action: tea.MouseActionMotion})
-	if m.viewport.YOffset != 0 {
+	m.autoScrollDuringDrag(tea.MouseMotionMsg{X: 10, Y: 1})
+	if m.viewport.YOffset() != 0 {
 		t.Error("should not scroll when selection not active")
 	}
 }
@@ -805,8 +785,8 @@ func TestAppendEntryClearsSelection_NonText(t *testing.T) {
 
 func TestRenderViewportContent_Basic(t *testing.T) {
 	m := newModel()
-	m.viewport.Width = 20
-	m.viewport.Height = 5
+	m.viewport.SetWidth(20)
+	m.viewport.SetHeight(5)
 	m.renderedContent = "line0\nline1\nline2\nline3\nline4\n"
 	m.viewport.SetContent(m.renderedContent)
 
@@ -822,8 +802,8 @@ func TestRenderViewportContent_Basic(t *testing.T) {
 
 func TestRenderViewportContent_WithSelection(t *testing.T) {
 	m := newModel()
-	m.viewport.Width = 20
-	m.viewport.Height = 3
+	m.viewport.SetWidth(20)
+	m.viewport.SetHeight(3)
 	m.renderedContent = "line0\nline1\nline2\n"
 	m.viewport.SetContent(m.renderedContent)
 	m.sel.active = true

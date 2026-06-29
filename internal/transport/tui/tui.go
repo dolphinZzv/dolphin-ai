@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 	"go.uber.org/zap"
 
 	"dolphin/internal/agentio"
@@ -188,7 +188,7 @@ func (t *TUI) Start(_ context.Context) error {
 		})
 	}
 
-	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	t.program = tea.NewProgram(m, tea.WithContext(t.ctx))
 
 	// Start the event loop first — Send() blocks until Run() consumes.
 	go func() {

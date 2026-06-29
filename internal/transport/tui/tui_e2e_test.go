@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"dolphin/internal/types"
 )
@@ -26,8 +26,8 @@ func newSim(width, height int) *simModel {
 	m.showThinking = true
 	m.ready = true // skip WindowSizeMsg init
 	m.textarea.SetWidth(width - 1)
-	m.viewport.Width = width
-	m.viewport.Height = height - 5
+	m.viewport.SetWidth(width)
+	m.viewport.SetHeight(height - 5)
 	return &simModel{m: m, inbox: make(chan tea.Msg, 100)}
 }
 
@@ -142,12 +142,12 @@ func TestE2E_PermissionFlow(t *testing.T) {
 	}
 
 	// 'a' (always) needs double-press confirmation.
-	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	sim.send(tea.KeyPressMsg{Code: 'a'})
 	sim.stepAll()
 	if sim.m.permDialog == nil {
 		t.Error("permission dialog should still show after first 'a'")
 	}
-	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
+	sim.send(tea.KeyPressMsg{Code: 'a'})
 	sim.stepAll()
 
 	if sim.m.permDialog != nil {
@@ -212,9 +212,10 @@ func TestE2E_ToggleToolsAndThinking(t *testing.T) {
 	sim.m.showThinking = false
 
 	// Toggle tools on via /tools command.
-	newM, _ := sim.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/tools")})
+	sim.m.textarea.SetValue("/tools")
+	newM, _ := sim.m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	sim.m = newM.(model)
-	newM, cmd := sim.m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	newM, cmd := sim.m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	sim.m = newM.(model)
 	if cmd != nil {
 		cmd()
@@ -230,9 +231,10 @@ func TestE2E_ToggleToolsAndThinking(t *testing.T) {
 	sim.stepAll()
 
 	// Toggle thinking on.
-	newM, _ = sim.m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("/thinking")})
+	sim.m.textarea.SetValue("/thinking")
+	newM, _ = sim.m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	sim.m = newM.(model)
-	newM, cmd = sim.m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	newM, cmd = sim.m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	sim.m = newM.(model)
 	if cmd != nil {
 		cmd()
@@ -269,7 +271,7 @@ func TestE2E_PermissionDialogDismissal(t *testing.T) {
 	}
 
 	// Press 'n' to deny — modal closes and replies on the channel.
-	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	sim.send(tea.KeyPressMsg{Code: 'n'})
 	sim.stepAll()
 
 	if sim.m.permDialog != nil {
@@ -295,7 +297,7 @@ func TestE2E_PermissionDialogSwallowsOtherKeys(t *testing.T) {
 	sim.stepAll()
 
 	// A random letter neither resolves the dialog nor reaches the textarea.
-	sim.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")})
+	sim.send(tea.KeyPressMsg{Code: 'x'})
 	sim.stepAll()
 
 	if sim.m.permDialog == nil {
@@ -306,7 +308,7 @@ func TestE2E_PermissionDialogSwallowsOtherKeys(t *testing.T) {
 	}
 
 	// Arrow-key navigation moves the active choice without resolving.
-	sim.send(tea.KeyMsg{Type: tea.KeyRight})
+	sim.send(tea.KeyPressMsg{Code: tea.KeyRight})
 	sim.stepAll()
 	if sim.m.permDialog == nil {
 		t.Fatal("dialog should still be open after right arrow")
@@ -316,7 +318,7 @@ func TestE2E_PermissionDialogSwallowsOtherKeys(t *testing.T) {
 	}
 
 	// Enter confirms the highlighted choice (index 1 → always).
-	sim.send(tea.KeyMsg{Type: tea.KeyEnter})
+	sim.send(tea.KeyPressMsg{Code: tea.KeyEnter})
 	sim.stepAll()
 	if sim.m.permDialog != nil {
 		t.Error("dialog should be dismissed after enter")

@@ -29,6 +29,7 @@ type StepSpec struct {
 	DependsOn    []string       `yaml:"depends_on,omitempty"`
 	ForEach      string         `yaml:"foreach,omitempty"`
 	OutputSchema map[string]any `yaml:"output_schema,omitempty"`
+	Model        string         `yaml:"model,omitempty"`
 	Timeout      string         `yaml:"timeout,omitempty"`
 	MaxTokens    int            `yaml:"max_tokens,omitempty"`
 	Checkpoint   bool           `yaml:"checkpoint,omitempty"`
@@ -67,6 +68,7 @@ type stepInstance struct {
 	StepID    string
 	Key       string // foreach key, or stepID for non-foreach
 	Prompt    string
+	Model     string
 	Timeout   string
 	MaxTokens int
 	Spec      StepSpec

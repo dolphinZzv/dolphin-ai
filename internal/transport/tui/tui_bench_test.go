@@ -18,8 +18,8 @@ func newBenchModel(rounds int) model {
 	m.showTools = true
 	m.ready = true
 	m.textarea.SetWidth(119)
-	m.viewport.Width = 120
-	m.viewport.Height = 35
+	m.viewport.SetWidth(120)
+	m.viewport.SetHeight(35)
 
 	for r := 0; r < rounds; r++ {
 		m.appendEntry(renderEntry{content: fmt.Sprintf("user question %d", r), style: "user_text"})
@@ -192,8 +192,8 @@ func BenchmarkFullConversationRound(b *testing.B) {
 		m.showTools = true
 		m.ready = true
 		m.textarea.SetWidth(119)
-		m.viewport.Width = 120
-		m.viewport.Height = 35
+		m.viewport.SetWidth(120)
+		m.viewport.SetHeight(35)
 
 		// User input.
 		m.appendEntry(renderEntry{content: "What is the capital of France?", style: "user_text"})
@@ -226,8 +226,8 @@ func BenchmarkRealisticStreaming(b *testing.B) {
 			m.showTools = true
 			m.ready = true
 			m.textarea.SetWidth(119)
-			m.viewport.Width = 120
-			m.viewport.Height = 35
+			m.viewport.SetWidth(120)
+			m.viewport.SetHeight(35)
 
 			// First text entry (creates block, glamour render).
 			m.appendEntry(renderEntry{content: "Let me analyze your question carefully.", style: "text"})

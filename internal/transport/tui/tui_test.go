@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/charmbracelet/bubbles/viewport"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/viewport"
+	tea "charm.land/bubbletea/v2"
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/session"
@@ -296,8 +296,8 @@ func TestModelInit(t *testing.T) {
 func TestModelViewNotReady(t *testing.T) {
 	m := newModel()
 	view := m.View()
-	if view != "Initializing..." {
-		t.Errorf("expected 'Initializing...', got %q", view)
+	if view.Content != "Initializing..." {
+		t.Errorf("expected 'Initializing...', got %q", view.Content)
 	}
 }
 
@@ -415,7 +415,7 @@ func TestOnOff(t *testing.T) {
 
 func TestModelAppendEntry_Text(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -430,7 +430,7 @@ func TestModelAppendEntry_Text(t *testing.T) {
 
 func TestModelAppendEntry_TextMultiline(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -442,7 +442,7 @@ func TestModelAppendEntry_TextMultiline(t *testing.T) {
 
 func TestModelAppendEntry_TextConsecutive(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -455,7 +455,7 @@ func TestModelAppendEntry_TextConsecutive(t *testing.T) {
 
 func TestModelAppendEntry_NonText(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -470,7 +470,7 @@ func TestModelAppendEntry_NonText(t *testing.T) {
 
 func TestModelRebuildViewport_TextBlock(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -487,7 +487,7 @@ func TestModelRebuildViewport_TextBlock(t *testing.T) {
 
 func TestModelRebuildViewport_StyledEntries(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -532,14 +532,14 @@ func TestModelViewReady(t *testing.T) {
 	m.height = 24
 	m.agentName = "Dolphin"
 	m.modelName = "test-model"
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("hello")
 
 	view := m.View()
-	if view == "Initializing..." {
+	if view.Content == "Initializing..." {
 		t.Error("View should not be 'Initializing...' when ready")
 	}
-	if !strings.Contains(view, "Dolphin") {
+	if !strings.Contains(view.Content, "Dolphin") {
 		t.Error("View should contain agent name")
 	}
 }
@@ -556,7 +556,7 @@ func TestModelView_WelcomeBanner(t *testing.T) {
 		m.agentName = "Dolphin"
 		m.version = "v1.0.0"
 		m.modelName = "test-model"
-		m.viewport = viewport.New(80, 20)
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 		return m
 	}
 
@@ -566,7 +566,7 @@ func TestModelView_WelcomeBanner(t *testing.T) {
 			t.Fatal("expected welcome banner while empty and idle")
 		}
 		view := m.View()
-		if !strings.Contains(view, "Dolphin") {
+		if !strings.Contains(view.Content, "Dolphin") {
 			t.Error("welcome view should contain agent name")
 		}
 	})
@@ -601,7 +601,7 @@ func TestModelUpdate_ArrowKeys(t *testing.T) {
 		m := newModel()
 		// Small viewport height so 4 lines of content overflow and scrolling
 		// is observable.
-		m.viewport = viewport.New(80, 2)
+		m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(2))
 		m.viewport.SetContent("line1\nline2\nline3\nline4")
 		m.width = 80
 		m.inputHistory = []string{"first", "second"}
@@ -611,7 +611,7 @@ func TestModelUpdate_ArrowKeys(t *testing.T) {
 
 	t.Run("ctrl+up browses input history", func(t *testing.T) {
 		m := newModelWithHistory()
-		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp})
+		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl})
 		m = newM.(model)
 		if m.historyPos != 1 {
 			t.Errorf("ctrl+up should navigate to latest history (pos 1), got %d", m.historyPos)
@@ -623,8 +623,8 @@ func TestModelUpdate_ArrowKeys(t *testing.T) {
 
 	t.Run("ctrl+down moves history forward", func(t *testing.T) {
 		m := newModelWithHistory()
-		m1, _ := m.Update(tea.KeyMsg{Type: tea.KeyCtrlUp})
-		m2, _ := m1.(model).Update(tea.KeyMsg{Type: tea.KeyCtrlDown})
+		m1, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl})
+		m2, _ := m1.(model).Update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModCtrl})
 		m = m2.(model)
 		if m.historyPos != -1 {
 			t.Errorf("ctrl+down past the end should reset historyPos to -1, got %d", m.historyPos)
@@ -634,14 +634,14 @@ func TestModelUpdate_ArrowKeys(t *testing.T) {
 	t.Run("single-line up scrolls viewport, not history", func(t *testing.T) {
 		m := newModelWithHistory()
 		m.viewport.GotoBottom()
-		before := m.viewport.YOffset
-		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		before := m.viewport.YOffset()
+		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 		m = newM.(model)
 		if m.historyPos != -1 {
 			t.Errorf("plain up should not touch history, got historyPos=%d", m.historyPos)
 		}
-		if m.viewport.YOffset >= before {
-			t.Errorf("single-line up should scroll viewport up, YOffset %d->%d", before, m.viewport.YOffset)
+		if m.viewport.YOffset() >= before {
+			t.Errorf("single-line up should scroll viewport up, YOffset %d->%d", before, m.viewport.YOffset())
 		}
 	})
 
@@ -649,11 +649,11 @@ func TestModelUpdate_ArrowKeys(t *testing.T) {
 		m := newModelWithHistory()
 		m.viewport.GotoBottom()
 		m.textarea.SetValue("line a\nline b")
-		before := m.viewport.YOffset
-		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+		before := m.viewport.YOffset()
+		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
 		m = newM.(model)
-		if m.viewport.YOffset != before {
-			t.Errorf("multi-line up should not scroll viewport, YOffset %d->%d", before, m.viewport.YOffset)
+		if m.viewport.YOffset() != before {
+			t.Errorf("multi-line up should not scroll viewport, YOffset %d->%d", before, m.viewport.YOffset())
 		}
 	})
 }
@@ -665,7 +665,7 @@ func TestModelViewWithPermDialog(t *testing.T) {
 	m.height = 24
 	m.agentName = "Dolphin"
 	m.modelName = "test-model"
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("hello")
 	m.permDialog = &permDialog{
 		prompt:  "Allow?",
@@ -674,7 +674,7 @@ func TestModelViewWithPermDialog(t *testing.T) {
 	}
 
 	view := m.View()
-	if view == "" {
+	if view.Content == "" {
 		t.Error("View should not be empty with perm dialog")
 	}
 }
@@ -685,7 +685,7 @@ func TestModelUpdate_WindowSizeMsg(t *testing.T) {
 	m := newModel()
 	m.width = 0
 	m.height = 0
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	newM, _ := m.Update(tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = newM.(model)
@@ -699,14 +699,14 @@ func TestModelUpdate_WindowSizeMsg(t *testing.T) {
 
 func TestModelUpdate_CtrlC(t *testing.T) {
 	m := newModel()
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("c"), Alt: false})
+	_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	// With ctrl+c, should return Quit. Let's just check it doesn't panic.
 	_ = cmd
 }
 
 func TestModelUpdate_ContentMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.newReply = true
@@ -720,7 +720,7 @@ func TestModelUpdate_ContentMsg(t *testing.T) {
 
 func TestModelUpdate_ThinkingMsg_ShowOff(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.showThinking = false
 
 	_, _ = m.Update(thinkingMsg{text: "thinking..."})
@@ -731,7 +731,7 @@ func TestModelUpdate_ThinkingMsg_ShowOff(t *testing.T) {
 
 func TestModelUpdate_ThinkingMsg_ShowOn(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showThinking = true
@@ -745,7 +745,7 @@ func TestModelUpdate_ThinkingMsg_ShowOn(t *testing.T) {
 
 func TestModelUpdate_ThinkingMsg_Append(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showThinking = true
@@ -761,7 +761,7 @@ func TestModelUpdate_ThinkingMsg_Append(t *testing.T) {
 
 func TestModelUpdate_ToolCallMsg_ShowOff(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.showTools = false
 
 	_, _ = m.Update(toolCallMsg{call: types.ToolCall{Name: "test", Arguments: "{}"}})
@@ -770,7 +770,7 @@ func TestModelUpdate_ToolCallMsg_ShowOff(t *testing.T) {
 
 func TestModelUpdate_ToolCallMsg_ShowOn(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showTools = true
@@ -787,7 +787,7 @@ func TestModelUpdate_ToolCallMsg_ShowOn(t *testing.T) {
 
 func TestModelUpdate_ToolResultMsg_ShowOff(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.showTools = false
 
 	_, _ = m.Update(toolResultMsg{result: types.ToolResult{Content: "done"}})
@@ -795,7 +795,7 @@ func TestModelUpdate_ToolResultMsg_ShowOff(t *testing.T) {
 
 func TestModelUpdate_ToolResultMsg_ShowOn(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showTools = true
@@ -812,18 +812,21 @@ func TestModelUpdate_ToolResultMsg_ShowOn(t *testing.T) {
 
 func TestModelUpdate_ToolResultMsg_Error(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showTools = true
 
 	newM, _ := m.Update(toolResultMsg{result: types.ToolResult{Content: "error", IsError: true}})
 	m = newM.(model)
-	if len(m.messages) != 1 {
-		t.Fatalf("expected 1 message, got %d", len(m.messages))
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages (tool_call fallback + error), got %d", len(m.messages))
 	}
-	if m.messages[0].style != "tool_error" {
-		t.Errorf("expected tool_error style, got %q", m.messages[0].style)
+	if m.messages[0].style != "tool_call" {
+		t.Errorf("expected tool_call style for fallback entry, got %q", m.messages[0].style)
+	}
+	if m.messages[1].style != "tool_error" {
+		t.Errorf("expected tool_error style, got %q", m.messages[1].style)
 	}
 	if m.msgStatus != "error" {
 		t.Errorf("expected msgStatus='error', got %q", m.msgStatus)
@@ -839,7 +842,7 @@ func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 		m.msgChan = make(chan string, 1)
 		m.msgStatus = "pending"
 
-		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 		m = newM.(model)
 
 		select {
@@ -857,7 +860,7 @@ func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 		m.msgChan = make(chan string, 1)
 		m.msgStatus = "success" // no turn running
 
-		newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
 		m = newM.(model)
 
 		select {
@@ -872,30 +875,33 @@ func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 // failed tool call is silently invisible.
 func TestModelUpdate_ToolResultMsg_ErrorWhenToolsHidden(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showTools = false
 
 	newM, _ := m.Update(toolResultMsg{result: types.ToolResult{Content: "boom", IsError: true}})
 	m = newM.(model)
-	if len(m.messages) != 1 {
-		t.Fatalf("expected error shown even with tools hidden, got %d messages", len(m.messages))
+	if len(m.messages) != 2 {
+		t.Fatalf("expected 2 messages (tool_call fallback + error), got %d", len(m.messages))
 	}
-	if m.messages[0].style != "tool_error" {
+	if m.messages[0].style != "tool_call" {
+		t.Errorf("expected tool_call style for fallback entry, got %q", m.messages[0].style)
+	}
+	if m.messages[1].style != "tool_error" {
 		t.Errorf("expected tool_error style, got %q", m.messages[0].style)
 	}
 }
 
 func TestModelUpdate_FlushMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	_, _ = m.Update(flushMsg{})
 }
 
 func TestModelUpdate_ModelChangeMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 
@@ -908,7 +914,7 @@ func TestModelUpdate_ModelChangeMsg(t *testing.T) {
 
 func TestModelUpdate_PermRequestMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
 	newM, _ := m.Update(permRequestMsg{prompt: "allow?"})
 	m = newM.(model)
@@ -922,7 +928,7 @@ func TestModelUpdate_PermRequestMsg(t *testing.T) {
 
 func TestModelUpdate_UserSubmitMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.msgChan = make(chan string, 1)
@@ -940,7 +946,7 @@ func TestModelUpdate_UserSubmitMsg(t *testing.T) {
 
 func TestModelUpdate_PermResponseMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.permCh = make(chan string, 1)
 
 	_, _ = m.Update(permResponseMsg{choice: "once"})
@@ -957,14 +963,14 @@ func TestModelUpdate_PermResponseMsg(t *testing.T) {
 
 func TestModelUpdate_PermDialogKey_Y(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.permDialog = &permDialog{
 		prompt:  "test",
 		choices: []string{"y", "n"},
 		active:  0,
 	}
 	m.permCh = make(chan string, 1)
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("y")})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: 'n'})
 	m = newM.(model)
 	if m.permDialog != nil {
 		t.Error("permDialog should be cleared after key press")
@@ -973,7 +979,7 @@ func TestModelUpdate_PermDialogKey_Y(t *testing.T) {
 
 func TestModelUpdate_PermDialogKey_A(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.permDialog = &permDialog{
 		prompt:     "test",
 		choices:    []string{"y", "n"},
@@ -981,7 +987,7 @@ func TestModelUpdate_PermDialogKey_A(t *testing.T) {
 	}
 	m.permCh = make(chan string, 1)
 	// 'a' requires double-press. First press shows confirm; second resolves.
-	a := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")}
+	a := tea.KeyPressMsg{Code: 'a'}
 	newM, _ := m.Update(a)
 	m = newM.(model)
 	if m.permDialog == nil || m.permDialog.confirmIdx != 1 {
@@ -996,13 +1002,13 @@ func TestModelUpdate_PermDialogKey_A(t *testing.T) {
 
 func TestModelUpdate_PermDialogKey_N(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.permDialog = &permDialog{
 		prompt:  "test",
 		choices: []string{"y", "n"},
 	}
 	m.permCh = make(chan string, 1)
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: 'n'})
 	m = newM.(model)
 	if m.permDialog != nil {
 		t.Error("permDialog should be cleared")
@@ -1132,13 +1138,13 @@ func TestTUI_Init_ConfigNonBool(t *testing.T) {
 
 func TestModelUpdate_EnterTools(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showTools = false
 	m.textarea.SetValue("/tools")
 
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = newM.(model)
 	if !m.showTools {
 		t.Error("showTools should be true after toggling")
@@ -1147,13 +1153,13 @@ func TestModelUpdate_EnterTools(t *testing.T) {
 
 func TestModelUpdate_EnterThinking(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.showThinking = false
 	m.textarea.SetValue("/thinking")
 
-	newM, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = newM.(model)
 	if !m.showThinking {
 		t.Error("showThinking should be true after toggling")
@@ -1162,9 +1168,9 @@ func TestModelUpdate_EnterThinking(t *testing.T) {
 
 func TestModelUpdate_AltEnter(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 
-	_, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter, Alt: true})
+	_, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter, Mod: tea.ModAlt})
 }
 
 func newTestAgentIO(t *testing.T) *agentio.AgentIO {
@@ -1327,7 +1333,7 @@ func TestTUI_SetAgentIO_WithProgram(t *testing.T) {
 
 func TestModelUpdate_PrioritySubmitMsg(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.msgChan = make(chan string, 1)
@@ -1356,7 +1362,7 @@ func TestModelUpdate_PrioritySubmitMsg(t *testing.T) {
 
 func TestModelUpdate_PrioritySubmitMsg_SetPriority(t *testing.T) {
 	m := newModel()
-	m.viewport = viewport.New(80, 20)
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
 	m.msgChan = make(chan string, 1)

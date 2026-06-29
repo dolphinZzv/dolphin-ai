@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // showingWelcome reports whether the empty-state welcome banner should
@@ -40,7 +40,7 @@ func (m model) renderWelcome() string {
  | |_| | |_| | |___|  __/|  _  || || |\  |_____/ ___ \ | |
  |____/ \___/|_____|_|   |_| |_|___|_| \_|    /_/   \_\___|`
 	artStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "26", Dark: "75"})
+		Foreground(lipgloss.Color("75"))
 
 	// Version line: shown at the bottom in a subdued style.
 	versionLine := fmt.Sprintf("🐬 %s %s", m.agentName, m.version)
@@ -87,7 +87,7 @@ func (m model) renderWelcome() string {
 	// Fill the viewport height so the input area stays at the bottom.
 	// Pad both top and bottom to vertically center the content.
 	contentHeight := strings.Count(body, "\n") + 1
-	if pad := m.viewport.Height - contentHeight; pad > 0 {
+	if pad := m.viewport.Height() - contentHeight; pad > 0 {
 		top := pad / 2
 		bottom := pad - top
 		body = strings.Repeat("\n", top) + body + strings.Repeat("\n", bottom)

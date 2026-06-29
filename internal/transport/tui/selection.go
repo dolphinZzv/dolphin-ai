@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/atotto/clipboard"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 
 	"dolphin/internal/i18n"
@@ -29,7 +29,7 @@ func (m model) mouseInViewport(x, y int) bool {
 	if y < m.viewportStartY() {
 		return false
 	}
-	if y >= m.viewportStartY()+m.viewport.Height {
+	if y >= m.viewportStartY()+m.viewport.Height() {
 		return false
 	}
 	if x < 0 || x >= m.viewportWidth() {
@@ -42,7 +42,7 @@ func (m model) mouseInViewport(x, y int) bool {
 // number in renderedContent. Returns -1 if out of bounds.
 func (m model) mouseToContentLine(mouseY int) int {
 	relY := mouseY - m.viewportStartY()
-	line := m.viewport.YOffset + relY
+	line := m.viewport.YOffset() + relY
 	contentLines := strings.Count(m.renderedContent, "\n") + 1
 	if m.renderedContent == "" {
 		return -1
@@ -109,44 +109,40 @@ func (m *model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 
-	switch {
-	case msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress:
-		if !m.mouseInViewport(msg.X, msg.Y) {
-			m.clearSelection()
-			return nil
-		}
-		line := m.mouseToContentLine(msg.Y)
-		if line < 0 {
-			m.clearSelection()
-			return nil
-		}
-		col := mouseToContentCol(msg.X)
-		m.startSelection(line, col)
+	mouse := msg.Mouse()
 
-	case msg.Action == tea.MouseActionMotion && m.sel.active:
-		line := m.mouseToContentLine(msg.Y)
-		if line < 0 {
-			return nil
+	switch msg.(type) {
+	case tea.MouseClickMsg:
+		if mouse.Button == tea.MouseLeft {
+			if !m.mouseInViewport(mouse.X, mouse.Y) {
+				m.clearSelection()
+				return nil
+			}
+			line := m.mouseToContentLine(mouse.Y)
+			if line < 0 {
+				m.clearSelection()
+				return nil
+			}
+			col := mouseToContentCol(mouse.X)
+			m.startSelection(line, col)
+		} else {
+			if m.mouseInViewport(mouse.X, mouse.Y) {
+				m.clearSelection()
+			}
 		}
-		col := mouseToContentCol(msg.X)
-		m.updateSelection(line, col)
 
-	case msg.Action == tea.MouseActionRelease:
-		// Auto-copy to system clipboard on mouse release so Cmd+V works.
-		// Match on Action alone (not Button): in SGR mouse mode — the
-		// preferred mode bubbletea negotiates with iTerm2/Terminal.app/
-		// Alacritty/kitty — a left-button release arrives with
-		// Button == MouseButtonLeft, whereas X10 fallback reports
-		// Button == MouseButtonNone. Requiring MouseButtonNone (the old
-		// check) meant copy never fired under SGR, so dragging to select
-		// never reached the clipboard.
+	case tea.MouseMotionMsg:
+		if m.sel.active {
+			line := m.mouseToContentLine(mouse.Y)
+			if line < 0 {
+				return nil
+			}
+			col := mouseToContentCol(mouse.X)
+			m.updateSelection(line, col)
+		}
+
+	case tea.MouseReleaseMsg:
 		return m.copySelection()
-
-	case msg.Action == tea.MouseActionPress && msg.Button != tea.MouseButtonLeft:
-		// Non-left click clears selection.
-		if m.mouseInViewport(msg.X, msg.Y) {
-			m.clearSelection()
-		}
 	}
 	return nil
 }
@@ -154,13 +150,17 @@ func (m *model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 // autoScrollDuringDrag scrolls the viewport by one line when the mouse is
 // within one row of the top or bottom edge during a drag selection.
 func (m *model) autoScrollDuringDrag(msg tea.MouseMsg) {
-	if !m.sel.active || msg.Action != tea.MouseActionMotion {
+	mouse := msg.Mouse()
+	if !m.sel.active {
 		return
 	}
-	relY := msg.Y - m.viewportStartY()
+	if _, ok := msg.(tea.MouseMotionMsg); !ok {
+		return
+	}
+	relY := mouse.Y - m.viewportStartY()
 	if relY <= 1 && !m.viewport.AtTop() {
 		m.viewport.ScrollUp(1)
-	} else if relY >= m.viewport.Height-2 && !m.viewport.AtBottom() {
+	} else if relY >= m.viewport.Height()-2 && !m.viewport.AtBottom() {
 		m.viewport.ScrollDown(1)
 	}
 }
@@ -172,10 +172,10 @@ func (m *model) autoScrollDuringDrag(msg tea.MouseMsg) {
 // viewport's own View() logic so that highlighting is injected.
 func (m model) renderViewportContent() string {
 	lines := strings.Split(m.renderedContent, "\n")
-	h := m.viewport.Height
-	w := m.viewport.Width
+	h := m.viewport.Height()
+	w := m.viewport.Width()
 
-	top := m.viewport.YOffset
+	top := m.viewport.YOffset()
 	if top < 0 {
 		top = 0
 	}

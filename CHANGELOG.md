@@ -4,6 +4,7 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+- **TUI dark mode 适配**: 输入框背景/文字/光标、用户消息背景、工具图标颜色根据终端 dark/light 模式自适应（主题变量统一放在 theme.go）。
 - **TUI welcome 居中 + queue 上限 2 行**: Welcome 页面垂直/水平居中，版本号移至底部；队列内容最多显示 2 行 body 以保持输入框区域突出。
 - **README.md 增加 welcome.png 展示**: 在项目标语下方插入了 TUI 欢迎界面截图展示。
 

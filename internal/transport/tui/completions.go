@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 
 	"dolphin/internal/i18n"
 )
@@ -26,14 +26,14 @@ func renderCompletions(completions []string, idx, width int) string {
 	}
 
 	compStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "16", Dark: "252"}).
-		Background(lipgloss.AdaptiveColor{Light: "189", Dark: "236"}).
+		Foreground(lipgloss.Color("252")).
+		Background(lipgloss.Color("236")).
 		Padding(0, 1)
 	compSep := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "244", Dark: "238"}).
+		Foreground(lipgloss.Color("238")).
 		Render(strings.Repeat("─", width))
 	header := lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "241", Dark: "241"}).
+		Foreground(lipgloss.Color("241")).
 		Render("Tab to cycle, type to filter")
 
 	// Show a page of completions around the active index; highlight the
@@ -63,7 +63,7 @@ func renderCompletions(completions []string, idx, width int) string {
 		elements = append(elements, compStyle.Render(fmt.Sprintf(i18n.T("tui.completions_total"), len(completions))))
 	}
 	elements = append(elements, lipgloss.NewStyle().
-		Foreground(lipgloss.AdaptiveColor{Light: "136", Dark: "220"}).
+		Foreground(lipgloss.Color("220")).
 		Render(header))
 	return lipgloss.JoinVertical(lipgloss.Left, elements...)
 }
