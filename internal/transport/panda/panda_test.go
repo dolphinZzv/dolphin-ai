@@ -339,6 +339,37 @@ func TestPanda_HandleMsgPush_NonText(t *testing.T) {
 	if len(p.msgChan) != 1 {
 		t.Fatal("expected text message to pass")
 	}
+
+	// Drain the text message from msgChan before the next test.
+	<-p.msgChan
+
+	// ContentType 10 = form message should pass (callback/invoke)
+	push = msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 10, Body: `{"form_id":"123"}`}
+	data, _ = json.Marshal(push)
+	if err := p.handleMsgPush(data); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected form message to pass")
+	}
+	msg := <-p.msgChan
+	if msg != `{"form_id":"123"}` {
+		t.Fatal("unexpected form message body")
+	}
+
+	// ContentType 11 = form response message should pass (callback/invoke)
+	push = msgPushPayload{SenderID: "other", ConvID: "conv1", ContentType: 11, Body: `{"response":"ok"}`}
+	data, _ = json.Marshal(push)
+	if err := p.handleMsgPush(data); err != nil {
+		t.Fatal(err)
+	}
+	if len(p.msgChan) != 1 {
+		t.Fatal("expected form response message to pass")
+	}
+	msg = <-p.msgChan
+	if msg != `{"response":"ok"}` {
+		t.Fatal("unexpected form response message body")
+	}
 }
 
 func TestPanda_HandleMsgPush_Success(t *testing.T) {

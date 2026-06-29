@@ -1171,8 +1171,11 @@ func (p *Panda) handleMsgPush(data json.RawMessage) error {
 		return nil
 	}
 
-	// Only handle text messages
-	if push.ContentType != 0 {
+	// Handle text messages, form messages, and form responses (callback/invoke).
+	// ContentType 0  = text
+	// ContentType 10 = form (interactive card)
+	// ContentType 11 = form response (card callback/invoke)
+	if push.ContentType != 0 && push.ContentType != 10 && push.ContentType != 11 {
 		return nil
 	}
 

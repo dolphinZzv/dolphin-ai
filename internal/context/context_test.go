@@ -113,9 +113,9 @@ func TestRegistrySections(t *testing.T) {
 
 func TestBaseSection(t *testing.T) {
 	Convey("Base section", t, func() {
-		Convey("Name returns 'base'", func() {
+		Convey("Name returns 'agent'", func() {
 			s := &Agent{}
-			So(s.Name(), ShouldEqual, "base")
+			So(s.Name(), ShouldEqual, "agent")
 		})
 
 		Convey("Index returns 0", func() {
