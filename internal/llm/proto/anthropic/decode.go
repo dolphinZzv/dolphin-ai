@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"dolphin/internal/llm"
 	"dolphin/internal/llm/proto"
@@ -155,8 +158,13 @@ func (d *eventDecoder) Decode() (llm.LLMChunk, error) {
 				return llm.LLMChunk{Thinking: thinking, ThinkingSignature: sig}, nil
 			}
 			if d.pendingToolName != "" {
+				id := d.pendingToolID
+				if id == "" {
+					log.Printf("warning: llm/anthropic: tool_call %q arrived without an ID; synthesizing one for pairing", d.pendingToolName)
+					id = "gen_" + uuid.NewString()
+				}
 				tc := types.ToolCall{
-					ID:        d.pendingToolID,
+					ID:        id,
 					Name:      d.pendingToolName,
 					Arguments: d.pendingInput.String(),
 				}
@@ -267,8 +275,13 @@ func DecodeComplete(raw []byte) (llm.LLMChunk, error) {
 			if block.Input != nil {
 				args = string(block.Input)
 			}
+			id := block.ID
+			if id == "" {
+				log.Printf("warning: llm/anthropic: tool_call %q arrived without an ID; synthesizing one for pairing", block.Name)
+				id = "gen_" + uuid.NewString()
+			}
 			chunk.ToolCalls = append(chunk.ToolCalls, types.ToolCall{
-				ID:        block.ID,
+				ID:        id,
 				Name:      block.Name,
 				Arguments: args,
 			})

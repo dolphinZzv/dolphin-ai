@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
+
+	"github.com/google/uuid"
 
 	"dolphin/internal/llm"
 	"dolphin/internal/llm/proto"
@@ -38,8 +41,17 @@ func (d *chunkDecoder) flushToolCalls() []types.ToolCall {
 	for i := 0; i < len(d.pendingToolCalls); i++ {
 		ptc := d.pendingToolCalls[i]
 		if ptc != nil {
+			id := ptc.id
+			// Some OpenAI-compatible endpoints never send a tool_call ID in
+			// the streaming deltas. Without an ID, downstream pairing (tool
+			// result → tool call) collapses onto the last call. Synthesize a
+			// unique ID so each call/result pair stays matched.
+			if id == "" {
+				log.Printf("warning: llm/openai: tool_call %q arrived without an ID; synthesizing one for pairing", ptc.name)
+				id = "gen_" + uuid.NewString()
+			}
 			tcs = append(tcs, types.ToolCall{
-				ID:        ptc.id,
+				ID:        id,
 				Name:      ptc.name,
 				Arguments: ptc.arguments.String(),
 			})

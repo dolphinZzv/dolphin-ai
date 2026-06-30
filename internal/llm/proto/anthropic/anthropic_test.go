@@ -207,6 +207,29 @@ func TestChunkDecoder_SkipEventTypes(t *testing.T) {
 	}
 }
 
+func TestChunkDecoder_ToolUse_NoID(t *testing.T) {
+	body := "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"name\":\"get_weather\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"location\\\":\\\"NYC\\\"}\"}}\n\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n"
+	dec := NewChunkDecoder(strings.NewReader(body))
+
+	chunk, err := dec.Decode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(chunk.ToolCalls))
+	}
+	tc := chunk.ToolCalls[0]
+	if tc.Name != "get_weather" {
+		t.Errorf("unexpected name: %q", tc.Name)
+	}
+	if !strings.HasPrefix(tc.ID, "gen_") || len(tc.ID) <= len("gen_") {
+		t.Errorf("expected synthesized gen_ ID, got %q", tc.ID)
+	}
+	if tc.Arguments != `{"location":"NYC"}` {
+		t.Errorf("unexpected arguments: %q", tc.Arguments)
+	}
+}
+
 func TestChunkDecoder_Thinking(t *testing.T) {
 	body := "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"thinking...\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"text\":\" more thinking\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"signature_delta\",\"signature\":\"sig-123\"}}\n\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n"
 	dec := NewChunkDecoder(strings.NewReader(body))
@@ -480,6 +503,24 @@ func TestDoComplete_WithToolUse(t *testing.T) {
 	}
 	if chunk.Thinking != "Let me check..." || chunk.ThinkingSignature != "sig123" || len(chunk.ToolCalls) != 1 || chunk.ToolCalls[0].Name != "get_weather" {
 		t.Fatalf("unexpected: %+v", chunk)
+	}
+}
+
+func TestDecodeComplete_ToolUse_NoID(t *testing.T) {
+	raw := []byte(`{"type":"message","role":"assistant","content":[{"type":"tool_use","name":"search","input":{"q":"hi"}}]}`)
+	chunk, err := DecodeComplete(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chunk.ToolCalls) != 1 {
+		t.Fatalf("expected 1 tool call, got %d", len(chunk.ToolCalls))
+	}
+	tc := chunk.ToolCalls[0]
+	if tc.Name != "search" {
+		t.Errorf("unexpected name: %q", tc.Name)
+	}
+	if !strings.HasPrefix(tc.ID, "gen_") || len(tc.ID) <= len("gen_") {
+		t.Errorf("expected synthesized gen_ ID, got %q", tc.ID)
 	}
 }
 
