@@ -309,7 +309,36 @@ type SharedFile struct {
 | `reference` | 大文件、本地 agent | 只传路径，通过共享文件系统读取 |
 
 - 本地 agent：`reference` 模式天然适用，因为同机共享文件系统
-- 远程 agent：`reference` 模式需配合 NFS/共享存储，或退化为 `inline`
+- 远程 agent：`reference` 模式需配合共享存储（NFS/S3）；**严禁对大文件静默退化为 `inline`**——大文件塞进 JSON payload 会撑爆单次请求（HTTP body 上限、JSON 解析内存、对端缓冲），可能导致 OOM 或连接重置
+
+**远程 agent 大文件的明确退路**（按优先级）：
+
+1. **共享存储引用**（首选）：`SharedFile{Mode: "reference", Path: "s3://bucket/xxx"}` 或 `nfs://host/path`，接收方按协议拉取。需配置 `agents.storage` 段。
+2. **分块上传协议**（无共享存储时）：走独立 HTTP 端点 `POST /files/upload`（chunked），返回 `file_ref`，`DelegatePayload` 中只传 `file_ref`。详见下方「大文件传输协议」。
+3. **拒绝并报错**：若上述均不可用且文件 > 100KB，返回 `DelegateError{Code: "bad_payload", Message: "file too large for inline, no shared storage configured"}`，由委托方 LLM 决定换策略（如只传文件片段、改用 `read` 工具远程读取）。
+
+**大文件传输协议（分块，远程 agent 无共享存储时）**：
+
+```
+1. Client → POST /files/upload?name=pr.diff&size=2MB
+   ← 200 {"upload_id":"up_xid","chunk_size":256KB}
+
+2. Client → PUT /files/upload/up_xid/chunk/0   (256KB binary body)
+   Client → PUT /files/upload/up_xid/chunk/1
+   ... (并行，最多 4 并发)
+   ← 200 {"ok":true}
+
+3. Client → POST /files/upload/up_xid/complete
+   ← 200 {"file_ref":"file_xid","hash":"sha256:..."}
+
+4. DelegatePayload.context.files[].mode="reference"
+                       .files[].path="file://file_xid"
+   (接收方按 file_ref 在本地缓存或流式读取)
+
+5. 任务完成后 → DELETE /files/upload/up_xid (GC)
+```
+
+校验：每个 chunk 带 `Content-MD5`，`complete` 时校验整体 SHA256 与 `SharedFile.Hash` 一致，不一致返回 `DelegateError{Code: "bad_payload"}`。
 
 **设计理由**：不是自动共享全部 memory，而是由委托方 LLM 决定传什么，因为：
 1. 完整对话历史可能很大（几千轮），传输开销高
@@ -362,6 +391,18 @@ type RetryPolicy struct {
 1. 等待 `backoff` → 重试 → 失败则 `backoff = min(backoff * 2, max_backoff)`
 2. 到达 `max_retries` 后返回最后一次错误
 3. 重试**不重新 spawn agent**——重发到同一个 agent，除非该 agent 标记为 `ErrAgentUnavail`
+
+**与熔断器的交互（重要）**：重试和熔断器都在 `AgentMesh.Delegate` 内部，但职责不同、计数独立但联动：
+
+- **重试计数**：单次 `Delegate` 调用内累计，调用结束即清零。只统计「可重试错误」(`ErrTimeout`/`ErrAgentUnavail`/`ErrAgentBusy`)。
+- **熔断器计数**：per-agent，跨调用累计「连续失败」。**重试期间的每次失败都会递增熔断器计数**——因为每次重试都是一次真实的远程调用，应当反映对端健康度。
+- **联动规则**：
+  1. 若 `Delegate` 入口时熔断器已 OPEN → 直接返回 `DelegateError{Code: "agent_unavailable"}`，不发起调用、不重试。
+  2. 重试过程中若熔断器刚好翻到 OPEN（连续失败达到 `failure_threshold`）→ 立即终止后续重试，返回熔断错误。
+  3. 重试成功 → 重置该 agent 的熔断器计数为 0（连续失败清零）。
+  4. 熔断器 OPEN 期间的 `Delegate` 调用不计入重试，但会触发 fallback（如果启用）。
+
+这样设计避免「重试打满后才熔断」的窗口期：重试本身就在消耗对端，应同步反映到熔断器状态。
 
 ### 降级（Fallback）
 
@@ -460,8 +501,11 @@ func (m *AgentMesh) Delegate(ctx context.Context, payload DelegatePayload) (*Del
     )
     defer span.End()
 
-    // 将 trace context 注入 A2A HTTP header
-    req.Header.Set("traceparent", trace.SpanContextFromContext(ctx).TraceID().String())
+    // 用 OTel 标准 propagator 注入 trace context 到 A2A HTTP header
+    // 必须使用 propagator 而非手写 traceparent，以符合 W3C TraceContext 规范
+    // （格式：00-<trace-id>-<span-id>-<flags>），子 agent 侧才能用同一 propagator 提取并恢复父 span。
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+    // parent_session_id 通过 tracestate 旁路传递，便于日志关联
     req.Header.Set("tracestate", "agentmesh="+payload.ParentSessionID)
 
     // ...执行委托
@@ -485,10 +529,9 @@ func (m *AgentMesh) Delegate(ctx context.Context, payload DelegatePayload) (*Del
 ```go
 // internal/transport/a2a/a2a.go — 子 agent 接收方
 func (t *A2A) handleTasksSend(ctx context.Context, req *a2a.JSONRPCRequest) *a2a.JSONRPCResponse {
-    // 从 HTTP header 恢复 trace context
-    if traceparent := req.HTTPHeader.Get("traceparent"); traceparent != "" {
-        ctx = propagateTraceFromHeader(ctx, traceparent)
-    }
+    // 用 OTel 标准 propagator 从 HTTP header 恢复 trace context
+    // 与发送方的 Inject 配对，恢复父 span 的 trace_id / span_id 关联
+    ctx = otel.GetTextMapPropagator().Extract(ctx, propagation.HeaderCarrier(req.HTTPHeader))
 
     tracer := otel.Tracer("agentmesh")
     ctx, span := tracer.Start(ctx,
@@ -761,7 +804,8 @@ type ContextPayload struct {
 ```
 文件大小 ≤ 100KB   → inline 模式，内容直接放在 JSON payload 中
 文件大小 > 100KB   → 本地 agent: reference 模式（共享文件系统）
-                   → 远程 agent: 分块传输或走共享存储（S3/NFS）
+                   → 远程 agent: 优先共享存储引用；无共享存储则走分块上传协议（/files/upload）；
+                     绝不静默退化为 inline（会撑爆 JSON payload）
 ```
 
 ---
@@ -872,10 +916,22 @@ Agent A 启动                     Agent B 已在运行
 | 场景 | 处理 |
 |---|---|
 | 相同 name + 相同 addr | dedup，更新 timestamp |
-| 相同 name + 不同 addr | 冲突 —— 保留两者并日志警告（可能是两个 agent 同名） |
+| 相同 name + 不同 addr | 冲突——按 tie-breaker 决定保留方（见下方），日志警告 |
 | 相同 addr + 不同 name | 新的覆盖旧的（agent 重启改名） |
 | TTL = 0 的消息 | 不转发 |
 | Agent 超时未 renew（90s） | 从 registry 移除，标记 AgentStopped |
+
+**同名不同地址冲突的 tie-breaker**（避免「保留两者」导致路由歧义）：
+
+按优先级依次比较，第一项能决出胜负即停止：
+
+1. **ProtoVersion 高者优先**——新版 agent 通常更可靠，且能力更全
+2. **Load 低者优先**——同版本时选负载更轻的，天然做负载均衡
+3. **Card.Version（dolphin 版本）字典序大者优先**——同 proto 时取较新构建
+4. **最后 renew 时间新者优先**——以上全平时，最近心跳的更可能是存活方
+5. **仍相同**——保留 `agent.Addr` 字典序较小的一方（确定性，避免各节点结论不一致导致脑裂），另一方记入 `conflict_log` 但不注册
+
+冲突发生时，被淘汰方不立即移除已注册的实例（如果它之前以另一 name 注册过），仅本次注册请求被拒绝并返回 `DelegateError{Code: "agent_not_found", Cause: "name conflict resolved to peer"}`。
 
 ### 配置
 
@@ -969,10 +1025,10 @@ type AgentCard struct {
     // ... 已有字段 ...
     Version       string   `json:"version"`        // "2.1.0"
     ProtoVersion  int      `json:"proto_version"`  // A2A 协议版本，递增整数
-    // v1: tasks/send
+    // v1: tasks/send, tasks/cancel, tasks/get（基础任务生命周期，cancel 必备以防无法终止超时任务）
     // v2: + agents/discover, agents/ping
-    // v3: + tasks/sendSubscribe, tasks/cancel
-    // v4: + tools/list, tools/call
+    // v3: + tasks/sendSubscribe（SSE 流式）
+    // v4: + tools/list, tools/call（工具联邦）
 }
 ```
 
@@ -1035,11 +1091,11 @@ func (c *A2AClient) Negotiate(ctx context.Context) error {
 
 var methodToProto = map[string]int{
     "tasks/send":          1,
+    "tasks/cancel":        1, // cancel 是基础运维能力，proto=1 即必备——否则父 agent 无法终止超时任务
+    "tasks/get":           1, // 轮询同理，与 send/cancel 同属基础任务生命周期
     "agents/discover":     2,
     "agents/ping":         2,
     "tasks/sendSubscribe": 3,
-    "tasks/cancel":        3,
-    "tasks/get":           3,
     "tools/list":          4,
     "tools/call":          4,
 }
@@ -1052,9 +1108,10 @@ var methodToProto = map[string]int{
 ```go
 // delegate_to_agent 工具 List 时，检查对端 protocol version
 if c.negotiatedProto < 3 {
-    // async 模式不可用，只暴露 sync
+    // async/stream 模式不可用（需 sendSubscribe），只暴露 sync
     delegateTool.Parameters["mode"] = {enum: ["sync"]}
 }
+// 注意：cancel 始终可用（proto=1），故超时/取消不受版本影响
 
 // ToolMount List 时，如果对端 proto < 4 → 跳过挂载
 if c.negotiatedProto < 4 {
@@ -1124,9 +1181,11 @@ type ServerRateLimiter struct {
 }
 
 // 默认规则：
-//   per parent_session: 5 req/min — 同一个用户请求不会短时间产生大量子委托
-//   per from agent:     10 req/min — 单个上游 agent 的委托
-//   global:             30 req/min — 总并发保护
+//   per parent_session: 30 req/min — 必须大于 max_children_per_session 的并发上限
+//                                    （默认 10 并发子 agent + 各自重试 2 次 = ~30 次/分钟峰值）
+//                                    设得过低会导致 LLM 并行 spawn 时被自己的限流卡住
+//   per from agent:     60 req/min — 单个上游 agent 的委托
+//   global:             120 req/min — 总并发保护
 func (s *ServerRateLimiter) Allow(from, parentSessionID string) bool {
     if !s.perSession[parentSessionID].Allow() {
         return false // 同一个 session 委托过于频繁
@@ -1152,9 +1211,9 @@ agents:
       per_agent: "2/s"            # 每秒向每个 agent 发送的委托数
       burst: 5                    # 突发峰值
     receive:                      # 作为服务端
-      per_session: "5/m"          # 每个父 session 允许的频率
-      per_peer: "10/m"            # 每个上游 agent
-      global: "30/m"              # 全局
+      per_session: "30/m"          # 每个父 session 允许的频率（须 ≥ max_children_per_session 的并发峰值）
+      per_peer: "60/m"            # 每个上游 agent
+      global: "120/m"             # 全局
 ```
 
 ### 负载感知路由
@@ -1659,6 +1718,17 @@ steps:
 ```
 
 Executor 修改：`executeStep` 检测 `step.Agent != ""` 时，通过 `AgentMesh.Delegate()` 发送而非直接调 LLM。
+
+**具体迁移点**（Phase 3 落地时修改）：
+
+| 文件 / 函数 | 当前行为 | 迁移后 |
+|---|---|---|
+| `internal/workflow/executor.go` → `Executor.executeStep` | 直接调 `executeLLMStep(ctx, step)` | `if step.Agent != ""` → 走 `mesh.Delegate`；否则原路径 |
+| `internal/workflow/spec.go` → `StepSpec` | 无 `Agent` 字段 | 新增 `Agent string \`yaml:"agent"\`` |
+| `internal/workflow/executor.go` → `Executor` 构造 | 无 mesh 引用 | 注入 `mesh *agentmesh.AgentMesh`（可为 nil，nil 时 step.Agent 被忽略并告警） |
+| `internal/pipeline` 启动处 | 构造 Executor 时无 mesh | 从 pipeline 传入已初始化的 `AgentMesh`（若 `agents.enabled=false` 则传 nil） |
+
+迁移保持向后兼容：旧 workflow yaml 不含 `agent:` 字段时，`StepSpec.Agent == ""`，走原 LLM 路径，行为不变。
 
 ```go
 func (e *Executor) executeStep(ctx context.Context, step StepSpec) (*StepResult, error) {

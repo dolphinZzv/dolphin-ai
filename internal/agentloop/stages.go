@@ -34,6 +34,21 @@ type Stage interface {
 	Clone() Stage
 }
 
+// MeshCtxInjector, if set, decorates the tool-execution context with mesh
+// values (parent session id, delegation depth) so the delegate_to_agent
+// builtin tool can stamp DelegatePayload. Set by setup.AgentMeshBootstrapper
+// to avoid a hard agentloop → agentmesh import.
+var MeshCtxInjector func(ctx context.Context, sessionID string, depth int) context.Context
+
+// injectMeshCtx applies MeshCtxInjector if configured; otherwise returns ctx
+// unchanged.
+func injectMeshCtx(ctx context.Context, state *State) context.Context {
+	if MeshCtxInjector == nil {
+		return ctx
+	}
+	return MeshCtxInjector(ctx, state.SessionID, 0)
+}
+
 type State struct {
 	SessionID        string
 	Input            string
@@ -974,6 +989,10 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			if s.Timeout > 0 {
 				execCtx, cancel = context.WithTimeout(ctx, s.Timeout)
 			}
+			// Inject the current session ID + delegation depth so the
+			// delegate_to_agent builtin tool can stamp DelegatePayload
+			// without the LLM having to pass them.
+			execCtx = injectMeshCtx(execCtx, state)
 
 			result, err := s.ToolRegistry.Execute(execCtx, call)
 			if cancel != nil {
@@ -1286,7 +1305,11 @@ func (s *ToolStage) checkPermission(ctx context.Context, state *State, call type
 	// request_permission and emit_event are always allowed — they are
 	// meta-tools for requesting user permission and emitting events,
 	// and must not require permission themselves.
-	if call.Name == "request_permission" || call.Name == "emit_event" {
+	// delegate_to_agent is a collaboration meta-tool: it delegates to another
+	// agent (which has its own permission boundary). Requiring interactive
+	// permission here breaks A2A/non-interactive transports entirely, so it
+	// is allowed by default. spawn_agent (subprocess) is NOT exempt.
+	if call.Name == "request_permission" || call.Name == "emit_event" || call.Name == "delegate_to_agent" {
 		return nil
 	}
 

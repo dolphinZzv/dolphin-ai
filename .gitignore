@@ -57,3 +57,7 @@ todo.md
 __pycache__
 coverage.html
 .mcp.json
+# delivery 狼人杀测试残留
+delivery/runtime/
+delivery/runtime_play/
+delivery/runtime_human/

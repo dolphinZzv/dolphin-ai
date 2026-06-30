@@ -9,6 +9,7 @@ import (
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
+	"dolphin/internal/agentmesh"
 	"dolphin/internal/brain"
 	"dolphin/internal/config"
 	"dolphin/internal/dream"
@@ -40,6 +41,7 @@ type Pipeline struct {
 	subscriptionEngine  *brain.SubscriptionEngine
 	limitResetScheduler *limit.ResetScheduler
 	dream               *dream.Dream
+	agentMesh           *agentmesh.AgentMesh
 }
 
 func New(cfg *config.Config) *Pipeline {
@@ -61,6 +63,7 @@ func New(cfg *config.Config) *Pipeline {
 		StepObservability().
 		StepPprof().
 		StepTransports().
+		StepAgentMesh().
 		Assemble().
 		Build()
 }
@@ -240,6 +243,13 @@ func (p *Pipeline) Shutdown() {
 				zap.String("transport_id", tio.ID()),
 				zap.Error(err),
 			)
+		}
+	}
+
+	// Shut down agent mesh (close cached clients, stop lifecycle/gossip if run).
+	if p.agentMesh != nil {
+		if err := p.agentMesh.Shutdown(); err != nil {
+			p.logger.Warn("agent mesh shutdown error", zap.Error(err))
 		}
 	}
 

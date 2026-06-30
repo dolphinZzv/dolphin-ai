@@ -33,6 +33,11 @@ type StepSpec struct {
 	Timeout      string         `yaml:"timeout,omitempty"`
 	MaxTokens    int            `yaml:"max_tokens,omitempty"`
 	Checkpoint   bool           `yaml:"checkpoint,omitempty"`
+
+	// Agent names a target agent for delegation. When set, the step is
+	// executed via the AgentMesh (Delegator) instead of the local LLM. Empty
+	// = run locally (default, backward-compatible).
+	Agent string `yaml:"agent,omitempty"`
 }
 
 // StepResult holds the outcome of one step (or foreach step with instances).

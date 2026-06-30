@@ -179,6 +179,16 @@ func (b *Builder) StepTransports() *Builder {
 	return b
 }
 
+// StepAgentMesh wires the AgentMesh into the pipeline (delegation tools,
+// server-side handlers, workflow delegator). No-op when agents.enabled=false.
+func (b *Builder) StepAgentMesh() *Builder {
+	if b.ctx.AgentMesh != nil {
+		return b
+	}
+	b.boot(&setup.AgentMeshBootstrapper{})
+	return b
+}
+
 // Assemble builds the final Pipeline from all constructed components.
 func (b *Builder) Assemble() *Builder {
 	if b.pipeline != nil {
@@ -209,6 +219,7 @@ func (b *Builder) Assemble() *Builder {
 		subscriptionEngine:  b.ctx.SubscriptionEngine,
 		limitResetScheduler: b.ctx.LimitResetScheduler,
 			dream:               b.ctx.Dream,
+		agentMesh:           b.ctx.AgentMesh,
 	}
 	return b
 }

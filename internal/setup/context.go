@@ -5,6 +5,7 @@ import (
 
 	"dolphin/internal/agentio"
 	"dolphin/internal/agentloop"
+	"dolphin/internal/agentmesh"
 	"dolphin/internal/brain"
 	"dolphin/internal/command"
 	"dolphin/internal/config"
@@ -58,6 +59,7 @@ type Context struct {
 	LimitResetScheduler *limit.ResetScheduler
 	WorkflowEngine      *workflow.Engine
 	Dream               *dream.Dream
+	AgentMesh           *agentmesh.AgentMesh
 }
 
 func NewContext(cfg *config.Config) *Context {

@@ -17,6 +17,34 @@ import (
 	"dolphin/internal/tool"
 )
 
+// Delegator is the minimal AgentMesh surface a workflow step needs to delegate
+// to another agent. Defined here so workflow does not import agentmesh
+// directly (avoids an import cycle). *agentmesh.AgentMesh satisfies it.
+type Delegator interface {
+	Enabled() bool
+	Delegate(ctx context.Context, payload DelegatePayload) (*DelegateResult, error)
+}
+
+// DelegatePayload is the workflow-facing mirror of agentmesh.DelegatePayload.
+// Kept as a struct here so workflow YAML rendering does not depend on the
+// agentmesh package. The Delegator implementation is responsible for
+// accepting this shape (agentmesh provides an adapter).
+type DelegatePayload struct {
+	Task            string
+	PreferredAgent  string
+	ParentSessionID string
+	DelegationDepth int
+	Timeout         string
+}
+
+// DelegateResult is the workflow-facing mirror of agentmesh.DelegateResult.
+type DelegateResult struct {
+	Status  string // completed | failed | timeout | cancelled | partial
+	Content string
+	Rounds  int
+	Error   string
+}
+
 // Engine executes workflow YAML files, scheduling steps according to their DAG dependencies.
 type Engine struct {
 	toolReg     *tool.Registry
@@ -28,6 +56,8 @@ type Engine struct {
 	config     *config.Config
 	onProgress func(agentio.TurnResult)
 	brainDir   string
+
+	delegator Delegator // optional; nil = no agent delegation (backward-compat)
 }
 
 // NewEngine creates a new workflow Engine.
@@ -50,6 +80,11 @@ func NewEngine(
 		config:  cfg,
 	}
 }
+
+// SetDelegator attaches an AgentMesh Delegator. When set, steps whose Spec
+// has Agent != "" are delegated to that agent instead of running locally.
+// Passing nil disables delegation (backward-compatible default).
+func (e *Engine) SetDelegator(d Delegator) { e.delegator = d }
 
 // SetOnProgress sets a callback for streaming workflow progress messages.
 func (e *Engine) SetOnProgress(fn func(agentio.TurnResult)) {

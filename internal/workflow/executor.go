@@ -18,6 +18,21 @@ const maxToolRounds = 5
 func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceResult {
 	start := time.Now()
 
+	// Agent delegation: if the step targets a named agent and a Delegator is
+	// attached, send the prompt to that agent instead of running locally.
+	// When the Delegator is nil but a step names an agent, we warn and fall
+	// back to local execution (backward-compatible, no hard failure).
+	if inst.Spec.Agent != "" {
+		if e.delegator == nil || !e.delegator.Enabled() {
+			e.logger.Warn("workflow: step.agent set but agent mesh disabled; running locally",
+				zap.String("step_id", inst.StepID),
+				zap.String("agent", inst.Spec.Agent),
+			)
+		} else {
+			return e.delegateStep(ctx, inst, start)
+		}
+	}
+
 	timeout := e.config.GetDuration("workflow.step_timeout")
 	if inst.Timeout != "" {
 		if d, err := time.ParseDuration(inst.Timeout); err == nil {
@@ -202,4 +217,56 @@ func matchSchema(val any, expectedType any) bool {
 		}
 	}
 	return true // unknown schema type → accept
+}
+
+// delegateStep sends a step's prompt to a named agent via the Delegator and
+// wraps the result as an InstanceResult. It applies the step timeout the same
+// way the local LLM path does.
+func (e *Engine) delegateStep(ctx context.Context, inst stepInstance, start time.Time) *InstanceResult {
+	timeout := e.config.GetDuration("workflow.step_timeout")
+	if inst.Timeout != "" {
+		if d, err := time.ParseDuration(inst.Timeout); err == nil {
+			timeout = d
+		}
+	}
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+
+	res, err := e.delegator.Delegate(ctx, DelegatePayload{
+		Task:            inst.Prompt,
+		PreferredAgent:  inst.Spec.Agent,
+		ParentSessionID: "workflow:" + inst.StepID,
+		Timeout:         inst.Timeout,
+	})
+	if err != nil {
+		return &InstanceResult{
+			Key:    inst.Key,
+			Status: StatusFailed,
+			Error:  "delegate: " + err.Error(),
+			Duration: time.Since(start).Round(time.Millisecond).String(),
+		}
+	}
+	if res == nil {
+		return &InstanceResult{
+			Key:    inst.Key,
+			Status: StatusFailed,
+			Error:  "delegate: no result",
+			Duration: time.Since(start).Round(time.Millisecond).String(),
+		}
+	}
+	status := StatusDone
+	if res.Status != "" && res.Status != "completed" {
+		status = StatusFailed
+	}
+	result := parseOutput(res.Content, inst.Spec.OutputSchema)
+	return &InstanceResult{
+		Key:      inst.Key,
+		Status:   status,
+		Duration: time.Since(start).Round(time.Millisecond).String(),
+		Result:   result,
+		Error:    res.Error,
+	}
 }
