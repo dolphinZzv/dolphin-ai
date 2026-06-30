@@ -140,17 +140,17 @@ func (a *A2A) Addr() string {
 }
 
 // Read blocks until an A2A message is received.
-func (a *A2A) Read(ctx context.Context) (string, error) {
+func (a *A2A) Read(ctx context.Context) (transport.Input, error) {
 	select {
 	case req := <-a.msgChan:
 		a.mu.Lock()
 		a.respChan = req.respond
 		a.mu.Unlock()
-		return req.content, nil
+		return transport.Input{Text: req.content}, nil
 	case <-a.closeCh:
-		return "", fmt.Errorf("a2a: closed")
+		return transport.Input{}, fmt.Errorf("a2a: closed")
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return transport.Input{}, ctx.Err()
 	}
 }
 

@@ -19,9 +19,10 @@ type Turn struct {
 	TurnID      string
 	TransportID string
 	SessionID   string
-	Input       string
-	Context     string    // transport-specific context string
-	EnqueuedAt  time.Time // when the turn was placed into the queue
+	Input       string              // text portion (display/logs)
+	Parts       []types.ContentPart // multimodal attachments
+	Context     string              // transport-specific context string
+	EnqueuedAt  time.Time           // when the turn was placed into the queue
 }
 
 type TurnResult struct {

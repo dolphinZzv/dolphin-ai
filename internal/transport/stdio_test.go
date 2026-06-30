@@ -449,7 +449,7 @@ func TestStdioRead_FallbackEmptyLine(t *testing.T) {
 
 		result, err := s.Read(context.Background())
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, "world")
+		So(result.Text, ShouldEqual, "world")
 	})
 }
 
@@ -508,7 +508,7 @@ func TestStdioRead_ReadlineSuccess(t *testing.T) {
 
 		result, err := s.Read(context.Background())
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, "hello")
+		So(result.Text, ShouldEqual, "hello")
 	})
 }
 
@@ -551,7 +551,7 @@ func TestStdioRead_ReadlineEmptyLine(t *testing.T) {
 
 		result, err := s.Read(context.Background())
 		So(err, ShouldBeNil)
-		So(result, ShouldEqual, "world")
+		So(result.Text, ShouldEqual, "world")
 	})
 }
 

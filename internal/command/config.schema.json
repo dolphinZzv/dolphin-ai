@@ -263,7 +263,8 @@
           "enabled": { "type": "boolean", "default": true },
           "url": { "type": "string", "format": "uri", "description": "URL for http transport (SSE endpoint)" },
           "command": { "type": "string", "description": "Command for stdio transport" },
-          "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments for stdio transport" }
+          "args": { "type": "array", "items": { "type": "string" }, "description": "Arguments for stdio transport" },
+          "headers": { "type": "object", "additionalProperties": { "type": "string" }, "description": "Custom HTTP headers sent with every request" }
         },
         "required": ["name", "type"]
       }

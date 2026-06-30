@@ -43,7 +43,7 @@ func TestNewAnthropicProvider_CompleteStream(t *testing.T) {
 
 	req := llm.LLMRequest{
 		Messages: []types.Message{
-			{Role: types.RoleUser, Content: "Hello"},
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("Hello")}},
 		},
 	}
 	ch, err := p.CompleteStream(context.Background(), req)
@@ -111,7 +111,7 @@ func TestNewOpenAIProvider_CompleteStream(t *testing.T) {
 	p := NewOpenAIProvider("test-model")(cfg, noopLogger())
 	req := llm.LLMRequest{
 		Messages: []types.Message{
-			{Role: types.RoleUser, Content: "Hello"},
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("Hello")}},
 		},
 	}
 	ch, err := p.CompleteStream(context.Background(), req)
@@ -160,7 +160,7 @@ func TestNewAnthropicProvider_ServerError(t *testing.T) {
 	p := NewAnthropicProvider("test-model")(cfg, noopLogger())
 	req := llm.LLMRequest{
 		Messages: []types.Message{
-			{Role: types.RoleUser, Content: "Hello"},
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("Hello")}},
 		},
 	}
 	ch, err := p.CompleteStream(context.Background(), req)
@@ -197,7 +197,7 @@ func TestNewOpenAIProvider_ServerError(t *testing.T) {
 	p := NewOpenAIProvider("test-model")(cfg, noopLogger())
 	req := llm.LLMRequest{
 		Messages: []types.Message{
-			{Role: types.RoleUser, Content: "Hello"},
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("Hello")}},
 		},
 	}
 	ch, err := p.CompleteStream(context.Background(), req)
@@ -246,7 +246,7 @@ func TestNewAnthropicProvider_CustomHeaders(t *testing.T) {
 
 	p := NewAnthropicProvider("test-model")(cfg, noopLogger())
 	ch, err := p.CompleteStream(context.Background(), llm.LLMRequest{
-		Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	})
 	if err != nil {
 		t.Fatalf("CompleteStream error: %v", err)

@@ -144,24 +144,24 @@ func (e *Email) Start(ctx context.Context) error { return nil }
 
 // Read polls IMAP inbox for unseen messages and blocks until one arrives.
 // In send-only mode, Read returns ErrSendOnly.
-func (e *Email) Read(ctx context.Context) (string, error) {
+func (e *Email) Read(ctx context.Context) (Input, error) {
 	if e.sendOnly {
 		select {
 		case <-e.closeCh:
-			return "", fmt.Errorf("email: closed")
+			return Input{}, fmt.Errorf("email: closed")
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return Input{}, ctx.Err()
 		default:
-			return "", ErrSendOnly
+			return Input{}, ErrSendOnly
 		}
 	}
 
 	for {
 		select {
 		case <-e.closeCh:
-			return "", fmt.Errorf("email: closed")
+			return Input{}, fmt.Errorf("email: closed")
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return Input{}, ctx.Err()
 		default:
 		}
 
@@ -170,7 +170,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 			e.logger.Warn("email imap fetch error", zap.Error(err))
 			select {
 			case <-e.closeCh:
-				return "", fmt.Errorf("email: closed")
+				return Input{}, fmt.Errorf("email: closed")
 			case <-time.After(10 * time.Second):
 			}
 			continue
@@ -178,7 +178,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 		if content == "" {
 			select {
 			case <-e.closeCh:
-				return "", fmt.Errorf("email: closed")
+				return Input{}, fmt.Errorf("email: closed")
 			case <-time.After(5 * time.Second):
 			}
 			continue
@@ -191,7 +191,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 			e.rejectMessage(context.Background(), from, subject, messageID)
 			select {
 			case <-e.closeCh:
-				return "", fmt.Errorf("email: closed")
+				return Input{}, fmt.Errorf("email: closed")
 			case <-time.After(time.Second):
 			}
 			continue
@@ -208,7 +208,7 @@ func (e *Email) Read(ctx context.Context) (string, error) {
 		if subject != "" {
 			content = i18n.T("transport.email_subject") + subject + "\n" + content
 		}
-		return strings.TrimSpace(content), nil
+		return Input{Text: strings.TrimSpace(content)}, nil
 	}
 }
 

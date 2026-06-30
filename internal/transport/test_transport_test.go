@@ -42,8 +42,8 @@ func TestTestTransport_Read(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
-	if msg != "hello" {
-		t.Errorf("expected hello, got %s", msg)
+	if msg.Text != "hello" {
+		t.Errorf("expected hello, got %s", msg.Text)
 	}
 }
 

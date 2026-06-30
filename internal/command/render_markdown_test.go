@@ -59,7 +59,7 @@ func TestRenderMarkdown_SessionStatus(t *testing.T) {
 		sess.Set("system_context", 42)
 
 		mem := memory.NewFileMemory(mgr)
-		err := mem.Write(context.Background(), sess.ID, types.Message{Role: types.RoleUser, Content: "hello"})
+		err := mem.Write(context.Background(), sess.ID, types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hello")}})
 		So(err, ShouldBeNil)
 
 		RegisterSessionStatus(r, mgr, mem, "per_transport", nil)

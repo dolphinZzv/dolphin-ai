@@ -179,8 +179,8 @@ func TestA2A_TaskSendAndResponse(t *testing.T) {
 		if err != nil {
 			return
 		}
-		if msg != "Hello A2A" {
-			t.Errorf("expected 'Hello A2A', got '%s'", msg)
+		if msg.Text != "Hello A2A" {
+			t.Errorf("expected 'Hello A2A', got '%s'", msg.Text)
 		}
 		_ = a.Write(ctx, "Hello from agent")
 	}()

@@ -48,7 +48,7 @@ func TestFileMemoryWriteReadRoundTrip(t *testing.T) {
 
 	msg := types.Message{
 		Role:      types.RoleUser,
-		Content:   "Hello, memory!",
+		Parts:     []types.ContentPart{types.TextPart("Hello, memory!")},
 		Timestamp: now,
 	}
 
@@ -67,8 +67,8 @@ func TestFileMemoryWriteReadRoundTrip(t *testing.T) {
 	if msgs[0].Role != types.RoleUser {
 		t.Errorf("Role = %q, want %q", msgs[0].Role, types.RoleUser)
 	}
-	if msgs[0].Content != "Hello, memory!" {
-		t.Errorf("Content = %q, want %q", msgs[0].Content, "Hello, memory!")
+	if msgs[0].Text() != "Hello, memory!" {
+		t.Errorf("Content = %q, want %q", msgs[0].Text(), "Hello, memory!")
 	}
 	if !msgs[0].Timestamp.Equal(now) {
 		t.Errorf("Timestamp = %v, want %v", msgs[0].Timestamp, now)
@@ -84,7 +84,7 @@ func TestFileMemoryWriteMultipleMessages(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		msg := types.Message{
 			Role:      types.RoleUser,
-			Content:   "msg",
+			Parts:     []types.ContentPart{types.TextPart("msg")},
 			Timestamp: now.Add(time.Duration(i) * time.Second),
 		}
 		if err := m.Write(ctx, "sess1", msg); err != nil {
@@ -122,12 +122,12 @@ func TestFileMemoryWindowTruncation(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		if err := m.Write(ctx, "sess1", types.Message{
-			Role: types.RoleUser, Content: "u", Timestamp: now,
+			Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("u")}, Timestamp: now,
 		}); err != nil {
 			t.Fatal(err)
 		}
 		if err := m.Write(ctx, "sess1", types.Message{
-			Role: types.RoleAssistant, Content: "a", Timestamp: now,
+			Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("a")}, Timestamp: now,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -154,10 +154,10 @@ func TestFileMemoryMultipleSessions(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	m.Write(ctx, "sessA", types.Message{
-		Role: types.RoleUser, Content: "from A", Timestamp: now,
+		Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("from A")}, Timestamp: now,
 	})
 	m.Write(ctx, "sessB", types.Message{
-		Role: types.RoleUser, Content: "from B", Timestamp: now,
+		Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("from B")}, Timestamp: now,
 	})
 
 	msgsA, _ := m.Read(ctx, "sessA")
@@ -166,11 +166,11 @@ func TestFileMemoryMultipleSessions(t *testing.T) {
 	if len(msgsA) != 1 || len(msgsB) != 1 {
 		t.Fatalf("expected 1 msg each, got A=%d B=%d", len(msgsA), len(msgsB))
 	}
-	if msgsA[0].Content != "from A" {
-		t.Errorf("sessA content = %q", msgsA[0].Content)
+	if msgsA[0].Text() != "from A" {
+		t.Errorf("sessA content = %q", msgsA[0].Text())
 	}
-	if msgsB[0].Content != "from B" {
-		t.Errorf("sessB content = %q", msgsB[0].Content)
+	if msgsB[0].Text() != "from B" {
+		t.Errorf("sessB content = %q", msgsB[0].Text())
 	}
 }
 
@@ -183,7 +183,7 @@ func TestFileMemoryUsesJSONFile(t *testing.T) {
 	ctx := context.Background()
 
 	_ = m.Write(ctx, "s1", types.Message{
-		Role: types.RoleUser, Content: "test", Timestamp: time.Now(),
+		Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("test")}, Timestamp: time.Now(),
 	})
 
 	if sess.Get("memory") == nil {
@@ -199,10 +199,10 @@ func TestFileMemoryConcurrentWrites(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		m.Write(ctx, "sess1", types.Message{Role: types.RoleUser, Content: "a", Timestamp: now})
+		m.Write(ctx, "sess1", types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("a")}, Timestamp: now})
 		close(done)
 	}()
-	m.Write(ctx, "sess1", types.Message{Role: types.RoleUser, Content: "b", Timestamp: now})
+	m.Write(ctx, "sess1", types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("b")}, Timestamp: now})
 	<-done
 
 	msgs, err := m.Read(ctx, "sess1")
@@ -236,10 +236,10 @@ func TestDroppingMemoryWindowTruncation(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		_ = dm.Write(ctx, "s1", types.Message{
-			Role: types.RoleUser, Content: "u", Timestamp: now,
+			Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("u")}, Timestamp: now,
 		})
 		_ = dm.Write(ctx, "s1", types.Message{
-			Role: types.RoleAssistant, Content: "a", Timestamp: now,
+			Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("a")}, Timestamp: now,
 		})
 	}
 
@@ -260,9 +260,9 @@ func TestDroppingMemoryPreservesToolContext(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	// Simulate a round with tool calls: user, assistant(tool_use), tool_result
-	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleUser, Content: "u", Timestamp: now})
-	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleAssistant, Content: "a", ToolCalls: []types.ToolCall{{ID: "t1", Name: "ls"}}, Timestamp: now})
-	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleTool, ToolCallID: "t1", Content: "result", Timestamp: now})
+	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("u")}, Timestamp: now})
+	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("a")}, ToolCalls: []types.ToolCall{{ID: "t1", Name: "ls"}}, Timestamp: now})
+	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleTool, ToolCallID: "t1", Parts: []types.ContentPart{types.TextPart("result")}, Timestamp: now})
 
 	msgs, err := dm.Read(ctx, "s2")
 	if err != nil {
@@ -289,7 +289,7 @@ func TestDroppingMemoryNoTruncation(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		_ = dm.Write(ctx, "s1", types.Message{
-			Role: types.RoleUser, Content: "x", Timestamp: now,
+			Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("x")}, Timestamp: now,
 		})
 	}
 
@@ -308,7 +308,7 @@ func TestDroppingMemoryWriteDelegation(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Second)
 
-	msg := types.Message{Role: types.RoleUser, Content: "via dm", Timestamp: now}
+	msg := types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("via dm")}, Timestamp: now}
 	if err := dm.Write(ctx, "s1", msg); err != nil {
 		t.Fatal(err)
 	}
@@ -321,8 +321,8 @@ func TestDroppingMemoryWriteDelegation(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-	if msgs[0].Content != "via dm" {
-		t.Errorf("Content = %q, want 'via dm'", msgs[0].Content)
+	if msgs[0].Text() != "via dm" {
+		t.Errorf("Content = %q, want 'via dm'", msgs[0].Text())
 	}
 }
 
@@ -334,7 +334,7 @@ func TestFileMemoryReadAfterJSONRoundTrip(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	if err := m.Write(ctx, "s1", types.Message{
-		Role: types.RoleUser, Content: "original", Timestamp: now,
+		Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("original")}, Timestamp: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -348,12 +348,12 @@ func TestFileMemoryReadAfterJSONRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(msgs) != 1 || msgs[0].Content != "original" {
+	if len(msgs) != 1 || msgs[0].Text() != "original" {
 		t.Fatalf("expected 1 message with content 'original', got %+v", msgs)
 	}
 
 	if err := m.Write(ctx, "s1", types.Message{
-		Role: types.RoleAssistant, Content: "reply", Timestamp: now,
+		Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("reply")}, Timestamp: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +399,7 @@ func TestDecodeMessages(t *testing.T) {
 	if len(msgs) != 1 {
 		t.Fatalf("expected 1 message, got %d", len(msgs))
 	}
-	if msgs[0].Role != types.RoleUser || msgs[0].Content != "hello" {
+	if msgs[0].Role != types.RoleUser || msgs[0].Text() != "hello" {
 		t.Fatalf("unexpected message: %+v", msgs[0])
 	}
 }
@@ -421,7 +421,7 @@ func TestFileMemoryReplace(t *testing.T) {
 	// Seed with a few messages.
 	for i := 0; i < 3; i++ {
 		_ = m.Write(ctx, "sess1", types.Message{
-			Role: types.RoleUser, Content: "old", Timestamp: now,
+			Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("old")}, Timestamp: now,
 		})
 	}
 	before, _ := m.Read(ctx, "sess1")
@@ -431,8 +431,8 @@ func TestFileMemoryReplace(t *testing.T) {
 
 	// Replace with a compacted [summary + tail] list.
 	replaced := []types.Message{
-		{Role: types.RoleUser, Content: "summary", IsSummary: true, Timestamp: now},
-		{Role: types.RoleUser, Content: "tail", Timestamp: now},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("summary")}, IsSummary: true, Timestamp: now},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("tail")}, Timestamp: now},
 	}
 	if err := m.Replace(ctx, "sess1", replaced); err != nil {
 		t.Fatal(err)
@@ -445,10 +445,10 @@ func TestFileMemoryReplace(t *testing.T) {
 	if len(after) != 2 {
 		t.Fatalf("expected 2 messages after replace, got %d", len(after))
 	}
-	if !after[0].IsSummary || after[0].Content != "summary" {
+	if !after[0].IsSummary || after[0].Text() != "summary" {
 		t.Errorf("first msg = %+v, want summary", after[0])
 	}
-	if after[1].Content != "tail" {
+	if after[1].Text() != "tail" {
 		t.Errorf("second msg = %+v, want tail", after[1])
 	}
 }
@@ -460,7 +460,7 @@ func TestDroppingMemoryReplaceDelegates(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	replaced := []types.Message{
-		{Role: types.RoleUser, Content: "summary", IsSummary: true, Timestamp: now},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("summary")}, IsSummary: true, Timestamp: now},
 	}
 	if err := dm.Replace(ctx, "s1", replaced); err != nil {
 		t.Fatal(err)
@@ -493,7 +493,7 @@ func TestFileMemoryWrite_DecodeError(t *testing.T) {
 
 	sess.Set("memory", []interface{}{map[string]interface{}{"role": 42}})
 
-	err := m.Write(ctx, "s1", types.Message{Role: types.RoleUser, Content: "x"})
+	err := m.Write(ctx, "s1", types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("x")}})
 	if err == nil {
 		t.Fatal("expected error from corrupt memory data during Write")
 	}
@@ -535,11 +535,11 @@ func TestDroppingMemoryKeepsSummaryHead(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	msgs := []types.Message{
-		{Role: types.RoleUser, Content: "summary", IsSummary: true, Timestamp: now},
-		{Role: types.RoleUser, Content: "u1", Timestamp: now},
-		{Role: types.RoleAssistant, Content: "a1", Timestamp: now},
-		{Role: types.RoleUser, Content: "u2", Timestamp: now},
-		{Role: types.RoleAssistant, Content: "a2", Timestamp: now},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("summary")}, IsSummary: true, Timestamp: now},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("u1")}, Timestamp: now},
+		{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("a1")}, Timestamp: now},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("u2")}, Timestamp: now},
+		{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("a2")}, Timestamp: now},
 	}
 	if err := inner.Replace(ctx, "s1", msgs); err != nil {
 		t.Fatal(err)

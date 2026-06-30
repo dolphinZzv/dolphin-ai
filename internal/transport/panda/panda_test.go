@@ -100,8 +100,8 @@ func TestPanda_Read(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if msg != "hello" {
-		t.Fatalf("expected 'hello', got '%s'", msg)
+	if msg.Text != "hello" {
+		t.Fatalf("expected 'hello', got '%s'", msg.Text)
 	}
 }
 

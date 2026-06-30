@@ -167,12 +167,12 @@ func (d *DingTalk) Start(ctx context.Context) error {
 }
 
 // Read blocks until a message is received from DingTalk Stream Mode.
-func (d *DingTalk) Read(ctx context.Context) (string, error) {
+func (d *DingTalk) Read(ctx context.Context) (transport.Input, error) {
 	select {
 	case msg := <-d.msgChan:
-		return msg, nil
+		return transport.Input{Text: msg}, nil
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return transport.Input{}, ctx.Err()
 	}
 }
 

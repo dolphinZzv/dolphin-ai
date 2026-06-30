@@ -156,7 +156,7 @@ func TestLLMStageProcess_429Backoff(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-429",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 	start := time.Now()
 	err := stage.Process(context.Background(), state)
@@ -215,7 +215,7 @@ func TestLLMStageProcess_NonRetryable400(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-400",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 	start := time.Now()
 	err := stage.Process(context.Background(), state)

@@ -34,8 +34,8 @@ func TestStdio_Read(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result != "hello" {
-		t.Fatalf("expected 'hello', got '%s'", result)
+	if result.Text != "hello" {
+		t.Fatalf("expected 'hello', got '%s'", result.Text)
 	}
 }
 
@@ -151,16 +151,16 @@ func TestNullTransport_Read(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r1 != "line1" {
-		t.Fatalf("expected 'line1', got '%s'", r1)
+	if r1.Text != "line1" {
+		t.Fatalf("expected 'line1', got '%s'", r1.Text)
 	}
 
 	r2, err := n.Read(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r2 != "line2" {
-		t.Fatalf("expected 'line2', got '%s'", r2)
+	if r2.Text != "line2" {
+		t.Fatalf("expected 'line2', got '%s'", r2.Text)
 	}
 
 	_, err = n.Read(context.Background())

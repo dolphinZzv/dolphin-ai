@@ -71,7 +71,7 @@ type TUI struct {
 	program            *tea.Program
 	pendingAgentIO     *agentio.AgentIO
 	priority           bool
-	msgChan            chan string
+	msgChan            chan userInput
 	permCh             chan string
 	ctx                context.Context
 	cancel             context.CancelFunc
@@ -104,7 +104,7 @@ func NewTUI(modelName string, showTools, showThinking bool, workmode string, poo
 	return &TUI{
 		SessionHolder:      transport.NewSessionHolder(nil),
 		id:                 "tui",
-		msgChan:            make(chan string, 1),
+		msgChan:            make(chan userInput, 1),
 		ctx:                ctx,
 		cancel:             cancel,
 		agentName:          "Dolphin",
@@ -209,15 +209,15 @@ func (t *TUI) Start(_ context.Context) error {
 	return nil
 }
 
-func (t *TUI) Read(ctx context.Context) (string, error) {
+func (t *TUI) Read(ctx context.Context) (transport.Input, error) {
 	select {
-	case line := <-t.msgChan:
+	case in := <-t.msgChan:
 		t.syncSession()
-		return line, nil
+		return transport.Input{Text: in.text, Parts: in.parts}, nil
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return transport.Input{}, ctx.Err()
 	case <-t.ctx.Done():
-		return "", t.ctx.Err()
+		return transport.Input{}, t.ctx.Err()
 	}
 }
 

@@ -63,8 +63,8 @@ func TestUserIO(t *testing.T) {
 			tio := transport.NewNullTransport("test")
 			ctx := context.Background()
 
-			uio.Handle(ctx, tio, "/version")
-			uio.Handle(ctx, tio, "/session new")
+			uio.Handle(ctx, tio, transport.Input{Text: "/version"})
+			uio.Handle(ctx, tio, transport.Input{Text: "/session new"})
 
 			sess := mgr.Active()
 			So(sess, ShouldNotBeNil)
@@ -76,8 +76,8 @@ func TestUserIO(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "stdio"})
 
-			uio.Handle(ctx, tio, "/session new")
-			uio.Handle(ctx, tio, "hello world")
+			uio.Handle(ctx, tio, transport.Input{Text: "/session new"})
+			uio.Handle(ctx, tio, transport.Input{Text: "hello world"})
 
 			So(len(aio.Queue()), ShouldEqual, 1)
 		})
@@ -88,7 +88,7 @@ func TestUserIO(t *testing.T) {
 
 			So(mgr.Active(), ShouldBeNil)
 
-			uio.Handle(ctx, tio, "create detached session")
+			uio.Handle(ctx, tio, transport.Input{Text: "create detached session"})
 
 			So(mgr.Active(), ShouldBeNil)
 		})
@@ -111,7 +111,7 @@ func TestUserIOSharedMode(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "null"})
 
-			uio.Handle(ctx, tio, "hello")
+			uio.Handle(ctx, tio, transport.Input{Text: "hello"})
 
 			sess := mgr.Active()
 			So(sess.Get("user_id"), ShouldBeNil)
@@ -126,7 +126,7 @@ func TestUserIOSharedMode(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "null"})
 
-			uio.Handle(ctx, tio, "hello")
+			uio.Handle(ctx, tio, transport.Input{Text: "hello"})
 
 			So(len(aio.Queue()), ShouldEqual, 1)
 		})
@@ -204,7 +204,7 @@ func TestUserIOHandleSystemCmd(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "stdio"})
 
-			result := uio.Handle(ctx, tio, "/echo hello")
+			result := uio.Handle(ctx, tio, transport.Input{Text: "/echo hello"})
 			So(result, ShouldBeFalse)
 		})
 	})
@@ -222,7 +222,7 @@ func TestUserIOHandleSetSession(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
 
-			uio.Handle(ctx, tio, "/session new")
+			uio.Handle(ctx, tio, transport.Input{Text: "/session new"})
 			So(tio.calledSetSession, ShouldBeTrue)
 		})
 
@@ -231,7 +231,7 @@ func TestUserIOHandleSetSession(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
 
-			uio.Handle(ctx, tio, "/clear")
+			uio.Handle(ctx, tio, transport.Input{Text: "/clear"})
 			So(tio.calledSetSession, ShouldBeTrue)
 		})
 	})
@@ -254,7 +254,7 @@ func TestUserIOHandleMetadata(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
 
-			uio.Handle(ctx, tio, "hello")
+			uio.Handle(ctx, tio, transport.Input{Text: "hello"})
 
 			select {
 			case turn := <-aio.Queue():
@@ -282,7 +282,7 @@ func TestUserIOHandleUnknownCmd(t *testing.T) {
 			tio := transport.NewNullTransport("test")
 			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test"})
 
-			uio.Handle(ctx, tio, "/totally_made_up_cmd_xyz")
+			uio.Handle(ctx, tio, transport.Input{Text: "/totally_made_up_cmd_xyz"})
 
 			select {
 			case turn := <-aio.Queue():
@@ -309,7 +309,7 @@ func TestUserIOHandleSystemCmdOutput(t *testing.T) {
 			ctx := context.Background()
 			ctx = transport.WithInfo(ctx, &transport.Info{ID: "test", Type: "stdio"})
 
-			result := uio.Handle(ctx, tio, "/echo hello world")
+			result := uio.Handle(ctx, tio, transport.Input{Text: "/echo hello world"})
 			So(result, ShouldBeFalse)
 			So(tio.written, ShouldContainSubstring, "hello world")
 		})
@@ -328,7 +328,7 @@ func TestUserIOHandleInteractiveCmdOnNullTransport(t *testing.T) {
 			tio := transport.NewNullTransport("test")
 			ctx := transport.WithInfo(context.Background(), &transport.Info{ID: "test"})
 
-			uio.Handle(ctx, tio, "/vim")
+			uio.Handle(ctx, tio, transport.Input{Text: "/vim"})
 
 			select {
 			case turn := <-aio.Queue():
@@ -383,7 +383,7 @@ func TestUserIOHandleBrainScriptDisabled(t *testing.T) {
 		tio := &captureWriteTransport{NullTransport: *transport.NewNullTransport("test")}
 		ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
 
-		result := uio.Handle(ctx, tio, "/mytest")
+		result := uio.Handle(ctx, tio, transport.Input{Text: "/mytest"})
 
 		So(result, ShouldBeFalse)
 		So(tio.written, ShouldContainSubstring, `script "mytest" is disabled`)
@@ -413,7 +413,7 @@ func TestUserIOHandleBrainScriptNoContent(t *testing.T) {
 		tio := &captureWriteTransport{NullTransport: *transport.NewNullTransport("test")}
 		ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
 
-		result := uio.Handle(ctx, tio, "/myempty")
+		result := uio.Handle(ctx, tio, transport.Input{Text: "/myempty"})
 
 		So(result, ShouldBeFalse)
 		So(tio.written, ShouldContainSubstring, `script "myempty" has no content`)
@@ -443,7 +443,7 @@ func TestUserIOHandleBrainScriptEnabled(t *testing.T) {
 		tio := transport.NewNullTransport("test")
 		ctx = transport.WithInfo(ctx, &transport.Info{ID: "test"})
 
-		result := uio.Handle(ctx, tio, "/chat")
+		result := uio.Handle(ctx, tio, transport.Input{Text: "/chat"})
 
 		So(result, ShouldBeTrue)
 

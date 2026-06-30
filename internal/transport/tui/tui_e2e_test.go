@@ -65,7 +65,7 @@ func (s *simModel) stepAll() {
 
 func TestE2E_StreamingConversation(t *testing.T) {
 	sim := newSim(100, 30)
-	sim.m.msgChan = make(chan string, 1)
+	sim.m.msgChan = make(chan userInput, 1)
 	sim.m.permCh = make(chan string, 1)
 
 	// Round 1: model change + thinking + streaming content.
@@ -104,7 +104,7 @@ func TestE2E_StreamingConversation(t *testing.T) {
 	sim.stepAll()
 
 	// User submits input.
-	sim.send(userSubmitMsg{text: "What about a different approach?"})
+	sim.send(userSubmitMsg{in: userInput{text: "What about a different approach?"}})
 	sim.stepAll()
 
 	// Round 4: error tool result.
@@ -169,7 +169,7 @@ func TestE2E_MultiTurnMemory(t *testing.T) {
 
 	// Simulate 5 rounds, each with many messages to stress trimFront.
 	for round := 0; round < 5; round++ {
-		sim.send(userSubmitMsg{text: "Question from round"})
+		sim.send(userSubmitMsg{in: userInput{text: "Question from round"}})
 		sim.stepAll()
 
 		// Streaming response: 100 chunks per round.

@@ -7,6 +7,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -23,13 +25,13 @@ func TestBuildMessages_WithToolCalls(t *testing.T) {
 	msgs := BuildMessages(llm.LLMRequest{
 		Messages: []types.Message{
 			{
-				Role:    types.RoleAssistant,
-				Content: "I'll call a tool",
+				Role:  types.RoleAssistant,
+				Parts: []types.ContentPart{types.TextPart("I'll call a tool")},
 				ToolCalls: []types.ToolCall{
 					{ID: "call-1", Name: "greet", Arguments: `{"name":"world"}`},
 				},
 			},
-			{Role: types.RoleTool, ToolCallID: "call-1", Content: "Hello, world!"},
+			{Role: types.RoleTool, ToolCallID: "call-1", Parts: []types.ContentPart{types.TextPart("Hello, world!")}},
 		},
 	}, zap.NewNop())
 	if len(msgs) != 2 {
@@ -54,7 +56,7 @@ func TestBuildMessages_WithThinking(t *testing.T) {
 	msgs := BuildMessages(llm.LLMRequest{
 		Messages: []types.Message{{
 			Role:              types.RoleAssistant,
-			Content:           "visible text",
+			Parts:             []types.ContentPart{types.TextPart("visible text")},
 			Thinking:          "hidden reasoning",
 			ThinkingSignature: "sig-abc",
 		}},
@@ -71,6 +73,46 @@ func TestBuildMessages_WithThinking(t *testing.T) {
 	}
 	if parsed[1]["type"] != "text" || parsed[1]["text"] != "visible text" {
 		t.Fatalf("unexpected: %+v", parsed[1])
+	}
+}
+
+func TestBuildMessages_WithImage(t *testing.T) {
+	dir := t.TempDir()
+	imgPath := filepath.Join(dir, "x.png")
+	if err := os.WriteFile(imgPath, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	msgs := BuildMessages(llm.LLMRequest{
+		Messages: []types.Message{{
+			Role: types.RoleUser,
+			Parts: []types.ContentPart{
+				types.TextPart("describe"),
+				{Type: types.PartImage, Path: imgPath, MIME: "image/png", Filename: "x.png"},
+			},
+		}},
+	}, nil)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	var blocks []map[string]any
+	if err := json.Unmarshal(msgs[0].Content, &blocks); err != nil {
+		t.Fatalf("unmarshal content: %v", err)
+	}
+	if len(blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %d", len(blocks))
+	}
+	if blocks[1]["type"] != "image" {
+		t.Errorf("expected type image, got %v", blocks[1]["type"])
+	}
+	src, ok := blocks[1]["source"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected source map, got %T", blocks[1]["source"])
+	}
+	if src["type"] != "base64" {
+		t.Errorf("expected source.type base64, got %v", src["type"])
+	}
+	if src["media_type"] != "image/png" {
+		t.Errorf("expected source.media_type image/png, got %v", src["media_type"])
 	}
 }
 
@@ -238,7 +280,7 @@ func TestModelsURL(t *testing.T) {
 func TestBuildRequest(t *testing.T) {
 	msgs := []Message{{Role: "user", Content: json.RawMessage(`"hello"`)}}
 	req := llm.LLMRequest{
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		System:    "You are helpful.",
 		MaxTokens: 100,
 		Stream:    true,
@@ -298,7 +340,7 @@ func TestBuildRequest(t *testing.T) {
 
 	t.Run("req temperature overrides cfg", func(t *testing.T) {
 		data, err := BuildRequest("claude-3", msgs, llm.Config{Temperature: 0.9}, llm.LLMRequest{
-			Messages:    []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:    []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			MaxTokens:   100,
 			Temperature: 0.3,
 		})

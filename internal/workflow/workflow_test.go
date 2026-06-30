@@ -915,7 +915,7 @@ func TestEngineRunLinear(t *testing.T) {
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
 				atomic.AddInt32(&callCount, 1)
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				var resp string
 				switch {
 				case strings.Contains(msg, "step a"):
@@ -957,7 +957,7 @@ func TestEngineRunParallelFanOut(t *testing.T) {
 		completed := make(map[string]bool)
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				mu.Lock()
 				switch {
 				case strings.Contains(msg, "setup"):
@@ -999,7 +999,7 @@ func TestEngineRunFailureCascade(t *testing.T) {
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				if strings.Contains(msg, "good") {
 					return []llm.LLMChunk{textChunk("ok")}
 				}
@@ -1021,7 +1021,7 @@ func TestEngineRunFailureCascade(t *testing.T) {
 		}
 		// Reset call count per test
 		mock.chunksFn = func(req llm.LLMRequest) []llm.LLMChunk {
-			msg := req.Messages[0].Content
+			msg := req.Messages[0].Text()
 			if strings.Contains(msg, "good") {
 				return []llm.LLMChunk{textChunk("ok")}
 			}
@@ -1044,7 +1044,7 @@ func TestEngineRunCheckpoint(t *testing.T) {
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				if strings.Contains(msg, "prepare") {
 					return []llm.LLMChunk{textChunk("ready")}
 				}
@@ -1377,7 +1377,7 @@ func TestEngineForeachExpansion(t *testing.T) {
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				if strings.Contains(msg, "list files") {
 					return []llm.LLMChunk{textChunk("```json\n{\"files\": [\"a.go\", \"b.go\", \"c.go\"]}\n```")}
 				}
@@ -1455,7 +1455,7 @@ steps:
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				if strings.Contains(msg, "step b") {
 					return []llm.LLMChunk{textChunk("done")}
 				}

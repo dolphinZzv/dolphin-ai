@@ -25,14 +25,14 @@ func TestMessageCreation(t *testing.T) {
 	now := time.Now()
 	msg := Message{
 		Role:      RoleUser,
-		Content:   "Hello, world!",
+		Parts:     []ContentPart{TextPart("Hello, world!")},
 		Timestamp: now,
 	}
 	if msg.Role != RoleUser {
 		t.Errorf("Role = %q, want %q", msg.Role, RoleUser)
 	}
-	if msg.Content != "Hello, world!" {
-		t.Errorf("Content = %q, want %q", msg.Content, "Hello, world!")
+	if msg.Text() != "Hello, world!" {
+		t.Errorf("Text = %q, want %q", msg.Text(), "Hello, world!")
 	}
 	if !msg.Timestamp.Equal(now) {
 		t.Error("Timestamp mismatch")
@@ -43,7 +43,7 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	now := time.Now().Round(time.Microsecond)
 	original := Message{
 		Role:      RoleUser,
-		Content:   "Hello, world!",
+		Parts:     []ContentPart{TextPart("Hello, world!")},
 		Timestamp: now,
 	}
 
@@ -60,18 +60,51 @@ func TestMessageJSONRoundTrip(t *testing.T) {
 	if decoded.Role != original.Role {
 		t.Errorf("Role = %q, want %q", decoded.Role, original.Role)
 	}
-	if decoded.Content != original.Content {
-		t.Errorf("Content = %q, want %q", decoded.Content, original.Content)
+	if decoded.Text() != original.Text() {
+		t.Errorf("Text = %q, want %q", decoded.Text(), original.Text())
 	}
 	if !decoded.Timestamp.Equal(original.Timestamp) {
 		t.Errorf("Timestamp mismatch: %v vs %v", decoded.Timestamp, original.Timestamp)
 	}
 }
 
+func TestMessageLegacyContentJSON(t *testing.T) {
+	// Sessions persisted before the multimodal refactor use a "content"
+	// string. Such JSON must load as a single text part.
+	legacy := `{"role":"user","content":"old school","timestamp":"2025-01-02T03:04:05Z"}`
+	var decoded Message
+	if err := json.Unmarshal([]byte(legacy), &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Text() != "old school" {
+		t.Errorf("Text = %q, want %q", decoded.Text(), "old school")
+	}
+	if len(decoded.Parts) != 1 || decoded.Parts[0].Type != PartText {
+		t.Errorf("expected one text part, got %+v", decoded.Parts)
+	}
+}
+
+func TestMessageTextConcatenatesParts(t *testing.T) {
+	msg := Message{Parts: []ContentPart{
+		TextPart("hello "),
+		{Type: PartImage, Path: "/tmp/a.png", Filename: "a.png"},
+		TextPart(" world"),
+	}}
+	if msg.Text() != "hello  world" {
+		t.Errorf("Text = %q, want %q", msg.Text(), "hello  world")
+	}
+	if !msg.HasImage() {
+		t.Error("HasImage should be true")
+	}
+	if got := msg.ImageFilenames(); len(got) != 1 || got[0] != "a.png" {
+		t.Errorf("ImageFilenames = %v, want [a.png]", got)
+	}
+}
+
 func TestMessageWithToolCallsJSON(t *testing.T) {
 	msg := Message{
-		Role:    RoleAssistant,
-		Content: "Let me check that",
+		Role:  RoleAssistant,
+		Parts: []ContentPart{TextPart("Let me check that")},
 		ToolCalls: []ToolCall{
 			{ID: "call-1", Name: "get_weather", Arguments: `{"city":"NYC"}`},
 		},
@@ -104,8 +137,8 @@ func TestMessageWithToolCallsJSON(t *testing.T) {
 
 func TestMessageMultipleToolCallsJSON(t *testing.T) {
 	msg := Message{
-		Role:    RoleAssistant,
-		Content: "Multiple calls",
+		Role:  RoleAssistant,
+		Parts: []ContentPart{TextPart("Multiple calls")},
 		ToolCalls: []ToolCall{
 			{ID: "c1", Name: "tool1", Arguments: `{"a":1}`},
 			{ID: "c2", Name: "tool2", Arguments: `{"b":2}`},
@@ -125,7 +158,7 @@ func TestMessageMultipleToolCallsJSON(t *testing.T) {
 func TestMessageWithToolCallID(t *testing.T) {
 	msg := Message{
 		Role:       RoleTool,
-		Content:    "Tool result content",
+		Parts:      []ContentPart{TextPart("Tool result content")},
 		ToolCallID: "call-1",
 		Timestamp:  time.Now().Round(time.Microsecond),
 	}
@@ -146,8 +179,8 @@ func TestMessageWithToolCallID(t *testing.T) {
 	if decoded.Role != RoleTool {
 		t.Errorf("Role = %q, want %q", decoded.Role, RoleTool)
 	}
-	if decoded.Content != "Tool result content" {
-		t.Errorf("Content = %q", decoded.Content)
+	if decoded.Text() != "Tool result content" {
+		t.Errorf("Text = %q", decoded.Text())
 	}
 }
 
@@ -164,7 +197,7 @@ func TestMessageAllRoles(t *testing.T) {
 	}
 	for _, r := range roles {
 		t.Run(r.name, func(t *testing.T) {
-			msg := Message{Role: r.role, Content: "test", Timestamp: now}
+			msg := Message{Role: r.role, Parts: []ContentPart{TextPart("test")}, Timestamp: now}
 			data, err := json.Marshal(msg)
 			if err != nil {
 				t.Fatal(err)
@@ -322,7 +355,7 @@ func TestToolResultZeroValues(t *testing.T) {
 func TestMessageOmitEmptyFields(t *testing.T) {
 	msg := Message{
 		Role:      RoleUser,
-		Content:   "Hello",
+		Parts:     []ContentPart{TextPart("Hello")},
 		Timestamp: time.Now().Round(time.Microsecond),
 	}
 

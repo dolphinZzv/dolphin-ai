@@ -82,11 +82,11 @@ func makeSession(id string, createdAt time.Time, active bool) *session.Session {
 	return &session.Session{ID: id, CreatedAt: createdAt, Active: active}
 }
 func userMsg(c string, ts time.Time) types.Message {
-	return types.Message{Role: types.RoleUser, Content: c, Timestamp: ts}
+	return types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(c)}, Timestamp: ts}
 }
 func asstMsg(c string, ts time.Time) types.Message {
-	return types.Message{Role: types.RoleAssistant, Content: c, Timestamp: ts}
+	return types.Message{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart(c)}, Timestamp: ts}
 }
 func toolMsg(c, callID string, isError bool, ts time.Time) types.Message {
-	return types.Message{Role: types.RoleTool, Content: c, ToolCallID: callID, IsError: isError, Timestamp: ts}
+	return types.Message{Role: types.RoleTool, Parts: []types.ContentPart{types.TextPart(c)}, ToolCallID: callID, IsError: isError, Timestamp: ts}
 }

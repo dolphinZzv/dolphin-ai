@@ -41,9 +41,9 @@ func NewUserIO(a *agentio.AgentIO, cmdReg *command.Registry, b *brain.Brain, mgr
 // Handle processes user input. Returns true if a turn was queued.
 // Interactive transports (stdio) reuse the same session across messages.
 // Non-interactive transports (email) create a new session per message.
-func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) bool {
-	if strings.HasPrefix(input, "/") {
-		line := strings.TrimPrefix(input, "/")
+func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input transport.Input) bool {
+	if strings.HasPrefix(input.Text, "/") {
+		line := strings.TrimPrefix(input.Text, "/")
 		words := strings.Fields(line)
 
 		// If not a built-in command, try brain script, then system command.
@@ -168,7 +168,8 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 	sendFn(ctx, &agentio.Turn{
 		TransportID: tio.ID(),
 		SessionID:   sess.ID,
-		Input:       input,
+		Input:       input.Text,
+		Parts:       input.Parts,
 		Context:     tio.Context(),
 	})
 	return true
@@ -176,7 +177,11 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input string) boo
 
 // ReadLine reads a single line of input from the transport.
 func (u *UserIO) ReadLine(ctx context.Context, tio transport.IO) (string, error) {
-	return tio.Read(ctx)
+	in, err := tio.Read(ctx)
+	if err != nil {
+		return "", err
+	}
+	return in.Text, nil
 }
 
 // WriteLine writes text followed by a newline to the transport.

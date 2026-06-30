@@ -93,14 +93,14 @@ func buildMessages(rounds int, fill string) []types.Message {
 	t := time.Now()
 	for i := 0; i < rounds; i++ {
 		msgs = append(msgs, types.Message{
-			Role: types.RoleUser, Content: fill, Timestamp: t,
+			Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(fill)}, Timestamp: t,
 		})
 		msgs = append(msgs, types.Message{
-			Role: types.RoleAssistant, Content: fill, Timestamp: t,
+			Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart(fill)}, Timestamp: t,
 		})
 	}
 	msgs = append(msgs, types.Message{
-		Role: types.RoleUser, Content: "current input", Timestamp: t,
+		Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("current input")}, Timestamp: t,
 	})
 	return msgs
 }
@@ -140,10 +140,10 @@ func TestCompaction_AboveThresholdCompacts(t *testing.T) {
 		// Result: [summary] + tail(keepRounds*2 + current input = 5)
 		So(len(state.Messages), ShouldEqual, 1+2*2+1)
 		So(state.Messages[0].IsSummary, ShouldBeTrue)
-		So(state.Messages[0].Content, ShouldContainSubstring, "key facts here")
+		So(state.Messages[0].Text(), ShouldContainSubstring, "key facts here")
 		So(state.Messages[0].Role, ShouldEqual, types.RoleUser)
 		// Tail preserved verbatim, current input last.
-		So(state.Messages[len(state.Messages)-1].Content, ShouldEqual, "current input")
+		So(state.Messages[len(state.Messages)-1].Text(), ShouldEqual, "current input")
 
 		// History re-aligned to compacted list minus current input.
 		So(len(state.History), ShouldEqual, len(state.Messages)-1)
@@ -155,7 +155,7 @@ func TestCompaction_AboveThresholdCompacts(t *testing.T) {
 
 		// Summary request carried the old conversation.
 		So(p.gotReq.Messages, ShouldHaveLength, 1)
-		So(p.gotReq.Messages[0].Content, ShouldContainSubstring, "User:")
+		So(p.gotReq.Messages[0].Text(), ShouldContainSubstring, "User:")
 	})
 }
 
@@ -171,14 +171,14 @@ func TestCompaction_TailDoesNotOrphanToolResult(t *testing.T) {
 		// its tool_use (msgs[2]) stayed in old and got summarized — an
 		// orphan that providers reject.
 		msgs := []types.Message{
-			{Role: types.RoleUser, Content: big, Timestamp: t0},                                                                           // 0 old
-			{Role: types.RoleAssistant, Content: big, Timestamp: t0},                                                                      // 1 old
-			{Role: types.RoleAssistant, Content: big, ToolCalls: []types.ToolCall{{ID: "c1", Name: "n", Arguments: "{}"}}, Timestamp: t0}, // 2 old (tool_use)
-			{Role: types.RoleTool, Content: big, ToolCallID: "c1", Timestamp: t0},                                                         // 3 natural split (tool) -> walk back to 2
-			{Role: types.RoleUser, Content: big, Timestamp: t0},                                                                           // 4 tail
-			{Role: types.RoleAssistant, Content: big, Timestamp: t0},                                                                      // 5 tail
-			{Role: types.RoleUser, Content: big, Timestamp: t0},                                                                           // 6 tail
-			{Role: types.RoleUser, Content: "current input", Timestamp: t0},                                                               // 7 current
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(big)}, Timestamp: t0},                                                                           // 0 old
+			{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart(big)}, Timestamp: t0},                                                                      // 1 old
+			{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart(big)}, ToolCalls: []types.ToolCall{{ID: "c1", Name: "n", Arguments: "{}"}}, Timestamp: t0}, // 2 old (tool_use)
+			{Role: types.RoleTool, Parts: []types.ContentPart{types.TextPart(big)}, ToolCallID: "c1", Timestamp: t0},                                                         // 3 natural split (tool) -> walk back to 2
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(big)}, Timestamp: t0},                                                                           // 4 tail
+			{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart(big)}, Timestamp: t0},                                                                      // 5 tail
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(big)}, Timestamp: t0},                                                                           // 6 tail
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("current input")}, Timestamp: t0},                                                               // 7 current
 		}
 		s := newCompactionStage(p, mem, 100, 2)
 		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
@@ -212,7 +212,7 @@ func TestCompaction_FoldsPriorSummary(t *testing.T) {
 		// A realistic post-compaction history: a leading summary from a
 		// prior compaction, then a few normal turns, then new input.
 		msgs := buildMessages(4, big)
-		msgs[0] = types.Message{Role: types.RoleUser, Content: "PRIOR", IsSummary: true, Timestamp: t0}
+		msgs[0] = types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("PRIOR")}, IsSummary: true, Timestamp: t0}
 		state := &State{SessionID: "s1", Messages: msgs, History: msgs[:len(msgs)-1]}
 
 		err := s.Process(context.Background(), state)
@@ -220,9 +220,9 @@ func TestCompaction_FoldsPriorSummary(t *testing.T) {
 
 		// The prior summary is included in the summarizer's prompt so its
 		// content is not lost, and the new head is a fresh summary.
-		So(p.gotReq.Messages[0].Content, ShouldContainSubstring, "[Prior summary]")
+		So(p.gotReq.Messages[0].Text(), ShouldContainSubstring, "[Prior summary]")
 		So(state.Messages[0].IsSummary, ShouldBeTrue)
-		So(state.Messages[0].Content, ShouldContainSubstring, "integrated summary")
+		So(state.Messages[0].Text(), ShouldContainSubstring, "integrated summary")
 	})
 }
 
@@ -395,7 +395,7 @@ func TestCompaction_PauseResumesMidSummary(t *testing.T) {
 		case err := <-done:
 			So(err, ShouldBeNil)
 			So(state.Messages[0].IsSummary, ShouldBeTrue)
-			So(state.Messages[0].Content, ShouldContainSubstring, "resumed summary")
+			So(state.Messages[0].Text(), ShouldContainSubstring, "resumed summary")
 		case <-time.After(2 * time.Second):
 			t.Fatal("compaction did not complete after Resume")
 		}

@@ -39,7 +39,7 @@ func (d *Dream) edit(ctx context.Context, proposals []EditProposal) ([]Edit, err
 	prompt := d.buildEditPrompt(llmProposals)
 	req := llm.LLMRequest{
 		Messages: []types.Message{
-			{Role: types.RoleUser, Content: prompt, Timestamp: time.Now()},
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(prompt)}, Timestamp: time.Now()},
 		},
 		Model:     d.activeModel(),
 		MaxTokens: d.maxReflectTokens,

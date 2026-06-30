@@ -125,7 +125,7 @@ func TestModelFieldInForeach(t *testing.T) {
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				if strings.Contains(msg, "list files") {
 					return []llm.LLMChunk{textChunk("```json\n{\"files\": [\"a.go\", \"b.go\"]}\n```")}
 				}
@@ -433,7 +433,7 @@ func TestMultiModelReviewEndToEnd(t *testing.T) {
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				mu.Lock()
 				var stepID string
 				switch {
@@ -513,7 +513,7 @@ func TestMultiModelWithSerialPool(t *testing.T) {
 
 		mock := &mockLLMProvider{
 			chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-				msg := req.Messages[0].Content
+				msg := req.Messages[0].Text()
 				mu.Lock()
 				switch {
 				case strings.Contains(msg, "collect"):

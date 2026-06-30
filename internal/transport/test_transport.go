@@ -57,14 +57,14 @@ func (t *TestTransport) Tools() []common.ToolDesc { return nil }
 
 func (t *TestTransport) Start(ctx context.Context) error { return nil }
 
-func (t *TestTransport) Read(ctx context.Context) (string, error) {
+func (t *TestTransport) Read(ctx context.Context) (Input, error) {
 	select {
 	case msg := <-t.input:
-		return msg, nil
+		return Input{Text: msg}, nil
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return Input{}, ctx.Err()
 	case <-t.ctx.Done():
-		return "", io.EOF
+		return Input{}, io.EOF
 	}
 }
 

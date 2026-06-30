@@ -20,15 +20,15 @@ func TestCheckpoint_WriteFlushesTailAsPartial(t *testing.T) {
 	cp := NewCheckpoint(mem, bus)
 
 	history := []types.Message{
-		{Role: types.RoleUser, Content: "prior turn", Timestamp: time.Now()},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("prior turn")}, Timestamp: time.Now()},
 	}
 	state := &State{
 		SessionID:    "sess-cp-1",
 		History:      history,
 		PersistedIdx: len(history),
 		Messages: append(history,
-			types.Message{Role: types.RoleAssistant, Content: "partial stream output", Timestamp: time.Now()},
-			types.Message{Role: types.RoleTool, ToolCallID: "tc1", Content: "tool result", Timestamp: time.Now()},
+			types.Message{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("partial stream output")}, Timestamp: time.Now()},
+			types.Message{Role: types.RoleTool, ToolCallID: "tc1", Parts: []types.ContentPart{types.TextPart("tool result")}, Timestamp: time.Now()},
 		),
 	}
 
@@ -78,7 +78,7 @@ func TestCheckpoint_PreservesErrorMessages(t *testing.T) {
 		SessionID:    "sess-cp-err",
 		PersistedIdx: 0,
 		Messages: []types.Message{
-			{Role: types.RoleTool, Content: "boom", IsError: true, Timestamp: time.Now()},
+			{Role: types.RoleTool, Parts: []types.ContentPart{types.TextPart("boom")}, IsError: true, Timestamp: time.Now()},
 		},
 	}
 	if err := cp.Write(context.Background(), state, "test"); err != nil {
@@ -139,7 +139,7 @@ func TestCompositor_CheckpointOnFailure(t *testing.T) {
 		process: func(ctx context.Context, state *State) error {
 			state.Messages = append(state.Messages, types.Message{
 				Role:      types.RoleAssistant,
-				Content:   "half-generated output",
+				Parts:     []types.ContentPart{types.TextPart("half-generated output")},
 				Timestamp: time.Now(),
 			})
 			return context.Canceled
@@ -152,14 +152,14 @@ func TestCompositor_CheckpointOnFailure(t *testing.T) {
 	// Seed history so PersistedIdx baseline is non-zero.
 	state := &State{
 		SessionID:    "sess-int",
-		History:      []types.Message{{Role: types.RoleUser, Content: "hi", Timestamp: time.Now()}},
+		History:      []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}, Timestamp: time.Now()}},
 		PersistedIdx: 1,
 	}
 	// Mirror the MemoryReadStage seeding of Messages = history + user input.
 	state.Messages = append([]types.Message{}, state.History...)
 	state.Messages = append(state.Messages, types.Message{
 		Role:      types.RoleUser,
-		Content:   "continue",
+		Parts:     []types.ContentPart{types.TextPart("continue")},
 		Timestamp: time.Now(),
 	})
 	state.PersistedIdx = len(state.Messages) // user input was already "persisted" by prior turn
@@ -173,7 +173,7 @@ func TestCompositor_CheckpointOnFailure(t *testing.T) {
 	// The partial assistant message should have been flushed and marked.
 	var found bool
 	for _, m := range got {
-		if m.Role == types.RoleAssistant && m.Content == "half-generated output" && m.IsPartial {
+		if m.Role == types.RoleAssistant && m.Text() == "half-generated output" && m.IsPartial {
 			found = true
 			break
 		}

@@ -1285,8 +1285,8 @@ func TestWeWorkRead(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if msg != "test message" {
-			t.Errorf("msg = %q", msg)
+		if msg.Text != "test message" {
+			t.Errorf("msg = %q", msg.Text)
 		}
 	})
 

@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -839,7 +841,7 @@ func TestModelUpdate_ToolResultMsg_Error(t *testing.T) {
 func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 	t.Run("pending sends pause", func(t *testing.T) {
 		m := newModel()
-		m.msgChan = make(chan string, 1)
+		m.msgChan = make(chan userInput, 1)
 		m.msgStatus = "pending"
 
 		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -847,8 +849,8 @@ func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 
 		select {
 		case got := <-m.msgChan:
-			if got != "/session pause" {
-				t.Errorf("expected '/session pause', got %q", got)
+			if got.text != "/session pause" {
+				t.Errorf("expected '/session pause', got %q", got.text)
 			}
 		default:
 			t.Error("expected '/session pause' on msgChan")
@@ -857,7 +859,7 @@ func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 
 	t.Run("idle does nothing", func(t *testing.T) {
 		m := newModel()
-		m.msgChan = make(chan string, 1)
+		m.msgChan = make(chan userInput, 1)
 		m.msgStatus = "success" // no turn running
 
 		newM, _ := m.Update(tea.KeyPressMsg{Code: tea.KeyEsc})
@@ -865,7 +867,7 @@ func TestModelUpdate_ESCPausesTurn(t *testing.T) {
 
 		select {
 		case got := <-m.msgChan:
-			t.Errorf("idle ESC should not send, got %q", got)
+			t.Errorf("idle ESC should not send, got %q", got.text)
 		default:
 		}
 	})
@@ -931,16 +933,78 @@ func TestModelUpdate_UserSubmitMsg(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
-	m.msgChan = make(chan string, 1)
+	m.msgChan = make(chan userInput, 1)
 
-	_, _ = m.Update(userSubmitMsg{text: "hello"})
+	_, _ = m.Update(userSubmitMsg{in: userInput{text: "hello"}})
 	select {
 	case txt := <-m.msgChan:
-		if txt != "hello" {
-			t.Errorf("expected 'hello', got %q", txt)
+		if txt.text != "hello" {
+			t.Errorf("expected 'hello', got %q", txt.text)
 		}
 	default:
 		// Channel may be empty if the message wasn't written (which is okay for the test)
+	}
+}
+
+func TestPasteAttachment(t *testing.T) {
+	m := newModel()
+	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m.viewport.SetContent("")
+	m.width = 80
+	m.ready = true
+	m.msgChan = make(chan userInput, 1)
+
+	// Pasting an existing image file path attaches it as an image part.
+	dir := t.TempDir()
+	imgPath := filepath.Join(dir, "x.png")
+	if err := os.WriteFile(imgPath, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	newM, _ := m.Update(tea.PasteMsg{Content: imgPath})
+	m = newM.(model)
+	if len(m.attachments) != 1 {
+		t.Fatalf("expected 1 attachment after paste, got %d", len(m.attachments))
+	}
+	if m.attachments[0].Type != types.PartImage {
+		t.Errorf("expected PartImage, got %v", m.attachments[0].Type)
+	}
+
+	// Pressing enter with text in the textarea submits, carrying the pending
+	// attachment as a part on the shipped userInput.
+	m.textarea.SetValue("hello")
+	newM, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = newM.(model)
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			nm, _ := m.Update(msg)
+			m = nm.(model)
+		}
+	}
+	select {
+	case got := <-m.msgChan:
+		if got.text != "hello" {
+			t.Errorf("expected submitted text 'hello', got %q", got.text)
+		}
+		if len(got.parts) == 0 {
+			t.Error("expected userInput with non-empty parts, got empty")
+		}
+	default:
+		t.Error("expected msgChan to receive a userInput")
+	}
+
+	// A non-file paste inserts text into the textarea and adds no attachment.
+	m2 := newModel()
+	m2.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
+	m2.viewport.SetContent("")
+	m2.width = 80
+	m2.ready = true
+	newM, _ = m2.Update(tea.PasteMsg{Content: "not a file path"})
+	m2 = newM.(model)
+	if len(m2.attachments) != 0 {
+		t.Errorf("expected no attachment for non-file paste, got %d", len(m2.attachments))
+	}
+	if !strings.Contains(m2.textarea.Value(), "not a file path") {
+		t.Errorf("expected textarea to contain pasted text, got %q", m2.textarea.Value())
 	}
 }
 
@@ -1193,16 +1257,17 @@ func TestQueueBodyLines(t *testing.T) {
 		}
 	})
 
-	t.Run("pending overflow adds indicator", func(t *testing.T) {
-		// 3 shown + 1 "+N queued" indicator → capped to queueMaxBodyLines.
-		if n := queueBodyLines(0, 5, 0); n != 2 {
-			t.Errorf("expected 2 (capped by queueMaxBodyLines), got %d", n)
+	t.Run("pending under budget shows all", func(t *testing.T) {
+		// 5 pending ≤ queueMaxBodyLines → all 5 shown, no indicator.
+		if n := queueBodyLines(0, 5, 0); n != 5 {
+			t.Errorf("expected 5 (under budget), got %d", n)
 		}
 	})
 
-	t.Run("completed overflow adds indicator", func(t *testing.T) {
-		if n := queueBodyLines(0, 0, 10); n != 2 {
-			t.Errorf("expected 2 (capped by queueMaxBodyLines), got %d", n)
+	t.Run("completed overflow capped to budget", func(t *testing.T) {
+		// 10 completed > queueMaxBodyLines → budget-1 rows + 1 "+N more".
+		if n := queueBodyLines(0, 0, 10); n != queueMaxBodyLines {
+			t.Errorf("expected %d (capped by queueMaxBodyLines), got %d", queueMaxBodyLines, n)
 		}
 	})
 
@@ -1336,9 +1401,9 @@ func TestModelUpdate_PrioritySubmitMsg(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
-	m.msgChan = make(chan string, 1)
+	m.msgChan = make(chan userInput, 1)
 	m.closeBlock = true
-	msg := prioritySubmitMsg{text: "priority message"}
+	msg := prioritySubmitMsg{in: userInput{text: "priority message"}}
 
 	newM, _ := m.Update(msg)
 	m = newM.(model)
@@ -1353,8 +1418,8 @@ func TestModelUpdate_PrioritySubmitMsg(t *testing.T) {
 	}
 	select {
 	case txt := <-m.msgChan:
-		if txt != "priority message" {
-			t.Errorf("expected 'priority message' on channel, got %q", txt)
+		if txt.text != "priority message" {
+			t.Errorf("expected 'priority message' on channel, got %q", txt.text)
 		}
 	default:
 	}
@@ -1365,14 +1430,14 @@ func TestModelUpdate_PrioritySubmitMsg_SetPriority(t *testing.T) {
 	m.viewport = viewport.New(viewport.WithWidth(80), viewport.WithHeight(20))
 	m.viewport.SetContent("")
 	m.width = 80
-	m.msgChan = make(chan string, 1)
+	m.msgChan = make(chan userInput, 1)
 
 	priorityCalled := false
 	m.setPriority = func() {
 		priorityCalled = true
 	}
 
-	_, _ = m.Update(prioritySubmitMsg{text: "test"})
+	_, _ = m.Update(prioritySubmitMsg{in: userInput{text: "test"}})
 	if !priorityCalled {
 		t.Error("setPriority callback should have been called")
 	}

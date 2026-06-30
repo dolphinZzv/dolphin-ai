@@ -22,13 +22,13 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 		case types.RoleTool:
 			msgs = append(msgs, Message{
 				Role:       "tool",
-				Content:    m.Content,
+				Content:    m.Text(),
 				ToolCallID: m.ToolCallID,
 			})
 		case types.RoleAssistant:
 			if logger != nil {
 				logger.Info("build openai assistant msg",
-					zap.Bool("has_content", m.Content != ""),
+					zap.Bool("has_content", m.Text() != ""),
 					zap.Int("tool_calls", len(m.ToolCalls)),
 				)
 			}
@@ -56,12 +56,43 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 			} else {
 				msgs = append(msgs, Message{
 					Role:             "assistant",
-					Content:          m.Content,
+					Content:          m.Text(),
 					ReasoningContent: m.Thinking,
 				})
 			}
 		default:
-			msgs = append(msgs, Message{Role: string(m.Role), Content: m.Content})
+			// User/system: emit a content-part array when the message carries
+			// image attachments, so vision-capable models can read them.
+			// Text-only messages stay a plain string (preserves prior behavior).
+			if m.HasImage() {
+				parts := []map[string]any{{"type": "text", "text": m.Text()}}
+				for _, p := range m.Parts {
+					if p.Type != types.PartImage {
+						continue
+					}
+					mimeStr, b64, err := p.LoadBase64()
+					if err != nil {
+						if logger != nil {
+							logger.Warn("openai build: image unavailable",
+								zap.String("path", p.Path),
+								zap.Error(err),
+							)
+						}
+						name := p.Filename
+						parts = append(parts, map[string]any{
+							"type": "text", "text": fmt.Sprintf("[image: %s (unavailable)]", name),
+						})
+						continue
+					}
+					parts = append(parts, map[string]any{
+						"type":      "image_url",
+						"image_url": map[string]string{"url": "data:" + mimeStr + ";base64," + b64},
+					})
+				}
+				msgs = append(msgs, Message{Role: string(m.Role), Content: parts})
+			} else {
+				msgs = append(msgs, Message{Role: string(m.Role), Content: m.Text()})
+			}
 		}
 	}
 	return msgs

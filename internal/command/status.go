@@ -119,7 +119,7 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 			if err == nil {
 				totalChars := 0
 				for _, m := range msgs {
-					totalChars += len(m.Content)
+					totalChars += len(m.Text())
 				}
 				if isMarkdown {
 					cmd.Printf("| **Rounds** | %s |\n", comma(tokenVal(sess.Get("rounds"))))

@@ -81,8 +81,8 @@ func TestDingTalkRead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
-	if msg != expected {
-		t.Errorf("expected %q, got %q", expected, msg)
+	if msg.Text != expected {
+		t.Errorf("expected %q, got %q", expected, msg.Text)
 	}
 }
 

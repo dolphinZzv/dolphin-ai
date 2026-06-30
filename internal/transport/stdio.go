@@ -83,7 +83,7 @@ func (s *Stdio) Start(ctx context.Context) error {
 	return nil
 }
 
-func (s *Stdio) Read(ctx context.Context) (string, error) {
+func (s *Stdio) Read(ctx context.Context) (Input, error) {
 	if s.rl != nil {
 		lineCh := make(chan string, 1)
 		errCh := make(chan error, 1)
@@ -117,11 +117,11 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 
 		select {
 		case line := <-lineCh:
-			return line, nil
+			return Input{Text: line}, nil
 		case err := <-errCh:
-			return "", err
+			return Input{}, err
 		case <-ctx.Done():
-			return "", ctx.Err()
+			return Input{}, ctx.Err()
 		}
 	}
 
@@ -158,11 +158,11 @@ func (s *Stdio) Read(ctx context.Context) (string, error) {
 
 	select {
 	case line := <-lineCh:
-		return line, nil
+		return Input{Text: line}, nil
 	case err := <-errCh:
-		return "", err
+		return Input{}, err
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return Input{}, ctx.Err()
 	}
 }
 
@@ -323,13 +323,13 @@ func (n *NullTransport) Context() string                 { return "" }
 func (n *NullTransport) Tools() []common.ToolDesc        { return nil }
 func (n *NullTransport) Start(ctx context.Context) error { return nil }
 
-func (n *NullTransport) Read(ctx context.Context) (string, error) {
+func (n *NullTransport) Read(ctx context.Context) (Input, error) {
 	if len(n.readBuf) == 0 {
-		return "", io.EOF
+		return Input{}, io.EOF
 	}
 	s := n.readBuf[0]
 	n.readBuf = n.readBuf[1:]
-	return s, nil
+	return Input{Text: s}, nil
 }
 
 func (n *NullTransport) Write(ctx context.Context, text string) error { return nil }

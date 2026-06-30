@@ -5,8 +5,8 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/charmbracelet/glamour"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/glamour"
 )
 
 var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -23,6 +23,7 @@ var (
 	styleQueueActive    lipgloss.Style
 	styleQueueWait      lipgloss.Style
 	styleQueueTime      lipgloss.Style
+	styleAttachment     lipgloss.Style
 
 	mdRenderer   *glamour.TermRenderer
 	mdRendererMu sync.Mutex
@@ -62,6 +63,9 @@ func init() {
 		Foreground(lipgloss.Color("178"))
 	styleQueueTime = lipgloss.NewStyle().
 		Foreground(adaptiveFaint)
+
+	styleAttachment = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("215"))
 
 	r, err := glamour.NewTermRenderer(
 		glamour.WithEnvironmentConfig(),

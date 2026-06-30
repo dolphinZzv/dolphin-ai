@@ -254,6 +254,7 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	state := &State{
 		SessionID:        turn.SessionID,
 		Input:            turn.Input,
+		Parts:            turn.Parts,
 		TransportContext: turn.Context,
 		TransportID:      turn.TransportID,
 	}

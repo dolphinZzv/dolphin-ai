@@ -2,8 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"mime"
+	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -40,8 +43,14 @@ type (
 	}
 )
 type (
-	userSubmitMsg     struct{ text string }
-	prioritySubmitMsg struct{ text string }
+	// userInput is what the TUI ships to the transport Read loop: the typed
+	// text plus any attachments captured from pasted/dragged file paths.
+	userInput struct {
+		text  string
+		parts []types.ContentPart
+	}
+	userSubmitMsg     struct{ in userInput }
+	prioritySubmitMsg struct{ in userInput }
 	modelChangeMsg    struct{ name string }
 	sessionMsg        struct{ id string }
 	mcpCountMsg       struct{ count int }
@@ -85,8 +94,9 @@ type model struct {
 	ready              bool
 	thinking           string
 	inThinking         bool
-	msgChan            chan string
+	msgChan            chan userInput
 	permCh             chan string
+	attachments        []types.ContentPart // pending attachments for the next submit
 	inputHistory       []string
 	historyPos         int
 	historyDraft       string
@@ -253,6 +263,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.autoScrollDuringDrag(msg)
 		}
 
+	case tea.PasteMsg:
+		// Bracketed paste / drag-and-drop: terminals deliver the pasted text
+		// (a dropped file arrives as its path). If the pasted string is an
+		// existing regular file under the size cap, attach it; otherwise insert
+		// as normal text. handlePaste does the textarea update itself, so
+		// return early — otherwise the bottom-of-Update m.textarea.Update(msg)
+		// would insert the paste a second time.
+		if cmd := m.handlePaste(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		return m, tea.Batch(cmds...)
+
 	case tea.KeyMsg:
 		// ctrl+c always force-quits, even while a permission dialog is open.
 		if msg.String() == "ctrl+c" {
@@ -278,7 +300,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.completionPrefix = ""
 			if m.msgChan != nil {
 				select {
-				case m.msgChan <- "/session pause":
+				case m.msgChan <- userInput{text: "/session pause"}:
 				default:
 				}
 			}
@@ -296,9 +318,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ta, _ := m.textarea.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 			m.textarea = ta
 
+		case "backspace":
+			// When the input is empty, backspace pops the last pending
+			// attachment instead of being a no-op.
+			if m.textarea.Value() == "" && len(m.attachments) > 0 {
+				m.attachments = m.attachments[:len(m.attachments)-1]
+				m.tipsText = fmt.Sprintf(i18n.T("tui.attachment_removed"), "")
+				m.updateViewportHeight()
+				return m, tea.Batch(cmds...)
+			}
+
+		case "ctrl+x":
+			// Clear all pending attachments.
+			if len(m.attachments) > 0 {
+				m.attachments = nil
+				m.tipsText = i18n.T("tui.attachments_cleared")
+				m.updateViewportHeight()
+				return m, tea.Batch(cmds...)
+			}
+
 		case "ctrl+p":
 			input := strings.TrimSpace(m.textarea.Value())
-			cmds = append(cmds, func() tea.Msg { return prioritySubmitMsg{text: input} })
+			attachParts := m.attachments
+			cmds = append(cmds, func() tea.Msg { return prioritySubmitMsg{in: userInput{text: input, parts: attachParts}} })
+			m.attachments = nil
 			m.textarea.Reset()
 			m.textarea.SetHeight(1)
 			return m, tea.Batch(cmds...)
@@ -358,8 +401,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.showThinking = !m.showThinking
 				m.tipsText = fmt.Sprintf(i18n.T("tui.toggle_thinking"), onOff(m.showThinking))
 				m.notifyPrefsChanged()
-				return m, tea.Batch(cmds...)
 				m.updateViewportHeight()
+				return m, tea.Batch(cmds...)
 			}
 			if input == "/windows" || input == "/windows status" {
 				m.showSideStatus = !m.showSideStatus
@@ -375,7 +418,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				m.historyPos = -1
-				cmds = append(cmds, func() tea.Msg { return userSubmitMsg{text: input} })
+				attachParts := m.attachments
+				cmds = append(cmds, func() tea.Msg { return userSubmitMsg{in: userInput{text: input, parts: attachParts}} })
+				m.attachments = nil
 			}
 			return m, tea.Batch(cmds...)
 		case "ctrl+shift+c":
@@ -602,17 +647,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendEntry(renderEntry{content: strings.Repeat("-", m.width), style: "separator"})
 		}
 
-		m.appendEntry(renderEntry{content: msg.text, style: "user_text"})
+		m.appendEntry(renderEntry{content: renderUserInput(msg.in), style: "user_text"})
 		m.viewport.GotoBottom()
 		m.newReply = true
-		m.currentMsg = msg.text
+		m.currentMsg = msg.in.text
 		m.msgStatus = "pending"
 		m.msgStartedAt = time.Now()
 		m.closeBlock = false
 		m.updateViewportHeight()
 		if m.msgChan != nil {
 			select {
-			case m.msgChan <- msg.text:
+			case m.msgChan <- msg.in:
 			default:
 			}
 		}
@@ -625,16 +670,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.appendEntry(renderEntry{content: strings.Repeat("-", m.width), style: "separator"})
 		}
 
-		m.appendEntry(renderEntry{content: msg.text, style: "user_text"})
+		m.appendEntry(renderEntry{content: renderUserInput(msg.in), style: "user_text"})
 		m.viewport.GotoBottom()
 		m.newReply = true
-		m.currentMsg = msg.text
+		m.currentMsg = msg.in.text
 		m.msgStatus = "pending"
 		m.closeBlock = false
 		m.updateViewportHeight()
 		if m.msgChan != nil {
 			select {
-			case m.msgChan <- msg.text:
+			case m.msgChan <- msg.in:
 			default:
 			}
 		}
@@ -865,6 +910,11 @@ func (m *model) updateViewportHeight() {
 	}
 	// Fixed bottom rows: separator + textarea + separator + status bar.
 	fixed := taLines + 3
+	// Attachment preview row — shown between the separator and textarea when
+	// there are pending attachments.
+	if len(m.attachments) > 0 {
+		fixed++
+	}
 	// Tips line — shown between viewport and queue when a tip is active.
 	if m.tipsText != "" {
 		fixed++
@@ -916,42 +966,22 @@ func queueCounts(aio *agentio.AgentIO) (active, pending int) {
 
 // queueMaxBodyLines caps the total queue body lines (excluding the header).
 // The queue area is kept compact so the input area stays prominent.
-const queueMaxBodyLines = 2
+const queueMaxBodyLines = 6
 
-// Per-category display caps for the queue area. Each category shows its
-// most relevant slice and a "+N more" indicator when truncated, instead of
-// silently dropping items.
-const (
-	queueMaxActive    = 5 // running agents — show all up to this
-	queueMaxPending   = 3 // show the head (what runs next)
-	queueMaxCompleted = 3 // show the tail (most recent)
-)
-
-// queueBodyLines returns the number of item/indicator lines the queue
-// renderer will emit (excluding the "📋 Queue" header) for the given
-// populations. updateViewportHeight uses this so the reserved height
-// matches renderQueue exactly — no overflow, no clipping.
+// queueBodyLines returns the number of body lines (excluding the "☰ Queue"
+// header) renderQueue will emit for the given populations. updateViewportHeight
+// uses this so the reserved height matches renderQueue exactly — no overflow,
+// no clipping.
+//
+// renderQueue emits one line per item up to queueMaxBodyLines; when there are
+// more items than the budget, the last body line becomes a "+N more" indicator.
+// So body lines = min(total, queueMaxBodyLines) for a non-empty queue.
 func queueBodyLines(active, pending, completed int) int {
-	if active+pending+completed == 0 {
+	total := active + pending + completed
+	if total == 0 {
 		return 0
 	}
-	n := 0
-	if active > queueMaxActive {
-		n += queueMaxActive + 1
-	} else {
-		n += active
-	}
-	pShown := min(pending, queueMaxPending)
-	n += pShown
-	if pending > pShown {
-		n++ // "+N queued"
-	}
-	cShown := min(completed, queueMaxCompleted)
-	n += cShown
-	if completed > cShown {
-		n++ // "+N done"
-	}
-	return min(n, queueMaxBodyLines)
+	return min(total, queueMaxBodyLines)
 }
 
 func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) string {
@@ -964,12 +994,10 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		return ""
 	}
 
-	var lines []string
 	header := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("208")).
 		Bold(true).
 		Render(i18n.T("tui.queue_title"))
-	lines = append(lines, header)
 
 	renderLine := func(icon, input, timeStr string) string {
 		// 2 spaces indent + icon + space + separator " — " + time
@@ -995,13 +1023,13 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		return "  " + moreStyle.Render(text)
 	}
 
-	// Active (running) agents — show all up to the cap.
-	activeIDs := sortedKeys(active)
-	aShown := activeIDs
-	if len(aShown) > queueMaxActive {
-		aShown = aShown[:queueMaxActive]
-	}
-	for _, id := range aShown {
+	// Build the ordered body rows: running agents first (by id), then the
+	// pending head, then recently completed. A single global budget governs
+	// how many render — no per-category truncation, so the "+N more" count
+	// always reflects the true number of hidden items.
+	type queueRow struct{ icon, input, timeStr string }
+	rows := make([]queueRow, 0, len(active)+len(pending)+len(completed))
+	for _, id := range sortedKeys(active) {
 		t := active[id]
 		icon := styleQueueActive.Render("▶")
 		elapsed := time.Since(t.StartedAt).Round(time.Second)
@@ -1009,60 +1037,30 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		if t.CurrentActivity != "" {
 			timeStr += " " + t.CurrentActivity
 		}
-		timeStr = styleQueueTime.Render(timeStr)
-		lines = append(lines, renderLine(icon, t.Input, timeStr))
+		rows = append(rows, queueRow{icon, t.Input, styleQueueTime.Render(timeStr)})
 	}
-	if len(activeIDs) > len(aShown) {
-		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_active"), len(activeIDs)-len(aShown))))
-	}
-
-	// Pending — show the head (what runs next) up to the cap, then a
-	// "+N queued" indicator for the rest. Earlier the tail was shown and
-	// early queue items were invisible.
-	pShown := pending
-	if len(pShown) > queueMaxPending {
-		pShown = pShown[:queueMaxPending]
-	}
-	for i, t := range pShown {
+	for i, t := range pending {
 		icon := styleQueueWait.Render(fmt.Sprintf("#%d", i+1))
 		wait := time.Since(t.EnqueuedAt).Round(time.Second)
-		timeStr := styleQueueTime.Render(wait.String())
-		lines = append(lines, renderLine(icon, t.Input, timeStr))
+		rows = append(rows, queueRow{icon, t.Input, styleQueueTime.Render(wait.String())})
 	}
-	if len(pending) > len(pShown) {
-		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_queued"), len(pending)-len(pShown))))
+	for _, c := range completed {
+		icon := styleQueueWait.Render("✓")
+		rows = append(rows, queueRow{icon, c.input, styleQueueTime.Render(c.ago + " " + c.duration.String())})
 	}
 
-	// Recently completed — show the tail (most recent) up to the cap.
-	cShown := completed
-	if len(cShown) > queueMaxCompleted {
-		cShown = cShown[len(cShown)-queueMaxCompleted:]
-	}
-	for _, c := range cShown {
-		icon := styleQueueWait.Render("✓")
-		timeStr := styleQueueTime.Render(c.ago + " " + c.duration.String())
-		lines = append(lines, renderLine(icon, c.input, timeStr))
-	}
-	if len(completed) > len(cShown) {
-		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more_done"), len(completed)-len(cShown))))
-	}
-	// Cap the total body lines (everything after the header) to keep the
-	// queue compact so the input area stays prominent.
-	if len(lines) > queueMaxBodyLines+1 {
-		lines = lines[:queueMaxBodyLines+1]
-		// Replace the last shown line with a compact "+N more" indicator.
-		remaining := 0
-		if activeRemaining := len(activeIDs) - min(len(activeIDs), queueMaxActive); activeRemaining > 0 {
-			remaining += activeRemaining
+	lines := []string{header}
+	if len(rows) > queueMaxBodyLines {
+		// Budget exhausted: show queueMaxBodyLines-1 real rows, then a
+		// compact "+N more" indicator covering everything not shown.
+		for _, r := range rows[:queueMaxBodyLines-1] {
+			lines = append(lines, renderLine(r.icon, r.input, r.timeStr))
 		}
-		if pendingRemaining := len(pending) - min(len(pending), queueMaxPending); pendingRemaining > 0 {
-			remaining += pendingRemaining
-		}
-		if completedRemaining := len(completed) - min(len(completed), queueMaxCompleted); completedRemaining > 0 {
-			remaining += completedRemaining
-		}
-		if remaining > 0 {
-			lines[queueMaxBodyLines] = moreLine(fmt.Sprintf(i18n.T("tui.queue_more_queued"), remaining))
+		more := len(rows) - (queueMaxBodyLines - 1)
+		lines = append(lines, moreLine(fmt.Sprintf(i18n.T("tui.queue_more"), more)))
+	} else {
+		for _, r := range rows {
+			lines = append(lines, renderLine(r.icon, r.input, r.timeStr))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -1256,11 +1254,16 @@ func (m model) View() tea.View {
 	if c := renderCompletions(m.completions, m.completionIdx, m.width); c != "" {
 		elements = append(elements, c)
 	}
-	// Full-width separator + input line.
+	// Full-width separator + input line. The attachment preview sits between
+	// the separator and the textarea when there are pending attachments.
 	inputLine := lipgloss.NewStyle().
 		Width(m.width).
 		Render(m.textarea.View())
-	elements = append(elements, fullSep, inputLine, fullSep, statusBar)
+	elements = append(elements, fullSep)
+	if a := m.renderAttachments(); a != "" {
+		elements = append(elements, a)
+	}
+	elements = append(elements, inputLine, fullSep, statusBar)
 
 	mainView := lipgloss.JoinVertical(lipgloss.Left, elements...)
 
@@ -1585,4 +1588,111 @@ func getGitBranch(cwd string) string {
 		return ""
 	}
 	return strings.TrimSpace(string(out))
+}
+
+// maxAttachmentBytes caps the size of a single pasted/dragged file that the
+// TUI will attach. Keeps accidental huge files out of the LLM request.
+const maxAttachmentBytes = 20 * 1024 * 1024 // 20 MB
+
+// inferMIME returns the media type for a file path, preferring the extension
+// and falling back to sniffing the file header.
+func inferMIME(path string) string {
+	if ext := filepath.Ext(path); ext != "" {
+		if t := mime.TypeByExtension(ext); t != "" {
+			return t
+		}
+	}
+	if f, err := os.Open(path); err == nil {
+		defer f.Close()
+		head := make([]byte, 512)
+		n, _ := f.Read(head)
+		return http.DetectContentType(head[:n])
+	}
+	return "application/octet-stream"
+}
+
+// humanSize renders a byte count compactly (e.g. "12kb", "1.4mb").
+func humanSize(n int64) string {
+	switch {
+	case n < 1024:
+		return fmt.Sprintf("%db", n)
+	case n < 1024*1024:
+		return fmt.Sprintf("%dkb", n/1024)
+	default:
+		return fmt.Sprintf("%.1fmb", float64(n)/1024/1024)
+	}
+}
+
+// handlePaste interprets a bracketed-paste event. A pasted string that is an
+// existing regular file within the size cap becomes an attachment; otherwise
+// the text is inserted into the textarea as normal input.
+func (m *model) handlePaste(msg tea.PasteMsg) tea.Cmd {
+	pasted := strings.TrimSpace(msg.Content)
+	if pasted != "" {
+		if fi, err := os.Stat(pasted); err == nil && !fi.IsDir() {
+			if fi.Size() > maxAttachmentBytes {
+				m.tipsText = fmt.Sprintf(i18n.T("tui.attachment_too_large"), filepath.Base(pasted))
+				m.updateViewportHeight()
+				return nil
+			}
+			mimeStr := inferMIME(pasted)
+			ptype := types.PartFile
+			if strings.HasPrefix(mimeStr, "image/") {
+				ptype = types.PartImage
+			}
+			m.attachments = append(m.attachments, types.ContentPart{
+				Type:     ptype,
+				Path:     pasted,
+				MIME:     mimeStr,
+				Filename: filepath.Base(pasted),
+			})
+			m.tipsText = fmt.Sprintf(i18n.T("tui.attachment_added"), filepath.Base(pasted))
+			m.updateViewportHeight()
+			return nil
+		}
+	}
+	// Not a file path — insert as text.
+	ta, cmd := m.textarea.Update(msg)
+	m.textarea = ta
+	return cmd
+}
+
+// renderUserInput builds the user-message display: the typed text followed by
+// a 📎 line per attachment (placeholder rendering; real in-terminal image
+// rendering via sixel/iTerm2 is future work).
+func renderUserInput(in userInput) string {
+	if len(in.parts) == 0 {
+		return in.text
+	}
+	var b strings.Builder
+	b.WriteString(in.text)
+	for _, p := range in.parts {
+		name := p.Filename
+		if name == "" {
+			name = filepath.Base(p.Path)
+		}
+		size := ""
+		if fi, err := os.Stat(p.Path); err == nil {
+			size = " " + humanSize(fi.Size())
+		}
+		b.WriteString("\n📎 " + name + size)
+	}
+	return b.String()
+}
+
+// renderAttachments renders the pending-attachment preview row shown above the
+// textarea: one chip per attachment, each removable via backspace.
+func (m model) renderAttachments() string {
+	if len(m.attachments) == 0 {
+		return ""
+	}
+	var chips []string
+	for _, p := range m.attachments {
+		name := p.Filename
+		if name == "" {
+			name = filepath.Base(p.Path)
+		}
+		chips = append(chips, "📎 "+name+" ×")
+	}
+	return styleAttachment.Width(m.width).Render(strings.Join(chips, "  "))
 }

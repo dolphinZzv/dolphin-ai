@@ -28,7 +28,7 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 				block := map[string]any{
 					"type":        "tool_result",
 					"tool_use_id": tm.ToolCallID,
-					"content":     tm.Content,
+					"content":     tm.Text(),
 				}
 				if tm.IsError {
 					block["is_error"] = true
@@ -45,7 +45,7 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 					zap.Bool("has_thinking", m.Thinking != ""),
 					zap.Int("thinking_len", len(m.Thinking)),
 					zap.Bool("has_signature", m.ThinkingSignature != ""),
-					zap.Bool("has_content", m.Content != ""),
+					zap.Bool("has_content", m.Text() != ""),
 					zap.Int("tool_calls", len(m.ToolCalls)),
 				)
 			}
@@ -58,8 +58,8 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 					}
 					blocks = append(blocks, block)
 				}
-				if m.Content != "" {
-					blocks = append(blocks, map[string]any{"type": "text", "text": m.Content})
+				if m.Text() != "" {
+					blocks = append(blocks, map[string]any{"type": "text", "text": m.Text()})
 				}
 				for _, tc := range m.ToolCalls {
 					var input any = map[string]any{}
@@ -76,13 +76,48 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 				data, _ := json.Marshal(blocks)
 				msgs = append(msgs, Message{Role: "assistant", Content: data})
 			} else {
-				data, _ := json.Marshal(m.Content)
+				data, _ := json.Marshal(m.Text())
 				msgs = append(msgs, Message{Role: "assistant", Content: data})
 			}
 
 		default:
-			data, _ := json.Marshal(m.Content)
-			msgs = append(msgs, Message{Role: string(m.Role), Content: data})
+			// User/system: emit content blocks when the message carries image
+			// attachments, so vision-capable models can read them. Text-only
+			// messages stay a plain string (preserves prior behavior).
+			if m.HasImage() {
+				blocks := []map[string]any{{"type": "text", "text": m.Text()}}
+				for _, p := range m.Parts {
+					if p.Type != types.PartImage {
+						continue
+					}
+					mimeStr, b64, err := p.LoadBase64()
+					if err != nil {
+						if logger != nil {
+							logger.Warn("anthropic build: image unavailable",
+								zap.String("path", p.Path),
+								zap.Error(err),
+							)
+						}
+						blocks = append(blocks, map[string]any{
+							"type": "text", "text": fmt.Sprintf("[image: %s (unavailable)]", p.Filename),
+						})
+						continue
+					}
+					blocks = append(blocks, map[string]any{
+						"type": "image",
+						"source": map[string]any{
+							"type":       "base64",
+							"media_type": mimeStr,
+							"data":       b64,
+						},
+					})
+				}
+				data, _ := json.Marshal(blocks)
+				msgs = append(msgs, Message{Role: string(m.Role), Content: data})
+			} else {
+				data, _ := json.Marshal(m.Text())
+				msgs = append(msgs, Message{Role: string(m.Role), Content: data})
+			}
 		}
 	}
 	return msgs

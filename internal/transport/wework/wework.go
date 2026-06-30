@@ -833,14 +833,14 @@ func (w *WeWork) ProactiveMessage(ctx context.Context, content, msgType string) 
 }
 
 // Read blocks until a message is received from WeWork Smart Bot.
-func (w *WeWork) Read(ctx context.Context) (string, error) {
+func (w *WeWork) Read(ctx context.Context) (transport.Input, error) {
 	select {
 	case msg := <-w.msgChan:
-		return msg, nil
+		return transport.Input{Text: msg}, nil
 	case <-w.closeCh:
-		return "", fmt.Errorf("wework: closed")
+		return transport.Input{}, fmt.Errorf("wework: closed")
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return transport.Input{}, ctx.Err()
 	}
 }
 

@@ -354,9 +354,9 @@ func TestExtractFromSessions_WithSummary(t *testing.T) {
 	now := time.Now()
 	d := &Dream{}
 	snap := sessionSnapshot{ID: "s1", Messages: []types.Message{
-		{Role: types.RoleAssistant, Content: "summary", IsSummary: true, Timestamp: now},
+		{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("summary")}, IsSummary: true, Timestamp: now},
 		userMsg("regular message", now),
-		{Role: types.RoleTool, ToolCallID: "call_tool_abc", IsError: true, Content: "error detail", Timestamp: now},
+		{Role: types.RoleTool, ToolCallID: "call_tool_abc", IsError: true, Parts: []types.ContentPart{types.TextPart("error detail")}, Timestamp: now},
 	}}
 	res := d.extractFromSessions([]sessionSnapshot{snap})
 	if res.TotalMessages < 1 {

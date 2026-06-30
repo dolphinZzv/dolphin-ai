@@ -37,6 +37,7 @@ type Stage interface {
 type State struct {
 	SessionID        string
 	Input            string
+	Parts            []types.ContentPart
 	TransportContext string
 	TransportID      string
 	ModelName        string
@@ -288,7 +289,7 @@ func (s *MemoryReadStage) Process(ctx context.Context, state *State) error {
 	state.Messages = append([]types.Message{}, history...)
 	state.Messages = append(state.Messages, types.Message{
 		Role:      types.RoleUser,
-		Content:   state.Input,
+		Parts:     append([]types.ContentPart{types.TextPart(state.Input)}, state.Parts...),
 		Timestamp: time.Now(),
 	})
 	return nil
@@ -830,7 +831,7 @@ done:
 	)
 	msg := types.Message{
 		Role:              types.RoleAssistant,
-		Content:           content.String(),
+		Parts:             []types.ContentPart{types.TextPart(content.String())},
 		Thinking:          thinking.String(),
 		ThinkingSignature: thinkingSignature,
 		Timestamp:         time.Now(),
@@ -1016,7 +1017,7 @@ func (s *ToolStage) Process(ctx context.Context, state *State) error {
 			state.Messages = append(state.Messages, types.Message{
 				Role:       types.RoleTool,
 				ToolCallID: call.ID,
-				Content:    result.Content,
+				Parts:      []types.ContentPart{types.TextPart(result.Content)},
 				IsError:    result.IsError,
 				Timestamp:  time.Now(),
 			})
@@ -1040,9 +1041,8 @@ func (s *ToolStage) deniedToolResult(call types.ToolCall, err error) (types.Mess
 	msg := types.Message{
 		Role:       types.RoleTool,
 		ToolCallID: call.ID,
-		Content:    fmt.Sprintf(i18n.T("agentloop.denied_message"), err.Error()),
-		IsError:    true,
-		Timestamp:  time.Now(),
+		Parts:      []types.ContentPart{types.TextPart(fmt.Sprintf(i18n.T("agentloop.denied_message"), err.Error()))}, IsError: true,
+		Timestamp: time.Now(),
 	}
 	tr := types.ToolResult{
 		ToolCallID: call.ID,
@@ -1060,7 +1060,7 @@ func (s *ToolStage) interruptedToolResult(call types.ToolCall) (types.Message, t
 	msg := types.Message{
 		Role:       types.RoleTool,
 		ToolCallID: call.ID,
-		Content:    content,
+		Parts:      []types.ContentPart{types.TextPart(content)},
 		IsError:    true,
 		Timestamp:  time.Now(),
 	}
@@ -1083,7 +1083,7 @@ func (s *ToolStage) failedToolResult(call types.ToolCall, err error) (types.Mess
 	msg := types.Message{
 		Role:       types.RoleTool,
 		ToolCallID: call.ID,
-		Content:    content,
+		Parts:      []types.ContentPart{types.TextPart(content)},
 		IsError:    true,
 		Timestamp:  time.Now(),
 	}
@@ -1247,9 +1247,8 @@ func (s *ToolStage) processParallel(ctx context.Context, state *State, calls []t
 			state.Messages = append(state.Messages, types.Message{
 				Role:       types.RoleTool,
 				ToolCallID: tc.ID,
-				Content:    result.Content,
-				IsError:    result.IsError,
-				Timestamp:  time.Now(),
+				Parts:      []types.ContentPart{types.TextPart(result.Content)}, IsError: result.IsError,
+				Timestamp: time.Now(),
 			})
 			state.ToolResults = append(state.ToolResults, *result)
 			completed[tc.ID] = true
@@ -1582,7 +1581,12 @@ func (s *CompactionStage) estimateTokens(msgs []types.Message) int {
 	}
 	var runes int
 	for _, m := range msgs {
-		runes += len([]rune(m.Content))
+		runes += len([]rune(m.Text()))
+		// Images carry meaningful token cost; account for it so compaction
+		// triggers earlier when attachments are present.
+		if m.HasImage() {
+			runes += 1000 * len(m.ImageFilenames())
+		}
 		runes += len([]rune(m.Thinking))
 		for _, tc := range m.ToolCalls {
 			runes += len([]rune(tc.Arguments))
@@ -1722,7 +1726,7 @@ func (s *CompactionStage) Compact(ctx context.Context, msgs []types.Message, sig
 
 	summary := types.Message{
 		Role:      types.RoleUser,
-		Content:   "[Conversation summary of earlier turns]\n\n" + summaryText,
+		Parts:     []types.ContentPart{types.TextPart("[Conversation summary of earlier turns]\n\n" + summaryText)},
 		IsSummary: true,
 		// Timestamp earlier than the tail so ordering is unambiguous.
 		Timestamp: tail[0].Timestamp,
@@ -1777,7 +1781,7 @@ func (s *CompactionStage) ManualCompact(ctx context.Context, sessionID string) (
 	}
 
 	// Compact expects a trailing user-input marker.
-	marker := types.Message{Role: types.RoleUser, Content: "[manual compaction]", Timestamp: time.Now()}
+	marker := types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("[manual compaction]")}, Timestamp: time.Now()}
 	compacted, err := s.Compact(ctx, append(msgs, marker), nil)
 	s.KeepRounds = savedKeep
 	if err != nil {
@@ -1785,7 +1789,7 @@ func (s *CompactionStage) ManualCompact(ctx context.Context, sessionID string) (
 	}
 
 	// Strip the synthetic marker — always the last message.
-	if len(compacted) > 0 && compacted[len(compacted)-1].Content == "[manual compaction]" {
+	if len(compacted) > 0 && compacted[len(compacted)-1].Text() == "[manual compaction]" {
 		compacted = compacted[:len(compacted)-1]
 	}
 
@@ -1812,11 +1816,14 @@ func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message
 				b.WriteString("[Prior summary]\n")
 			}
 			b.WriteString("User: ")
-			b.WriteString(m.Content)
+			b.WriteString(m.Text())
+			if m.HasImage() {
+				b.WriteString(" [attachments: " + strings.Join(m.ImageFilenames(), ", ") + "]")
+			}
 			b.WriteString("\n\n")
 		case types.RoleAssistant:
 			b.WriteString("Assistant: ")
-			b.WriteString(m.Content)
+			b.WriteString(m.Text())
 			if m.Thinking != "" {
 				b.WriteString("\n(thought: ")
 				b.WriteString(truncateStr(m.Thinking, 500))
@@ -1827,7 +1834,7 @@ func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message
 			b.WriteString("[Tool result ")
 			b.WriteString(m.ToolCallID)
 			b.WriteString(": ")
-			b.WriteString(truncateStr(m.Content, 300))
+			b.WriteString(truncateStr(m.Text(), 300))
 			b.WriteString("]\n\n")
 		}
 	}
@@ -1839,7 +1846,7 @@ func (s *CompactionStage) summarize(ctx context.Context, oldMsgs []types.Message
 
 	req := llm.LLMRequest{
 		Messages: []types.Message{
-			{Role: types.RoleUser, Content: b.String(), Timestamp: time.Now()},
+			{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(b.String())}, Timestamp: time.Now()},
 		},
 		Model:     s.activeModel(),
 		MaxTokens: maxTokens,

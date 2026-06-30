@@ -741,7 +741,7 @@ func TestRegisterSessionStatus(t *testing.T) {
 		sess.Set("output_tokens", 500)
 
 		mem := memory.NewFileMemory(mgr)
-		mem.Write(context.Background(), sess.ID, types.Message{Role: types.RoleUser, Content: "hello"})
+		mem.Write(context.Background(), sess.ID, types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hello")}})
 
 		RegisterSessionStatus(r, mgr, mem, "shared", nil)
 

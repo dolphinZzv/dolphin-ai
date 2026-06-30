@@ -4,6 +4,7 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+- **TUI 多模态（图片）输入支持**: `types.Message` 由单一 `Content string` 重构为 `Parts []ContentPart`，使多模态内容能到达 LLM。`transport.IO.Read` 改为返回 `Input{Text, Parts}`，全部 10 个 transport 实现已迁移；附件经 `agentio.Turn`/`agentloop.State` 流入 `MemoryReadStage`。openai/anthropic build 在含图片时发出 `image_url`/`image` base64 块（纯文本路径行为不变；图片缺失降级为文本占位）。TUI 通过 `tea.PasteMsg` 捕获粘贴/拖拽的文件路径作为附件（≤20MB），输入框上方显示预览，空输入退格移除、Ctrl+X 清空。压缩摘要标注附件，`estimateTokens` 计入图片。自定义 `UnmarshalJSON` 兼容旧 `{"content":"..."}` session 文件。顺带修复提交闭包丢失附件、PasteMsg 重复插入两个 bug，以及同步 embedded `config.schema.json` 缺失的 mcp `headers` 字段。
 - **Panda CI (回调/调用) 消息支持**: `handleMsgPush` 现在允许 ContentForm (10) 和 ContentFormResponse (11) 消息通过，修复 Panda 交互式表单回调消息被丢弃的问题。
 - **MCP SSE 支持自定义 HTTP 标头**: MCP Client 和 LazyClient 新增 `SetHeaders` 方法，支持通过 `mcp_servers[].headers` 配置自定义请求标头。`ToolDesc` 新增 `Headers` 字段支持传输层 MCP 来源。
 - **TUI welcome 显示 cwd 和分支**: Welcome 页面底部展示工作目录和 git 分支；Ctrl+G 在 tips 栏显示位置信息。

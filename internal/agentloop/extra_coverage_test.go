@@ -44,7 +44,7 @@ func TestLLMStageProcess_HookRegLimit(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-limit",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 	err := stage.Process(context.Background(), state)
 	if err == nil {
@@ -71,7 +71,7 @@ func TestLLMStageProcess_InterruptBeforeRetry(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-int",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 
 	// Send interrupt after a short delay so the retry loop starts.
@@ -103,7 +103,7 @@ func TestLLMStageProcess_RetryExhausted(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-exhausted",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 
 	err := stage.Process(context.Background(), state)
@@ -135,7 +135,7 @@ func TestTryComplete_DoneAndCacheTokens(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-cache",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 
 	err := stage.Process(context.Background(), state)
@@ -145,8 +145,8 @@ func TestTryComplete_DoneAndCacheTokens(t *testing.T) {
 	if len(state.Messages) != 2 {
 		t.Errorf("expected 2 messages, got %d", len(state.Messages))
 	}
-	if state.Messages[1].Content != "hello" {
-		t.Errorf("expected content 'hello', got %q", state.Messages[1].Content)
+	if state.Messages[1].Text() != "hello" {
+		t.Errorf("expected content 'hello', got %q", state.Messages[1].Text())
 	}
 }
 
@@ -302,7 +302,7 @@ func TestTryComplete_ToolRegistryList(t *testing.T) {
 
 	state := &State{
 		SessionID: "s-tools",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		// No per-turn tools set — should fall back to ToolRegistry.List
 	}
 
@@ -333,7 +333,7 @@ func TestLLMStage_Process_PauseThenInterrupt(t *testing.T) {
 	}
 	state := &State{
 		SessionID: "s-pause-int",
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 	}
 
 	go func() {

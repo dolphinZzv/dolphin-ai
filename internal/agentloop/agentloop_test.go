@@ -142,7 +142,7 @@ func TestCompositor(t *testing.T) {
 		Convey("MemoryReadStage reads history", func() {
 			mem := memory.NewFileMemory(&testSessionStore{})
 			mem.Write(context.Background(), "sid", types.Message{
-				Role: types.RoleUser, Content: "prev",
+				Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("prev")},
 			})
 
 			stage := &MemoryReadStage{Memory: mem}
@@ -152,7 +152,7 @@ func TestCompositor(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(state.History), ShouldEqual, 1)
 			So(len(state.Messages), ShouldEqual, 2)
-			So(state.Messages[1].Content, ShouldEqual, "new")
+			So(state.Messages[1].Text(), ShouldEqual, "new")
 		})
 
 		Convey("ContextBuilderStage injects skills", func() {
@@ -199,8 +199,8 @@ func TestCompositor(t *testing.T) {
 				SessionID: "sid",
 				Input:     "hi",
 				Messages: []types.Message{
-					{Role: types.RoleUser, Content: "hi"},
-					{Role: types.RoleAssistant, Content: "hello"},
+					{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}},
+					{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("hello")}},
 				},
 			}
 
@@ -237,7 +237,7 @@ func TestCompositor(t *testing.T) {
 				SessionID:    "sid",
 				Input:        "hi",
 				SystemPrompt: "be helpful",
-				Messages:     []types.Message{{Role: types.RoleUser, Content: "hi"}},
+				Messages:     []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			}
 
 			err := stage.Process(context.Background(), state)
@@ -270,7 +270,7 @@ func TestCompositor(t *testing.T) {
 			state := &State{
 				SessionID: "sid",
 				Input:     "hi",
-				Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+				Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 				OnChunk:   func(text string) { chunks = append(chunks, text) },
 			}
 
@@ -508,14 +508,14 @@ func TestRequestPermissionFeedingKeepsWatchdogAlive(t *testing.T) {
 	}
 }
 
-func (m *mockTransport) ID() string                           { return "mock" }
-func (m *mockTransport) Context() string                      { return "" }
-func (m *mockTransport) Start(context.Context) error          { return nil }
-func (m *mockTransport) Tools() []common.ToolDesc             { return nil }
-func (m *mockTransport) Read(context.Context) (string, error) { return "", nil }
-func (m *mockTransport) Write(context.Context, string) error  { return nil }
-func (m *mockTransport) Flush() error                         { return nil }
-func (m *mockTransport) Close() error                         { return nil }
+func (m *mockTransport) ID() string                                    { return "mock" }
+func (m *mockTransport) Context() string                               { return "" }
+func (m *mockTransport) Start(context.Context) error                   { return nil }
+func (m *mockTransport) Tools() []common.ToolDesc                      { return nil }
+func (m *mockTransport) Read(context.Context) (transport.Input, error) { return transport.Input{}, nil }
+func (m *mockTransport) Write(context.Context, string) error           { return nil }
+func (m *mockTransport) Flush() error                                  { return nil }
+func (m *mockTransport) Close() error                                  { return nil }
 func (m *mockTransport) Capability() transport.Capability {
 	return transport.Capability{Interactive: true}
 }
@@ -552,7 +552,7 @@ func TestRealLLMCompositor(t *testing.T) {
 				Model:     "deepseek-v4-flash",
 				MaxTokens: 300,
 				Messages: []types.Message{
-					{Role: types.RoleUser, Content: "123456的第一个字是什么?只回答一个字符"},
+					{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("123456的第一个字是什么?只回答一个字符")}},
 				},
 			})
 			So(err, ShouldBeNil)
@@ -586,7 +586,7 @@ func TestRealLLMCompositor(t *testing.T) {
 				Model:     "deepseek-v4-flash",
 				MaxTokens: 10,
 				Messages: []types.Message{
-					{Role: types.RoleUser, Content: "写一篇长文章"},
+					{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("写一篇长文章")}},
 				},
 			})
 			So(err, ShouldBeNil)
@@ -1031,7 +1031,7 @@ func TestToolStageProcessSuccess(t *testing.T) {
 		err := stage.Process(context.Background(), state)
 		So(err, ShouldBeNil)
 		So(len(state.Messages), ShouldEqual, 1)
-		So(state.Messages[0].Content, ShouldEqual, "done")
+		So(state.Messages[0].Text(), ShouldEqual, "done")
 		So(state.Messages[0].Role, ShouldEqual, types.RoleTool)
 		So(state.Messages[0].ToolCallID, ShouldEqual, "call1")
 		So(len(state.ToolResults), ShouldEqual, 1)
@@ -1132,8 +1132,8 @@ func TestToolStageProcessParallel(t *testing.T) {
 			err := stage.Process(context.Background(), state)
 			So(err, ShouldBeNil)
 			So(len(state.Messages), ShouldEqual, 2)
-			So(state.Messages[0].Content, ShouldEqual, "x")
-			So(state.Messages[1].Content, ShouldEqual, "x")
+			So(state.Messages[0].Text(), ShouldEqual, "x")
+			So(state.Messages[1].Text(), ShouldEqual, "x")
 		})
 	})
 }
@@ -1158,7 +1158,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				Logger:   logger,
 			}
 			state := &State{
-				Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+				Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			}
 
 			var events []event.Event
@@ -1170,7 +1170,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(len(state.Messages), ShouldEqual, 2)
 			So(state.Messages[1].Role, ShouldEqual, types.RoleAssistant)
-			So(state.Messages[1].Content, ShouldEqual, "Hello world")
+			So(state.Messages[1].Text(), ShouldEqual, "Hello world")
 
 			So(len(events), ShouldBeGreaterThanOrEqualTo, 3)
 		})
@@ -1188,7 +1188,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				Logger:   logger,
 			}
 			state := &State{
-				Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}},
+				Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			}
 
 			err := stage.tryComplete(context.Background(), state, nil)
@@ -1211,7 +1211,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				Logger:   logger,
 			}
 			state := &State{
-				Messages: []types.Message{{Role: types.RoleUser, Content: "do it"}},
+				Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("do it")}}},
 			}
 
 			err := stage.tryComplete(context.Background(), state, nil)
@@ -1236,7 +1236,7 @@ func TestLLMStageTryComplete(t *testing.T) {
 				Logger:   logger,
 			}
 			state := &State{
-				Messages: []types.Message{{Role: types.RoleUser, Content: "x"}},
+				Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("x")}}},
 				OnChunk: func(text string) {
 					chunks = append(chunks, text)
 				},
@@ -2442,7 +2442,7 @@ func TestLLMStageTryCompleteInterrupt(t *testing.T) {
 		}
 		state := &State{
 			SessionID: "s1",
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		sigCh := sigBus.Subscribe("s1")
@@ -2493,7 +2493,7 @@ func TestLLMStageTryCompleteInterrupt(t *testing.T) {
 		}
 		state := &State{
 			SessionID: "s2",
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		sigCh := sigBus.Subscribe("s2")
@@ -2527,7 +2527,7 @@ func TestLLMStageTryCompleteInterrupt(t *testing.T) {
 		}
 		state := &State{
 			SessionID: "s3",
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		sigCh := sigBus.Subscribe("s3")
@@ -2571,7 +2571,7 @@ func TestLLMStageProcessInterrupt(t *testing.T) {
 		}
 		state := &State{
 			SessionID: "s-interrupt-streaming",
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		var procErr error
@@ -2633,7 +2633,7 @@ func TestLLMStageProcessInterrupt(t *testing.T) {
 		}
 		state := &State{
 			SessionID: "s-no-retry",
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		var procErr error
@@ -2680,7 +2680,7 @@ func TestLLMStage_SendsStreamTrue(t *testing.T) {
 		state := &State{
 			SessionID:    "test-session",
 			SystemPrompt: "sys",
-			Messages:     []types.Message{{Role: "user", Content: "hi"}},
+			Messages:     []types.Message{{Role: "user", Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		stage := &LLMStage{
@@ -2758,8 +2758,8 @@ func TestToolStageProcessSerialPause(t *testing.T) {
 
 		So(procErr, ShouldBeNil)
 		So(len(state.Messages), ShouldEqual, 2)
-		So(state.Messages[0].Content, ShouldEqual, "ok1")
-		So(state.Messages[1].Content, ShouldEqual, "ok2")
+		So(state.Messages[0].Text(), ShouldEqual, "ok1")
+		So(state.Messages[1].Text(), ShouldEqual, "ok2")
 	})
 }
 
@@ -2784,7 +2784,7 @@ func TestLLMStageProcessRetryPause(t *testing.T) {
 		}
 		state := &State{
 			SessionID: "s-retry-pause",
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		}
 
 		// Start Process; first tryComplete fails immediately (provider error).
@@ -2805,7 +2805,7 @@ func TestLLMStageProcessRetryPause(t *testing.T) {
 
 		So(procErr, ShouldBeNil)
 		So(len(state.Messages), ShouldEqual, 2)
-		So(state.Messages[1].Content, ShouldEqual, "recovered")
+		So(state.Messages[1].Text(), ShouldEqual, "recovered")
 	})
 }
 

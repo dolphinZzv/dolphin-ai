@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -24,8 +26,8 @@ func TestBuildMessages_WithToolCalls(t *testing.T) {
 	msgs := BuildMessages(llm.LLMRequest{
 		Messages: []types.Message{
 			{
-				Role:    types.RoleAssistant,
-				Content: "I'll call a tool",
+				Role:  types.RoleAssistant,
+				Parts: []types.ContentPart{types.TextPart("I'll call a tool")},
 				ToolCalls: []types.ToolCall{
 					{ID: "call-1", Name: "greet", Arguments: `{"name":"world"}`},
 				},
@@ -33,7 +35,7 @@ func TestBuildMessages_WithToolCalls(t *testing.T) {
 			{
 				Role:       types.RoleTool,
 				ToolCallID: "call-1",
-				Content:    "Hello, world!",
+				Parts:      []types.ContentPart{types.TextPart("Hello, world!")},
 			},
 		},
 	}, zap.NewNop())
@@ -54,6 +56,53 @@ func TestBuildMessages_WithToolCalls(t *testing.T) {
 	}
 	if msgs[1].ToolCallID != "call-1" {
 		t.Fatalf("expected 'call-1', got '%s'", msgs[1].ToolCallID)
+	}
+}
+
+func TestBuildMessages_WithImage(t *testing.T) {
+	dir := t.TempDir()
+	imgPath := filepath.Join(dir, "x.png")
+	if err := os.WriteFile(imgPath, []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	msgs := BuildMessages(llm.LLMRequest{
+		Messages: []types.Message{{
+			Role: types.RoleUser,
+			Parts: []types.ContentPart{
+				types.TextPart("describe"),
+				{Type: types.PartImage, Path: imgPath, MIME: "image/png", Filename: "x.png"},
+			},
+		}},
+	}, nil)
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	// An image-bearing user message is emitted as a content-part array.
+	parts, ok := msgs[0].Content.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected Content to be []map[string]any, got %T", msgs[0].Content)
+	}
+	if len(parts) != 2 {
+		t.Fatalf("expected 2 parts, got %d", len(parts))
+	}
+	if parts[1]["type"] != "image_url" {
+		t.Errorf("expected second part type image_url, got %v", parts[1]["type"])
+	}
+	urlMap, ok := parts[1]["image_url"].(map[string]string)
+	if !ok {
+		t.Fatalf("expected image_url to be map[string]string, got %T", parts[1]["image_url"])
+	}
+	if !strings.HasPrefix(urlMap["url"], "data:image/png;base64,") {
+		t.Errorf("expected data URL prefix, got %q", urlMap["url"])
+	}
+
+	// Text-only regression: a plain user text message yields string Content.
+	plain := BuildMessages(llm.LLMRequest{
+		Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hello")}}},
+	}, nil)
+	s, ok := plain[0].Content.(string)
+	if !ok || s != "hello" {
+		t.Errorf("expected string Content %q for text-only, got %T %v", "hello", plain[0].Content, plain[0].Content)
 	}
 }
 
@@ -245,7 +294,7 @@ func TestDefaultSchema(t *testing.T) {
 
 func TestBuildRequest(t *testing.T) {
 	msgs := []Message{{Role: "user", Content: "hello"}}
-	req := llm.LLMRequest{Model: "gpt-4", Messages: []types.Message{{Role: types.RoleUser, Content: "hi"}}, MaxTokens: 100, Stream: true}
+	req := llm.LLMRequest{Model: "gpt-4", Messages: []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}}, MaxTokens: 100, Stream: true}
 
 	t.Run("default temperature", func(t *testing.T) {
 		data, err := BuildRequest("gpt-4", msgs, llm.Config{}, req)
@@ -276,7 +325,7 @@ func TestBuildRequest(t *testing.T) {
 
 	t.Run("req temperature overrides cfg", func(t *testing.T) {
 		data, err := BuildRequest("gpt-4", msgs, llm.Config{Temperature: 0.9}, llm.LLMRequest{
-			Messages:    []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:    []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			MaxTokens:   100,
 			Temperature: 0.3,
 		})
@@ -292,7 +341,7 @@ func TestBuildRequest(t *testing.T) {
 
 	t.Run("with tools", func(t *testing.T) {
 		r := llm.LLMRequest{
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			Tools:     []types.ToolDef{{Name: "greet", Description: "Say hello"}},
 			MaxTokens: 100,
 		}
@@ -309,7 +358,7 @@ func TestBuildRequest(t *testing.T) {
 
 	t.Run("with stop", func(t *testing.T) {
 		r := llm.LLMRequest{
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			Stop:      []string{"\n"},
 			MaxTokens: 100,
 		}
@@ -326,7 +375,7 @@ func TestBuildRequest(t *testing.T) {
 
 	t.Run("with top_p", func(t *testing.T) {
 		r := llm.LLMRequest{
-			Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+			Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 			TopP:      0.9,
 			MaxTokens: 100,
 		}

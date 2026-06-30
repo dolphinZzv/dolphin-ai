@@ -150,9 +150,11 @@ type mockPermTransport struct {
 	permissionResult transport.PermissionResult
 }
 
-func (m *mockPermTransport) ID() string                                      { return m.id }
-func (m *mockPermTransport) Start(ctx context.Context) error                 { return nil }
-func (m *mockPermTransport) Read(ctx context.Context) (string, error)        { return "", nil }
+func (m *mockPermTransport) ID() string                      { return m.id }
+func (m *mockPermTransport) Start(ctx context.Context) error { return nil }
+func (m *mockPermTransport) Read(ctx context.Context) (transport.Input, error) {
+	return transport.Input{}, nil
+}
 func (m *mockPermTransport) Write(ctx context.Context, text string) error    { return nil }
 func (m *mockPermTransport) Flush() error                                    { return nil }
 func (m *mockPermTransport) Close() error                                    { return nil }

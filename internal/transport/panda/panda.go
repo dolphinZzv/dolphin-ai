@@ -207,12 +207,12 @@ func (p *Panda) Start(ctx context.Context) error {
 }
 
 // Read blocks until a message is received.
-func (p *Panda) Read(ctx context.Context) (string, error) {
+func (p *Panda) Read(ctx context.Context) (transport.Input, error) {
 	select {
 	case msg := <-p.msgChan:
-		return msg, nil
+		return transport.Input{Text: msg}, nil
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return transport.Input{}, ctx.Err()
 	}
 }
 

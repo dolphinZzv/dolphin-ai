@@ -16,7 +16,7 @@ type IO interface {
 	ID() string
 	Context() string
 	Start(ctx context.Context) error
-	Read(ctx context.Context) (string, error)
+	Read(ctx context.Context) (Input, error)
 	Write(ctx context.Context, text string) error
 	Flush() error
 	Close() error
@@ -32,6 +32,14 @@ type IO interface {
 	WriteThinking(ctx context.Context, text string) error
 	WriteToolCall(ctx context.Context, call types.ToolCall) error
 	WriteToolResult(ctx context.Context, result types.ToolResult) error
+}
+
+// Input is what a transport delivers from the user. Text carries the typed
+// line/command; Parts carries multimodal attachments (images/files). Most
+// transports populate only Text.
+type Input struct {
+	Text  string
+	Parts []types.ContentPart
 }
 
 // PermissionResult represents the outcome of a permission request.

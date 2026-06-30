@@ -451,7 +451,7 @@ func TestCrossSectionModelNameCollision(t *testing.T) {
 
 	// Verify model configs are preserved through collision renaming.
 	ch, err := mgr.CompleteStream(context.Background(), LLMRequest{
-		Messages:  []types.Message{{Role: types.RoleUser, Content: "hi"}},
+		Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
 		MaxTokens: 10,
 	})
 	if err != nil {

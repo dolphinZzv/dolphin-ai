@@ -84,7 +84,7 @@ func TestWrite(t *testing.T) {
 		Input:        "test input",
 		SystemPrompt: "system prompt",
 		Messages: []types.Message{
-			{Role: "user", Content: "hello"},
+			{Role: "user", Parts: []types.ContentPart{types.TextPart("hello")}},
 		},
 		ToolResults: []types.ToolResult{
 			{Content: "result"},

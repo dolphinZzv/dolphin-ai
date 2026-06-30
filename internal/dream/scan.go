@@ -65,7 +65,7 @@ func (d *Dream) extractFromSessions(sessions []sessionSnapshot) *ExtractResult {
 
 			switch m.Role { //nolint:exhaustive // RoleSystem not in memory
 			case types.RoleUser:
-				content := strings.TrimSpace(m.Content)
+				content := strings.TrimSpace(m.Text())
 				if content == "" {
 					continue
 				}
@@ -88,7 +88,7 @@ func (d *Dream) extractFromSessions(sessions []sessionSnapshot) *ExtractResult {
 					}
 					// Capture the last assistant action before correction.
 					lastAsst := roundAssistMsgs[len(roundAssistMsgs)-1]
-					tm.WrongAction = truncateStr(lastAsst.Content, 200)
+					tm.WrongAction = truncateStr(lastAsst.Text(), 200)
 					// Check if assistant changed behaviour after the correction.
 					if d.didAssistantRespondAfterCorrection(snap.Messages, m) {
 						res.TeachableMoments = append(res.TeachableMoments, tm)
@@ -103,7 +103,7 @@ func (d *Dream) extractFromSessions(sessions []sessionSnapshot) *ExtractResult {
 				if m.IsError {
 					res.ToolErrors = append(res.ToolErrors, ToolError{
 						ToolName:  m.ToolCallID,
-						ErrorMsg:  truncateStr(m.Content, 200),
+						ErrorMsg:  truncateStr(m.Text(), 200),
 						SessionID: snap.ID,
 						Count:     1,
 					})
@@ -173,9 +173,9 @@ func (d *Dream) extractSimilarQuestions(sessions []sessionSnapshot, res *Extract
 	var questions []qEntry
 	for _, snap := range sessions {
 		for _, m := range snap.Messages {
-			if m.Role == types.RoleUser && len(m.Content) > 20 && !strings.HasPrefix(m.Content, "/") {
+			if m.Role == types.RoleUser && len(m.Text()) > 20 && !strings.HasPrefix(m.Text(), "/") {
 				questions = append(questions, qEntry{
-					text:    strings.TrimSpace(m.Content),
+					text:    strings.TrimSpace(m.Text()),
 					session: snap.ID,
 					ts:      m.Timestamp,
 				})

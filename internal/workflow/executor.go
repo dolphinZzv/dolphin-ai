@@ -33,7 +33,7 @@ func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceRe
 	}
 
 	messages := []types.Message{
-		{Role: types.RoleUser, Content: inst.Prompt},
+		{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart(inst.Prompt)}},
 	}
 
 	tools, _ := e.toolReg.List(ctx)
@@ -85,7 +85,7 @@ func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceRe
 
 		messages = append(messages, types.Message{
 			Role:      types.RoleAssistant,
-			Content:   assistantContent,
+			Parts:     []types.ContentPart{types.TextPart(assistantContent)},
 			ToolCalls: toolCalls,
 		})
 
@@ -101,10 +101,10 @@ func (e *Engine) executeStep(ctx context.Context, inst stepInstance) *InstanceRe
 				ToolCallID: tc.ID,
 			}
 			if err != nil {
-				toolMsg.Content = err.Error()
+				toolMsg.Parts = []types.ContentPart{types.TextPart(err.Error())}
 				toolMsg.IsError = true
 			} else if result != nil {
-				toolMsg.Content = result.Content
+				toolMsg.Parts = []types.ContentPart{types.TextPart(result.Content)}
 				toolMsg.IsError = result.IsError
 			}
 			messages = append(messages, toolMsg)

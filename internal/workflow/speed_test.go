@@ -134,7 +134,7 @@ func TestSpeedComparisonUnit(t *testing.T) {
 
 	mock := &mockLLMProvider{
 		chunksFn: func(req llm.LLMRequest) []llm.LLMChunk {
-			msg := req.Messages[len(req.Messages)-1].Content
+			msg := req.Messages[len(req.Messages)-1].Text()
 
 			switch {
 			case strings.Contains(msg, "baidu"):
