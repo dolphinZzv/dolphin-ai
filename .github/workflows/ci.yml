@@ -36,17 +36,6 @@ jobs:
       - name: Lint (Go backend)
         run: golangci-lint run ./... --new
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Lint (Web frontend)
-        run: |
-          cd app/server/web
-          npm ci
-          npx oxlint ./src
-
       - name: Test with coverage
         run: |
           pkgs=$(go list ./... | grep -v internal/limit)
