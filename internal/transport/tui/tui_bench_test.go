@@ -64,8 +64,9 @@ func BenchmarkRenderIncremental_AppendNewBlock(b *testing.B) {
 	}
 }
 
-// BenchmarkAppendEntry_StreamingMerge benchmarks the fast streaming path
-// where text is merged into the last text entry (skip glamour).
+// BenchmarkAppendEntry_StreamingMerge benchmarks the streaming merge path
+// where text is appended to the last text entry and re-rendered through
+// glamour on every delta (live incremental markdown rendering).
 func BenchmarkAppendEntry_StreamingMerge(b *testing.B) {
 	sizes := []int{10, 50, 200}
 	for _, n := range sizes {

@@ -145,11 +145,11 @@ type model struct {
 	msgStartedAt       time.Time
 	spinFrame          int // rotating spinner frame, advanced each tick while pending
 	agentIO            *agentio.AgentIO
-	completedItems     []completedItem // recently finished turns
+	completedItems     []completedItem // recently finished turns (not shown in queue)
 
 	// Rendered conversation output and the incremental-rendering engine that
 	// maintains it. Embedded so legacy field accesses (m.messages,
-	// m.renderedContent, m.blockOffsets, m.textBlockDirty) and the buffer's
+	// m.renderedContent, m.blockOffsets) and the buffer's
 	// pure rendering methods resolve via promotion; the model wraps the few
 	// entry points that also need to sync the bubbletea viewport.
 	messageBuffer
@@ -573,11 +573,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.updateViewportHeight()
-		if m.textBlockDirty {
-			m.renderIncremental()
-			m.textBlockDirty = false
-			m.syncViewport()
-		}
 		m.viewport.GotoBottom()
 
 	case queueTickMsg:
@@ -930,7 +925,7 @@ func (m *model) updateViewportHeight() {
 	// Queue area: body lines (capped) + separator above the queue.
 	// queueBodyLines matches renderQueue exactly (no header line).
 	active, pending := queueCounts(m.agentIO)
-	body := queueBodyLines(active, pending, len(m.completedItems))
+	body := queueBodyLines(active, pending)
 	if body > 0 {
 		fixed += body + 1 // +1 separator
 	}
@@ -981,26 +976,26 @@ const queueMaxBodyLines = 6
 // matches renderQueue exactly — no overflow, no clipping.
 //
 // Active (in-flight) turns are NOT rendered in the queue (they show at the
-// top), so only pending + completed count. renderQueue emits one line per
-// item up to queueMaxBodyLines; when there are more items than the budget,
-// the last body line becomes a "+N more" indicator. So body lines =
-// min(total, queueMaxBodyLines) for a non-empty queue.
-func queueBodyLines(active, pending, completed int) int {
+// top), and completed turns are also not shown. Only pending turns count.
+// renderQueue emits one line per item up to queueMaxBodyLines; when there are
+// more items than the budget, the last body line becomes a "+N more" indicator.
+// So body lines = min(total, queueMaxBodyLines) for a non-empty queue.
+func queueBodyLines(active, pending int) int {
 	_ = active // active turns render at the top, not in the queue
-	total := pending + completed
+	total := pending
 	if total == 0 {
 		return 0
 	}
 	return min(total, queueMaxBodyLines)
 }
 
-func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) string {
+func renderQueue(aio *agentio.AgentIO, width int) string {
 	if aio == nil {
 		return ""
 	}
 	active := aio.ActiveSnapshot()
 	pending, _, _ := aio.QueueSnapshot()
-	if len(active)+len(pending)+len(completed) == 0 {
+	if len(active)+len(pending) == 0 {
 		return ""
 	}
 
@@ -1028,23 +1023,15 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		return "  " + moreStyle.Render(text)
 	}
 
-	// Build the ordered body rows: running agents first (by id), then the
-	// pending head, then recently completed. A single global budget governs
-	// how many render — no per-category truncation, so the "+N more" count
-	// always reflects the true number of hidden items.
+	// Build the ordered body rows: pending turns only. Active turns render at
+	// the top (current-message bar), and completed turns are not shown in the
+	// queue. A single global budget governs how many render.
 	type queueRow struct{ icon, input, timeStr string }
-	// Active (in-flight) turns are surfaced at the top of the TUI via the
-	// current-message bar, not in the queue. The queue lists only pending
-	// (not-yet-started) and recently completed turns.
-	rows := make([]queueRow, 0, len(pending)+len(completed))
+	rows := make([]queueRow, 0, len(pending))
 	for i, t := range pending {
 		icon := styleQueueWait.Render(fmt.Sprintf("#%d", i+1))
 		wait := time.Since(t.EnqueuedAt).Round(time.Second)
 		rows = append(rows, queueRow{icon, t.Input, styleQueueTime.Render(wait.String())})
-	}
-	for _, c := range completed {
-		icon := styleQueueWait.Render("✓")
-		rows = append(rows, queueRow{icon, c.input, styleQueueTime.Render(c.ago + " " + c.duration.String())})
 	}
 
 	lines := []string{}
@@ -1283,7 +1270,7 @@ func (m model) View() tea.View {
 			Render("» " + tip)
 		elements = append(elements, tipLine)
 	}
-	if q := renderQueue(m.agentIO, m.completedItems, m.width); q != "" {
+	if q := renderQueue(m.agentIO, m.width); q != "" {
 		elements = append(elements, fullSep, q)
 	}
 
@@ -1295,6 +1282,7 @@ func (m model) View() tea.View {
 	// Full-width separator + input line. The attachment preview sits between
 	// the separator and the textarea when there are pending attachments.
 	inputLine := lipgloss.NewStyle().
+		Background(adaptiveInputBg).
 		Width(m.width).
 		Render(m.textarea.View())
 	elements = append(elements, fullSep)
@@ -1591,7 +1579,7 @@ func renderCurrentMsg(msg, status string, width int) string {
 	content := label + " " + body
 	return lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(adaptiveFaint).
+		BorderForeground(adaptiveSeparator).
 		Padding(0, 1).
 		Width(width).
 		Render(content)

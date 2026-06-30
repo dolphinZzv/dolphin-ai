@@ -84,13 +84,20 @@ func TestE2E_StreamingConversation(t *testing.T) {
 	if len(sim.m.messages) == 0 {
 		t.Error("expected messages after streaming")
 	}
-	if sim.m.textBlockDirty {
-		// Flush finalizes the dirty block.
-		sim.send(flushMsg{})
-		sim.stepAll()
-		if sim.m.textBlockDirty {
-			t.Error("textBlockDirty should be false after flush")
-		}
+	// Live markdown rendering: the viewport should show formatted markdown
+	// during streaming, never the raw source markers. Glamour consumes the
+	// ** and ` delimiters, so they must not appear verbatim.
+	if strings.Contains(sim.m.renderedContent, "**bold**") {
+		t.Error("streaming text should be markdown-rendered, not raw source")
+	}
+	if strings.Contains(sim.m.renderedContent, "`code`") {
+		t.Error("streaming inline code should be markdown-rendered, not raw source")
+	}
+	// Flush is still a valid signal; it must leave content rendered.
+	sim.send(flushMsg{})
+	sim.stepAll()
+	if strings.Contains(sim.m.renderedContent, "**bold**") {
+		t.Error("rendered content should not contain raw markdown markers after flush")
 	}
 
 	// Round 2: tool call + result.
@@ -119,9 +126,9 @@ func TestE2E_StreamingConversation(t *testing.T) {
 		t.Error("expected viewport content after conversation")
 	}
 
-	// Verify dirty block is finalized at the end.
-	if sim.m.textBlockDirty {
-		t.Error("textBlockDirty should be false when conversation is done")
+	// Verify the streamed markdown stays rendered at the end.
+	if strings.Contains(sim.m.renderedContent, "**bold**") {
+		t.Error("rendered content should not contain raw markdown markers when done")
 	}
 }
 
@@ -333,47 +340,51 @@ func TestE2E_PermissionDialogSwallowsOtherKeys(t *testing.T) {
 	}
 }
 
-func TestE2E_DirtyBlockFinalizedByNonText(t *testing.T) {
+func TestE2E_LiveRenderDuringStreamingMerge(t *testing.T) {
 	sim := newSim(100, 30)
 
-	// Start streaming text.
-	sim.send(contentMsg{text: "First chunk"})
+	// Start streaming text with markdown markers.
+	sim.send(contentMsg{text: "First **bold"})
 	sim.stepAll()
-	if sim.m.textBlockDirty {
-		t.Error("first text entry should not set dirty")
+	// Even before the closing **, the viewport shows *something* rendered —
+	// never empty once text has arrived.
+	if sim.m.renderedContent == "" {
+		t.Error("rendered content should be non-empty during streaming")
 	}
 
-	// Streaming merge sets dirty.
-	sim.send(contentMsg{text: " merged"})
+	// Streaming a merge that completes the bold marker must re-render the
+	// whole text block live; the literal ** must be consumed by glamour.
+	sim.send(contentMsg{text: "** chunk"})
 	sim.stepAll()
-	if !sim.m.textBlockDirty {
-		t.Error("text merge should set dirty")
+	if strings.Contains(sim.m.renderedContent, "**bold**") {
+		t.Error("merged text block should be markdown-rendered live, not raw")
 	}
 
-	// Tool call should finalize the dirty block.
+	// A tool call arriving mid-stream must not regress the already-rendered
+	// text block back to raw source.
 	sim.send(toolCallMsg{call: types.ToolCall{Name: "finalize_test", Arguments: "{}"}})
 	sim.stepAll()
-	if sim.m.textBlockDirty {
-		t.Error("non-text entry should clear dirty flag")
+	if strings.Contains(sim.m.renderedContent, "**bold**") {
+		t.Error("non-text entry must not undo live markdown rendering")
 	}
 }
 
-func TestE2E_DirtyBlockFinalizedByFlush(t *testing.T) {
+func TestE2E_LiveRenderFinalizedByFlush(t *testing.T) {
 	sim := newSim(100, 30)
 
-	// Start streaming text.
-	sim.send(contentMsg{text: "First chunk"})
+	// Stream a complete markdown construct across two deltas.
+	sim.send(contentMsg{text: "First `code"})
 	sim.stepAll()
-	sim.send(contentMsg{text: " merged"})
+	sim.send(contentMsg{text: "` chunk"})
 	sim.stepAll()
-	if !sim.m.textBlockDirty {
-		t.Error("text merge should set dirty")
+	if strings.Contains(sim.m.renderedContent, "`code`") {
+		t.Error("inline code should be markdown-rendered live during streaming")
 	}
 
-	// Flush should finalize the dirty block.
+	// Flush must leave the content rendered.
 	sim.send(flushMsg{})
 	sim.stepAll()
-	if sim.m.textBlockDirty {
-		t.Error("flush should clear dirty flag")
+	if strings.Contains(sim.m.renderedContent, "`code`") {
+		t.Error("rendered content should not contain raw markdown markers after flush")
 	}
 }

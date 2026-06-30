@@ -1245,7 +1245,7 @@ func newTestAgentIO(t *testing.T) *agentio.AgentIO {
 
 func TestQueueBodyLines(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
-		if n := queueBodyLines(0, 0, 0); n != 0 {
+		if n := queueBodyLines(0, 0); n != 0 {
 			t.Errorf("expected 0 for empty, got %d", n)
 		}
 	})
@@ -1253,21 +1253,21 @@ func TestQueueBodyLines(t *testing.T) {
 	t.Run("active and pending under caps", func(t *testing.T) {
 		// 1 active + 1 pending → 1 body line (active renders at the top,
 		// not in the queue; only pending counts).
-		if n := queueBodyLines(1, 1, 0); n != 1 {
+		if n := queueBodyLines(1, 1); n != 1 {
 			t.Errorf("expected 1, got %d", n)
 		}
 	})
 
 	t.Run("pending under budget shows all", func(t *testing.T) {
 		// 5 pending ≤ queueMaxBodyLines → all 5 shown, no indicator.
-		if n := queueBodyLines(0, 5, 0); n != 5 {
+		if n := queueBodyLines(0, 5); n != 5 {
 			t.Errorf("expected 5 (under budget), got %d", n)
 		}
 	})
 
-	t.Run("completed overflow capped to budget", func(t *testing.T) {
-		// 10 completed > queueMaxBodyLines → budget-1 rows + 1 "+N more".
-		if n := queueBodyLines(0, 0, 10); n != queueMaxBodyLines {
+	t.Run("pending overflow capped to budget", func(t *testing.T) {
+		// 10 pending > queueMaxBodyLines → budget lines (capped).
+		if n := queueBodyLines(0, 10); n != queueMaxBodyLines {
 			t.Errorf("expected %d (capped by queueMaxBodyLines), got %d", queueMaxBodyLines, n)
 		}
 	})
@@ -1277,8 +1277,8 @@ func TestQueueBodyLines(t *testing.T) {
 		aio.SetActive("worker-1", &agentio.Turn{TurnID: "t1", SessionID: "s1", Input: "hi"})
 		aio.SendTurn(context.Background(), &agentio.Turn{Input: "next"})
 		active, pending := queueCounts(aio)
-		want := queueBodyLines(active, pending, 0)
-		s := renderQueue(aio, nil, 80)
+		want := queueBodyLines(active, pending)
+		s := renderQueue(aio, 80)
 		// renderQueue emits body lines only (no header); body == line count.
 		got := strings.Count(s, "\n")
 		if len(s) > 0 {
@@ -1292,14 +1292,14 @@ func TestQueueBodyLines(t *testing.T) {
 
 func TestRenderQueue(t *testing.T) {
 	t.Run("nil agentIO", func(t *testing.T) {
-		if s := renderQueue(nil, nil, 80); s != "" {
+		if s := renderQueue(nil, 80); s != "" {
 			t.Errorf("expected empty for nil, got %q", s)
 		}
 	})
 
 	t.Run("empty queue", func(t *testing.T) {
 		aio := newTestAgentIO(t)
-		if s := renderQueue(aio, nil, 80); s != "" {
+		if s := renderQueue(aio, 80); s != "" {
 			t.Errorf("expected empty, got %q", s)
 		}
 	})
@@ -1307,7 +1307,7 @@ func TestRenderQueue(t *testing.T) {
 	t.Run("with active turn", func(t *testing.T) {
 		aio := newTestAgentIO(t)
 		aio.SetActive("worker-1", &agentio.Turn{TurnID: "t1", SessionID: "s1", Input: "hello world"})
-		s := renderQueue(aio, nil, 80)
+		s := renderQueue(aio, 80)
 		// Active turns render at the top, not in the queue.
 		if s != "" {
 			t.Errorf("expected empty queue (active shows at top), got %q", s)
@@ -1317,7 +1317,7 @@ func TestRenderQueue(t *testing.T) {
 	t.Run("with pending turn", func(t *testing.T) {
 		aio := newTestAgentIO(t)
 		aio.SendTurn(context.Background(), &agentio.Turn{Input: "pending task"})
-		s := renderQueue(aio, nil, 80)
+		s := renderQueue(aio, 80)
 		if !strings.Contains(s, "pending task") {
 			t.Errorf("expected pending input in output, got %q", s)
 		}

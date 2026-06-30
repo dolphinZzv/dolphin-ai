@@ -8,7 +8,7 @@ import "strings"
 //
 // The buffer is intentionally pure: it knows nothing about the bubbletea
 // viewport, the selection state, or the model. Mutating methods update only
-// buffer fields (messages, renderedContent, blockOffsets, textBlockDirty);
+// buffer fields (messages, renderedContent, blockOffsets);
 // the caller is responsible for pushing renderedContent to the viewport via
 // model.syncViewport after a mutation. This separation keeps the rendering
 // engine testable without a live viewport.
@@ -23,15 +23,21 @@ type messageBuffer struct {
 	messages        []renderEntry
 	renderedContent string
 	blockOffsets    []int // byte offset in renderedContent where each block starts
-	textBlockDirty  bool  // true when the last text block has merged content not yet markdown-rendered
 }
 
 // append merges a new entry into the buffer and updates renderedContent.
 // Consecutive "text" entries are merged into a single text run so streaming
 // deltas render as one paragraph rather than one line per token.
+//
+// Every delta — including a merge into an existing text run — re-renders the
+// current text block through glamour immediately. This keeps the viewport
+// showing formatted markdown at all times during streaming, instead of raw
+// markdown source that only gets rendered at the end of the turn (which
+// caused a jarring "raw text, then re-rendered" flicker). The incremental
+// engine re-renders only the tail text block, so the per-delta cost stays
+// bounded by the size of the current paragraph, not the whole document.
 func (b *messageBuffer) append(e renderEntry) {
 	if e.style == "text" {
-		hadMerge := false
 		lines := strings.Split(e.content, "\n")
 		for i, line := range lines {
 			if i > 0 {
@@ -40,29 +46,13 @@ func (b *messageBuffer) append(e renderEntry) {
 				n := len(b.messages)
 				if n > 0 && b.messages[n-1].style == "text" {
 					b.messages[n-1].content += line
-					hadMerge = true
 				} else {
 					b.messages = append(b.messages, renderEntry{content: line, style: "text"})
 				}
 			}
 		}
-		if hadMerge {
-			// Fast path: a text delta appended to an existing text run.
-			// Defer the markdown render until the next non-text entry (or
-			// an explicit flush) — just append the raw delta so the viewport
-			// shows live output, and mark the block dirty.
-			b.renderedContent += e.content
-			b.textBlockDirty = true
-		} else {
-			b.renderIncremental()
-		}
+		b.renderIncremental()
 	} else {
-		// A non-text entry finalises any pending dirty text block first so
-		// the markdown render happens before the new block is laid out.
-		if b.textBlockDirty {
-			b.renderIncremental()
-			b.textBlockDirty = false
-		}
 		b.messages = append(b.messages, e)
 		b.renderIncremental()
 	}
@@ -271,7 +261,6 @@ func (b *messageBuffer) computeBlockOffsets(startIdx int, baseOffset int) []int 
 // blockOffsets. Used when the change is too close to the start for an
 // incremental update, or after a trim.
 func (b *messageBuffer) fullRebuild() {
-	b.textBlockDirty = false
 	var out strings.Builder
 	b.blockOffsets = nil
 	i := 0
