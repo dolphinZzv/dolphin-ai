@@ -1251,9 +1251,10 @@ func TestQueueBodyLines(t *testing.T) {
 	})
 
 	t.Run("active and pending under caps", func(t *testing.T) {
-		// 1 active + 1 pending → 2 body lines, no indicators.
-		if n := queueBodyLines(1, 1, 0); n != 2 {
-			t.Errorf("expected 2, got %d", n)
+		// 1 active + 1 pending → 1 body line (active renders at the top,
+		// not in the queue; only pending counts).
+		if n := queueBodyLines(1, 1, 0); n != 1 {
+			t.Errorf("expected 1, got %d", n)
 		}
 	})
 
@@ -1278,8 +1279,11 @@ func TestQueueBodyLines(t *testing.T) {
 		active, pending := queueCounts(aio)
 		want := queueBodyLines(active, pending, 0)
 		s := renderQueue(aio, nil, 80)
-		// renderQueue emits header + body lines; body = total lines - 1.
-		got := strings.Count(s, "\n") // header is line 0, so body lines == newline count
+		// renderQueue emits body lines only (no header); body == line count.
+		got := strings.Count(s, "\n")
+		if len(s) > 0 {
+			got++ // trailing line has no newline
+		}
 		if got != want {
 			t.Errorf("body lines mismatch: queueBodyLines=%d renderQueue body=%d", want, got)
 		}
@@ -1304,11 +1308,9 @@ func TestRenderQueue(t *testing.T) {
 		aio := newTestAgentIO(t)
 		aio.SetActive("worker-1", &agentio.Turn{TurnID: "t1", SessionID: "s1", Input: "hello world"})
 		s := renderQueue(aio, nil, 80)
-		if !strings.Contains(s, "Queue") {
-			t.Errorf("expected Queue header, got %q", s)
-		}
-		if !strings.Contains(s, "hello world") {
-			t.Errorf("expected input in output, got %q", s)
+		// Active turns render at the top, not in the queue.
+		if s != "" {
+			t.Errorf("expected empty queue (active shows at top), got %q", s)
 		}
 	})
 
@@ -1316,11 +1318,8 @@ func TestRenderQueue(t *testing.T) {
 		aio := newTestAgentIO(t)
 		aio.SendTurn(context.Background(), &agentio.Turn{Input: "pending task"})
 		s := renderQueue(aio, nil, 80)
-		if !strings.Contains(s, "Queue") {
-			t.Errorf("expected Queue header, got %q", s)
-		}
 		if !strings.Contains(s, "pending task") {
-			t.Errorf("expected pending input, got %q", s)
+			t.Errorf("expected pending input in output, got %q", s)
 		}
 	})
 }

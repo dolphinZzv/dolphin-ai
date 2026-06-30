@@ -137,6 +137,7 @@ type model struct {
 	toolCalls          int
 	mcpToolCount       int
 	tipsText           string
+	themeConfig        map[string]any // raw tui.theme config (active + themes), for /theme switching
 	setPriority        func()
 	savePrefs          func()
 	currentMsg         string // user message currently being processed
@@ -410,6 +411,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.notifyPrefsChanged()
 				return m, tea.Batch(cmds...)
 			}
+			if input == "/theme" || strings.HasPrefix(input, "/theme ") {
+				m.tipsText = m.switchTheme(input)
+				return m, tea.Batch(cmds...)
+			}
 			if input != "" {
 				if len(m.inputHistory) == 0 || m.inputHistory[len(m.inputHistory)-1] != input {
 					m.inputHistory = append(m.inputHistory, input)
@@ -553,8 +558,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case flushMsg:
 		m.msgStatus = "success"
+		// Keep currentMsg visible after completion — the top bar shows the
+		// last-processed message with its result icon (✓/✗). It is replaced
+		// when the next turn starts.
 		p := m.currentMsg
-		m.currentMsg = ""
 		if p != "" {
 			m.completedItems = append(m.completedItems, completedItem{
 				input:    p,
@@ -915,16 +922,17 @@ func (m *model) updateViewportHeight() {
 	if len(m.attachments) > 0 {
 		fixed++
 	}
-	// Tips line — shown between viewport and queue when a tip is active.
-	if m.tipsText != "" {
+	// Tips line — shown between viewport and queue when a tip is active,
+	// or when the viewport is scrolled up (jump-back hint).
+	if m.tipsText != "" || (m.ready && !m.viewport.AtBottom()) {
 		fixed++
 	}
-	// Queue area: header + body lines (capped per category) + separator
-	// above the queue. queueBodyLines matches renderQueue exactly.
+	// Queue area: body lines (capped) + separator above the queue.
+	// queueBodyLines matches renderQueue exactly (no header line).
 	active, pending := queueCounts(m.agentIO)
 	body := queueBodyLines(active, pending, len(m.completedItems))
 	if body > 0 {
-		fixed += body + 2 // +1 header, +1 separator
+		fixed += body + 1 // +1 separator
 	}
 	// Floating bar — the current-message bar and/or a scroll indicator —
 	// shown whenever the viewport is scrolled away from the bottom.
@@ -968,16 +976,18 @@ func queueCounts(aio *agentio.AgentIO) (active, pending int) {
 // The queue area is kept compact so the input area stays prominent.
 const queueMaxBodyLines = 6
 
-// queueBodyLines returns the number of body lines (excluding the "☰ Queue"
-// header) renderQueue will emit for the given populations. updateViewportHeight
-// uses this so the reserved height matches renderQueue exactly — no overflow,
-// no clipping.
+// queueBodyLines returns the number of body lines renderQueue will emit for
+// the given populations. updateViewportHeight uses this so the reserved height
+// matches renderQueue exactly — no overflow, no clipping.
 //
-// renderQueue emits one line per item up to queueMaxBodyLines; when there are
-// more items than the budget, the last body line becomes a "+N more" indicator.
-// So body lines = min(total, queueMaxBodyLines) for a non-empty queue.
+// Active (in-flight) turns are NOT rendered in the queue (they show at the
+// top), so only pending + completed count. renderQueue emits one line per
+// item up to queueMaxBodyLines; when there are more items than the budget,
+// the last body line becomes a "+N more" indicator. So body lines =
+// min(total, queueMaxBodyLines) for a non-empty queue.
 func queueBodyLines(active, pending, completed int) int {
-	total := active + pending + completed
+	_ = active // active turns render at the top, not in the queue
+	total := pending + completed
 	if total == 0 {
 		return 0
 	}
@@ -993,11 +1003,6 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 	if len(active)+len(pending)+len(completed) == 0 {
 		return ""
 	}
-
-	header := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("208")).
-		Bold(true).
-		Render(i18n.T("tui.queue_title"))
 
 	renderLine := func(icon, input, timeStr string) string {
 		// 2 spaces indent + icon + space + separator " — " + time
@@ -1028,17 +1033,10 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 	// how many render — no per-category truncation, so the "+N more" count
 	// always reflects the true number of hidden items.
 	type queueRow struct{ icon, input, timeStr string }
-	rows := make([]queueRow, 0, len(active)+len(pending)+len(completed))
-	for _, id := range sortedKeys(active) {
-		t := active[id]
-		icon := styleQueueActive.Render("▶")
-		elapsed := time.Since(t.StartedAt).Round(time.Second)
-		timeStr := elapsed.String()
-		if t.CurrentActivity != "" {
-			timeStr += " " + t.CurrentActivity
-		}
-		rows = append(rows, queueRow{icon, t.Input, styleQueueTime.Render(timeStr)})
-	}
+	// Active (in-flight) turns are surfaced at the top of the TUI via the
+	// current-message bar, not in the queue. The queue lists only pending
+	// (not-yet-started) and recently completed turns.
+	rows := make([]queueRow, 0, len(pending)+len(completed))
 	for i, t := range pending {
 		icon := styleQueueWait.Render(fmt.Sprintf("#%d", i+1))
 		wait := time.Since(t.EnqueuedAt).Round(time.Second)
@@ -1049,7 +1047,7 @@ func renderQueue(aio *agentio.AgentIO, completed []completedItem, width int) str
 		rows = append(rows, queueRow{icon, c.input, styleQueueTime.Render(c.ago + " " + c.duration.String())})
 	}
 
-	lines := []string{header}
+	lines := []string{}
 	if len(rows) > queueMaxBodyLines {
 		// Budget exhausted: show queueMaxBodyLines-1 real rows, then a
 		// compact "+N more" indicator covering everything not shown.
@@ -1105,6 +1103,37 @@ func newTuiView(s string) tea.View {
 	v.AltScreen = true
 	v.MouseMode = tea.MouseModeCellMotion
 	return v
+}
+
+// switchTheme handles the "/theme" and "/theme <name>" commands.
+// With no argument it cycles to the next available theme; with a name it
+// switches to that theme if it exists. The returned string is a status tip.
+func (m model) switchTheme(input string) string {
+	names := availableThemes(m.themeConfig)
+	cur := currentThemeName(m.themeConfig)
+
+	arg := strings.TrimSpace(strings.TrimPrefix(input, "/theme"))
+	if arg == "" {
+		// Cycle to the next theme.
+		next := names[0]
+		for i, n := range names {
+			if n == cur && i+1 < len(names) {
+				next = names[i+1]
+				break
+			}
+		}
+		applyTheme(next, m.themeConfig)
+		return fmt.Sprintf(i18n.T("tui.theme_switched"), next)
+	}
+
+	// Validate the requested theme exists.
+	for _, n := range names {
+		if n == arg {
+			applyTheme(arg, m.themeConfig)
+			return fmt.Sprintf(i18n.T("tui.theme_switched"), arg)
+		}
+	}
+	return fmt.Sprintf(i18n.T("tui.theme_not_found"), arg)
 }
 
 func (m model) View() tea.View {
@@ -1220,7 +1249,7 @@ func (m model) View() tea.View {
 		// Always show the in-flight message bar at the top when
 		// a turn is processing, so the user never loses sight of
 		// what they asked.
-		viewportElements = append(viewportElements, renderCurrentMsg(m.currentMsg, m.username, m.msgStatus, viewWidth, m.viewport.ScrollPercent()))
+		viewportElements = append(viewportElements, renderCurrentMsg(m.currentMsg, m.msgStatus, viewWidth))
 	}
 	viewportElements = append(viewportElements, viewportView)
 	viewportColumn := lipgloss.JoinVertical(lipgloss.Left, viewportElements...)
@@ -1237,12 +1266,21 @@ func (m model) View() tea.View {
 	var elements []string
 	elements = append(elements, topRow)
 	// Tips banner between viewport and queue — brief notifications for
-	// toggles, copy confirmations, etc.
-	if m.tipsText != "" {
+	// toggles, copy confirmations, etc. When scrolled up and no other tip
+	// is active, show the jump-back hint here instead of at the top.
+	tip := m.tipsText
+	if tip == "" && scrolled && m.viewport.ScrollPercent() >= 0 {
+		pct := m.viewport.ScrollPercent()
+		if pct > 1 {
+			pct = 1
+		}
+		tip = fmt.Sprintf(i18n.T("tui.scroll_hint_full"), int(pct*100+0.5))
+	}
+	if tip != "" {
 		tipLine := lipgloss.NewStyle().
 			Foreground(adaptiveFaint).
 			Width(m.width).
-			Render("💡 " + m.tipsText)
+			Render("» " + tip)
 		elements = append(elements, tipLine)
 	}
 	if q := renderQueue(m.agentIO, m.completedItems, m.width); q != "" {
@@ -1266,6 +1304,15 @@ func (m model) View() tea.View {
 	elements = append(elements, inputLine, fullSep, statusBar)
 
 	mainView := lipgloss.JoinVertical(lipgloss.Left, elements...)
+
+	// Apply the theme viewport background across the whole TUI when set.
+	// A nil viewportBG (the default) leaves the terminal background untouched.
+	if viewportBG != nil {
+		mainView = lipgloss.NewStyle().
+			Background(viewportBG).
+			Width(m.width).
+			Render(mainView)
+	}
 
 	if m.permDialog != nil {
 		dialog := renderPermDialog(*m.permDialog, m.width, m.height-2)
@@ -1522,26 +1569,18 @@ func (m model) renderSideStatus() string {
 	return boxStyle.Render(body)
 }
 
-func renderCurrentMsg(msg, username, status string, width int, scrollPct float64) string {
-	icon := "⏳"
+func renderCurrentMsg(msg, status string, width int) string {
+	icon := "▸"
 	switch status {
 	case "success":
-		icon = "✅"
+		icon = "✓"
 	case "error":
-		icon = "❌"
+		icon = "✗"
 	}
 	label := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("208")).
-		Render(icon + " " + username + ":")
-	// When scrolled up, append a scroll-position + jump hint on the right
-	// so the user knows how far up they are and how to return.
-	scrollSuffix := ""
-	if scrollPct >= 0 {
-		scrollSuffix = lipgloss.NewStyle().
-			Foreground(adaptiveFaint).
-			Render(fmt.Sprintf(i18n.T("tui.scroll_hint_short"), int(scrollPct*100+0.5)))
-	}
-	avail := width - lipgloss.Width(label) - 3 - lipgloss.Width(scrollSuffix)
+		Render(icon)
+	avail := width - lipgloss.Width(label) - 3
 	if avail < 4 {
 		avail = 4
 	}
@@ -1549,15 +1588,7 @@ func renderCurrentMsg(msg, username, status string, width int, scrollPct float64
 		Foreground(lipgloss.Color("252")).
 		MaxWidth(avail).
 		Render(msg)
-	// Pad body so the scroll suffix right-aligns.
-	pad := avail - lipgloss.Width(body)
-	if pad < 0 {
-		pad = 0
-	}
-	content := label + " " + body + strings.Repeat(" ", pad)
-	if scrollSuffix != "" {
-		content += " " + scrollSuffix
-	}
+	content := label + " " + body
 	return lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder(), false, false, true, false).
 		BorderForeground(adaptiveFaint).

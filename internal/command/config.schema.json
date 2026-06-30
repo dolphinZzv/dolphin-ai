@@ -231,7 +231,49 @@
       "additionalProperties": false,
       "properties": {
         "enabled": { "type": "boolean", "default": false },
-        "theme": { "type": "string", "enum": ["auto", "dark", "light"], "default": "auto" },
+        "theme": {
+          "type": "object",
+          "description": "Custom TUI theme. `active` selects a named theme under `themes`; each theme has light/dark palettes auto-selected by terminal background.",
+          "additionalProperties": false,
+          "properties": {
+            "active": { "type": "string", "default": "default" },
+            "themes": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "light": {
+                    "type": "object",
+                    "description": "Light-terminal palette. Colors accept hex (#rrggbb), ANSI 256 numbers, or named colors. Empty fields fall back to the default theme.",
+                    "additionalProperties": false,
+                    "properties": {
+                      "user_message": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "tool_use": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "tool_result": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "thinking": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "response": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "background": { "type": "string", "description": "Whole-TUI background. \"default\" or empty = follow terminal." }
+                    }
+                  },
+                  "dark": {
+                    "type": "object",
+                    "description": "Dark-terminal palette. Colors accept hex (#rrggbb), ANSI 256 numbers, or named colors. Empty fields fall back to the default theme.",
+                    "additionalProperties": false,
+                    "properties": {
+                      "user_message": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "tool_use": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "tool_result": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "thinking": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "response": { "type": "object", "properties": { "fg": { "type": "string" }, "bg": { "type": "string" } }, "additionalProperties": false },
+                      "background": { "type": "string", "description": "Whole-TUI background. \"default\" or empty = follow terminal." }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         "show_tools": { "type": "boolean", "default": false },
         "show_thinking": { "type": "boolean", "default": false },
         "history_file": { "type": "string", "description": "Path to input history file" }

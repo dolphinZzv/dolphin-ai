@@ -55,7 +55,7 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 			}
 			// Slash-command completions for the TUI input area.
 			if c.CmdReg != nil {
-				tuiCmds := []string{"/tools", "/thinking", "/windows", "/windows status", "/exit"}
+				tuiCmds := []string{"/tools", "/thinking", "/theme", "/windows", "/windows status", "/exit"}
 				tc.Config["get_completions"] = func(prefix string) []string {
 					reg := c.CmdReg.Completions(prefix)
 					for _, t := range tuiCmds {
@@ -285,7 +285,7 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 				Config: map[string]any{
 					"type":                  "tui",
 					"agent_name":            agentName,
-					"theme":                 cfg.GetString("tui.theme"),
+					"theme":                 cfg.Get("tui.theme"),
 					"model":                 cfg.GetString("llm.use"),
 					"show_tools":            cfg.GetBool("tui.show_tools"),
 					"show_thinking":         cfg.GetBool("tui.show_thinking"),

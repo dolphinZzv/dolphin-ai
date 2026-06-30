@@ -4,6 +4,8 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+- **TUI 自定义主题系统**: 新增 `tui.theme` 配置，支持多套命名主题，每套含 light/dark 两组配色（按终端背景自动选择）。可主题化 user_message/tool_use/tool_result/thinking/response 的前景/背景色及整个 TUI 底色（`background: "default"` 跟随终端）。颜色支持 hex/ANSI256/命名色，留空回退内置 `default` 主题。新增 TUI 独有的 `/theme` 命令（无参循环、`/theme <name>` 指定切换）。
+- **TUI UI 调整**: 用户消息每行加 `> ` 标识；welcome 页 pwd/branch 下加空行；CurrentMsg 顶部栏去掉用户名、emoji 改符号图标（▸/✓/✗）且处理完不消失；Ctrl+G 滚动提示从顶部栏移到 tips 区（不再与右下角百分比重复）；队列去掉标题行、active 不入队（在顶部显示），仅列 pending+completed；tip 符号 `💡`→`»`，中文队列符号统一为 `☰`。
 - **TUI 多模态（图片）输入支持**: `types.Message` 由单一 `Content string` 重构为 `Parts []ContentPart`，使多模态内容能到达 LLM。`transport.IO.Read` 改为返回 `Input{Text, Parts}`，全部 10 个 transport 实现已迁移；附件经 `agentio.Turn`/`agentloop.State` 流入 `MemoryReadStage`。openai/anthropic build 在含图片时发出 `image_url`/`image` base64 块（纯文本路径行为不变；图片缺失降级为文本占位）。TUI 通过 `tea.PasteMsg` 捕获粘贴/拖拽的文件路径作为附件（≤20MB），输入框上方显示预览，空输入退格移除、Ctrl+X 清空。压缩摘要标注附件，`estimateTokens` 计入图片。自定义 `UnmarshalJSON` 兼容旧 `{"content":"..."}` session 文件。顺带修复提交闭包丢失附件、PasteMsg 重复插入两个 bug，以及同步 embedded `config.schema.json` 缺失的 mcp `headers` 字段。
 - **Panda CI (回调/调用) 消息支持**: `handleMsgPush` 现在允许 ContentForm (10) 和 ContentFormResponse (11) 消息通过，修复 Panda 交互式表单回调消息被丢弃的问题。
 - **MCP SSE 支持自定义 HTTP 标头**: MCP Client 和 LazyClient 新增 `SetHeaders` 方法，支持通过 `mcp_servers[].headers` 配置自定义请求标头。`ToolDesc` 新增 `Headers` 字段支持传输层 MCP 来源。

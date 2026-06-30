@@ -274,36 +274,26 @@ func TestView_NoSpinnerWhenNotPending(t *testing.T) {
 	}
 }
 
-// renderCurrentMsg should show the username, the status icon, and — when
-// scrolled — a right-aligned scroll-position + jump hint.
+// renderCurrentMsg should show the status icon and the message body.
 func TestRenderCurrentMsg(t *testing.T) {
-	out := renderCurrentMsg("doing work", "alice", "pending", 80, 0.42)
+	out := renderCurrentMsg("doing work", "pending", 80)
 	plain := ansiRe.ReplaceAllString(out, "")
-	if !strings.Contains(plain, "alice") {
-		t.Errorf("expected username, got: %s", plain)
-	}
 	if !strings.Contains(plain, "doing work") {
 		t.Errorf("expected message body, got: %s", plain)
 	}
-	if !strings.Contains(plain, "⏳") {
+	if !strings.Contains(plain, "▸") {
 		t.Errorf("expected pending icon, got: %s", plain)
-	}
-	if !strings.Contains(plain, "42%") {
-		t.Errorf("expected scroll percent, got: %s", plain)
-	}
-	if !strings.Contains(plain, "Ctrl+G") {
-		t.Errorf("expected Ctrl+G hint, got: %s", plain)
 	}
 }
 
 func TestRenderCurrentMsg_StatusIcons(t *testing.T) {
 	cases := []struct{ status, icon string }{
-		{"success", "✅"},
-		{"error", "❌"},
-		{"pending", "⏳"},
+		{"success", "✓"},
+		{"error", "✗"},
+		{"pending", "▸"},
 	}
 	for _, c := range cases {
-		out := renderCurrentMsg("x", "u", c.status, 80, -1)
+		out := renderCurrentMsg("x", c.status, 80)
 		plain := ansiRe.ReplaceAllString(out, "")
 		if !strings.Contains(plain, c.icon) {
 			t.Errorf("status %q: expected icon %s, got: %s", c.status, c.icon, plain)

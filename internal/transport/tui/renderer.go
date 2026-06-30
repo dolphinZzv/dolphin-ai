@@ -34,14 +34,37 @@ var (
 var viewportWidth int
 
 func init() {
+	// Build the markdown renderer once. Style variables are populated by
+	// rebuildStyles(), which is called from applyTheme() at startup.
+	rebuildStyles()
+	r, err := glamour.NewTermRenderer(
+		glamour.WithEnvironmentConfig(),
+	)
+	if err == nil {
+		mdRenderer = r
+	}
+}
+
+// rebuildStyles (re)builds package style variables from the current theme
+// colors. Called once at init and again whenever applyTheme runs.
+func rebuildStyles() {
 	styleThinking = lipgloss.NewStyle().
 		Foreground(adaptiveThinking)
+	if thinkBG != nil {
+		styleThinking = styleThinking.Background(thinkBG)
+	}
 
 	styleToolCall = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("117"))
+		Foreground(adaptiveToolUse)
+	if toolUseBG != nil {
+		styleToolCall = styleToolCall.Background(toolUseBG)
+	}
 
 	styleToolResult = lipgloss.NewStyle().
 		Foreground(adaptiveToolResult)
+	if toolResBG != nil {
+		styleToolResult = styleToolResult.Background(toolResBG)
+	}
 
 	styleToolError = lipgloss.NewStyle().
 		Foreground(adaptiveError)
@@ -55,7 +78,11 @@ func init() {
 	styleSeparatorFaint = lipgloss.NewStyle().
 		Foreground(adaptiveFaint)
 
-	styleUserText = lipgloss.NewStyle()
+	styleUserText = lipgloss.NewStyle().
+		Foreground(userMsgFG)
+	if userMsgBG != nil {
+		styleUserText = styleUserText.Background(userMsgBG)
+	}
 
 	styleQueueActive = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("40"))
@@ -66,13 +93,6 @@ func init() {
 
 	styleAttachment = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("215"))
-
-	r, err := glamour.NewTermRenderer(
-		glamour.WithEnvironmentConfig(),
-	)
-	if err == nil {
-		mdRenderer = r
-	}
 }
 
 func renderStyled(e renderEntry) string {
@@ -92,11 +112,21 @@ func renderStyled(e renderEntry) string {
 	case "system":
 		return styleSystem.Render(e.content)
 	case "user_text":
-		content := padLines(e.content, 3)
+		// Prefix each line with "> " to mark the user's message; blank
+		// lines get just the marker gutter so the block stays aligned.
+		lines := strings.Split(e.content, "\n")
+		for i, line := range lines {
+			if line == "" {
+				lines[i] = "> "
+			} else {
+				lines[i] = "> " + line
+			}
+		}
+		content := strings.Join(lines, "\n")
 		// Pad each line to viewportWidth so the background fills
 		// the entire line, not just the text area.
 		if viewportWidth > 0 {
-			lines := strings.Split(content, "\n")
+			lines = strings.Split(content, "\n")
 			for i, line := range lines {
 				if w := lipgloss.Width(line); w < viewportWidth {
 					lines[i] = line + strings.Repeat(" ", viewportWidth-w)
@@ -148,7 +178,20 @@ func renderMarkdown(s string) string {
 	for len(cleaned) > 0 && cleaned[0] == "" {
 		cleaned = cleaned[1:]
 	}
-	return padLines(strings.Join(cleaned, "\n"), 1)
+	joined := padLines(strings.Join(cleaned, "\n"), 1)
+	// Apply the theme response background (if set) so the assistant's
+	// reply block sits on a colored field. Foreground is left to glamour.
+	if respBG != nil {
+		bgStyle := lipgloss.NewStyle().Background(respBG)
+		lines := strings.Split(joined, "\n")
+		for i, line := range lines {
+			if line != "" {
+				lines[i] = bgStyle.Render(line)
+			}
+		}
+		joined = strings.Join(lines, "\n")
+	}
+	return joined
 }
 
 func renderSeparator(name string, width int) string {

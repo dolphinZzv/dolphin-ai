@@ -77,6 +77,7 @@ func (m model) renderWelcome() string {
 	lines = append(lines, tipLine)
 	lines = append(lines, "")
 	lines = append(lines, faintStyle.Render(locLine))
+	lines = append(lines, "")
 	lines = append(lines, faintStyle.Render(versionLine))
 
 	body := strings.Join(lines, "\n")

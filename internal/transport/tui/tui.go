@@ -61,6 +61,11 @@ func init() {
 		}
 		tui := NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger, toolReg)
 		tui.getCompletions = getCompletions
+		// Apply the user's TUI theme (active name + named palettes) from
+		// config.yaml's tui.theme. Falls back to the built-in default theme.
+		themeConfig, _ := cfg["theme"].(map[string]any)
+		tui.themeConfig = themeConfig
+		applyTheme(strVal(themeConfig, "active"), themeConfig)
 		return tui, nil
 	})
 }
@@ -93,6 +98,7 @@ type TUI struct {
 	thinking           bool
 	thinkingFor        func(string) bool
 	compMaxTokens      int
+	themeConfig        map[string]any
 	limiter            *limit.Limiter
 	logger             *zap.Logger
 	toolReg            *tool.Registry
@@ -173,6 +179,7 @@ func (t *TUI) Start(_ context.Context) error {
 	m.getCompletions = t.getCompletions
 	m.version = t.version
 	m.toolParallelism = t.toolParallelism
+	m.themeConfig = t.themeConfig
 
 	// Set up callbacks for model → TUI communication.
 	m.setPriority = func() {
