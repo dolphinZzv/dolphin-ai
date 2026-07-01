@@ -91,11 +91,11 @@ dolphin --config /path/to/config.yaml
 | DeepSeek | Chat / Anthropic | base | 内置 `defaultBaseURL`，开箱即用 |
 | Mimo   | Chat / Responses / Anthropic | base | 内置 `defaultBaseURL`，三协议全通 |
 | LongCat | Chat / Anthropic | base | 内置 `defaultBaseURL` |
-| OpenAI  | Chat | base | - |
-| Anthropic | Anthropic | base | - |
+| OpenAI  | Chat | unknown | 无资源验证 |
+| Anthropic | Anthropic | unknown | 无资源验证 |
 | OpenRouter | Chat | base | 内置 `defaultBaseURL` + 自动 Referer/Title header |
 
-> **支持级别说明：** `base` — 基本可用，协议适配通过，可直接配置使用。
+> **支持级别说明：** `base` — 基本可用，协议适配通过，可直接配置使用。`unknown` — 协议适配存在但无资源验证，不保证可用性。
 
 | 配置项 | 类型 | 默认 | 说明 |
 |--------|------|------|------|
