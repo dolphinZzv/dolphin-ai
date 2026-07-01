@@ -37,6 +37,9 @@ func NewAnthropicProvider(modelName string) llm.ProviderFactory {
 				for k, v := range mergedHeaders(cfg, mc) {
 					httpReq.Header.Set(k, v)
 				}
+				for k, v := range providerHeaders(cfg) {
+					httpReq.Header.Set(k, v)
+				}
 				if req.Stream {
 					return proto.DoStream(ctx, httpReq, req.Timeout,
 						anthropicproto.NewChunkDecoder, anthropicproto.DecodeError, log)

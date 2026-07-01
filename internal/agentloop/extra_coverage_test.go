@@ -370,7 +370,7 @@ func (t *testEchoTool) Execute(_ context.Context, call types.ToolCall) (*types.T
 
 type emptyMemory struct{}
 
-func (m *emptyMemory) Read(_ context.Context, _ string) ([]types.Message, error) {
+func (m *emptyMemory) Read(_ context.Context, _ string, _, _ int) ([]types.Message, error) {
 	return nil, nil
 }
 func (m *emptyMemory) Write(_ context.Context, _ string, _ types.Message) error { return nil }

@@ -208,7 +208,7 @@ func TestCompositor(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(state.Done, ShouldBeTrue)
 
-			msgs, _ := mem.Read(context.Background(), "sid")
+			msgs, _ := mem.Read(context.Background(), "sid", 0, 0)
 			So(len(msgs), ShouldEqual, 2)
 		})
 

@@ -21,7 +21,10 @@ import (
 	"dolphin/internal/types"
 )
 
-const maxMessages = 500
+const (
+	maxMessages       = 500
+	maxHistoryRestore = 5 // max messages to restore from history on startup
+)
 
 // spinnerFrames is the braille spinner shown in the status bar while a turn
 // is in progress, so the user gets live feedback even when tool/thinking
@@ -58,7 +61,8 @@ type (
 		text     string
 		duration time.Duration
 	}
-	clearTipsMsg struct{}
+	clearTipsMsg        struct{}
+	clearQuitConfirmMsg struct{}
 	usageMsg     struct {
 		inputTokens   int
 		outputTokens  int
@@ -70,6 +74,9 @@ type (
 		toolCalls     int
 		compMaxTokens int64
 	}
+	// historyMsg carries rendered entries restored from a prior session
+	// on TUI startup so the conversation viewport is not empty.
+	historyMsg struct{ entries []renderEntry }
 )
 
 // renderEntry is a rendered line or block in the conversation viewport.
@@ -96,6 +103,7 @@ type model struct {
 	inThinking         bool
 	inToolCall         bool
 	paused             bool
+	quitConfirm        bool // set after first ctrl+c when idle; second ctrl+c quits
 	msgChan            chan userInput
 	permCh             chan string
 	attachments        []types.ContentPart // pending attachments for the next submit
@@ -142,6 +150,7 @@ type model struct {
 	themeConfig        map[string]any // raw tui.theme config (active + themes), for /theme switching
 	setPriority        func()
 	savePrefs          func()
+	shutdown           func() // cancels the TUI context, triggering app shutdown
 	currentMsg         string // user message currently being processed
 	msgStatus          string // "pending", "success", "error"
 	msgStartedAt       time.Time
@@ -279,7 +288,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
-		// ctrl+c: stop the current turn if one is running, otherwise quit.
+		// ctrl+c: stop the current turn if one is running, otherwise
+		// confirm-then-quit (double-tap to exit).
 		if msg.String() == "ctrl+c" {
 			// Permission dialog is modal: ctrl+c always escapes it.
 			if m.permDialog != nil {
@@ -287,6 +297,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if m.msgStatus == "pending" {
 				// Interrupt the running turn — same as /session stop.
+				m.quitConfirm = false
 				m.completions = nil
 				m.completionIdx = 0
 				m.completionPrefix = ""
@@ -298,7 +309,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
+			if !m.quitConfirm {
+				m.quitConfirm = true
+				m.tipsText = i18n.T("tui.ctrl_c_confirm_quit")
+				m.updateViewportHeight()
+				return m, nil
+			}
+			if m.shutdown != nil {
+				m.shutdown()
+			}
 			return m, tea.Quit
+		}
+		// Any non-ctrl+c key clears the quit confirmation.
+		if m.quitConfirm {
+			m.quitConfirm = false
+			if m.tipsText == i18n.T("tui.ctrl_c_confirm_quit") {
+				m.tipsText = ""
+				m.updateViewportHeight()
+			}
 		}
 		// The permission dialog is modal: it captures every keystroke and
 		// returns early so nothing is typed into the textarea or routed to
@@ -617,6 +645,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateViewportHeight()
 		m.viewport.GotoBottom()
 
+	case historyMsg:
+		for _, e := range msg.entries {
+			m.appendEntry(e)
+		}
+		m.viewport.GotoBottom()
+
 	case queueTickMsg:
 		m.updateViewportHeight()
 		// Advance the working spinner each tick so the user sees live
@@ -648,6 +682,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case clearTipsMsg:
 		m.tipsText = ""
 		m.updateViewportHeight()
+
+	case clearQuitConfirmMsg:
+		m.quitConfirm = false
 
 	case usageMsg:
 		m.inputTokens = msg.inputTokens
@@ -1612,12 +1649,11 @@ func renderCurrentMsg(msg, status string, width int) string {
 		MaxWidth(avail).
 		Render(msg)
 	content := label + " " + body
-	return lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(adaptiveSeparator).
-		Padding(0, 1).
-		Width(width).
-		Render(content)
+	sep := styleSeparator.Render(strings.Repeat("-", width))
+	return lipgloss.JoinVertical(lipgloss.Left,
+		lipgloss.NewStyle().Padding(0, 1).Width(width).Render(content),
+		sep,
+	)
 }
 
 // renderScrollIndicator is the floating bar shown when the user has scrolled
@@ -1775,4 +1811,75 @@ func isSessionTipMsg(text string) bool {
 		return true
 	}
 	return false
+}
+
+// messagesToEntries converts persisted session messages back to renderEntry
+// for display in the TUI message viewport. It is used on startup to restore
+// the conversation after a restart.
+func messagesToEntries(msgs []types.Message, showThinking, showTools bool) []renderEntry {
+	var entries []renderEntry
+	for _, msg := range msgs {
+		if msg.IsPartial {
+			continue
+		}
+		switch msg.Role {
+		case types.RoleUser:
+			text := msg.Text()
+			for _, p := range msg.Parts {
+				if p.Type != types.PartText {
+					name := p.Filename
+					if name == "" {
+						name = filepath.Base(p.Path)
+					}
+					text += "\n📎 " + name
+				}
+			}
+			style := "user_text"
+			if msg.IsSummary {
+				text = "📋 " + text
+				style = "system"
+			}
+			entries = append(entries, renderEntry{content: text, style: style})
+
+		case types.RoleAssistant:
+			if msg.Thinking != "" && showThinking {
+				entries = append(entries, renderEntry{
+					content: "✽ " + padThinkingCont(msg.Thinking),
+					style:   "thinking",
+				})
+			}
+			if len(msg.ToolCalls) > 0 && showTools {
+				for _, tc := range msg.ToolCalls {
+					entries = append(entries, renderEntry{
+						content:    fmt.Sprintf("⏺ %s(%s)", tc.Name, tc.Arguments),
+						style:      "tool_call",
+						toolCallID: tc.ID,
+					})
+				}
+			}
+			if text := msg.Text(); text != "" {
+				entries = append(entries, renderEntry{content: text, style: "text"})
+			}
+
+		case types.RoleTool:
+			content := strings.TrimRight(msg.Text(), "\n")
+			if msg.IsError {
+				entries = append(entries, renderEntry{
+					content:    content,
+					style:      "tool_error",
+					toolCallID: msg.ToolCallID,
+				})
+			} else if showTools {
+				entries = append(entries, renderEntry{
+					content:    content,
+					style:      "tool_result",
+					toolCallID: msg.ToolCallID,
+				})
+			}
+
+		case types.RoleSystem:
+			entries = append(entries, renderEntry{content: msg.Text(), style: "system"})
+		}
+	}
+	return entries
 }

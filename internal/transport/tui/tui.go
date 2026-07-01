@@ -12,6 +12,7 @@ import (
 	"dolphin/internal/agentio"
 	"dolphin/internal/common"
 	"dolphin/internal/limit"
+	"dolphin/internal/memory"
 	"dolphin/internal/tool"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
@@ -61,6 +62,12 @@ func init() {
 		}
 		tui := NewTUI(modelName, showTools, showThinking, workmode, poolSize, toolParallelism, temperature, tempFor, reasoningEffort, reasoningEffortFor, thinking, thinkingFor, compMaxTokens, logger, toolReg)
 		tui.getCompletions = getCompletions
+		if m, ok := cfg["memory"].(memory.Memory); ok {
+			tui.memory = m
+		}
+		if v, ok := cfg["history_auto_restore"].(bool); ok {
+			tui.historyAutoRestore = v
+		}
 		// Apply the user's TUI theme (active name + named palettes) from
 		// config.yaml's tui.theme. Falls back to the built-in default theme.
 		themeConfig, _ := cfg["theme"].(map[string]any)
@@ -102,6 +109,8 @@ type TUI struct {
 	limiter            *limit.Limiter
 	logger             *zap.Logger
 	toolReg            *tool.Registry
+	memory             memory.Memory
+	historyAutoRestore bool
 }
 
 func NewTUI(modelName string, showTools, showThinking bool, workmode string, poolSize, toolParallelism int, temperature float64, tempFor func(string) float64, reasoningEffort string, reasoningEffortFor func(string) string, thinking bool, thinkingFor func(string) bool, compMaxTokens int, logger *zap.Logger, toolReg *tool.Registry) *TUI {
@@ -187,6 +196,7 @@ func (t *TUI) Start(_ context.Context) error {
 		t.priority = true
 		t.mu.Unlock()
 	}
+	m.shutdown = t.cancel
 	m.savePrefs = func() {
 		_ = savePrefs(tuiPrefs{
 			ShowTools:      m.showTools,
@@ -195,7 +205,7 @@ func (t *TUI) Start(_ context.Context) error {
 		})
 	}
 
-	t.program = tea.NewProgram(m, tea.WithContext(t.ctx))
+	t.program = tea.NewProgram(m, tea.WithContext(t.ctx), tea.WithoutSignalHandler())
 
 	// Start the event loop first — Send() blocks until Run() consumes.
 	go func() {
@@ -212,6 +222,26 @@ func (t *TUI) Start(_ context.Context) error {
 		t.pendingAgentIO = nil
 	}
 	t.mu.Unlock()
+
+	// Restore conversation history from the active session so the TUI
+	// shows the previous conversation immediately on restart.
+	// Gated by tui.history_auto_restore (config.yaml, default false).
+	if t.historyAutoRestore && t.memory != nil {
+		s := t.Session()
+		if s == nil {
+			t.logger.Info("history restore: no active session")
+		} else if msgs, err := t.memory.Read(t.ctx, s.ID, -maxHistoryRestore, 0); err != nil {
+			t.logger.Warn("history restore: read error", zap.String("session", s.ID), zap.Error(err))
+		} else if len(msgs) == 0 {
+			t.logger.Info("history restore: empty", zap.String("session", s.ID))
+		} else {
+			entries := messagesToEntries(msgs, t.showTools, t.showThinking)
+			t.logger.Info("history restore: loaded", zap.String("session", s.ID), zap.Int("msgs", len(msgs)), zap.Int("entries", len(entries)))
+			if len(entries) > 0 {
+				t.program.Send(historyMsg{entries: entries})
+			}
+		}
+	}
 
 	return nil
 }

@@ -353,7 +353,8 @@
         },
         "show_tools": { "type": "boolean", "default": false },
         "show_thinking": { "type": "boolean", "default": false },
-        "history_file": { "type": "string", "description": "Path to input history file" }
+        "history_file": { "type": "string", "description": "Path to input history file" },
+        "history_auto_restore": { "type": "boolean", "default": false, "description": "Auto-restore conversation history from the previous session on TUI startup" }
       }
     },
     "email": {

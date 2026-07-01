@@ -17,8 +17,8 @@ func NewDroppingMemory(inner Memory, window int) *DroppingMemory {
 	return &DroppingMemory{inner: inner, window: window}
 }
 
-func (m *DroppingMemory) Read(ctx context.Context, sessionID string) ([]types.Message, error) {
-	msgs, err := m.inner.Read(ctx, sessionID)
+func (m *DroppingMemory) Read(ctx context.Context, sessionID string, start, end int) ([]types.Message, error) {
+	msgs, err := m.inner.Read(ctx, sessionID, start, end)
 	if err != nil {
 		return nil, err
 	}

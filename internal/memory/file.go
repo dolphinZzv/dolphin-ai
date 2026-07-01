@@ -25,7 +25,7 @@ func NewFileMemory(sessions SessionStore) *FileMemory {
 	return &FileMemory{sessions: sessions}
 }
 
-func (m *FileMemory) Read(ctx context.Context, sessionID string) ([]types.Message, error) {
+func (m *FileMemory) Read(ctx context.Context, sessionID string, start, end int) ([]types.Message, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -39,15 +39,46 @@ func (m *FileMemory) Read(ctx context.Context, sessionID string) ([]types.Messag
 		return nil, nil
 	}
 
-	// session.Data values survive JSON round-trips as []interface{}.
+	var msgs []types.Message
 	switch v := raw.(type) {
 	case []types.Message:
-		return v, nil
+		msgs = v
 	case []interface{}:
-		return decodeMessages(v)
+		var err error
+		msgs, err = decodeMessages(v)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, nil
 	}
+
+	return sliceMessages(msgs, start, end), nil
+}
+
+// sliceMessages applies start/end slicing. Both 0 returns all.
+// Negative start counts from the end. end <= 0 means to the end.
+func sliceMessages(msgs []types.Message, start, end int) []types.Message {
+	if start == 0 && end == 0 {
+		return msgs
+	}
+	n := len(msgs)
+	if n == 0 {
+		return nil
+	}
+	if start < 0 {
+		start = n + start
+		if start < 0 {
+			start = 0
+		}
+	}
+	if end <= 0 || end > n {
+		end = n
+	}
+	if start >= end {
+		return nil
+	}
+	return msgs[start:end]
 }
 
 func (m *FileMemory) Write(ctx context.Context, sessionID string, msg types.Message) error {

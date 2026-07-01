@@ -56,7 +56,7 @@ func TestFileMemoryWriteReadRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, err := m.Read(ctx, "sess1")
+	msgs, err := m.Read(ctx, "sess1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestFileMemoryWriteMultipleMessages(t *testing.T) {
 		}
 	}
 
-	msgs, err := m.Read(ctx, "sess1")
+	msgs, err := m.Read(ctx, "sess1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestFileMemoryNonExistentSession(t *testing.T) {
 	store := &testSessionStore{sessions: map[string]*session.Session{}}
 	m := NewFileMemory(store)
 
-	msgs, err := m.Read(context.Background(), "nonexistent")
+	msgs, err := m.Read(context.Background(), "nonexistent", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestFileMemoryWindowTruncation(t *testing.T) {
 		}
 	}
 
-	msgs, err := m.Read(ctx, "sess1")
+	msgs, err := m.Read(ctx, "sess1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -160,8 +160,8 @@ func TestFileMemoryMultipleSessions(t *testing.T) {
 		Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("from B")}, Timestamp: now,
 	})
 
-	msgsA, _ := m.Read(ctx, "sessA")
-	msgsB, _ := m.Read(ctx, "sessB")
+	msgsA, _ := m.Read(ctx, "sessA", 0, 0)
+	msgsB, _ := m.Read(ctx, "sessB", 0, 0)
 
 	if len(msgsA) != 1 || len(msgsB) != 1 {
 		t.Fatalf("expected 1 msg each, got A=%d B=%d", len(msgsA), len(msgsB))
@@ -205,7 +205,7 @@ func TestFileMemoryConcurrentWrites(t *testing.T) {
 	m.Write(ctx, "sess1", types.Message{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("b")}, Timestamp: now})
 	<-done
 
-	msgs, err := m.Read(ctx, "sess1")
+	msgs, err := m.Read(ctx, "sess1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,7 +243,7 @@ func TestDroppingMemoryWindowTruncation(t *testing.T) {
 		})
 	}
 
-	msgs, err := dm.Read(ctx, "s1")
+	msgs, err := dm.Read(ctx, "s1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestDroppingMemoryPreservesToolContext(t *testing.T) {
 	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleAssistant, Parts: []types.ContentPart{types.TextPart("a")}, ToolCalls: []types.ToolCall{{ID: "t1", Name: "ls"}}, Timestamp: now})
 	_ = dm.Write(ctx, "s2", types.Message{Role: types.RoleTool, ToolCallID: "t1", Parts: []types.ContentPart{types.TextPart("result")}, Timestamp: now})
 
-	msgs, err := dm.Read(ctx, "s2")
+	msgs, err := dm.Read(ctx, "s2", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestDroppingMemoryNoTruncation(t *testing.T) {
 		})
 	}
 
-	msgs, err := dm.Read(ctx, "s1")
+	msgs, err := dm.Read(ctx, "s1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +314,7 @@ func TestDroppingMemoryWriteDelegation(t *testing.T) {
 	}
 
 	// Verify via inner directly
-	msgs, err := inner.Read(ctx, "s1")
+	msgs, err := inner.Read(ctx, "s1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -344,7 +344,7 @@ func TestFileMemoryReadAfterJSONRoundTrip(t *testing.T) {
 	_ = json.Unmarshal(data, &raw)
 	sess.Set("memory", raw)
 
-	msgs, err := m.Read(ctx, "s1")
+	msgs, err := m.Read(ctx, "s1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -358,7 +358,7 @@ func TestFileMemoryReadAfterJSONRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msgs, err = m.Read(ctx, "s1")
+	msgs, err = m.Read(ctx, "s1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,7 +373,7 @@ func TestFileMemoryReadUnknownType(t *testing.T) {
 	store := &testSessionStore{sessions: map[string]*session.Session{"s1": sess}}
 	m := NewFileMemory(store)
 
-	msgs, err := m.Read(context.Background(), "s1")
+	msgs, err := m.Read(context.Background(), "s1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -424,7 +424,7 @@ func TestFileMemoryReplace(t *testing.T) {
 			Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("old")}, Timestamp: now,
 		})
 	}
-	before, _ := m.Read(ctx, "sess1")
+	before, _ := m.Read(ctx, "sess1", 0, 0)
 	if len(before) != 3 {
 		t.Fatalf("seed: expected 3 messages, got %d", len(before))
 	}
@@ -438,7 +438,7 @@ func TestFileMemoryReplace(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	after, err := m.Read(ctx, "sess1")
+	after, err := m.Read(ctx, "sess1", 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +465,7 @@ func TestDroppingMemoryReplaceDelegates(t *testing.T) {
 	if err := dm.Replace(ctx, "s1", replaced); err != nil {
 		t.Fatal(err)
 	}
-	msgs, _ := dm.Read(ctx, "s1")
+	msgs, _ := dm.Read(ctx, "s1", 0, 0)
 	if len(msgs) != 1 || !msgs[0].IsSummary {
 		t.Fatalf("replace did not delegate to inner: %+v", msgs)
 	}
@@ -473,13 +473,13 @@ func TestDroppingMemoryReplaceDelegates(t *testing.T) {
 
 type errReader struct{ Memory }
 
-func (e *errReader) Read(_ context.Context, _ string) ([]types.Message, error) {
+func (e *errReader) Read(_ context.Context, _ string, _, _ int) ([]types.Message, error) {
 	return nil, errReadFailed
 }
 
 func TestDroppingMemoryReadError(t *testing.T) {
 	dm := NewDroppingMemory(&errReader{}, 5)
-	_, err := dm.Read(context.Background(), "s1")
+	_, err := dm.Read(context.Background(), "s1", 0, 0)
 	if err == nil {
 		t.Fatal("expected error from inner Read")
 	}
@@ -505,7 +505,7 @@ func TestFileMemoryReplace_NilMsgs(t *testing.T) {
 	if err := m.Replace(context.Background(), "s1", nil); err != nil {
 		t.Fatal(err)
 	}
-	msgs, _ := m.Read(context.Background(), "s1")
+	msgs, _ := m.Read(context.Background(), "s1", 0, 0)
 	if len(msgs) != 0 {
 		t.Fatalf("expected 0 messages after nil Replace, got %d", len(msgs))
 	}
@@ -545,7 +545,7 @@ func TestDroppingMemoryKeepsSummaryHead(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, _ := dm.Read(ctx, "s1")
+	got, _ := dm.Read(ctx, "s1", 0, 0)
 	// window=1 keeps 2 messages, but the summary head is preserved.
 	if len(got) != 3 {
 		t.Fatalf("expected 3 messages (summary + 2 tail), got %d", len(got))

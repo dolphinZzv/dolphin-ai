@@ -7,7 +7,10 @@ import (
 )
 
 type Memory interface {
-	Read(ctx context.Context, sessionID string) ([]types.Message, error)
+	// Read returns messages[start:end] for a session.
+	// Both 0 means all messages. A negative start counts from the end
+	// (e.g. start=-5, end=0 returns the last 5 messages).
+	Read(ctx context.Context, sessionID string, start, end int) ([]types.Message, error)
 	Write(ctx context.Context, sessionID string, msg types.Message) error
 	// Replace overwrites the entire message list for a session. It is used
 	// by context compaction to substitute a compacted [summary + tail]

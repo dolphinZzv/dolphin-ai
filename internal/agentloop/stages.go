@@ -296,7 +296,7 @@ func (s *MemoryReadStage) Clone() Stage {
 }
 
 func (s *MemoryReadStage) Process(ctx context.Context, state *State) error {
-	history, err := s.Memory.Read(ctx, state.SessionID)
+	history, err := s.Memory.Read(ctx, state.SessionID, 0, 0)
 	if err != nil {
 		return err
 	}
@@ -1774,7 +1774,7 @@ func (s *CompactionStage) ManualCompact(ctx context.Context, sessionID string) (
 		return "", fmt.Errorf("compaction: disabled (max_tokens or keep_rounds is 0)")
 	}
 
-	msgs, err := s.Memory.Read(ctx, sessionID)
+	msgs, err := s.Memory.Read(ctx, sessionID, 0, 0)
 	if err != nil {
 		return "", fmt.Errorf("compaction: read history: %w", err)
 	}

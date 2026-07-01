@@ -25,7 +25,7 @@ func (d *Dream) shouldRun(sessions []*session.Session) (bool, string) {
 
 	totalUserMsgs := 0
 	for _, s := range newSessions {
-		msgs, _ := d.memory.Read(d.ctx, s.ID)
+		msgs, _ := d.memory.Read(d.ctx, s.ID, 0, 0)
 		for _, m := range msgs {
 			if m.Role == types.RoleUser {
 				totalUserMsgs++

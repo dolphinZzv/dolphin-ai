@@ -115,7 +115,7 @@ func printSessionStatus(sessMgr *session.Manager, mem memory.Memory, sessionMode
 		}
 
 		if sess != nil && mem != nil {
-			msgs, err := mem.Read(context.Background(), sess.ID)
+			msgs, err := mem.Read(context.Background(), sess.ID, 0, 0)
 			if err == nil {
 				totalChars := 0
 				for _, m := range msgs {

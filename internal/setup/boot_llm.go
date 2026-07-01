@@ -9,7 +9,7 @@ import (
 	"go.uber.org/zap"
 
 	"dolphin/internal/llm"
-	_ "dolphin/internal/llm/models" // register per-model providers
+	llmmodels "dolphin/internal/llm/models" // register per-model providers + shell fallback
 )
 
 type LLMBootstrapper struct{}
@@ -166,12 +166,17 @@ func (c *Context) bootstrapSection(ctx context.Context, name string, mgr *llm.Ma
 		apiType = c.Config.GetString("llm." + name + ".provider")
 	}
 
+	vendor := c.Config.GetString("llm." + name + ".provider")
+	baseURL := c.Config.GetString("llm." + name + ".base_url")
+	if baseURL == "" {
+		baseURL = defaultBaseURL(vendor)
+	}
 	cfg := llm.Config{
 		Provider:      name,
-		Vendor:        c.Config.GetString("llm." + name + ".provider"),
+		Vendor:        vendor,
 		APIType:       apiType,
 		APIKey:        c.Config.GetString("llm." + name + ".api_key"),
-		BaseURL:       c.Config.GetString("llm." + name + ".base_url"),
+		BaseURL:       baseURL,
 		MaxTokens:     c.Config.GetInt("llm.max_tokens"),
 		MaxRetries:    c.Config.GetInt("llm.max_retries"),
 		Timeout:       c.Config.GetDuration("llm.timeout"),
@@ -198,13 +203,29 @@ func (c *Context) bootstrapSection(ctx context.Context, name string, mgr *llm.Ma
 		}
 		factory, err := llm.LookupModelProvider(mc.Name, apiType)
 		if err != nil {
-			c.Logger.Warn("no per-model provider, skipping model",
-				zap.String("provider", name),
-				zap.String("model", mc.Name),
-				zap.String("api_type", apiType),
-				zap.Error(err))
-			continue
+			// Fallback: use generic shell for dynamically discovered
+			// models (e.g. from OpenRouter) with no dedicated per-model
+			// provider file.
+			switch strings.ToLower(apiType) {
+			case "anthropic":
+				factory = llmmodels.NewAnthropicProvider(mc.Name)
+			default:
+				factory = llmmodels.NewOpenAIProvider(mc.Name)
+			}
 		}
 		mgr.AddProvider(name, factory(cfg, c.Logger))
 	}
+}
+
+// defaultBaseURL returns the built-in base URL for well-known providers when
+// the user doesn't explicitly configure a base_url. Users can still override
+// by setting llm.<name>.base_url in config.yaml.
+func defaultBaseURL(vendor string) string {
+	switch strings.ToLower(vendor) {
+	case "openrouter":
+		return "https://openrouter.ai/api/v1"
+	case "deepseek":
+		return "https://api.deepseek.com"
+	}
+	return ""
 }

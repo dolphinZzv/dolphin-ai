@@ -39,7 +39,7 @@ func TestCheckpoint_WriteFlushesTailAsPartial(t *testing.T) {
 		t.Fatalf("PersistedIdx = %d, want %d", state.PersistedIdx, len(state.Messages))
 	}
 
-	got, err := mem.Read(context.Background(), "sess-cp-1")
+	got, err := mem.Read(context.Background(), "sess-cp-1", 0, 0)
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestCheckpoint_WriteFlushesTailAsPartial(t *testing.T) {
 	if err := cp.Write(context.Background(), state, "second"); err != nil {
 		t.Fatalf("second Write: %v", err)
 	}
-	got2, _ := mem.Read(context.Background(), "sess-cp-1")
+	got2, _ := mem.Read(context.Background(), "sess-cp-1", 0, 0)
 	if len(got2) != 2 {
 		t.Fatalf("after second Write, len = %d, want 2", len(got2))
 	}
@@ -84,7 +84,7 @@ func TestCheckpoint_PreservesErrorMessages(t *testing.T) {
 	if err := cp.Write(context.Background(), state, "test"); err != nil {
 		t.Fatalf("Write: %v", err)
 	}
-	got, _ := mem.Read(context.Background(), "sess-cp-err")
+	got, _ := mem.Read(context.Background(), "sess-cp-err", 0, 0)
 	if len(got) != 1 {
 		t.Fatalf("len = %d, want 1", len(got))
 	}
@@ -169,7 +169,7 @@ func TestCompositor_CheckpointOnFailure(t *testing.T) {
 		t.Fatal("expected error from cancelled stage")
 	}
 
-	got, _ := mem.Read(context.Background(), "sess-int")
+	got, _ := mem.Read(context.Background(), "sess-int", 0, 0)
 	// The partial assistant message should have been flushed and marked.
 	var found bool
 	for _, m := range got {

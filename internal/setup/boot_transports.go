@@ -80,6 +80,10 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 				tc.Config["tool_registry"] = c.ToolReg
 			}
 		}
+		// Pass memory to TUI so it can restore session history on restart.
+		if tc.Type == "tui" {
+			tc.Config["memory"] = c.Mem
+		}
 		tio, err := transport.Build(ctx, tc.Type, tc.Config)
 		if err != nil {
 			c.Logger.Fatal("transport build failed", zap.String("type", tc.Type), zap.Error(err))
@@ -293,6 +297,7 @@ func loadTransportConfigs(cfg *config.Config, agentName string) ([]transportConf
 					"pool_size":             cfg.GetInt("agent.pool_size"),
 					"tool_parallelism":      cfg.GetInt("agent.tool_parallelism"),
 					"compaction.max_tokens": cfg.GetInt("compaction.max_tokens"),
+					"history_auto_restore":  cfg.GetBool("tui.history_auto_restore"),
 				},
 			})
 		}

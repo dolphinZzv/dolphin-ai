@@ -40,7 +40,7 @@ func main() {
 			p.Start(ctx)
 
 			sigCh := make(chan os.Signal, 1)
-			signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+			signal.Notify(sigCh, syscall.SIGTERM)
 			<-sigCh
 
 			p.Shutdown()

@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"strings"
 
 	"go.uber.org/zap"
 
@@ -72,6 +73,9 @@ func NewOpenAIProvider(modelName string) llm.ProviderFactory {
 				for k, v := range mergedHeaders(cfg, mc) {
 					httpReq.Header.Set(k, v)
 				}
+				for k, v := range providerHeaders(cfg) {
+					httpReq.Header.Set(k, v)
+				}
 				if req.Stream {
 					return proto.DoStream(ctx, httpReq, req.Timeout,
 						openaiproto.NewChunkDecoder, openaiproto.DecodeError, log)
@@ -81,4 +85,22 @@ func NewOpenAIProvider(modelName string) llm.ProviderFactory {
 			},
 		}
 	}
+}
+
+// providerHeaders returns well-known HTTP headers for specific providers so
+// users don't need to configure them manually. User-configured headers
+// (applied before this) take precedence.
+func providerHeaders(cfg llm.Config) map[string]string {
+	vendor := strings.ToLower(cfg.Vendor)
+	if vendor == "" {
+		vendor = strings.ToLower(cfg.Provider)
+	}
+	switch vendor {
+	case "openrouter":
+		return map[string]string{
+			"HTTP-Referer": "https://dolphin.siciv.space/",
+			"X-Title":      "Dolphin-AI",
+		}
+	}
+	return nil
 }

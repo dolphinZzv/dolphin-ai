@@ -59,7 +59,7 @@ type memStore struct {
 	msgs []types.Message
 }
 
-func (m *memStore) Read(_ context.Context, _ string) ([]types.Message, error) {
+func (m *memStore) Read(_ context.Context, _ string, _, _ int) ([]types.Message, error) {
 	return m.msgs, nil
 }
 

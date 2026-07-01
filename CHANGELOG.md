@@ -8,6 +8,14 @@ All notable changes to Dolphin will be documented in this file.
 
 - **TUI 增量渲染实时化**: 移除 `textBlockDirty` 延迟渲染机制，每次 delta 到达立即通过 glamour 渲染 markdown，消除流式输出时"先显示原始 markdown 源码、再突然刷新为渲染后格式"的视觉闪烁。增量引擎仅重渲染尾部文本块，每次 delta 开销受当前段落大小约束而非整个文档。
 - **TUI 队列简化**: 已完成项（`completedItems`）不再显示在队列中，`queueBodyLines` 和 `renderQueue` 签名移除 `completed` 参数，队列仅展示 pending 项。
+
+- **LLM 动态模型回退 + 内置 provider 默认值**: 当 `LookupModelProvider` 找不到预注册的 per-model provider 时，不再跳过模型，而是回退到通用 shell（OpenAI/Anthropic），支持 OpenRouter 等动态模型列表。新增 `defaultBaseURL` 为 openrouter/deepseek 自动补全 `base_url`。新增 `providerHeaders` 为 OpenRouter 自动注入 `HTTP-Referer` / `X-Title`。
+
+- **Memory.Read 支持 start/end 参数**: `Read(ctx, sessionID, start, end)` — `0,0` 返回全部，`-5,0` 返回最后 5 条。
+
+- **TUI 历史会话自动恢复**: 新增 `tui.history_auto_restore` 配置（默认 false），启用后 TUI 启动时自动加载上次 session 的最后 5 条消息到消息区。
+
+- **Ctrl+C 交互优化**: idle 时第一次 Ctrl+C 提示"再次按 Ctrl+C 退出"，第二次才退出 app；turn 进行中 Ctrl+C 终止 turn 并关闭 app。去掉 main.go SIGINT 注册 + 禁用 bubbletea 自建 signal handler，确保 Ctrl+C 仅走 bubbletea KeyMsg 路径。
 - **go.mod 本地 glamour 替换**: 添加 `replace github.com/charmbracelet/glamour => ./dep/glamour`，使用本地修改版 glamour 子模块。
 - **测试更新**: `tui_test.go`、`tui_e2e_test.go`、`tui_bench_test.go` 适配新签名和行为。
 

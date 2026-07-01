@@ -27,7 +27,7 @@ func (d *Dream) scan(ctx context.Context) ([]EditProposal, error) {
 	var newSessions []sessionSnapshot
 	for _, s := range sessions {
 		if s.CreatedAt.After(d.state.LastDreamAt) {
-			msgs, _ := d.memory.Read(ctx, s.ID)
+			msgs, _ := d.memory.Read(ctx, s.ID, 0, 0)
 			newSessions = append(newSessions, sessionSnapshot{ID: s.ID, Messages: msgs})
 		}
 	}

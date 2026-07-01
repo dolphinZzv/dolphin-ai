@@ -57,6 +57,7 @@ func init() {
 			"label_tok":                "tok",
 			"action_esc_pause":         "ESC to pause",
 			"action_enter_resume":      "Enter to resume",
+			"ctrl_c_confirm_quit":      "Press Ctrl+C again to exit",
 		},
 		"zh", i18n.Dict{
 			"initializing":             "初始化中...",
@@ -111,6 +112,7 @@ func init() {
 			"label_tok":                "令牌",
 			"action_esc_pause":         "ESC 暂停",
 			"action_enter_resume":      "Enter 继续",
+			"ctrl_c_confirm_quit":      "再次按 Ctrl+C 退出",
 		},
 	)
 }

@@ -16,7 +16,7 @@ type mockMemory struct {
 }
 
 func newMockMemory() *mockMemory { return &mockMemory{messages: make(map[string][]types.Message)} }
-func (m *mockMemory) Read(_ context.Context, s string) ([]types.Message, error) {
+func (m *mockMemory) Read(_ context.Context, s string, _, _ int) ([]types.Message, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.messages[s], nil
