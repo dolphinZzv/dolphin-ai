@@ -79,7 +79,7 @@ func TestMimo_Responses(t *testing.T) {
 	}
 
 	status, raw := doPost(t, responses.ChatURL(baseURL), apiKey, body)
-	if status != 200 {
+	if status != http.StatusOK {
 		t.Fatalf("responses: HTTP %d: %s", status, raw)
 	}
 
@@ -112,7 +112,7 @@ func TestMimo_ChatCompletions(t *testing.T) {
 	}
 
 	status, raw := doPost(t, openaiproto.ChatURL(baseURL), apiKey, body)
-	if status != 200 {
+	if status != http.StatusOK {
 		t.Fatalf("chat: HTTP %d: %s", status, raw)
 	}
 
@@ -159,7 +159,7 @@ func TestMimo_Anthropic(t *testing.T) {
 	defer resp.Body.Close()
 	raw, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		// Retry with Bearer auth — some providers accept both.
 		t.Logf("anthropic x-api-key: HTTP %d: %.600s", resp.StatusCode, string(raw))
 
@@ -177,7 +177,7 @@ func TestMimo_Anthropic(t *testing.T) {
 		raw2, _ := io.ReadAll(resp2.Body)
 		t.Logf("anthropic Bearer: HTTP %d: %.600s", resp2.StatusCode, string(raw2))
 
-		if resp2.StatusCode != 200 {
+		if resp2.StatusCode != http.StatusOK {
 			return
 		}
 		raw = raw2

@@ -67,7 +67,7 @@ func TestGLM_ChatCompletions(t *testing.T) {
 
 	t.Logf("HTTP %d", resp.StatusCode)
 
-	if resp.StatusCode != 200 {
+	if resp.StatusCode != http.StatusOK {
 		t.Logf("response: %.600s", string(raw))
 		return
 	}

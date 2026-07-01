@@ -96,7 +96,7 @@ func TestMimoResponsesAPI(t *testing.T) {
 		t.Logf("HTTP headers: %v", httpResp.Header)
 
 		// Test error decoding on any non-200 response.
-		if httpResp.StatusCode != 200 {
+		if httpResp.StatusCode != http.StatusOK {
 			chunk, err := responses.DecodeComplete(nil)
 			if err == nil {
 				t.Logf("non-streaming decode (empty): content=%q err=%v", chunk.Content, chunk.Error)
@@ -220,7 +220,7 @@ func TestMimoResponsesAPI(t *testing.T) {
 
 		t.Logf("tool HTTP status: %d", httpResp.StatusCode)
 
-		if httpResp.StatusCode == 200 {
+		if httpResp.StatusCode == http.StatusOK {
 			bodyBytes := make([]byte, 65536)
 			n, _ := httpResp.Body.Read(bodyBytes)
 			chunk, err := responses.DecodeComplete(bodyBytes[:n])
