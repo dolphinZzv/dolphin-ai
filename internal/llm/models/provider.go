@@ -26,6 +26,8 @@ func NewProvider(cfg llm.Config, log *zap.Logger) llm.Provider {
 	switch strings.ToLower(apiType) {
 	case "anthropic":
 		return NewAnthropicProvider(name)(cfg, log)
+	case "openai-responses":
+		return NewResponsesProvider(name)(cfg, log)
 	default:
 		return NewOpenAIProvider(name)(cfg, log)
 	}

@@ -1539,9 +1539,9 @@ func TestBootstrapSection_registersRegisteredModel(t *testing.T) {
 	}
 }
 
-func TestBootstrapSection_skipsUnregisteredModel(t *testing.T) {
-	// No provider registered for "no-such-model/openai" — must skip, not panic,
-	// and not fall back to a generic provider.
+func TestBootstrapSection_fallsBackToGenericShell(t *testing.T) {
+	// No provider registered for "no-such-model/openai" — falls back to the
+	// generic OpenAI shell provider instead of skipping the model.
 	cfg := config.LoadConfigFromMap(map[string]any{
 		"llm.test.api_key":       "sk-test",
 		"llm.test.api_type":      "openai",
@@ -1553,10 +1553,14 @@ func TestBootstrapSection_skipsUnregisteredModel(t *testing.T) {
 	c.bootstrapSection(context.Background(), "test", mgr)
 
 	models, _ := mgr.Models(context.Background())
+	found := false
 	for _, m := range models {
 		if m.Name == "no-such-model" {
-			t.Fatalf("unregistered model should have been skipped, got %v", models)
+			found = true
 		}
+	}
+	if !found {
+		t.Fatalf("model should have been registered via fallback, got %v", models)
 	}
 }
 
@@ -1582,16 +1586,20 @@ func TestBootstrapSection_modelDiscoverWiresRegisteredModels(t *testing.T) {
 
 	models, _ := mgr.Models(context.Background())
 	hasRegistered := false
+	hasUnregistered := false
 	for _, m := range models {
 		if m.Name == "deepseek-v4-flash" {
 			hasRegistered = true
 		}
 		if m.Name == "unregistered" {
-			t.Fatal("discovered-but-unregistered model should be skipped")
+			hasUnregistered = true
 		}
 	}
 	if !hasRegistered {
 		t.Fatalf("expected deepseek-v4-flash to be wired, got %v", models)
+	}
+	if !hasUnregistered {
+		t.Fatalf("discovered model without per-model provider should fall back to generic shell, got %v", models)
 	}
 }
 

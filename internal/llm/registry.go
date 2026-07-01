@@ -66,6 +66,8 @@ func DiscoverModels(ctx context.Context, cfg Config, logger *zap.Logger) ([]Mode
 	switch apiType {
 	case "anthropic":
 		return discoverAnthropicModels(ctx, cfg)
+	case "openai-responses":
+		return discoverResponsesModels(ctx, cfg)
 	default:
 		return discoverOpenAIModels(ctx, cfg)
 	}
@@ -77,6 +79,7 @@ func DiscoverModels(ctx context.Context, cfg Config, logger *zap.Logger) ([]Mode
 var (
 	openAIDiscoverer    func(ctx context.Context, cfg Config) ([]ModelConfig, error)
 	anthropicDiscoverer func(ctx context.Context, cfg Config) ([]ModelConfig, error)
+	responsesDiscoverer func(ctx context.Context, cfg Config) ([]ModelConfig, error)
 )
 
 // SetOpenAIDiscoverer is called from proto/openai init.
@@ -87,6 +90,11 @@ func SetOpenAIDiscoverer(f func(ctx context.Context, cfg Config) ([]ModelConfig,
 // SetAnthropicDiscoverer is called from proto/anthropic init.
 func SetAnthropicDiscoverer(f func(ctx context.Context, cfg Config) ([]ModelConfig, error)) {
 	anthropicDiscoverer = f
+}
+
+// SetResponsesDiscoverer is called from proto/responses init.
+func SetResponsesDiscoverer(f func(ctx context.Context, cfg Config) ([]ModelConfig, error)) {
+	responsesDiscoverer = f
 }
 
 func discoverOpenAIModels(ctx context.Context, cfg Config) ([]ModelConfig, error) {
@@ -101,4 +109,11 @@ func discoverAnthropicModels(ctx context.Context, cfg Config) ([]ModelConfig, er
 		return nil, fmt.Errorf("llm: anthropic discoverer not registered")
 	}
 	return anthropicDiscoverer(ctx, cfg)
+}
+
+func discoverResponsesModels(ctx context.Context, cfg Config) ([]ModelConfig, error) {
+	if responsesDiscoverer == nil {
+		return nil, fmt.Errorf("llm: responses discoverer not registered")
+	}
+	return responsesDiscoverer(ctx, cfg)
 }

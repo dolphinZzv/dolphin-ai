@@ -209,11 +209,13 @@ func (c *Context) bootstrapSection(ctx context.Context, name string, mgr *llm.Ma
 			switch strings.ToLower(apiType) {
 			case "anthropic":
 				factory = llmmodels.NewAnthropicProvider(mc.Name)
+			case "openai-responses":
+				factory = llmmodels.NewResponsesProvider(mc.Name)
 			default:
 				factory = llmmodels.NewOpenAIProvider(mc.Name)
 			}
 		}
-		mgr.AddProvider(name, factory(cfg, c.Logger))
+		mgr.AddProvider(mc.Name, factory(cfg, c.Logger))
 	}
 }
 
@@ -226,6 +228,10 @@ func defaultBaseURL(vendor string) string {
 		return "https://openrouter.ai/api/v1"
 	case "deepseek":
 		return "https://api.deepseek.com"
+	case "mimo":
+		return "https://api.xiaomimimo.com"
+	case "longcat":
+		return "https://api.longcat.chat"
 	}
 	return ""
 }
