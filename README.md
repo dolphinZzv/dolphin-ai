@@ -84,6 +84,19 @@ dolphin --config /path/to/config.yaml
 
 ### llm — 模型与接入
 
+#### 模型支持矩阵
+
+| 供应商 | 协议 | 支持级别 | 说明 |
+|--------|------|----------|------|
+| DeepSeek | Chat / Anthropic | base | 内置 `defaultBaseURL`，开箱即用 |
+| Mimo   | Chat / Responses / Anthropic | base | 内置 `defaultBaseURL`，三协议全通 |
+| LongCat | Chat | base | 内置 `defaultBaseURL` |
+| OpenAI  | Chat | base | - |
+| Anthropic | Anthropic | base | - |
+| OpenRouter | Chat | base | 内置 `defaultBaseURL` + 自动 Referer/Title header |
+
+> **支持级别说明：** `base` — 基本可用，协议适配通过，可直接配置使用。
+
 | 配置项 | 类型 | 默认 | 说明 |
 |--------|------|------|------|
 | `llm.use` | string | - | 当前使用的模型名称 |
