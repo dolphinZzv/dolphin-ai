@@ -236,6 +236,8 @@ func defaultBaseURL(vendor string) string {
 		return "https://open.bigmodel.cn/api/paas/v4"
 	case "minimax":
 		return "https://api.minimax.chat/v1"
+	case "moonshot":
+		return "https://api.moonshot.cn/v1"
 	}
 	return ""
 }

@@ -93,6 +93,7 @@ dolphin --config /path/to/config.yaml
 | LongCat | Chat / Anthropic | base | 内置 `defaultBaseURL` |
 | GLM     | Chat | base | 内置 `defaultBaseURL`，reasoning 消耗较大 token |
 | MiniMax | Chat | base | 内置 `defaultBaseURL` |
+| Kimi    | Chat | base | 内置 `defaultBaseURL` (moonshot) |
 | OpenAI  | Chat | unknown | 无资源验证 |
 | Anthropic | Anthropic | unknown | 无资源验证 |
 | OpenRouter | Chat | base | 内置 `defaultBaseURL` + 自动 Referer/Title header |
