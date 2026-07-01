@@ -97,10 +97,26 @@ func StaticHandler(card AgentCard, result *DelegateResult) MockHandler {
 		case "agents/ping":
 			return map[string]any{"status": "ok", "load": 0}, nil
 		case "tasks/send":
-			if result == nil {
-				return DelegateResult{TaskID: "t-1", Status: DelegateCompleted, Content: "ok"}, nil
+			// Return the A2A task format that SendTask decodes:
+			//   {id, status, artifacts:[{parts:[{text}]}]}
+			var taskID, content string
+			if result != nil {
+				taskID = result.TaskID
+				content = result.Content
 			}
-			return *result, nil
+			if taskID == "" {
+				taskID = "t-1"
+			}
+			if content == "" {
+				content = "ok"
+			}
+			return map[string]any{
+				"id":     taskID,
+				"status": "completed",
+				"artifacts": []map[string]any{{
+					"parts": []map[string]any{{"text": content}},
+				}},
+			}, nil
 		}
 		return nil, nil
 	}

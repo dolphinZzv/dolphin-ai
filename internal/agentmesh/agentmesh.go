@@ -59,7 +59,12 @@ func NewAgentMesh(cfg AgentConfig, eventBus *event.Bus, logger *zap.Logger) *Age
 		Status:       AgentRunning,
 		ProtoVersion: localProto,
 	}
-	reg.Upsert(selfCard)
+	// Only self-register when we have a real listen address (server mode).
+	// A self-registration with empty addr would conflict with explicit
+	// registrations of the same agent name in tests and client-only setups.
+	if cfg.ListenAddr != "" {
+		reg.Upsert(selfCard)
+	}
 	m := &AgentMesh{
 		cfg:      cfg,
 		card:     selfCard,
