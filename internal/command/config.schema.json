@@ -135,6 +135,83 @@
         }
       }
     },
+    "agents": {
+      "type": "object",
+      "description": "Agent mesh multi-agent collaboration configuration",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": false, "description": "Enable the agent mesh layer" },
+        "name": { "type": "string", "description": "This agent's name in the mesh" },
+        "listen_addr": { "type": "string", "default": ":8100", "description": "A2A HTTP server listen address" },
+        "capabilities": { "type": "array", "items": { "type": "string" }, "description": "Declared capabilities, e.g. [\"code-review\", \"golang\"]" },
+        "task_timeout": { "type": "string", "pattern": "^\\d+[smh]$", "default": "10m", "description": "Default timeout for delegated tasks" },
+        "max_delegation_depth": { "type": "integer", "minimum": 1, "default": 5 },
+        "retry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "max_retries": { "type": "integer", "minimum": 0, "default": 2 },
+            "backoff": { "type": "string", "pattern": "^(0|\\d+(ns|us|µs|ms|s|m|h))$", "default": "1s" },
+            "max_backoff": { "type": "string", "pattern": "^\\d+[smh]$", "default": "30s" }
+          }
+        },
+        "fallback": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "max_fallback": { "type": "integer", "minimum": 0, "default": 2, "description": "Max fallback candidates (excluding primary)" }
+          }
+        },
+        "circuit_breaker": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "failure_threshold": { "type": "integer", "minimum": 1, "default": 5 },
+            "cooldown_period": { "type": "string", "pattern": "^\\d+[smh]$", "default": "60s" },
+            "half_open_max": { "type": "integer", "minimum": 1, "default": 1 }
+          }
+        },
+        "rate_limit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "send_per_agent": { "type": "number", "minimum": 0, "default": 2, "description": "Requests per second per target agent" },
+            "send_burst": { "type": "integer", "minimum": 1, "default": 5 }
+          }
+        },
+        "spawner": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "bin": { "type": "string", "description": "Path to the dolphin binary for spawning child agents" },
+            "max_spawned": { "type": "integer", "minimum": 0, "default": 5 }
+          }
+        },
+        "local": {
+          "type": "array",
+          "description": "Statically configured same-host peer agents",
+          "items": { "$ref": "#/definitions/remoteAgent" }
+        },
+        "remote": {
+          "type": "array",
+          "description": "Statically configured remote peer agents",
+          "items": { "$ref": "#/definitions/remoteAgent" }
+        },
+        "tls": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean", "default": false },
+            "ca_cert": { "type": "string", "description": "CA certificate file path" },
+            "client_cert": { "type": "string", "description": "Client certificate file path" },
+            "client_key": { "type": "string", "description": "Client key file path" },
+            "insecure_skip_verify": { "type": "boolean", "default": false, "description": "Skip TLS verification (testing only)" }
+          }
+        }
+      }
+    },
     "brain": {
       "type": "object",
       "additionalProperties": false,
@@ -378,6 +455,17 @@
             "required": ["name"]
           }
         }
+      }
+    },
+    "remoteAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "A statically configured peer agent",
+      "properties": {
+        "name": { "type": "string" },
+        "addr": { "type": "string", "description": "host:port of the peer A2A server" },
+        "capabilities": { "type": "array", "items": { "type": "string" }, "description": "Declared capabilities" },
+        "model": { "type": "string", "description": "LLM model in use" }
       }
     }
   }

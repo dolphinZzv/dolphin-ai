@@ -75,6 +75,11 @@ func (s *ServerRateLimiter) Allow(from, parentSessionID string) bool {
 	return s.global.allow(now)
 }
 
+// AllowTask is an alias for Allow, satisfying the a2a.TaskRateLimiter interface.
+func (s *ServerRateLimiter) AllowTask(from, sessionID string) bool {
+	return s.Allow(from, sessionID)
+}
+
 // withClock injects a clock (tests).
 func (s *ServerRateLimiter) withClock(now func() time.Time) *ServerRateLimiter {
 	s.now = now

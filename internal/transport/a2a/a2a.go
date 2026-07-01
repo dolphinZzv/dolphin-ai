@@ -64,6 +64,13 @@ type ExtHandler func(ctx context.Context, method string, params json.RawMessage,
 // request; the dispatcher should try the next handler or the core switch.
 var ErrExtUnhandled = fmt.Errorf("a2a: extension does not handle this method")
 
+// TaskRateLimiter is an optional receiver-side rate limiter checked before
+// tasks/send and tasks/sendSubscribe. It is set by AgentMesh via
+// SetTaskRateLimiter. A nil limiter means no rate limiting.
+type TaskRateLimiter interface {
+	AllowTask(from, sessionID string) bool
+}
+
 // A2A is an HTTP-based transport that implements the Google Agent-to-Agent protocol.
 type A2A struct {
 	*transport.SessionHolder
@@ -80,9 +87,10 @@ type A2A struct {
 	started  bool
 	respChan chan string // pending response for current request
 
-	extMu       sync.RWMutex
-	extHandlers map[string]ExtHandler // method → handler (insertion-ordered via map; Phase 1 needs no ordering)
-	sseHandlers map[string]SSEHandler // method → SSE streaming handler
+	extMu          sync.RWMutex
+	extHandlers    map[string]ExtHandler   // method → handler
+	sseHandlers    map[string]SSEHandler   // method → SSE streaming handler
+	taskRateLimiter TaskRateLimiter         // optional receiver-side rate limiter
 	// self card fields surfaced for agents/discover
 	selfCapabilities []string
 	selfProtoVersion int
@@ -116,6 +124,14 @@ func (a *A2A) SetSelfCard(capabilities []string, protoVersion int, load func() i
 	a.selfCapabilities = capabilities
 	a.selfProtoVersion = protoVersion
 	a.selfLoad = load
+}
+
+// SetTaskRateLimiter attaches an optional receiver-side rate limiter that is
+// checked before accepting tasks/send and tasks/sendSubscribe requests.
+func (a *A2A) SetTaskRateLimiter(rl TaskRateLimiter) {
+	a.extMu.Lock()
+	defer a.extMu.Unlock()
+	a.taskRateLimiter = rl
 }
 
 // RegisterSSEHandler registers a streaming handler for a method. The handler
@@ -383,7 +399,26 @@ func (a *A2A) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 0. SSE streaming handlers (tasks/sendSubscribe). Checked first because
+	// 0. Receiver-side rate limiting for task methods. Checked before any
+	//    dispatch so both SSE and core paths are protected.
+	a.extMu.RLock()
+	rl := a.taskRateLimiter
+	a.extMu.RUnlock()
+	if rl != nil && (req.Method == "tasks/send" || req.Method == "tasks/sendSubscribe") {
+		var sessionID string
+		var params struct {
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal(req.Params, &params) == nil {
+			sessionID = params.SessionID
+		}
+		if !rl.AllowTask(r.RemoteAddr, sessionID) {
+			a.writeJSONRPCError(w, req.ID, -32000, "rate limited")
+			return
+		}
+	}
+
+	// 1. SSE streaming handlers (tasks/sendSubscribe). Checked first because
 	//    the response is a stream, not a single JSON-RPC object.
 	a.extMu.RLock()
 	sse, hasSSE := a.sseHandlers[req.Method]

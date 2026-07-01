@@ -2,11 +2,13 @@ package setup
 
 import (
 	"context"
+	"time"
 
 	"go.uber.org/zap"
 
 	"dolphin/internal/agentloop"
 	"dolphin/internal/agentmesh"
+	"dolphin/internal/command"
 	"dolphin/internal/transport/a2a"
 )
 
@@ -40,9 +42,11 @@ func (b *AgentMeshBootstrapper) Bootstrap(ctx context.Context, c *Context) error
 
 	// Find the A2A transport instance and attach server-side handlers
 	// (agents/discover, agents/ping, tasks/cancel, tools/list, tools/call).
+	var a2aTransport *a2a.A2A
 	for _, tio := range c.Transports {
 		if srv, ok := tio.(*a2a.A2A); ok {
 			mesh.AttachServer(srv, c.SignalBus, c.ToolReg)
+			a2aTransport = srv
 			break
 		}
 	}
@@ -62,6 +66,37 @@ func (b *AgentMeshBootstrapper) Bootstrap(ctx context.Context, c *Context) error
 	if c.WorkflowEngine != nil {
 		c.WorkflowEngine.SetDelegator(agentmesh.NewWorkflowDelegator(mesh))
 	}
+
+	// ── LifecycleManager: periodic health checks of remote agents ──
+	lm := agentmesh.NewLifecycleManager(mesh, 30*time.Second, 0, c.EventBus, c.Logger)
+	lm.Start(ctx)
+	c.Logger.Info("agent mesh lifecycle manager started")
+
+	// ── ServerRateLimiter: receiver-side rate limiting ──
+	srvLimiter := agentmesh.NewServerRateLimiter(
+		cfg.ServerRateLimit.SessionPerMin,
+		cfg.ServerRateLimit.PeerPerMin,
+		cfg.ServerRateLimit.GlobalPerMin,
+	)
+	if a2aTransport != nil {
+		a2aTransport.SetTaskRateLimiter(srvLimiter)
+		c.Logger.Info("agent mesh server rate limiter attached")
+	}
+
+	// ── Gossip: UDP LAN discovery ──
+	if cfg.GossipConfig.Enabled {
+		gossip := agentmesh.NewGossip(cfg.GossipConfig, mesh.Card(), mesh.Registry(), c.Logger)
+		if err := gossip.Start(ctx); err != nil {
+			c.Logger.Warn("agent mesh gossip start failed", zap.Error(err))
+		} else {
+			c.Logger.Info("agent mesh gossip discovery started",
+				zap.Int("port", cfg.GossipConfig.Port),
+			)
+		}
+	}
+
+	// Register the /agents command.
+	command.RegisterAgents(c.CmdReg, mesh)
 
 	c.Logger.Info("agent mesh enabled",
 		zap.String("name", cfg.Name),

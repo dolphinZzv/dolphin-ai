@@ -4,6 +4,8 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+- **AgentMesh 自注册 + 服务端限流 + Gossip 发现 + `/agents` 命令**: AgentMesh 启动时通过 `Upsert` 将自身注册到 registry，`ListAgents()` 现在包含本地 agent。A2A transport 新增 `TaskRateLimiter` 接口，AgentMesh 对接 `ServerRateLimiter`（per-session/peer/global 三层）实现接收端限流。Gossip 增加 `Enabled` 开关，bootstrapper 在其启用时启动 UDP 发现。`boot_agentmesh.go` 集成 `LifecycleManager` 定期健康检查。新增 `/agents` 命令以 markdown/plain 格式列出 mesh 中所有 agent 的状态、负载、能力和模型。`config.schema.json` 新增完整的 `agents` 配置段和 `remoteAgent` 定义。`command_i18n.go` 新增中英文 `/agents` 相关字符串。
+
 - **TUI 增量渲染实时化**: 移除 `textBlockDirty` 延迟渲染机制，每次 delta 到达立即通过 glamour 渲染 markdown，消除流式输出时"先显示原始 markdown 源码、再突然刷新为渲染后格式"的视觉闪烁。增量引擎仅重渲染尾部文本块，每次 delta 开销受当前段落大小约束而非整个文档。
 - **TUI 队列简化**: 已完成项（`completedItems`）不再显示在队列中，`queueBodyLines` 和 `renderQueue` 签名移除 `completed` 参数，队列仅展示 pending 项。
 - **go.mod 本地 glamour 替换**: 添加 `replace github.com/charmbracelet/glamour => ./dep/glamour`，使用本地修改版 glamour 子模块。

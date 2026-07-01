@@ -52,9 +52,17 @@ func NewAgentMesh(cfg AgentConfig, eventBus *event.Bus, logger *zap.Logger) *Age
 	reg := NewRegistry(cfg.Local, cfg.Remote, logger)
 	router := NewRouter(reg, cfg.Fallback, logger)
 	rl := NewRateLimiter(cfg.RateLimit.SendPerAgent, cfg.RateLimit.SendBurst)
+	selfCard := AgentCard{
+		Name:         cfg.Name,
+		Addr:         cfg.ListenAddr,
+		Capabilities: cfg.Capabilities,
+		Status:       AgentRunning,
+		ProtoVersion: localProto,
+	}
+	reg.Upsert(selfCard)
 	m := &AgentMesh{
 		cfg:      cfg,
-		card:     AgentCard{Name: cfg.Name, Addr: cfg.ListenAddr, Capabilities: cfg.Capabilities, Status: AgentRunning, ProtoVersion: localProto},
+		card:     selfCard,
 		registry: reg,
 		router:   router,
 		metrics:  initMetrics(),

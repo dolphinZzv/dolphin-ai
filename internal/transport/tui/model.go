@@ -94,6 +94,8 @@ type model struct {
 	ready              bool
 	thinking           string
 	inThinking         bool
+	inToolCall         bool
+	paused             bool
 	msgChan            chan userInput
 	permCh             chan string
 	attachments        []types.ContentPart // pending attachments for the next submit
@@ -277,8 +279,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 
 	case tea.KeyMsg:
-		// ctrl+c always force-quits, even while a permission dialog is open.
+		// ctrl+c: stop the current turn if one is running, otherwise quit.
 		if msg.String() == "ctrl+c" {
+			// Permission dialog is modal: ctrl+c always escapes it.
+			if m.permDialog != nil {
+				return m, tea.Quit
+			}
+			if m.msgStatus == "pending" {
+				// Interrupt the running turn — same as /session stop.
+				m.completions = nil
+				m.completionIdx = 0
+				m.completionPrefix = ""
+				if m.msgChan != nil {
+					select {
+					case m.msgChan <- userInput{text: "/session stop"}:
+					default:
+					}
+				}
+				return m, nil
+			}
 			return m, tea.Quit
 		}
 		// The permission dialog is modal: it captures every keystroke and
@@ -296,6 +315,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// routed through msgChan (same path as typed input) so the normal
 		// command dispatcher sends signal.Pause and prints "session paused".
 		if msg.String() == "esc" && m.msgStatus == "pending" {
+			m.paused = true
+			m.updateActionTip()
 			m.completions = nil
 			m.completionIdx = 0
 			m.completionPrefix = ""
@@ -384,6 +405,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 
 		case "enter":
+			if m.paused {
+				m.paused = false
+				m.updateActionTip()
+				if m.msgChan != nil {
+					select {
+					case m.msgChan <- userInput{text: "/session continue"}:
+					default:
+					}
+				}
+				return m, nil
+			}
 			input := strings.TrimSpace(m.textarea.Value())
 			m.textarea.Reset()
 			m.textarea.SetHeight(1)
@@ -433,6 +465,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case contentMsg:
+		// Session status messages (pause/resume/stop) are shown as tips
+		// instead of being appended to the chat area.
+		if isSessionTipMsg(msg.text) {
+			m.tipsText = msg.text
+			m.updateViewportHeight()
+			// Auto-clear after 4 seconds.
+			return m, tea.Tick(4*time.Second, func(time.Time) tea.Msg { return clearTipsMsg{} })
+		}
 		if m.newReply {
 			if m.closeBlock {
 				m.appendEntry(renderEntry{content: strings.Repeat("-", m.width), style: "separator"})
@@ -466,6 +506,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport.GotoBottom()
 
 	case toolCallMsg:
+		m.inToolCall = true
 		m.toolCallNames[msg.call.ID] = msg.call.Name
 		if !m.showTools {
 			break
@@ -482,6 +523,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// so a failed tool call is never silently invisible. Non-error
 		// results stay gated behind the showTools toggle.
 		content := strings.TrimRight(msg.result.Content, "\n")
+		m.inToolCall = false
 		if msg.result.IsError {
 			m.msgStatus = "error"
 			// Color the ⏺ icon red in the matching tool_call entry.
@@ -1256,13 +1298,6 @@ func (m model) View() tea.View {
 	// toggles, copy confirmations, etc. When scrolled up and no other tip
 	// is active, show the jump-back hint here instead of at the top.
 	tip := m.tipsText
-	if tip == "" && scrolled && m.viewport.ScrollPercent() >= 0 {
-		pct := m.viewport.ScrollPercent()
-		if pct > 1 {
-			pct = 1
-		}
-		tip = fmt.Sprintf(i18n.T("tui.scroll_hint_full"), int(pct*100+0.5))
-	}
 	if tip != "" {
 		tipLine := lipgloss.NewStyle().
 			Foreground(adaptiveFaint).
@@ -1699,6 +1734,19 @@ func renderUserInput(in userInput) string {
 	return b.String()
 }
 
+// updateActionTip sets the tipsText to show the current action hint
+// (ESC to pause, Enter to continue).
+func (m *model) updateActionTip() {
+	if m.paused {
+		m.tipsText = i18n.T("tui.action_enter_resume")
+	} else if m.msgStatus == "pending" && (m.inThinking || m.inToolCall) {
+		m.tipsText = i18n.T("tui.action_esc_pause")
+	} else {
+		m.tipsText = ""
+	}
+	m.updateViewportHeight()
+}
+
 // renderAttachments renders the pending-attachment preview row shown above the
 // textarea: one chip per attachment, each removable via backspace.
 func (m model) renderAttachments() string {
@@ -1714,4 +1762,17 @@ func (m model) renderAttachments() string {
 		chips = append(chips, "📎 "+name+" ×")
 	}
 	return styleAttachment.Width(m.width).Render(strings.Join(chips, "  "))
+}
+
+// isSessionTipMsg reports whether a content message is a session status
+// notification (pause / resume / stop) that should be displayed as a tip
+// instead of being appended to the chat viewport.
+func isSessionTipMsg(text string) bool {
+	switch text {
+	case i18n.T("command.session_paused_msg"),
+		i18n.T("command.session_resumed_msg"),
+		i18n.T("command.session_stopped_msg"):
+		return true
+	}
+	return false
 }

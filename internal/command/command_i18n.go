@@ -118,6 +118,17 @@ func init() {
 			"subscription_event":     "Event: %s\n",
 			"subscription_filter":    "Filter: %s\n",
 
+			// agents
+			"agents_desc":         "List all agents in the mesh and their capabilities",
+			"agents_title":        "Agent Mesh Agents:",
+			"agents_none":         "No agents registered in the mesh",
+			"agents_self":         "self",
+			"agents_addr":         "Address",
+			"agents_status":       "Status",
+			"agents_load":         "Load",
+			"agents_model":        "Model",
+			"agents_capabilities": "Capabilities",
+
 			// error
 			"error_format": "error: %v\n",
 
@@ -247,6 +258,17 @@ func init() {
 			"subscription_not_found": "订阅 %q 未找到\n",
 			"subscription_event":     "事件: %s\n",
 			"subscription_filter":    "过滤: %s\n",
+
+			// agents
+			"agents_desc":         "列出 mesh 中的所有 agent 及其能力",
+			"agents_title":        "Agent Mesh 中的 Agent:",
+			"agents_none":         "mesh 中未注册任何 agent",
+			"agents_self":         "自身",
+			"agents_addr":         "地址",
+			"agents_status":       "状态",
+			"agents_load":         "负载",
+			"agents_model":        "模型",
+			"agents_capabilities": "能力",
 
 			// error
 			"error_format": "错误: %v\n",

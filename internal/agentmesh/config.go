@@ -22,12 +22,21 @@ type AgentConfig struct {
 	Local  []RemoteAgent
 	Remote []RemoteAgent
 
-	Retry          RetryConfig
-	Fallback       FallbackConfig
-	CircuitBreaker CircuitBreakerConfig
-	RateLimit      RateLimitConfig
-	Spawner        SpawnerConfig
-	TLS            TLSConfig
+	Retry           RetryConfig
+	Fallback        FallbackConfig
+	CircuitBreaker  CircuitBreakerConfig
+	RateLimit       RateLimitConfig
+	ServerRateLimit ServerRateLimitConfig
+	Spawner         SpawnerConfig
+	GossipConfig    GossipConfig
+	TLS             TLSConfig
+}
+
+// ServerRateLimitConfig configures receiver-side rate limiting.
+type ServerRateLimitConfig struct {
+	SessionPerMin int // requests per minute per parent session, default 30
+	PeerPerMin    int // requests per minute per upstream agent, default 60
+	GlobalPerMin  int // requests per minute global, default 120
 }
 
 // RetryConfig controls retry behaviour on retryable failures.
@@ -123,7 +132,13 @@ func DefaultAgentConfig() AgentConfig {
 			SendPerAgent: 2,
 			SendBurst:    5,
 		},
+		ServerRateLimit: ServerRateLimitConfig{
+			SessionPerMin: 30,
+			PeerPerMin:    60,
+			GlobalPerMin:  120,
+		},
 		Spawner: SpawnerConfig{Enabled: false, MaxSpawned: 5},
+		GossipConfig: DefaultGossipConfig(),
 	}
 }
 
@@ -182,6 +197,32 @@ func LoadAgentConfig(cfg *config.Config) AgentConfig {
 	}
 	if v := cfg.GetString("agents.spawner.bin"); v != "" {
 		ac.Spawner.Bin = v
+	}
+	// server rate limit
+	if v := cfg.GetInt("agents.server_rate_limit.session_per_min"); v > 0 {
+		ac.ServerRateLimit.SessionPerMin = v
+	}
+	if v := cfg.GetInt("agents.server_rate_limit.peer_per_min"); v > 0 {
+		ac.ServerRateLimit.PeerPerMin = v
+	}
+	if v := cfg.GetInt("agents.server_rate_limit.global_per_min"); v > 0 {
+		ac.ServerRateLimit.GlobalPerMin = v
+	}
+	// gossip
+	if cfg.Get("agents.gossip.enabled") != nil {
+		ac.GossipConfig.Enabled = cfg.GetBool("agents.gossip.enabled")
+	}
+	if v := cfg.GetInt("agents.gossip.port"); v > 0 {
+		ac.GossipConfig.Port = v
+	}
+	if v := cfg.GetDuration("agents.gossip.announce_interval"); v > 0 {
+		ac.GossipConfig.AnnounceInterval = v
+	}
+	if v := cfg.GetDuration("agents.gossip.peer_timeout"); v > 0 {
+		ac.GossipConfig.PeerTimeout = v
+	}
+	if v := cfg.GetInt("agents.gossip.max_hops"); v > 0 {
+		ac.GossipConfig.MaxHops = v
 	}
 	ac.Local = loadRemoteAgents(cfg, "agents.local")
 	ac.Remote = loadRemoteAgents(cfg, "agents.remote")

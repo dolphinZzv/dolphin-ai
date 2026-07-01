@@ -31,11 +31,12 @@ type GossipMessage struct {
 
 // GossipConfig configures UDP gossip discovery.
 type GossipConfig struct {
-	Port            int           // UDP port, default 8101
+	Enabled          bool          // whether gossip discovery is active
+	Port             int           // UDP port, default 8101
 	AnnounceInterval time.Duration // default 30s
-	PeerTimeout     time.Duration // default 3x announce
-	MaxHops         int           // default 3
-	BindAddr        string        // default 0.0.0.0
+	PeerTimeout      time.Duration // default 3x announce
+	MaxHops          int           // default 3
+	BindAddr         string        // default 0.0.0.0
 }
 
 // DefaultGossipConfig returns production defaults.
@@ -193,7 +194,7 @@ func (g *Gossip) readLoop(ctx context.Context) {
 	}
 }
 
-func (g *Gossip) handle(msg GossipMessage, src *net.UDPAddr) {
+func (g *Gossip) handle(msg GossipMessage, _ *net.UDPAddr) {
 	// dedup by (from addr, ts)
 	dedupKey := msg.Agent.Addr + "|" + msg.Timestamp.Format(time.RFC3339Nano)
 	g.dedupMu.Lock()

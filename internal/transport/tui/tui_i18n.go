@@ -55,6 +55,8 @@ func init() {
 			"label_tools":              "tools",
 			"label_req":                "req",
 			"label_tok":                "tok",
+			"action_esc_pause":         "ESC to pause",
+			"action_enter_resume":      "Enter to resume",
 		},
 		"zh", i18n.Dict{
 			"initializing":             "初始化中...",
@@ -107,6 +109,8 @@ func init() {
 			"label_tools":              "工具",
 			"label_req":                "请求",
 			"label_tok":                "令牌",
+			"action_esc_pause":         "ESC 暂停",
+			"action_enter_resume":      "Enter 继续",
 		},
 	)
 }
