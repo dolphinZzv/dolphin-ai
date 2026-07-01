@@ -17,7 +17,7 @@ All notable changes to Dolphin will be documented in this file.
 
 - **Ctrl+C 交互优化**: idle 时第一次 Ctrl+C 提示"再次按 Ctrl+C 退出"，第二次才退出 app；turn 进行中 Ctrl+C 终止 turn 并关闭 app。去掉 main.go SIGINT 注册 + 禁用 bubbletea 自建 signal handler，确保 Ctrl+C 仅走 bubbletea KeyMsg 路径。
 
-- **OpenAI Responses API 协议支持**: 新增 `internal/llm/proto/responses/` 协议包（types/build/decode/discover/wire），支持 `/v1/responses` 端点的完整流式/非流式/工具调用。新增 `shell_responses.go` shell provider，通过 `api_type: openai-responses` 启用。`providerHeaders` 新增 OpenRouter 自动注入。`defaultBaseURL` 新增 mimo/longcat 支持。Mimo 三协议（Responses/Chat Complettions/Anthropic Messages）单元测试全部通过。
+- **OpenAI Responses API 协议支持**: 新增 `internal/llm/proto/responses/` 协议包（types/build/decode/discover/wire），支持 `/v1/responses` 端点的完整流式/非流式/工具调用。新增 `shell_responses.go` shell provider，通过 `api_type: openai-responses` 启用。`providerHeaders` 新增 OpenRouter 自动注入。`defaultBaseURL` 新增 mimo/longcat/glm 支持。Mimo 三协议（Responses/Chat Complettions/Anthropic Messages）单元测试全部通过。GLM Chat 协议连通性测试通过（v4 端点适配）。
 - **go.mod 本地 glamour 替换**: 添加 `replace github.com/charmbracelet/glamour => ./dep/glamour`，使用本地修改版 glamour 子模块。
 - **测试更新**: `tui_test.go`、`tui_e2e_test.go`、`tui_bench_test.go` 适配新签名和行为。
 

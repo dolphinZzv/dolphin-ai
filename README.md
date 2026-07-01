@@ -91,6 +91,7 @@ dolphin --config /path/to/config.yaml
 | DeepSeek | Chat / Anthropic | base | 内置 `defaultBaseURL`，开箱即用 |
 | Mimo   | Chat / Responses / Anthropic | base | 内置 `defaultBaseURL`，三协议全通 |
 | LongCat | Chat / Anthropic | base | 内置 `defaultBaseURL` |
+| GLM     | Chat | base | 内置 `defaultBaseURL`，reasoning 消耗较大 token |
 | OpenAI  | Chat | unknown | 无资源验证 |
 | Anthropic | Anthropic | unknown | 无资源验证 |
 | OpenRouter | Chat | base | 内置 `defaultBaseURL` + 自动 Referer/Title header |

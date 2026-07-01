@@ -65,7 +65,7 @@ func ChatURL(baseURL string) string {
 	}
 	apiPath := "/v1/chat/completions"
 	trimmed := strings.TrimRight(baseURL, "/")
-	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v2") || strings.HasSuffix(trimmed, "/v3") {
+	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v2") || strings.HasSuffix(trimmed, "/v3") || strings.HasSuffix(trimmed, "/v4") {
 		apiPath = "/chat/completions"
 	}
 	return baseURL + apiPath
@@ -77,7 +77,7 @@ func ModelsURL(baseURL string) string {
 		baseURL = "https://api.openai.com"
 	}
 	trimmed := strings.TrimRight(baseURL, "/")
-	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v2") || strings.HasSuffix(trimmed, "/v3") {
+	if strings.HasSuffix(trimmed, "/v1") || strings.HasSuffix(trimmed, "/v2") || strings.HasSuffix(trimmed, "/v3") || strings.HasSuffix(trimmed, "/v4") {
 		return trimmed + "/models"
 	}
 	return trimmed + "/v1/models"
