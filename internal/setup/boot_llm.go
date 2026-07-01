@@ -234,6 +234,8 @@ func defaultBaseURL(vendor string) string {
 		return "https://api.longcat.chat"
 	case "glm":
 		return "https://open.bigmodel.cn/api/paas/v4"
+	case "minimax":
+		return "https://api.minimax.chat/v1"
 	}
 	return ""
 }
