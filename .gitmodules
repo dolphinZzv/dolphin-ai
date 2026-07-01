@@ -1,0 +1,3 @@
+[submodule "dep/glamour"]
+	path = dep/glamour
+	url = https://github.com/dolphinZzv/glamour.git
