@@ -85,7 +85,7 @@ function showTurn(idx) {
           <span>rounds: ${d.Rounds || 0}</span>
         </div>
       </div>
-      ${d.SystemPrompt ? `<div class="sys-prompt">📋 ${esc(d.SystemPrompt.slice(0, 200))}</div>` : ''}
+      ${d.SystemPrompt ? `<div class="sys-prompt">📋 ${esc(d.SystemPrompt)}</div>` : ''}
       ${msgs.map(m => entryHTML(m)).join('')}
     </div>
     <div class="col-right">
@@ -107,18 +107,18 @@ function entryHTML(m) {
   else if (r === 'tool') cls = 'tool';
   return `<div class="entry ${cls}">
     <div class="role">${esc(m.role || '?')}</div>
-    <div class="body">${esc((m.text || '').slice(0, 300))}</div>
+    <div class="body">${esc(m.text || '')}</div>
   </div>`;
 }
 
 function diffEntryHTML(d) {
   if (d.cls === 'same') {
-    return `<div class="diff-same">${esc(d.text).slice(0, 120)}</div>`;
+    return `<div class="diff-same">${esc(d.text)}</div>`;
   }
   return `<div class="diff-changed">
     <div class="role">${esc(d.role)}</div>
-    <div class="old">− ${esc(d.old).slice(0, 200)}</div>
-    <div class="new">+ ${esc(d.nue).slice(0, 200)}</div>
+    <div class="old">− ${esc(d.old)}</div>
+    <div class="new">+ ${esc(d.nue)}</div>
   </div>`;
 }
 
