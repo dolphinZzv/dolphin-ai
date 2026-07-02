@@ -388,7 +388,12 @@ function renderView() {
     return;
   }
   // Timeline view.
-  var html = '<h3 style="color:#e94560;margin-bottom:12px">' + esc(activeSid) + '</h3>';
+  var html = '<h3 style="color:#e94560;margin-bottom:4px">' + esc(activeSid) + '</h3>';
+  var sys = '';
+  for (var k = entries.length-1; k >= 0; k--) {
+    if (entries[k].type === 'turn' && entries[k].data && entries[k].data.SystemPrompt) { sys = entries[k].data.SystemPrompt; break; }
+  }
+  html += '<div class="thinking" style="margin-bottom:12px;max-height:120px;overflow-y:auto"><span style="color:#e94560">📋 System:</span> ' + esc(sys||'(empty)') + '</div>';
   let cn = 0;
   for (const e of entries) {
     const ts = new Date(e.ts_ms).toLocaleString('zh-CN');
@@ -420,7 +425,7 @@ function renderView() {
         const d = e.data || {};
         html += '<div class="entry turn"><div class="kind">⏱ Turn · seq=' + e.seq + ' · ' + ts + '</div>';
         html += '<div class="body" style="color:#e0e0e0">' + esc(d.Input||'') + '</div>';
-        if (d.SystemPrompt) html += '<div class="thinking">📋 System: ' + esc((d.SystemPrompt||'').slice(0,200)) + '</div>';
+        html += '<div class="thinking">📋 System: ' + esc((d.SystemPrompt||'(empty)').slice(0,300)) + '</div>';
         html += '<div class="meta-line"><span>id:' + esc(d.TurnID||'?') + '</span><span>model:' + esc(d.ModelName||'?') + '</span><span>in:' + (d.InTokens||0) + '</span><span>out:' + (d.OutTokens||0) + '</span><span>rounds:' + (d.Rounds||0) + '</span></div>';
         html += '</div>';
         break;
