@@ -69,10 +69,16 @@ func main() {
 		for _, e := range entries {
 			if e.IsDir() && strings.HasSuffix(e.Name(), ".wal") {
 				sid := strings.TrimSuffix(strings.TrimPrefix(e.Name(), "session_"), ".wal")
+				info, _ := e.Info()
+				var mtime int64
+				if info != nil {
+					mtime = info.ModTime().Unix()
+				}
 				sessions = append(sessions, map[string]any{
-					"id":   sid,
-					"file": e.Name(),
-					"size": dirSize(filepath.Join(*dir, e.Name())),
+					"id":    sid,
+					"file":  e.Name(),
+					"size":  dirSize(filepath.Join(*dir, e.Name())),
+					"mtime": mtime,
 				})
 			}
 		}
@@ -255,6 +261,10 @@ pre{background:#0d1117;padding:12px;border-radius:4px;overflow:auto;font-size:12
 .col-right{flex:1;overflow-y:auto;padding-left:6px}
 .entry.turn.selected{border-left-color:#fff;background:#1a1a40;border-left-width:4px}
 .entry.turn:hover{border-left-color:#e94560}
+.turn-list{padding:0 0 0 8px;margin:-2px 0 6px;display:none}
+.turn-btn{display:block;padding:3px 8px;margin:2px 0;background:#0d1117;border:1px solid #0f3460;border-radius:3px;color:#888;font-size:11px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.turn-btn:hover{color:#e0e0e0;border-color:#e94560}
+.turn-btn.sel{background:#e94560;color:#fff;border-color:#e94560}
 </style>
 </head>
 <body>
@@ -280,44 +290,104 @@ async function init() {
     if (!res.ok) throw new Error(res.status+' '+res.statusText);
     sessions = await res.json();
   } catch(e) {
-    el.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '<br><span style="font-size:10px">go run ./tools/session-inspect --dir .dolphin/sessions</span></div>';
+    el.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '</div>';
     return;
   }
   if (!sessions.length) {
-    el.innerHTML = '<div class="empty">无 .wal 文件<br><span style="font-size:10px">session.type 设为 wal 后对话几次再刷新</span></div>';
+    el.innerHTML = '<div class="empty">无 .wal 文件</div>';
     return;
   }
-  sessions.sort(function(a,b){ return b.size - a.size; });
+  sessions.sort(function(a,b){ return (b.mtime||0) - (a.mtime||0); });
   renderSidebar();
 }
 init();
 
 function renderSidebar() {
-  const el = document.getElementById('sessionList');
-  if (!sessions.length) { el.innerHTML = '<div class="empty">无 .wal 文件</div>'; return; }
-  el.innerHTML = sessions.map(s => ` + "`" + `<div class="card" onclick="openSession('${s.id}')"><div class="title">${s.id}</div><div class="meta"><span>` + "`" + ` + fmtSize(s.size) + ` + "`" + `</span></div></div>` + "`" + `).join('');
+  var el = document.getElementById('sessionList');
+  el.innerHTML = sessions.map(function(s){
+    return '<div class="card" onclick="openSession(\''+s.id+'\')"><div class="title">'+esc(s.id)+'</div><div class="meta"><span>'+fmtSize(s.size)+'</span></div></div>' +
+      '<div id="turns-'+s.id+'" class="turn-list"></div>';
+  }).join('');
 }
 
 async function openSession(sid) {
   activeSid = sid;
   selectedTurnIdx = -1;
   entries = [];
-  var mainEl = document.getElementById('content');
-  mainEl.innerHTML = '<div class="empty">加载中...</div>';
   try {
     var res = await fetch('/api/session/' + sid);
     if (!res.ok) throw new Error(res.status);
     entries = await res.json();
-  } catch(e) {
-    mainEl.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '</div>';
-    return;
+  } catch(e) { return; }
+
+  var turns = entries.filter(function(e){ return e.type === 'turn'; });
+  var turnEl = document.getElementById('turns-'+sid);
+  var html = '';
+  for (var i = 0; i < turns.length; i++) {
+    var t = turns[i]; var d = t.data || {};
+    html += '<div class="turn-btn" onclick="event.stopPropagation();showTurn('+i+')" id="tbtn-'+sid+'-'+i+'">T'+(i+1)+': '+esc((d.Input||'').slice(0,30))+'</div>';
   }
-  renderFullView();
+  if (turnEl) {
+    turnEl.innerHTML = html || '<div class="empty" style="font-size:10px;color:#555;padding:4px">无 turn mark</div>';
+    turnEl.style.display = 'block';
+  }
+  // Default: show last turn.
+  if (turns.length > 0) showTurn(turns.length-1);
+  else document.getElementById('content').innerHTML = '<div class="empty">无 turn mark</div>';
 }
 
-function selectTurn(idx, seq) {
+function showTurn(idx) {
+  var turns = entries.filter(function(e){ return e.type === 'turn'; });
+  if (idx < 0 || idx >= turns.length) return;
   selectedTurnIdx = idx;
-  renderFullView();
+  var t = turns[idx];
+  var d = t.data || {};
+
+  // Highlight.
+  document.querySelectorAll('.turn-btn').forEach(function(b){ b.classList.remove('sel'); });
+  var btn = document.getElementById('tbtn-'+activeSid+'-'+idx);
+  if (btn) btn.classList.add('sel');
+
+  // Build timeline up to this turn.
+  var msgs = rebuildMessages(t.seq);
+
+  // Diff: this turn vs previous turn (or vs empty for first turn).
+  var prevSeq = idx > 0 ? turns[idx-1].seq : 0;
+  var msgsA = prevSeq ? rebuildMessages(prevSeq) : [];
+  var diff = diffMessages(msgsA, msgs);
+
+  // System prompt.
+  var sys = d.SystemPrompt || '';
+
+  var el = document.getElementById('content');
+  var html = '<div class="layout"><div class="col-left">';
+  // Turn header.
+  html += '<h3 style="color:#e94560;margin-bottom:2px">T'+(idx+1)+': '+esc(d.Input||'')+'</h3>';
+  html += '<div class="meta-line" style="margin-bottom:4px"><span>id:'+esc(d.TurnID||'?')+'</span><span>model:'+esc(d.ModelName||'?')+'</span><span>in:'+(d.InTokens||0)+'</span><span>out:'+(d.OutTokens||0)+'</span><span>rounds:'+(d.Rounds||0)+'</span></div>';
+  if (sys) html += '<div class="thinking" style="margin-bottom:8px;max-height:60px;overflow-y:auto;font-size:10px">📋 '+esc(sys.slice(0,200))+'</div>';
+
+  // Messages.
+  for (var i = 0; i < msgs.length; i++) {
+    var m = msgs[i]; var r = (m.role||'?').toLowerCase();
+    var cls = 'msg', icon = '💬';
+    if (r==='system'){cls='msg-system';icon='⚙️'}
+    else if(r==='tool'){cls='msg-tool';icon='🔧'}
+    else if(r==='assistant'){cls='msg-assistant';icon='🤖'}
+    else if(r==='user'){cls='msg-user';icon='👤'}
+    html += '<div class="entry '+cls+'"><div class="kind">'+icon+' '+esc(m.role||'?')+'</div><div class="body" style="font-size:11px">'+esc((m.text||'').slice(0,200))+'</div></div>';
+  }
+  html += '</div>'; // col-left
+
+  // Diff column.
+  html += '<div class="col-right">';
+  html += '<h3 style="color:#e94560;margin-bottom:8px">📊 '+(idx>0 ? 'T'+idx+'→T'+(idx+1) : '初始→T1')+'</h3>';
+  html += '<div style="color:#888;font-size:11px;margin-bottom:4px">'+msgsA.length+' → '+msgs.length+' msgs</div>';
+  html += diff.map(function(d){
+    if (d.cls==='same') return '<div class="entry msg"><div class="body" style="color:#666;font-size:10px">'+esc(d.text).slice(0,120)+'</div></div>';
+    return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">'+esc(d.role)+'</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px;font-size:10px">− '+esc(d.old).slice(0,150)+'</span><span style="background:#27ae6033;display:block;padding:2px 4px;font-size:10px">+ '+esc(d.nue).slice(0,150)+'</span></div></div>';
+  }).join('');
+  html += '</div></div>';
+  el.innerHTML = html;
 }
 
 function rebuildMessages(toSeq) {
@@ -349,98 +419,10 @@ function diffMessages(a, b) {
     var ta = i < a.length ? a[i].text : '';
     var tb = i < b.length ? b[i].text : '';
     var role = i < a.length ? a[i].role : (i < b.length ? b[i].role : '');
-    if (ta === tb) {
-      out.push({cls:'same', role:role, text:ta || '(empty)'});
-    } else {
-      out.push({cls:'diff', role:role, old:ta || '(gone)', nue:tb || '(new)'});
-    }
+    if (ta === tb) out.push({cls:'same', role:role, text:ta||'(empty)'});
+    else out.push({cls:'diff', role:role, old:ta||'(gone)', nue:tb||'(new)'});
   }
   return out;
-}
-
-function renderFullView() {
-  var el = document.getElementById('content');
-  var turns = entries.filter(function(e){ return e.type === 'turn'; });
-
-  // System prompt from the most recent turn.
-  var sys = '';
-  for (var k = entries.length-1; k >= 0; k--) {
-    if (entries[k].type === 'turn' && entries[k].data && entries[k].data.SystemPrompt) { sys = entries[k].data.SystemPrompt; break; }
-  }
-
-  var html = '<div class="layout"><div class="col-left">';
-  html += '<h3 style="color:#e94560;margin-bottom:4px">' + esc(activeSid) + '</h3>';
-  html += '<div class="thinking" style="margin-bottom:8px;max-height:80px;overflow-y:auto;font-size:11px"><span style="color:#e94560">📋 System:</span> ' + esc((sys||'(empty)').slice(0,300)) + '</div>';
-
-  // Timeline with clickable turn marks.
-  var cn = 0;
-  for (var ei = 0; ei < entries.length; ei++) {
-    var e = entries[ei];
-    var ts = new Date(e.ts_ms).toLocaleString('zh-CN');
-    if (e.type === 'msg') {
-      var d = e.data || {};
-      var tc = d.tool_calls || 0;
-      var r = (d.role||'?').toLowerCase();
-      var cls = 'msg', icon = '💬';
-      if (r === 'system') { cls = 'msg-system'; icon = '⚙️'; }
-      else if (r === 'tool') { cls = 'msg-tool'; icon = '🔧'; }
-      else if (r === 'assistant') { cls = 'msg-assistant'; icon = '🤖'; }
-      else if (r === 'user') { cls = 'msg-user'; icon = '👤'; }
-      html += '<div class="entry ' + cls + '"><div class="kind">' + icon + ' ' + esc(d.role||'?') + ' · seq=' + e.seq + ' · ' + ts + (tc?' · ⚡x'+tc:'') + '</div>';
-      html += '<div class="body">' + esc((d.text||'').slice(0,200)) + '</div>';
-      if (d.thinking) html += '<div class="thinking">💭 ' + esc((d.thinking||'').slice(0,100)) + '</div>';
-      html += '</div>';
-    } else if (e.type === 'compact') {
-      cn++; var d = e.data || {};
-      html += '<div class="compact-block">📦 Compact #' + cn + ' · ' + ts + ' · seq=' + e.seq + ' <span class="range">[' + d.src_start + '–' + (d.src_end||'?') + ']</span></div>';
-    } else if (e.type === 'turn') {
-      var d = e.data || {};
-      // Find the turn index in the turns array
-      var turnIdx = -1;
-      for (var ti = 0; ti < turns.length; ti++) { if (turns[ti].seq === e.seq) { turnIdx = ti; break; } }
-      var isSelected = (selectedTurnIdx === e.seq);
-      html += '<div class="entry turn' + (isSelected ? ' selected' : '') + '" onclick="selectTurn(' + turnIdx + ',' + e.seq + ')" style="cursor:pointer">';
-      html += '<div class="kind">⏱ Turn #' + (turnIdx+1) + ' · ' + ts + '</div>';
-      html += '<div class="body" style="color:#e0e0e0">' + esc(d.Input||'') + '</div>';
-      html += '<div class="meta-line"><span>model:' + esc(d.ModelName||'?') + '</span><span>in:' + (d.InTokens||0) + '</span><span>out:' + (d.OutTokens||0) + '</span><span>rounds:' + (d.Rounds||0) + '</span></div>';
-      html += '</div>';
-    }
-  }
-  html += '</div>'; // end col-left
-
-  // Right column: diff
-  html += '<div class="col-right">';
-  if (turns.length < 2) {
-    html += '<div class="empty" style="margin-top:40px">需要 2 个 Turn 才能 Diff</div>';
-  } else {
-    // Show diff for the last two turns by default, or the selected turn vs previous.
-    var bIdx = selectedTurnIdx > 0 ? selectedTurnIdx : turns[turns.length-1].seq;
-    var aIdx = selectedTurnIdx > 0 ? (function(){ for (var ti=0;ti<turns.length;ti++){if(turns[ti].seq===selectedTurnIdx&&ti>0)return turns[ti-1].seq;} return turns[turns.length-2].seq; })() : turns[turns.length-2].seq;
-
-    var msgsA = rebuildMessages(aIdx);
-    var msgsB = rebuildMessages(bIdx);
-    var diff = diffMessages(msgsA, msgsB);
-
-    // Turn selector buttons.
-    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">';
-    html += turns.map(function(t,i){
-      var label = 'T' + (i+1);
-      var isB = (t.seq === selectedTurnIdx || (selectedTurnIdx<0 && i===turns.length-1));
-      var isA = (isB && i>0) || (!isB && i===turns.length-2 && selectedTurnIdx<0);
-      if (i===0) isA = isB = false; // first turn has no previous
-      return '<button onclick="selectedTurnIdx=' + t.seq + ';renderFullView()" style="background:' + (isB?'#e94560':isA?'#e67e22':'#0f3460') + ';color:#fff;border:0;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px">' + label + ': ' + esc((t.data||{}).Input||'').slice(0,20) + '</button>';
-    }).join('');
-    html += '</div>';
-
-    html += '<div style="color:#888;font-size:11px;margin-bottom:8px">' + msgsA.length + ' msgs → ' + msgsB.length + ' msgs</div>';
-    html += diff.map(function(d){
-      if (d.cls === 'same') return '<div class="entry msg"><div class="kind">' + esc(d.role) + '</div><div class="body" style="color:#888;font-size:11px">' + esc(d.text).slice(0,120) + '</div></div>';
-      return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">' + esc(d.role) + '</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px;font-size:11px">− ' + esc(d.old).slice(0,120) + '</span><span style="background:#27ae6033;display:block;padding:2px 4px;font-size:11px">+ ' + esc(d.nue).slice(0,120) + '</span></div></div>';
-    }).join('');
-  }
-  html += '</div></div>'; // end col-right / layout
-
-  el.innerHTML = html;
 }
 
 function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
