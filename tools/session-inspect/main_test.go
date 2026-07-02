@@ -178,7 +178,7 @@ func TestHTMLPage(t *testing.T) {
 		t.Fatalf("status: %d", w.Code)
 	}
 	body := w.Body.String()
-	if !strings.Contains(body, "WAL Viewer") {
+	if !strings.Contains(body, "Session Inspect") {
 		t.Error("HTML page missing title")
 	}
 	if !strings.Contains(body, "fetch('/api/sessions')") {

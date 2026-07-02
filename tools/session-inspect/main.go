@@ -74,11 +74,13 @@ func main() {
 				if info != nil {
 					mtime = info.ModTime().Unix()
 				}
+				firstInput := firstUserInput(filepath.Join(*dir, e.Name()))
 				sessions = append(sessions, map[string]any{
-					"id":    sid,
-					"file":  e.Name(),
-					"size":  dirSize(filepath.Join(*dir, e.Name())),
-					"mtime": mtime,
+					"id":         sid,
+					"file":       e.Name(),
+					"size":       dirSize(filepath.Join(*dir, e.Name())),
+					"mtime":      mtime,
+					"firstInput": firstInput,
 				})
 			}
 		}
@@ -101,7 +103,7 @@ func main() {
 		writeJSON(w, entries)
 	})
 
-	log.Printf("WAL viewer: http://localhost%s (dir=%s)", *addr, *dir)
+	log.Printf("Session Inspect: http://localhost%s (dir=%s)", *addr, *dir)
 	log.Fatal(http.ListenAndServe(*addr, mux))
 }
 
@@ -200,6 +202,42 @@ func writeJSON(w http.ResponseWriter, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// firstUserInput reads the first user message from a WAL directory.
+func firstUserInput(path string) string {
+	log, err := wal.Open(path, wal.DefaultOptions)
+	if err != nil {
+		return ""
+	}
+	defer log.Close()
+	last, _ := log.LastIndex()
+	first, _ := log.FirstIndex()
+	for seq := first; seq <= last; seq++ {
+		data, err := log.Read(seq)
+		if err != nil || len(data) < 9 {
+			continue
+		}
+		if data[8] != 0 {
+			continue
+		}
+		var msg types.Message
+		if err := gob.NewDecoder(bytes.NewReader(data[9:])).Decode(&msg); err != nil {
+			continue
+		}
+		if msg.Role == types.RoleUser {
+			t := msg.Text()
+			if len(t) > 30 {
+				return t[:30] + "..."
+			}
+			return t
+		}
+		// Stop at first non-user non-msg entry.
+		if msg.Role != "" && msg.Role != types.RoleSystem {
+			return ""
+		}
+	}
+	return ""
+}
+
 // dirSize returns the total size of all files in a directory.
 func dirSize(path string) int64 {
 	entries, err := os.ReadDir(path)
@@ -221,7 +259,7 @@ const htmlPage = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WAL Session Viewer</title>
+<title>Session Inspect</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font:13px/1.5 -apple-system,sans-serif;background:#1a1a2e;color:#e0e0e0;display:flex;height:100vh}
@@ -269,7 +307,7 @@ pre{background:#0d1117;padding:12px;border-radius:4px;overflow:auto;font-size:12
 </head>
 <body>
 <div class="sidebar" id="sidebar">
-  <h2>🐬 WAL Viewer</h2>
+  <h2>🐬 Session Inspect</h2>
   <p class="hint">session.type = wal</p>
   <div id="sessionList"><div class="loading">加载中...</div></div>
 </div>
