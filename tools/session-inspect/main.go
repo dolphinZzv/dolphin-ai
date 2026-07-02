@@ -250,6 +250,11 @@ body{font:13px/1.5 -apple-system,sans-serif;background:#1a1a2e;color:#e0e0e0;dis
 .compact-block .range{color:#e67e22}
 .empty{text-align:center;color:#555;padding:40px;font-size:13px}
 pre{background:#0d1117;padding:12px;border-radius:4px;overflow:auto;font-size:12px;line-height:1.4;max-height:80vh}
+.layout{display:flex;gap:12px;height:calc(100vh - 50px)}
+.col-left{flex:1;overflow-y:auto;padding-right:6px;border-right:1px solid #0f3460}
+.col-right{flex:1;overflow-y:auto;padding-left:6px}
+.entry.turn.selected{border-left-color:#fff;background:#1a1a40;border-left-width:4px}
+.entry.turn:hover{border-left-color:#e94560}
 </style>
 </head>
 <body>
@@ -266,8 +271,7 @@ pre{background:#0d1117;padding:12px;border-radius:4px;overflow:auto;font-size:12
 let sessions = [];
 let activeSid = null;
 let entries = [];
-let activeTab = 'timeline';
-let diffA = null, diffB = null;
+let selectedTurnIdx = -1;
 
 async function init() {
   var el = document.getElementById('sessionList');
@@ -296,6 +300,7 @@ function renderSidebar() {
 
 async function openSession(sid) {
   activeSid = sid;
+  selectedTurnIdx = -1;
   entries = [];
   var mainEl = document.getElementById('content');
   mainEl.innerHTML = '<div class="empty">加载中...</div>';
@@ -307,40 +312,28 @@ async function openSession(sid) {
     mainEl.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '</div>';
     return;
   }
-  diffA = null; diffB = null;
-  document.getElementById('tabs').innerHTML = ` + "`" + `
-    <button class="active" onclick="setTab('timeline')">📋 Timeline</button>
-    <button onclick="setTab('diff')">📊 Diff</button>
-    <button onclick="setTab('raw')">🔍 Raw JSON</button>
-  ` + "`" + `;
-  setTab('timeline');
+  renderFullView();
 }
 
-function setTab(tab) {
-  activeTab = tab;
-  document.querySelectorAll('.tab-bar button').forEach(b => {
-    var label = b.textContent;
-    b.classList.toggle('active', (tab==='timeline'&&label.includes('📋'))||(tab==='diff'&&label.includes('📊'))||(tab==='raw'&&label.includes('🔍')));
-  });
-  renderView();
+function selectTurn(idx, seq) {
+  selectedTurnIdx = idx;
+  renderFullView();
 }
 
 function rebuildMessages(toSeq) {
-  // Replay from the last compact up to the given seq.
   var msgs = [];
-  // Find the nearest compact before toSeq.
-  var cp = null, cpIdx = -1;
+  var cpIdx = -1;
   for (var i = entries.length-1; i >= 0; i--) {
-    if (entries[i].type === 'compact' && entries[i].seq <= toSeq) {
-      cp = entries[i]; cpIdx = i; break;
+    if (entries[i].type === 'compact' && entries[i].seq <= toSeq) { cpIdx = i; break; }
+  }
+  if (cpIdx >= 0) {
+    var cp = entries[cpIdx];
+    if (cp.data && cp.data.messages) {
+      msgs = cp.data.messages.map(function(m){ return {role:m.role,text:m.text}; });
     }
   }
-  if (!cp) return msgs;
-  if (cp.data && cp.data.messages) {
-    msgs = cp.data.messages.map(function(m){ return {role:m.role,text:m.text}; });
-  }
-  // Replay msgs after the compact.
-  for (var j = cpIdx+1; j < entries.length; j++) {
+  var startIdx = cpIdx >= 0 ? cpIdx + 1 : 0;
+  for (var j = startIdx; j < entries.length; j++) {
     if (entries[j].seq > toSeq) break;
     if (entries[j].type === 'msg' && entries[j].data) {
       msgs.push({role:entries[j].data.role, text:entries[j].data.text});
@@ -365,93 +358,92 @@ function diffMessages(a, b) {
   return out;
 }
 
-function renderView() {
+function renderFullView() {
   var el = document.getElementById('content');
-  if (activeTab === 'raw') {
-    el.innerHTML = '<pre>' + JSON.stringify(entries, null, 2) + '</pre>';
-    return;
-  }
-  if (activeTab === 'diff') {
-    var turns = entries.filter(function(e){ return e.type === 'turn'; });
-    if (turns.length < 2) { el.innerHTML = '<div class="empty">至少需要 2 个 Turn Mark 才能 Diff<br>需要调用方在每轮结束时 WriteTurn()</div>'; return; }
-    var h = '<h3 style="color:#e94560;margin-bottom:8px">📊 Diff ' + esc(activeSid) + '</h3>';
-    h += '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
-    h += '<div><span style="color:#888;font-size:11px">基准:</span><br><select id="selA" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
-    h += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===0?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
-    h += '</select></div>';
-    h += '<div><span style="color:#888;font-size:11px">对比:</span><br><select id="selB" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
-    h += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===1?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
-    h += '</select></div>';
-    h += '<div><button onclick="runDiff()" style="background:#e94560;color:#fff;border:0;padding:6px 16px;border-radius:3px;cursor:pointer;margin-top:18px">对比</button></div>';
-    h += '</div><div id="diffResult"></div>';
-    el.innerHTML = h;
-    return;
-  }
-  // Timeline view.
-  var html = '<h3 style="color:#e94560;margin-bottom:4px">' + esc(activeSid) + '</h3>';
+  var turns = entries.filter(function(e){ return e.type === 'turn'; });
+
+  // System prompt from the most recent turn.
   var sys = '';
   for (var k = entries.length-1; k >= 0; k--) {
     if (entries[k].type === 'turn' && entries[k].data && entries[k].data.SystemPrompt) { sys = entries[k].data.SystemPrompt; break; }
   }
-  html += '<div class="thinking" style="margin-bottom:12px;max-height:120px;overflow-y:auto"><span style="color:#e94560">📋 System:</span> ' + esc(sys||'(empty)') + '</div>';
-  let cn = 0;
-  for (const e of entries) {
-    const ts = new Date(e.ts_ms).toLocaleString('zh-CN');
-    switch (e.type) {
-      case 'msg': {
-        const d = e.data || {};
-        const tc = d.tool_calls || 0;
-        const r = (d.role||'?').toLowerCase();
-        var cls = 'msg';
-        var icon = '💬';
-        if (r === 'system') { cls = 'msg-system'; icon = '⚙️'; }
-        else if (r === 'tool') { cls = 'msg-tool'; icon = '🔧'; }
-        else if (r === 'assistant') { cls = 'msg-assistant'; icon = '🤖'; }
-        else if (r === 'user') { cls = 'msg-user'; icon = '👤'; }
-        html += '<div class="entry ' + cls + '"><div class="kind">' + icon + ' ' + esc(d.role||'?') + ' · seq=' + e.seq + ' · ' + ts + (tc?' · ⚡x'+tc:'') + '</div>';
-        html += '<div class="body">' + esc(d.text||'') + '</div>';
-        if (d.thinking) html += '<div class="thinking">💭 ' + esc(d.thinking) + '</div>';
-        html += '</div>';
-        break;
-      }
-      case 'compact': {
-        cn++; const d = e.data || {};
-        html += '<div class="compact-block">📦 Compact #' + cn + ' · ' + ts + ' · seq=' + e.seq + ' <span class="range">[' + d.src_start + '–' + (d.src_end||'?') + ']</span>';
-        html += '<br><span style="color:#999;font-size:10px">' + esc(d.summary||'') + ' · ' + (d.msg_count||0) + ' msgs</span>';
-        html += '</div>';
-        break;
-      }
-      case 'turn': {
-        const d = e.data || {};
-        html += '<div class="entry turn"><div class="kind">⏱ Turn · seq=' + e.seq + ' · ' + ts + '</div>';
-        html += '<div class="body" style="color:#e0e0e0">' + esc(d.Input||'') + '</div>';
-        html += '<div class="thinking">📋 System: ' + esc((d.SystemPrompt||'(empty)').slice(0,300)) + '</div>';
-        html += '<div class="meta-line"><span>id:' + esc(d.TurnID||'?') + '</span><span>model:' + esc(d.ModelName||'?') + '</span><span>in:' + (d.InTokens||0) + '</span><span>out:' + (d.OutTokens||0) + '</span><span>rounds:' + (d.Rounds||0) + '</span></div>';
-        html += '</div>';
-        break;
-      }
+
+  var html = '<div class="layout"><div class="col-left">';
+  html += '<h3 style="color:#e94560;margin-bottom:4px">' + esc(activeSid) + '</h3>';
+  html += '<div class="thinking" style="margin-bottom:8px;max-height:80px;overflow-y:auto;font-size:11px"><span style="color:#e94560">📋 System:</span> ' + esc((sys||'(empty)').slice(0,300)) + '</div>';
+
+  // Timeline with clickable turn marks.
+  var cn = 0;
+  for (var ei = 0; ei < entries.length; ei++) {
+    var e = entries[ei];
+    var ts = new Date(e.ts_ms).toLocaleString('zh-CN');
+    if (e.type === 'msg') {
+      var d = e.data || {};
+      var tc = d.tool_calls || 0;
+      var r = (d.role||'?').toLowerCase();
+      var cls = 'msg', icon = '💬';
+      if (r === 'system') { cls = 'msg-system'; icon = '⚙️'; }
+      else if (r === 'tool') { cls = 'msg-tool'; icon = '🔧'; }
+      else if (r === 'assistant') { cls = 'msg-assistant'; icon = '🤖'; }
+      else if (r === 'user') { cls = 'msg-user'; icon = '👤'; }
+      html += '<div class="entry ' + cls + '"><div class="kind">' + icon + ' ' + esc(d.role||'?') + ' · seq=' + e.seq + ' · ' + ts + (tc?' · ⚡x'+tc:'') + '</div>';
+      html += '<div class="body">' + esc((d.text||'').slice(0,200)) + '</div>';
+      if (d.thinking) html += '<div class="thinking">💭 ' + esc((d.thinking||'').slice(0,100)) + '</div>';
+      html += '</div>';
+    } else if (e.type === 'compact') {
+      cn++; var d = e.data || {};
+      html += '<div class="compact-block">📦 Compact #' + cn + ' · ' + ts + ' · seq=' + e.seq + ' <span class="range">[' + d.src_start + '–' + (d.src_end||'?') + ']</span></div>';
+    } else if (e.type === 'turn') {
+      var d = e.data || {};
+      // Find the turn index in the turns array
+      var turnIdx = -1;
+      for (var ti = 0; ti < turns.length; ti++) { if (turns[ti].seq === e.seq) { turnIdx = ti; break; } }
+      var isSelected = (selectedTurnIdx === e.seq);
+      html += '<div class="entry turn' + (isSelected ? ' selected' : '') + '" onclick="selectTurn(' + turnIdx + ',' + e.seq + ')" style="cursor:pointer">';
+      html += '<div class="kind">⏱ Turn #' + (turnIdx+1) + ' · ' + ts + '</div>';
+      html += '<div class="body" style="color:#e0e0e0">' + esc(d.Input||'') + '</div>';
+      html += '<div class="meta-line"><span>model:' + esc(d.ModelName||'?') + '</span><span>in:' + (d.InTokens||0) + '</span><span>out:' + (d.OutTokens||0) + '</span><span>rounds:' + (d.Rounds||0) + '</span></div>';
+      html += '</div>';
     }
   }
-  el.innerHTML = html || '<div class="empty">空</div>';
-}
+  html += '</div>'; // end col-left
 
-function runDiff() {
-  var selA = document.getElementById('selA');
-  var selB = document.getElementById('selB');
-  if (!selA || !selB) return;
-  var seqA = parseInt(selA.value), seqB = parseInt(selB.value);
-  var msgsA = rebuildMessages(seqA);
-  var msgsB = rebuildMessages(seqB);
-  var diff = diffMessages(msgsA, msgsB);
-  var el = document.getElementById('diffResult');
-  el.innerHTML = '<div style="margin-top:12px">基准: ' + msgsA.length + ' msgs → 对比: ' + msgsB.length + ' msgs</div>' + diff.map(function(d){
-    if (d.cls === 'same') return '<div class="entry msg"><div class="kind">' + esc(d.role) + '</div><div class="body" style="color:#888">' + esc(d.text) + '</div></div>';
-    return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">' + esc(d.role) + '</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px">− ' + esc(d.old) + '</span><span style="background:#27ae6033;display:block;padding:2px 4px">+ ' + esc(d.nue) + '</span></div></div>';
-  }).join('');
+  // Right column: diff
+  html += '<div class="col-right">';
+  if (turns.length < 2) {
+    html += '<div class="empty" style="margin-top:40px">需要 2 个 Turn 才能 Diff</div>';
+  } else {
+    // Show diff for the last two turns by default, or the selected turn vs previous.
+    var bIdx = selectedTurnIdx > 0 ? selectedTurnIdx : turns[turns.length-1].seq;
+    var aIdx = selectedTurnIdx > 0 ? (function(){ for (var ti=0;ti<turns.length;ti++){if(turns[ti].seq===selectedTurnIdx&&ti>0)return turns[ti-1].seq;} return turns[turns.length-2].seq; })() : turns[turns.length-2].seq;
+
+    var msgsA = rebuildMessages(aIdx);
+    var msgsB = rebuildMessages(bIdx);
+    var diff = diffMessages(msgsA, msgsB);
+
+    // Turn selector buttons.
+    html += '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px">';
+    html += turns.map(function(t,i){
+      var label = 'T' + (i+1);
+      var isB = (t.seq === selectedTurnIdx || (selectedTurnIdx<0 && i===turns.length-1));
+      var isA = (isB && i>0) || (!isB && i===turns.length-2 && selectedTurnIdx<0);
+      if (i===0) isA = isB = false; // first turn has no previous
+      return '<button onclick="selectedTurnIdx=' + t.seq + ';renderFullView()" style="background:' + (isB?'#e94560':isA?'#e67e22':'#0f3460') + ';color:#fff;border:0;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px">' + label + ': ' + esc((t.data||{}).Input||'').slice(0,20) + '</button>';
+    }).join('');
+    html += '</div>';
+
+    html += '<div style="color:#888;font-size:11px;margin-bottom:8px">' + msgsA.length + ' msgs → ' + msgsB.length + ' msgs</div>';
+    html += diff.map(function(d){
+      if (d.cls === 'same') return '<div class="entry msg"><div class="kind">' + esc(d.role) + '</div><div class="body" style="color:#888;font-size:11px">' + esc(d.text).slice(0,120) + '</div></div>';
+      return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">' + esc(d.role) + '</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px;font-size:11px">− ' + esc(d.old).slice(0,120) + '</span><span style="background:#27ae6033;display:block;padding:2px 4px;font-size:11px">+ ' + esc(d.nue).slice(0,120) + '</span></div></div>';
+    }).join('');
+  }
+  html += '</div></div>'; // end col-right / layout
+
+  el.innerHTML = html;
 }
 
 function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-function fmtSize(b) { return b > 1e6 ? (b/1e6).toFixed(1)+'MB' : b > 1e3 ? (b/1e3).toFixed(1)+'KB' : b+'B'; }
-</script>
+function fmtSize(b) { return b > 1e6 ? (b/1e6).toFixed(1)+'MB' : b > 1e3 ? (b/1e3).toFixed(1)+'KB' : b+'B'; }</script>
 </body>
 </html>`
