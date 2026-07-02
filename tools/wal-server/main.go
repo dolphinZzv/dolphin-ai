@@ -65,7 +65,7 @@ func main() {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		var sessions []map[string]any
+		sessions := make([]map[string]any, 0)
 		for _, e := range entries {
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".wal") {
 				sid := strings.TrimSuffix(strings.TrimPrefix(e.Name(), "session_"), ".wal")

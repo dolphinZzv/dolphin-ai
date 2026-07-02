@@ -235,3 +235,4 @@ All notable changes to Dolphin will be documented in this file.
 - **Column-aligned command list**: `/commands list` now renders aligned columns with `command`/`status`/`description` headers and dashed separators instead of a simple indented list. Repeated list-rendering logic extracted into `printCommandList` helper.
 - **Side panel separator simplified**: `╌` (U+254C) changed to `-` (ASCII hyphen) for simpler rendering.
 - **wal-server 查看器错误处理**: init()/openSession() 添加 try/catch，fetch 失败或无 .wal 文件时显示明确提示信息。
+- **wal-server nil sessions 修复**: →, 无  文件时返回  而非 , 解决前端  崩溃.
