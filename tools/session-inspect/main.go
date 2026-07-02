@@ -184,11 +184,7 @@ func decodePayload(typ byte, data []byte) any {
 		}
 		previews := make([]map[string]any, len(cp.Messages))
 		for i, m := range cp.Messages {
-			t := m.Text()
-			if len(t) > 200 {
-				t = t[:200] + "..."
-			}
-			previews[i] = map[string]any{"role": string(m.Role), "text": t}
+			previews[i] = map[string]any{"role": string(m.Role), "text": m.Text()}
 		}
 		return map[string]any{
 			"src_start": cp.SrcStart,
@@ -233,11 +229,7 @@ func firstUserInput(path string) string {
 			continue
 		}
 		if msg.Role == types.RoleUser {
-			t := msg.Text()
-			if len(t) > 50 {
-				return t[:50] + "..."
-			}
-			return t
+			return msg.Text()
 		}
 		if msg.Role != "" && msg.Role != types.RoleSystem {
 			return ""

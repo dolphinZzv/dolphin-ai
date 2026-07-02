@@ -47,7 +47,7 @@ async function openSession(sid) {
   turnEl.innerHTML = turns.map((t, i) => {
     const d = t.data || {};
     return `<div class="turn-btn" onclick="event.stopPropagation();showTurn(${i})" id="tbtn-${sid}-${i}">
-      T${i+1}: ${esc((d.Input || '').slice(0, 30))}</div>`;
+      T${i+1}: ${esc(d.Input || '')}</div>`;
   }).join('') || '<div style="font-size:10px;color:#94a3b8;padding:2px 4px">无 turn mark</div>';
   turnEl.style.display = 'block';
 
