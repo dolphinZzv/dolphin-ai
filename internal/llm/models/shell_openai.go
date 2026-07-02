@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"context"
 	"net/http"
-	"strings"
 
 	"go.uber.org/zap"
 
@@ -70,10 +69,10 @@ func NewOpenAIProvider(modelName string) llm.ProviderFactory {
 				}
 				httpReq.Header.Set("Content-Type", "application/json")
 				httpReq.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-				for k, v := range mergedHeaders(cfg, mc) {
+				for k, v := range providerHeaders(cfg) {
 					httpReq.Header.Set(k, v)
 				}
-				for k, v := range providerHeaders(cfg) {
+				for k, v := range mergedHeaders(cfg, mc) {
 					httpReq.Header.Set(k, v)
 				}
 				if req.Stream {
@@ -87,20 +86,12 @@ func NewOpenAIProvider(modelName string) llm.ProviderFactory {
 	}
 }
 
-// providerHeaders returns well-known HTTP headers for specific providers so
-// users don't need to configure them manually. User-configured headers
-// (applied before this) take precedence.
+// providerHeaders returns global HTTP headers sent with every LLM request.
+// User-configured headers (applied before this) take precedence.
 func providerHeaders(cfg llm.Config) map[string]string {
-	vendor := strings.ToLower(cfg.Vendor)
-	if vendor == "" {
-		vendor = strings.ToLower(cfg.Provider)
+	_ = cfg
+	return map[string]string{
+		"HTTP-Referer": "https://dolphin.siciv.space/",
+		"X-Title":      "Dolphin-AI",
 	}
-	switch vendor {
-	case "openrouter":
-		return map[string]string{
-			"HTTP-Referer": "https://dolphin.siciv.space/",
-			"X-Title":      "Dolphin-AI",
-		}
-	}
-	return nil
 }

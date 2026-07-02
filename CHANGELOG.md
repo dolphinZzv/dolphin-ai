@@ -23,6 +23,8 @@ All notable changes to Dolphin will be documented in this file.
 
 - **AgentMesh 自注册空地址冲突修复**: `NewAgentMesh` 仅在 `ListenAddr` 非空时自注册，防止空地址与 mock 真实地址冲突被 tie-breaker 误判。`StaticHandler` 返回 A2A 格式 `{id, artifacts}` 修复 `Delegate` 返回空 content。
 
+- **全局 LLM 身份标识 header**: `providerHeaders` 对所有 provider 自动注入 `HTTP-Referer: https://dolphin.siciv.space/` 和 `X-Title: Dolphin-AI`，不再限于 OpenRouter。内置 headers 先 apply，用户自定义 headers 后覆盖。
+
 - **修复并行 tool_call 结果错位**: 部分 OpenAI/Anthropic 兼容端点流式不返回 `tool_call` ID，导致 TUI 按 ID 配对时所有 tool_result 都堆到最后一个 tool_call 下（`call A, call B, ok, ok`）。decode 层在 ID 为空时打印 warning 并合成唯一 UUID，保证 call/result 配对。
 - **TUI 自定义主题系统**: 新增 `tui.theme` 配置，支持多套命名主题，每套含 light/dark 两组配色（按终端背景自动选择）。可主题化 user_message/tool_use/tool_result/thinking/response 的前景/背景色及整个 TUI 底色（`background: "default"` 跟随终端）。颜色支持 hex/ANSI256/命名色，留空回退内置 `default` 主题。新增 TUI 独有的 `/theme` 命令（无参循环、`/theme <name>` 指定切换）。
 - **TUI UI 调整**: 用户消息每行加 `> ` 标识；welcome 页 pwd/branch 下加空行；CurrentMsg 顶部栏去掉用户名、emoji 改符号图标（▸/✓/✗）且处理完不消失；Ctrl+G 滚动提示从顶部栏移到 tips 区（不再与右下角百分比重复）；队列去掉标题行、active 不入队（在顶部显示），仅列 pending+completed；tip 符号 `💡`→`»`，中文队列符号统一为 `☰`。

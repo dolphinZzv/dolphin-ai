@@ -35,10 +35,10 @@ func NewResponsesProvider(modelName string) llm.ProviderFactory {
 				}
 				httpReq.Header.Set("Content-Type", "application/json")
 				httpReq.Header.Set("Authorization", "Bearer "+cfg.APIKey)
-				for k, v := range mergedHeaders(cfg, mc) {
+				for k, v := range providerHeaders(cfg) {
 					httpReq.Header.Set(k, v)
 				}
-				for k, v := range providerHeaders(cfg) {
+				for k, v := range mergedHeaders(cfg, mc) {
 					httpReq.Header.Set(k, v)
 				}
 				if req.Stream {
