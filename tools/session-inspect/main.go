@@ -378,14 +378,18 @@ function showTurn(idx) {
   }
   html += '</div>'; // col-left
 
-  // Diff column.
+  // Right column: diff (only when there's a previous turn).
   html += '<div class="col-right">';
-  html += '<h3 style="color:#e94560;margin-bottom:8px">📊 '+(idx>0 ? 'T'+idx+'→T'+(idx+1) : '初始→T1')+'</h3>';
-  html += '<div style="color:#888;font-size:11px;margin-bottom:4px">'+msgsA.length+' → '+msgs.length+' msgs</div>';
-  html += diff.map(function(d){
-    if (d.cls==='same') return '<div class="entry msg"><div class="body" style="color:#666;font-size:10px">'+esc(d.text).slice(0,120)+'</div></div>';
-    return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">'+esc(d.role)+'</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px;font-size:10px">− '+esc(d.old).slice(0,150)+'</span><span style="background:#27ae6033;display:block;padding:2px 4px;font-size:10px">+ '+esc(d.nue).slice(0,150)+'</span></div></div>';
-  }).join('');
+  if (idx > 0) {
+    html += '<h3 style="color:#e94560;margin-bottom:8px">📊 T'+idx+'→T'+(idx+1)+'</h3>';
+    html += '<div style="color:#888;font-size:11px;margin-bottom:4px">'+msgsA.length+' → '+msgs.length+' msgs</div>';
+    html += diff.map(function(d){
+      if (d.cls==='same') return '<div class="entry msg"><div class="body" style="color:#666;font-size:10px">'+esc(d.text).slice(0,120)+'</div></div>';
+      return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">'+esc(d.role)+'</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px;font-size:10px">− '+esc(d.old).slice(0,150)+'</span><span style="background:#27ae6033;display:block;padding:2px 4px;font-size:10px">+ '+esc(d.nue).slice(0,150)+'</span></div></div>';
+    }).join('');
+  } else {
+    html += '<div class="empty" style="margin-top:40px">首轮对话<br><span style="font-size:10px;color:#555">选中 T2 可对比 T1→T2 的变化</span></div>';
+  }
   html += '</div></div>';
   el.innerHTML = html;
 }
