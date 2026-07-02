@@ -60,13 +60,14 @@ type walEntry struct {
 
 // TurnMark is a lightweight turn boundary marker in the index.
 type TurnMark struct {
-	Seq       uint64
-	TurnID    string
-	Input     string
-	ModelName string
-	InTokens  int
-	OutTokens int
-	Rounds    int
+	Seq          uint64
+	TurnID       string
+	Input        string
+	SystemPrompt string
+	ModelName    string
+	InTokens     int
+	OutTokens    int
+	Rounds       int
 }
 
 // walIndex holds the in-memory index for one session.
@@ -211,13 +212,14 @@ func (m *WALMemory) rebuildIndex(log *wal.Log) (*walIndex, error) {
 				return nil, fmt.Errorf("wal: decode turn at seq %d: %w", seq, err)
 			}
 			idx.turnMarks = append(idx.turnMarks, TurnMark{
-				Seq:       seq,
-				TurnID:    tp.TurnID,
-				Input:     tp.Input,
-				ModelName: tp.ModelName,
-				InTokens:  tp.InTokens,
-				OutTokens: tp.OutTokens,
-				Rounds:    tp.Rounds,
+				Seq:          seq,
+				TurnID:       tp.TurnID,
+				Input:        tp.Input,
+				SystemPrompt: tp.SystemPrompt,
+				ModelName:    tp.ModelName,
+				InTokens:     tp.InTokens,
+				OutTokens:    tp.OutTokens,
+				Rounds:       tp.Rounds,
 			})
 		}
 	}
@@ -403,13 +405,14 @@ func (m *WALMemory) WriteTurn(ctx context.Context, sessionID string, tp TurnPayl
 	idx, _ := m.getIndex(sessionID)
 	idx.entries = append(idx.entries, walEntry{seq: seq, ts: ts, typ: walTypeTurn})
 	idx.turnMarks = append(idx.turnMarks, TurnMark{
-		Seq:       seq,
-		TurnID:    tp.TurnID,
-		Input:     tp.Input,
-		ModelName: tp.ModelName,
-		InTokens:  tp.InTokens,
-		OutTokens: tp.OutTokens,
-		Rounds:    tp.Rounds,
+		Seq:          seq,
+		TurnID:       tp.TurnID,
+		Input:        tp.Input,
+		SystemPrompt: tp.SystemPrompt,
+		ModelName:    tp.ModelName,
+		InTokens:     tp.InTokens,
+		OutTokens:    tp.OutTokens,
+		Rounds:       tp.Rounds,
 	})
 
 	return nil
