@@ -1,6 +1,7 @@
 let sessions = [];
 let activeSid = null;
 let entries = [];
+let mdMode = true; // markdown vs raw text toggle
 
 async function init() {
   const el = document.getElementById('sessionList');
@@ -54,11 +55,26 @@ async function openSession(sid) {
   else document.getElementById('main').innerHTML = '<div class="empty-state">无 turn mark<p>需要至少一次对话</p></div>';
 }
 
+function toggleMD() {
+  mdMode = !mdMode;
+  document.querySelectorAll('.md-toggle').forEach(b => {
+    b.textContent = mdMode ? '📝 Markdown' : '📋 Raw';
+    b.classList.toggle('active', mdMode);
+  });
+  // Re-render current turn.
+  if (activeSid) {
+    const turns = entries.filter(e => e.type === 'turn');
+    for (let i = 0; i < turns.length; i++) {
+      const btn = document.getElementById('tbtn-' + activeSid + '-' + i);
+      if (btn && btn.classList.contains('sel')) { showTurn(i); break; }
+    }
+  }
+}
+
 function showTurn(idx) {
   const turns = entries.filter(e => e.type === 'turn');
   if (idx < 0 || idx >= turns.length) return;
 
-  // Highlight selected button.
   document.querySelectorAll('.turn-btn').forEach(b => b.classList.remove('sel'));
   const btn = document.getElementById('tbtn-' + activeSid + '-' + idx);
   if (btn) btn.classList.add('sel');
@@ -67,7 +83,6 @@ function showTurn(idx) {
   const d = t.data || {};
   const msgs = rebuildMessages(t.seq);
 
-  // Diff: this turn vs previous.
   const prevSeq = idx > 0 ? turns[idx - 1].seq : 0;
   const msgsA = prevSeq ? rebuildMessages(prevSeq) : [];
   const diff = diffMessages(msgsA, msgs);
@@ -83,9 +98,10 @@ function showTurn(idx) {
           <span>in: ${d.InTokens || 0}</span>
           <span>out: ${d.OutTokens || 0}</span>
           <span>rounds: ${d.Rounds || 0}</span>
+          <button class="md-toggle${mdMode ? ' active' : ''}" onclick="toggleMD()" title="Toggle markdown / raw text">${mdMode ? '📝 Markdown' : '📋 Raw'}</button>
         </div>
       </div>
-      ${d.SystemPrompt ? `<div class="sys-prompt">📋 ${esc(d.SystemPrompt)}</div>` : ''}
+      ${d.SystemPrompt ? `<div class="sys-prompt">📋 ${renderMarkdown(d.SystemPrompt)}</div>` : ''}
       ${msgs.map(m => entryHTML(m)).join('')}
     </div>
     <div class="col-right">
@@ -105,22 +121,35 @@ function entryHTML(m) {
   if (r === 'user') cls = 'user';
   else if (r === 'system') cls = 'system';
   else if (r === 'tool') cls = 'tool';
+  const body = mdMode ? renderMarkdown(m.text || '') : `<pre class="raw-text">${esc(m.text || '')}</pre>`;
   return `<div class="entry ${cls}">
     <div class="role">${esc(m.role || '?')}</div>
-    <div class="body">${esc(m.text || '')}</div>
+    <div class="body md-content">${body}</div>
   </div>`;
 }
 
 function diffEntryHTML(d) {
   if (d.cls === 'same') {
-    return `<div class="diff-same">${esc(d.text)}</div>`;
+    return `<div class="diff-same">${renderMarkdown(d.text)}</div>`;
   }
   return `<div class="diff-changed">
     <div class="role">${esc(d.role)}</div>
-    <div class="old">− ${esc(d.old)}</div>
-    <div class="new">+ ${esc(d.nue)}</div>
+    <div class="old">− ${renderMarkdown(d.old)}</div>
+    <div class="new">+ ${renderMarkdown(d.nue)}</div>
   </div>`;
 }
+
+// ---- markdown rendering (marked.js, CDN) ----
+function renderMarkdown(md) {
+  if (!md) return '';
+  if (typeof marked !== 'undefined' && marked.parse) {
+    return marked.parse(md);
+  }
+  // Graceful fallback if CDN fails to load.
+  return esc(md).replace(/\n\n/g, '</p><p>').replace(/\n/g, '<br>');
+}
+
+// ---- WAL replay logic ----
 
 function rebuildMessages(toSeq) {
   const msgs = [];
