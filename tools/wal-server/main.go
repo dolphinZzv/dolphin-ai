@@ -373,21 +373,21 @@ function renderView() {
   if (activeTab === 'diff') {
     var turns = entries.filter(function(e){ return e.type === 'turn'; });
     if (turns.length < 2) { el.innerHTML = '<div class="empty">至少需要 2 个 Turn Mark 才能 Diff<br>需要调用方在每轮结束时 WriteTurn()</div>'; return; }
-    var html = '<h3 style="color:#e94560;margin-bottom:8px">📊 Diff ' + esc(activeSid) + '</h3>';
-    html += '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
-    html += '<div><span style="color:#888;font-size:11px">基准:</span><br><select id="selA" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
-    html += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===0?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
-    html += '</select></div>';
-    html += '<div><span style="color:#888;font-size:11px">对比:</span><br><select id="selB" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
-    html += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===1?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
-    html += '</select></div>';
-    html += '<div><button onclick="runDiff()" style="background:#e94560;color:#fff;border:0;padding:6px 16px;border-radius:3px;cursor:pointer;margin-top:18px">对比</button></div>';
-    html += '</div><div id="diffResult"></div>';
-    el.innerHTML = html;
+    var h = '<h3 style="color:#e94560;margin-bottom:8px">📊 Diff ' + esc(activeSid) + '</h3>';
+    h += '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+    h += '<div><span style="color:#888;font-size:11px">基准:</span><br><select id="selA" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
+    h += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===0?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
+    h += '</select></div>';
+    h += '<div><span style="color:#888;font-size:11px">对比:</span><br><select id="selB" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
+    h += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===1?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
+    h += '</select></div>';
+    h += '<div><button onclick="runDiff()" style="background:#e94560;color:#fff;border:0;padding:6px 16px;border-radius:3px;cursor:pointer;margin-top:18px">对比</button></div>';
+    h += '</div><div id="diffResult"></div>';
+    el.innerHTML = h;
     return;
   }
   // Timeline view.
-  let html = '<h3 style="color:#e94560;margin-bottom:12px">' + esc(activeSid) + '</h3>';
+  var html = '<h3 style="color:#e94560;margin-bottom:12px">' + esc(activeSid) + '</h3>';
   let cn = 0;
   for (const e of entries) {
     const ts = new Date(e.ts_ms).toLocaleString('zh-CN');
