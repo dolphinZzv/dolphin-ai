@@ -94,7 +94,7 @@
       "additionalProperties": false,
       "properties": {
         "dir": { "type": "string", "default": ".dolphin/sessions" },
-        "type": { "type": "string", "enum": ["file", "sqlite"], "default": "file", "description": "Session storage backend: file (JSON) or sqlite. Database at {dir}/memory.db" },
+        "type": { "type": "string", "enum": ["file", "sqlite", "wal"], "default": "file", "description": "Session storage backend: file (JSON) or sqlite or wal(append-only). DB at {dir}/memory.db" },
         "dump_dir": { "type": "string", "default": ".dolphin/dumps", "description": "Directory where /dump writes turn JSON dumps." },
         "window": { "type": "integer", "minimum": 1, "default": 40 },
         "expire_after": {

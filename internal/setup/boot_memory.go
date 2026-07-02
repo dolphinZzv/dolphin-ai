@@ -25,6 +25,13 @@ func (b *MemoryBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 			return err
 		}
 		base = db
+	case "wal":
+		dir := c.Config.GetString("session.dir")
+		wm, err := memory.NewWALMemory(dir)
+		if err != nil {
+			return err
+		}
+		base = wm
 	default:
 		base = memory.NewFileMemory(c.SessionMgr)
 	}
