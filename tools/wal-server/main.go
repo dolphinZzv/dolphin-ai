@@ -254,9 +254,20 @@ let entries = [];
 let activeTab = 'timeline';
 
 async function init() {
-  const res = await fetch('/api/sessions');
-  sessions = await res.json();
-  sessions.sort((a,b) => b.size - a.size);
+  var el = document.getElementById('sessionList');
+  try {
+    var res = await fetch('/api/sessions');
+    if (!res.ok) throw new Error(res.status+' '+res.statusText);
+    sessions = await res.json();
+  } catch(e) {
+    el.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '<br><span style="font-size:10px">go run ./tools/wal-server --dir .dolphin/sessions</span></div>';
+    return;
+  }
+  if (!sessions.length) {
+    el.innerHTML = '<div class="empty">无 .wal 文件<br><span style="font-size:10px">session.type 设为 wal 后对话几次再刷新</span></div>';
+    return;
+  }
+  sessions.sort(function(a,b){ return b.size - a.size; });
   renderSidebar();
 }
 init();
@@ -273,9 +284,16 @@ function renderSidebar() {
 async function openSession(sid) {
   activeSid = sid;
   entries = [];
-  document.getElementById('content').innerHTML = '<div class="empty">加载中...</div>';
-  const res = await fetch('/api/session/' + sid);
-  entries = await res.json();
+  var mainEl = document.getElementById('content');
+  mainEl.innerHTML = '<div class="empty">加载中...</div>';
+  try {
+    var res = await fetch('/api/session/' + sid);
+    if (!res.ok) throw new Error(res.status);
+    entries = await res.json();
+  } catch(e) {
+    mainEl.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '</div>';
+    return;
+  }
   document.getElementById('tabs').innerHTML = ` + "`" + `
     <button class="active" onclick="setTab('timeline')">📋 Timeline</button>
     <button onclick="setTab('raw')">🔍 Raw JSON</button>
