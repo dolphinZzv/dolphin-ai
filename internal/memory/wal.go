@@ -31,14 +31,15 @@ type CompactPayload struct {
 
 // TurnPayload is the data stored in a walTypeTurn entry.
 type TurnPayload struct {
-	TurnID    string
-	Input     string
-	ModelName string
-	InTokens  int
-	OutTokens int
-	Rounds    int
-	MsgStart  int // index in the entries slice
-	MsgEnd    int // index in the entries slice
+	TurnID       string
+	Input        string
+	SystemPrompt string // the system prompt at turn time
+	ModelName    string
+	InTokens     int
+	OutTokens    int
+	Rounds       int
+	MsgStart     int // index in the entries slice
+	MsgEnd       int // index in the entries slice
 }
 
 // walCompactEntry is an in-memory cache of the latest compact entry's decoded

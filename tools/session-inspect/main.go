@@ -291,10 +291,7 @@ init();
 function renderSidebar() {
   const el = document.getElementById('sessionList');
   if (!sessions.length) { el.innerHTML = '<div class="empty">无 .wal 文件</div>'; return; }
-  el.innerHTML = sessions.map(s => ` + "`" + `<div class="card" onclick="openSession('${s.id}')">
-    <div class="title">${s.id}</div>
-    <div class="meta"><span>$(fmtSize(s.size))</span></div>
-  </div>` + "`" + `).join('');
+  el.innerHTML = sessions.map(s => ` + "`" + `<div class="card" onclick="openSession('${s.id}')"><div class="title">${s.id}</div><div class="meta"><span>` + "`" + ` + fmtSize(s.size) + ` + "`" + `</span></div></div>` + "`" + `).join('');
 }
 
 async function openSession(sid) {
@@ -422,7 +419,8 @@ function renderView() {
       case 'turn': {
         const d = e.data || {};
         html += '<div class="entry turn"><div class="kind">⏱ Turn · seq=' + e.seq + ' · ' + ts + '</div>';
-        html += '<div class="body">' + esc(d.Input||'') + '</div>';
+        html += '<div class="body" style="color:#e0e0e0">' + esc(d.Input||'') + '</div>';
+        if (d.SystemPrompt) html += '<div class="thinking">📋 System: ' + esc((d.SystemPrompt||'').slice(0,200)) + '</div>';
         html += '<div class="meta-line"><span>id:' + esc(d.TurnID||'?') + '</span><span>model:' + esc(d.ModelName||'?') + '</span><span>in:' + (d.InTokens||0) + '</span><span>out:' + (d.OutTokens||0) + '</span><span>rounds:' + (d.Rounds||0) + '</span></div>';
         html += '</div>';
         break;

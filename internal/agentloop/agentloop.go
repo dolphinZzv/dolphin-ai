@@ -365,12 +365,13 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	if a.mem != nil {
 		if tm, ok := a.mem.(memory.TurnMarker); ok {
 			_ = tm.WriteTurn(context.Background(), turn.SessionID, memory.TurnPayload{
-				TurnID:    turn.TurnID,
-				Input:     turn.Input,
-				ModelName: state.ModelName,
-				InTokens:  0, // TODO: populate from usage
-				OutTokens: 0,
-				Rounds:    state.Round,
+				TurnID:       turn.TurnID,
+				Input:        turn.Input,
+				SystemPrompt: state.SystemPrompt,
+				ModelName:    state.ModelName,
+				InTokens:     0, // TODO: populate from usage
+				OutTokens:    0,
+				Rounds:       state.Round,
 			})
 		}
 	}
