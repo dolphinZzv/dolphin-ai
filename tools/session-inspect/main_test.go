@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -181,8 +182,8 @@ func TestHTMLPage(t *testing.T) {
 	if !strings.Contains(body, "Session Inspect") {
 		t.Error("HTML page missing title")
 	}
-	if !strings.Contains(body, "fetch('/api/sessions')") {
-		t.Error("HTML page missing API call")
+	if !strings.Contains(body, "app.js") {
+		t.Error("HTML page missing app.js reference")
 	}
 }
 
@@ -192,13 +193,19 @@ func handler(t *testing.T, dir string) http.Handler {
 	t.Helper()
 
 	mux := http.NewServeMux()
+
+	// Serve static files from embedded templates.
+	staticFS, _ := fs.Sub(templates, "templates")
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Write([]byte(htmlPage))
+		index, _ := templates.ReadFile("templates/index.html")
+		w.Write(index)
 	})
 	mux.HandleFunc("/api/sessions", func(w http.ResponseWriter, r *http.Request) {
 		entries, err := os.ReadDir(dir)
