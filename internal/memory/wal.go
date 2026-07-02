@@ -269,10 +269,26 @@ func (m *WALMemory) Read(ctx context.Context, sessionID string, start, end int) 
 	return sliceMessages(msgs, start, end), nil
 }
 
-// Write appends a single message for the session.
+// Write appends a single message for the session. If this is the first
+// write (no compact entry exists), an initial compact is auto-created so
+// that Read() has a baseline to start from.
 func (m *WALMemory) Write(ctx context.Context, sessionID string, msg types.Message) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	idx, err := m.getIndex(sessionID)
+	if err != nil {
+		idx = &walIndex{compactAt: -1}
+		m.sessions[sessionID] = idx
+	}
+
+	// Auto-create initial compact if this is the first write.
+	if idx.compactAt < 0 {
+		if err := m.writeCompactLocked(sessionID, CompactPayload{Messages: []types.Message{msg}}); err != nil {
+			return fmt.Errorf("wal: auto-compact: %w", err)
+		}
+		return nil
+	}
 
 	log, err := m.getWAL(sessionID)
 	if err != nil {
@@ -303,15 +319,42 @@ func (m *WALMemory) Write(ctx context.Context, sessionID string, msg types.Messa
 		return fmt.Errorf("wal: write seq %d: %w", seq, err)
 	}
 
-	// Update index.
-	idx, err := m.getIndex(sessionID)
-	if err != nil {
-		idx = &walIndex{compactAt: -1}
-		m.sessions[sessionID] = idx
-	}
 	idx.entries = append(idx.entries, walEntry{seq: seq, ts: ts, typ: walTypeMsg})
 	idx.msgCount++
 
+	return nil
+}
+
+// writeCompactLocked appends a compact entry without holding m.mu (caller must hold it).
+func (m *WALMemory) writeCompactLocked(sessionID string, cp CompactPayload) error {
+	log, err := m.getWAL(sessionID)
+	if err != nil {
+		return err
+	}
+	var buf bytes.Buffer
+	ts := time.Now().UnixNano()
+	binary.Write(&buf, binary.BigEndian, ts)
+	buf.WriteByte(walTypeCompact)
+	gob.NewEncoder(&buf).Encode(cp)
+
+	seq, _ := log.LastIndex()
+	seq++
+	if err := log.Write(seq, buf.Bytes()); err != nil {
+		return fmt.Errorf("wal: write: %w", err)
+	}
+
+	idx, _ := m.getIndex(sessionID)
+	if idx == nil {
+		idx = &walIndex{compactAt: -1}
+		m.sessions[sessionID] = idx
+	}
+	idx.entries = append(idx.entries, walEntry{seq: seq, ts: ts, typ: walTypeCompact})
+	idx.compactAt = len(idx.entries) - 1
+	idx.compact = walCompactCache{
+		messages: cp.Messages,
+		msgCount: len(cp.Messages),
+	}
+	idx.msgCount = len(cp.Messages)
 	return nil
 }
 
