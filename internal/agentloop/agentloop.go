@@ -369,8 +369,8 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 				Input:        turn.Input,
 				SystemPrompt: state.SystemPrompt,
 				ModelName:    state.ModelName,
-				InTokens:     0, // TODO: populate from usage
-				OutTokens:    0,
+				InTokens:     state.InTokens,
+				OutTokens:    state.OutTokens,
 				Rounds:       state.Round,
 			})
 		}

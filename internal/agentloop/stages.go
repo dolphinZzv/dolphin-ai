@@ -59,7 +59,11 @@ type State struct {
 	History          []types.Message
 	Messages         []types.Message
 	SystemPrompt     string
-	Tools            []types.ToolDef
+	// InTokens / OutTokens track the cumulative token usage of the
+	// last LLM call in this turn. Set by LLMStage.
+	InTokens  int
+	OutTokens int
+	Tools     []types.ToolDef
 	ToolCalls        []types.ToolCall
 	ToolResults      []types.ToolResult
 	Round            int
@@ -872,6 +876,9 @@ done:
 			"prompt_cache_miss_tokens":    promptCacheMissTokens,
 		},
 	})
+
+	state.InTokens = inputTokens
+	state.OutTokens = outputTokens
 
 	return nil
 }
