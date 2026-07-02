@@ -33,13 +33,13 @@ type CompactPayload struct {
 type TurnPayload struct {
 	TurnID       string
 	Input        string
-	SystemPrompt string // the system prompt at turn time
 	ModelName    string
 	InTokens     int
 	OutTokens    int
 	Rounds       int
 	MsgStart     int // index in the entries slice
 	MsgEnd       int // index in the entries slice
+	SystemPrompt string // the system prompt at turn time (appended for gob compat)
 }
 
 // walCompactEntry is an in-memory cache of the latest compact entry's decoded
