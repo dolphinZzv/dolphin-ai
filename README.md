@@ -183,6 +183,7 @@ llm:
 | 配置项 | 类型 | 默认 | 说明 |
 |--------|------|------|------|
 | `session.dir` | string | .dolphin/sessions | 会话数据目录 |
+| `session.type` | string | file | 存储后端：file(JSON) 或 sqlite。DB 文件存 {dir}/memory.db |
 | `session.dump_dir` | string | .dolphin/dumps | /dump 导出目录 |
 | `session.window` | int | 40 | 保留的最大消息数 |
 | `session.expire_after` | duration | 1h | 空闲超时（开启新会话）。0=永不 |
@@ -247,7 +248,8 @@ llm:
 |--------|------|------|------|
 | `lang` | string | - | 界面语言（en/zh，默认从系统检测） |
 | `otel.enabled` | bool | false | 是否启用 OpenTelemetry |
-| `memory.dir` | string | .dolphin/memory | 内存/历史存储目录 |
+| `session.dir` | string | .dolphin/sessions | 会话消息存储目录 |
+| `session.type` | string | file | 存储后端：file(JSON) 或 sqlite |
 
 ---
 

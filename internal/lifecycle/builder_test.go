@@ -20,7 +20,6 @@ func TestBuilder(t *testing.T) {
 			"agent.max_rounds":   10,
 			"agent.buffer_size":  10,
 			"session.window":     10,
-			"memory.dir":         t.TempDir(),
 			"session.dir":        t.TempDir(),
 			"brain.dir":          t.TempDir(),
 		})
@@ -84,7 +83,6 @@ func TestBuilderCommands(t *testing.T) {
 			"agent.max_rounds":   10,
 			"agent.buffer_size":  10,
 			"session.window":     10,
-			"memory.dir":         t.TempDir(),
 			"session.dir":        t.TempDir(),
 			"brain.dir":          t.TempDir(),
 		})

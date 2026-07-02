@@ -244,8 +244,7 @@ func (s *Spawner) generateConfig(spec AgentSpec) (string, error) {
 	values["agent.name"] = spec.Name
 	values["agent.workspace"] = spec.Workspace
 	values["agent.pool_size"] = 1
-	// isolated memory/session/log dirs
-	values["memory.dir"] = filepath.Join(spec.Workspace, "memory")
+	// isolated dirs
 	values["session.dir"] = filepath.Join(spec.Workspace, "sessions")
 	values["log.file"] = filepath.Join(spec.Workspace, "dolphin.log")
 	values["log.compress"] = false

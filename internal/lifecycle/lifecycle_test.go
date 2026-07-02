@@ -26,10 +26,11 @@ func TestPipeline(t *testing.T) {
 					"agent.max_rounds":   10,
 					"agent.buffer_size":  10,
 					"session.window":     10,
-					"memory.dir":         t.TempDir(),
 					"session.dir":        t.TempDir(),
 				})
 			}
+			// Always use file storage in tests; SQLite is tested separately.
+			cfg.Set("session.type", "file")
 			cfg.Set("brain.dir", t.TempDir())
 
 			p := New(cfg)
@@ -51,7 +52,6 @@ func TestPipeline(t *testing.T) {
 				"agent.max_rounds":   10,
 				"agent.buffer_size":  10,
 				"session.window":     10,
-				"memory.dir":         t.TempDir(),
 				"session.dir":        t.TempDir(),
 				"brain.dir":          t.TempDir(),
 			})
@@ -80,7 +80,6 @@ func TestPipelineSharedSession(t *testing.T) {
 			"agent.max_rounds":   10,
 			"agent.buffer_size":  10,
 			"session.window":     10,
-			"memory.dir":         t.TempDir(),
 			"session.dir":        t.TempDir(),
 			"brain.dir":          t.TempDir(),
 			"session.mode":       "shared",
@@ -118,7 +117,6 @@ func TestPipelineTokenAccumulation(t *testing.T) {
 		"agent.max_rounds":   10,
 		"agent.buffer_size":  10,
 		"session.window":     10,
-		"memory.dir":         t.TempDir(),
 		"session.dir":        t.TempDir(),
 		"brain.dir":          t.TempDir(),
 	})
@@ -278,7 +276,6 @@ func TestPipelineTokenAccumulationNewSession(t *testing.T) {
 		"agent.max_rounds":   10,
 		"agent.buffer_size":  10,
 		"session.window":     10,
-		"memory.dir":         t.TempDir(),
 		"session.dir":        t.TempDir(),
 		"brain.dir":          t.TempDir(),
 	})

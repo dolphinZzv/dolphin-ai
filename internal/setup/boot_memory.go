@@ -15,9 +15,20 @@ func (b *MemoryBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		return nil
 	}
 	window := c.Config.GetInt("session.window")
-	c.Mem = memory.NewDroppingMemory(
-		memory.NewFileMemory(c.SessionMgr),
-		window,
-	)
+
+	var base memory.Memory
+	switch c.Config.GetString("session.type") {
+	case "sqlite":
+		dir := c.Config.GetString("session.dir")
+		db, err := memory.NewSQLiteMemory(dir + "/memory.db")
+		if err != nil {
+			return err
+		}
+		base = db
+	default:
+		base = memory.NewFileMemory(c.SessionMgr)
+	}
+
+	c.Mem = memory.NewDroppingMemory(base, window)
 	return nil
 }
