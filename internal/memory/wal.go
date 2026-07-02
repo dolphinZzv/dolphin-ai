@@ -17,12 +17,12 @@ import (
 // WAL entry type constants.
 const (
 	walTypeMsg     byte = 0 // types.Message
-	walTypeCompact byte = 1 // compactPayload
+	walTypeCompact byte = 1 // CompactPayload
 	walTypeTurn    byte = 2 // TurnPayload
 )
 
-// compactPayload is the data stored in a walTypeCompact entry.
-type compactPayload struct {
+// CompactPayload is the data stored in a walTypeCompact entry.
+type CompactPayload struct {
 	Messages []types.Message
 	SrcStart int    // first msg index included in this compact
 	SrcEnd   int    // first msg index after this compact
@@ -189,7 +189,7 @@ func (m *WALMemory) rebuildIndex(log *wal.Log) (*walIndex, error) {
 
 		switch typ {
 		case walTypeCompact:
-			var cp compactPayload
+			var cp CompactPayload
 			if err := gob.NewDecoder(bytes.NewReader(payload)).Decode(&cp); err != nil {
 				return nil, fmt.Errorf("wal: decode compact at seq %d: %w", seq, err)
 			}
@@ -328,7 +328,7 @@ func (m *WALMemory) Replace(ctx context.Context, sessionID string, msgs []types.
 		m.sessions[sessionID] = idx
 	}
 
-	cp := compactPayload{
+	cp := CompactPayload{
 		Messages: msgs,
 		SrcStart: idx.compact.msgCount,
 		SrcEnd:   idx.msgCount,
@@ -459,7 +459,7 @@ func (m *WALMemory) RewindTo(sessionID string, seq uint64) error {
 	if err != nil {
 		return fmt.Errorf("wal: read compact at seq %d: %w", idx.entries[targetAt].seq, err)
 	}
-	var cp compactPayload
+	var cp CompactPayload
 	if err := gob.NewDecoder(bytes.NewReader(data[9:])).Decode(&cp); err != nil {
 		return fmt.Errorf("wal: decode compact: %w", err)
 	}
@@ -485,7 +485,7 @@ func (m *WALMemory) RewindTo(sessionID string, seq uint64) error {
 	}
 
 	// Write a new compact entry to mark the rewind point.
-	cp = compactPayload{Messages: msgs}
+	cp = CompactPayload{Messages: msgs}
 	var buf bytes.Buffer
 	ts := time.Now().UnixNano()
 	binary.Write(&buf, binary.BigEndian, ts)
@@ -621,6 +621,6 @@ func init() {
 	gob.Register(types.ContentPart{})
 	gob.Register(types.ToolCall{})
 	gob.Register(types.ToolDef{})
-	gob.Register(compactPayload{})
+	gob.Register(CompactPayload{})
 	gob.Register(TurnPayload{})
 }

@@ -27,7 +27,7 @@ All notable changes to Dolphin will be documented in this file.
 
 - **Memory SQLite 支持**: 新增 `SQLiteMemory`（pure-Go `modernc.org/sqlite`，单 goroutine 队列写入，WAL 模式），通过 `session.type: sqlite` 启用，db 存 `{session.dir}/memory.db`。`memory.dir` 配置 section 移除，scheduler 改用 `session.dir`。默认 `file` 保持向后兼容。
 
-- **Memory WAL 时光机**: 新增 `WALMemory`（`tidwall/wal` append-only 存储 + 轻量 index），通过 `session.type: wal` 启用。WAL 为唯一数据源，index 只存 24 bytes/条 offset。Write→gob/WAL append，Replace→compact 快照保留完整历史。`WriteTurn` 记录 turn 元数据，`TurnMarks` 查看时间线，`RewindTo` 安全回溯（写新 compact）。GC 每日 1 次，`session.wal_retention`/`session.wal_keep_turns` 可配置。11 个单元测试全覆盖（CRUD/重启/并发/回溯/GC）。
+- **Memory WAL 时光机**: 新增 `WALMemory`（`tidwall/wal` append-only 存储 + 轻量 index），通过 `session.type: wal` 启用。WAL 为唯一数据源，index 只存 24 bytes/条 offset。Write→gob/WAL append，Replace→compact 快照保留完整历史。`WriteTurn` 记录 turn 元数据，`TurnMarks` 查看时间线，`RewindTo` 安全回溯（写新 compact）。GC 每日 1 次，`session.wal_retention`/`session.wal_keep_turns` 可配置。11 个单元测试全覆盖（CRUD/重启/并发/回溯/GC）。`tools/wal-server` 提供内嵌 HTML 的 HTTP 查看器（`go run ./tools/wal-server` → http://localhost:9090）。
 
 - **修复并行 tool_call 结果错位**: 部分 OpenAI/Anthropic 兼容端点流式不返回 `tool_call` ID，导致 TUI 按 ID 配对时所有 tool_result 都堆到最后一个 tool_call 下（`call A, call B, ok, ok`）。decode 层在 ID 为空时打印 warning 并合成唯一 UUID，保证 call/result 配对。
 - **TUI 自定义主题系统**: 新增 `tui.theme` 配置，支持多套命名主题，每套含 light/dark 两组配色（按终端背景自动选择）。可主题化 user_message/tool_use/tool_result/thinking/response 的前景/背景色及整个 TUI 底色（`background: "default"` 跟随终端）。颜色支持 hex/ANSI256/命名色，留空回退内置 `default` 主题。新增 TUI 独有的 `/theme` 命令（无参循环、`/theme <name>` 指定切换）。
