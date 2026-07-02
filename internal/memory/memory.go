@@ -6,6 +6,15 @@ import (
 	"dolphin/internal/types"
 )
 
+// TurnMarker is an optional interface implemented by memory backends
+// that support recording turn metadata for time-machine inspection.
+// WALMemory implements this; FileMemory and SQLiteMemory do not.
+type TurnMarker interface {
+	WriteTurn(ctx context.Context, sessionID string, tp TurnPayload) error
+	TurnMarks(sessionID string) ([]TurnMark, error)
+	RewindTo(sessionID string, seq uint64) error
+}
+
 type Memory interface {
 	// Read returns messages[start:end] for a session.
 	// Both 0 means all messages. A negative start counts from the end

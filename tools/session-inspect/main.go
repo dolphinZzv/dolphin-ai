@@ -234,6 +234,10 @@ body{font:13px/1.5 -apple-system,sans-serif;background:#1a1a2e;color:#e0e0e0;dis
 .tab-bar button{background:0;border:1px solid #0f3460;color:#888;padding:4px 12px;border-radius:3px 3px 0 0;cursor:pointer;font-size:12px}
 .tab-bar button.active{background:#e94560;border-color:#e94560;color:#fff}
 .entry{border-left:3px solid #333;padding:6px 10px;margin:4px 0;font-size:12px}
+.entry.msg-user{border-left-color:#e94560}
+.entry.msg-assistant{border-left-color:#16a085}
+.entry.msg-system{border-left-color:#f39c12}
+.entry.msg-tool{border-left-color:#8e44ad}
 .entry.msg{border-left-color:#16a085}
 .entry.compact{border-left-color:#e67e22;background:#1a1a10}
 .entry.turn{border-left-color:#e94560;background:#1a1010}
@@ -395,7 +399,14 @@ function renderView() {
       case 'msg': {
         const d = e.data || {};
         const tc = d.tool_calls || 0;
-        html += '<div class="entry msg"><div class="kind">💬 ' + esc(d.role||'?') + ' · seq=' + e.seq + ' · ' + ts + (tc?' · 🔧x'+tc:'') + '</div>';
+        const r = (d.role||'?').toLowerCase();
+        var cls = 'msg';
+        var icon = '💬';
+        if (r === 'system') { cls = 'msg-system'; icon = '⚙️'; }
+        else if (r === 'tool') { cls = 'msg-tool'; icon = '🔧'; }
+        else if (r === 'assistant') { cls = 'msg-assistant'; icon = '🤖'; }
+        else if (r === 'user') { cls = 'msg-user'; icon = '👤'; }
+        html += '<div class="entry ' + cls + '"><div class="kind">' + icon + ' ' + esc(d.role||'?') + ' · seq=' + e.seq + ' · ' + ts + (tc?' · ⚡x'+tc:'') + '</div>';
         html += '<div class="body">' + esc(d.text||'') + '</div>';
         if (d.thinking) html += '<div class="thinking">💭 ' + esc(d.thinking) + '</div>';
         html += '</div>';

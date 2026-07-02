@@ -144,6 +144,7 @@ func (b *AgentIOBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 
 	recorder := c.CreateDumpRecorder()
 	c.AgentLoop.SetDumpRecorder(recorder)
+	c.AgentLoop.SetMemory(c.Mem) // auto WriteTurn when WAL backend is active
 	command.RegisterDump(c.CmdReg, recorder, c.SessionMgr)
 
 	c.CmdReg.SetAgentIO(c.AgentIO)

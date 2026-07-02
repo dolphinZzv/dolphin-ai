@@ -236,3 +236,4 @@ All notable changes to Dolphin will be documented in this file.
 - **Side panel separator simplified**: `╌` (U+254C) changed to `-` (ASCII hyphen) for simpler rendering.
 - **session-inspect 查看器错误处理**: init()/openSession() 添加 try/catch，fetch 失败或无 .wal 文件时显示明确提示信息。
 - **session-inspect nil sessions 修复**: →, 无  文件时返回  而非 , 解决前端  崩溃.
+- **AgentLoop 自动 WriteTurn**: agent loop 新增 , turn 结束时自动调用  (当 backend 为 WAL 时)， 列出所有 turn 快照。

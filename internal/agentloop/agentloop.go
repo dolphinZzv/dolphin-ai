@@ -15,6 +15,7 @@ import (
 	"dolphin/internal/agentio"
 	"dolphin/internal/dump"
 	"dolphin/internal/event"
+	"dolphin/internal/memory"
 	"dolphin/internal/transport"
 	"dolphin/internal/types"
 )
@@ -33,6 +34,7 @@ type AgentLoop struct {
 	sessionLocks map[string]*sync.Mutex
 
 	dumpRecorder *dump.Recorder
+	mem          memory.Memory // optional TurnMarker for time-machine snapshots
 
 	gcInterval           time.Duration
 	maxPanicBackoff      time.Duration
@@ -72,6 +74,9 @@ func (a *AgentLoop) SetSessionGcInterval(d time.Duration) {
 
 // SetDumpRecorder sets the recorder that captures the last turn's LLM
 // request/response and tool calls for the /dump command.
+// SetMemory wires an optional Memory for turn-mark snapshots.
+func (a *AgentLoop) SetMemory(m memory.Memory) { a.mem = m }
+
 func (a *AgentLoop) SetDumpRecorder(r *dump.Recorder) {
 	a.dumpRecorder = r
 }
@@ -355,6 +360,20 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 		"system_context_length", len(state.SystemPrompt),
 		"tool_call_count", len(state.ToolResults),
 	)
+
+	// Record a turn mark if the memory backend supports it.
+	if a.mem != nil {
+		if tm, ok := a.mem.(memory.TurnMarker); ok {
+			_ = tm.WriteTurn(context.Background(), turn.SessionID, memory.TurnPayload{
+				TurnID:    turn.TurnID,
+				Input:     turn.Input,
+				ModelName: state.ModelName,
+				InTokens:  0, // TODO: populate from usage
+				OutTokens: 0,
+				Rounds:    state.Round,
+			})
+		}
+	}
 }
 
 func (a *AgentLoop) sessionLock(sessionID string) *sync.Mutex {
