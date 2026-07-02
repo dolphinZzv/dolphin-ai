@@ -82,20 +82,31 @@ type walIndex struct {
 // and caches only the latest compact snapshot. All message data lives in the
 // WAL — Read() replays compact-snapshot + subsequent entries.
 type WALMemory struct {
-	mu       sync.Mutex
-	log      *wal.Log
-	dir      string
-	sessions map[string]*walIndex
-	gcNext   time.Time
+	mu          sync.Mutex
+	dir         string
+	sessions    map[string]*walIndex
+	logs        map[string]*wal.Log // sessionID → open WAL log
+	gcNext      time.Time
+	retention   time.Duration // how long to keep entries before GC
+	keepTurns   int           // minimum turn marks to preserve regardless of age
 }
 
 // NewWALMemory opens or creates a WAL-backed memory store in the given
 // directory. The WAL files are named {dir}/session_{id}.wal.
-func NewWALMemory(dir string) (*WALMemory, error) {
+func NewWALMemory(dir string, retention time.Duration, keepTurns int) (*WALMemory, error) {
+	if retention <= 0 {
+		retention = 30 * 24 * time.Hour
+	}
+	if keepTurns <= 0 {
+		keepTurns = 10
+	}
 	m := &WALMemory{
-		dir:      dir,
-		sessions: make(map[string]*walIndex),
-		gcNext:   time.Now().Add(24 * time.Hour),
+		dir:       dir,
+		sessions:  make(map[string]*walIndex),
+		logs:      make(map[string]*wal.Log),
+		gcNext:    time.Now().Add(24 * time.Hour),
+		retention: retention,
+		keepTurns: keepTurns,
 	}
 	return m, nil
 }
@@ -105,10 +116,17 @@ func (m *WALMemory) walPath(sessionID string) string {
 	return m.dir + "/session_" + sessionID + ".wal"
 }
 
-// getWAL opens an existing WAL or creates a new one for the session.
+// getWAL returns the open WAL log for the session, creating it if needed.
 func (m *WALMemory) getWAL(sessionID string) (*wal.Log, error) {
-	path := m.walPath(sessionID)
-	return wal.Open(path, wal.DefaultOptions)
+	if log, ok := m.logs[sessionID]; ok {
+		return log, nil
+	}
+	log, err := wal.Open(m.walPath(sessionID), wal.DefaultOptions)
+	if err != nil {
+		return nil, err
+	}
+	m.logs[sessionID] = log
+	return log, nil
 }
 
 // getIndex returns the walIndex for a session, creating/rebuilding if needed.
@@ -493,12 +511,10 @@ func (m *WALMemory) RewindTo(sessionID string, seq uint64) error {
 func (m *WALMemory) Close() error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, idx := range m.sessions {
-		// The first entry tells us which WAL to use.
-		if len(idx.entries) > 0 {
-			// WAL is closed implicitly — tidwall/wal doesn't need explicit close per WAL
-		}
+	for _, log := range m.logs {
+		log.Close()
 	}
+	m.logs = nil
 	m.sessions = nil
 	return nil
 }
@@ -514,7 +530,8 @@ func (m *WALMemory) GC(now time.Time) error {
 	}
 	m.gcNext = now.Add(24 * time.Hour)
 
-	cutoff := now.Add(-30 * 24 * time.Hour).Unix()
+	cutoff := now.Add(-m.retention).Unix()
+	keepTurns := m.keepTurns
 
 	for sessionID, idx := range m.sessions {
 		log, err := m.getWAL(sessionID)
@@ -537,8 +554,8 @@ func (m *WALMemory) GC(now time.Time) error {
 		// Also keep the last 10 turn marks' message ranges.
 		if len(idx.turnMarks) > 0 {
 			start := 0
-			if len(idx.turnMarks) > 10 {
-				start = len(idx.turnMarks) - 10
+			if len(idx.turnMarks) > keepTurns {
+				start = len(idx.turnMarks) - keepTurns
 			}
 			// The first turn mark we want to keep may be before the compact.
 			// Find the compact before that turn's first msg.

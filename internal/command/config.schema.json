@@ -95,6 +95,8 @@
       "properties": {
         "dir": { "type": "string", "default": ".dolphin/sessions" },
         "type": { "type": "string", "enum": ["file", "sqlite", "wal"], "default": "file", "description": "Session storage backend: file (JSON) or sqlite or wal(append-only). DB at {dir}/memory.db" },
+        "wal_retention": { "type": "string", "default": "720h", "description": "WAL GC retention duration (only when type=wal), e.g. 720h = 30 days" },
+        "wal_keep_turns": { "type": "integer", "minimum": 1, "default": 10, "description": "Minimum turn marks to preserve during WAL GC regardless of age" },
         "dump_dir": { "type": "string", "default": ".dolphin/dumps", "description": "Directory where /dump writes turn JSON dumps." },
         "window": { "type": "integer", "minimum": 1, "default": 40 },
         "expire_after": {

@@ -2,6 +2,7 @@ package setup
 
 import (
 	"context"
+	"time"
 
 	"dolphin/internal/memory"
 )
@@ -27,7 +28,11 @@ func (b *MemoryBootstrapper) Bootstrap(ctx context.Context, c *Context) error {
 		base = db
 	case "wal":
 		dir := c.Config.GetString("session.dir")
-		wm, err := memory.NewWALMemory(dir)
+		retention := c.Config.GetDuration("session.wal_retention")
+		if retention <= 0 {
+			retention = 30 * 24 * time.Hour
+		}
+		wm, err := memory.NewWALMemory(dir, retention, c.Config.GetInt("session.wal_keep_turns"))
 		if err != nil {
 			return err
 		}

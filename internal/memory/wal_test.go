@@ -12,7 +12,7 @@ import (
 func newTestWAL(t *testing.T) *memory.WALMemory {
 	t.Helper()
 	dir := t.TempDir()
-	m, err := memory.NewWALMemory(dir)
+	m, err := memory.NewWALMemory(dir, 30*24*time.Hour, 10)
 	if err != nil {
 		t.Fatalf("NewWALMemory: %v", err)
 	}
@@ -150,7 +150,7 @@ func TestWAL_RestartRebuild(t *testing.T) {
 	dir := t.TempDir()
 
 	// First session: write some data.
-	m1, err := memory.NewWALMemory(dir)
+	m1, err := memory.NewWALMemory(dir, 30*24*time.Hour, 10)
 	if err != nil {
 		t.Fatalf("NewWALMemory: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestWAL_RestartRebuild(t *testing.T) {
 	m1.Close()
 
 	// Reopen.
-	m2, err := memory.NewWALMemory(dir)
+	m2, err := memory.NewWALMemory(dir, 30*24*time.Hour, 10)
 	if err != nil {
 		t.Fatalf("NewWALMemory (reopen): %v", err)
 	}
