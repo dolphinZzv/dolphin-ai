@@ -27,7 +27,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 		Use: "new",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Cancel all running operations in the current session before switching.
-			if cur := sessMgr.Active(); cur != nil {
+			if cur := activeOrLatest(sessMgr); cur != nil {
 				r.signalBus.Send(cur.ID, signal.Interrupt)
 			}
 			sess := sessMgr.Create(cmd.Context())
@@ -73,7 +73,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			// Cancel all running operations in the current session before switching.
-			if cur := sessMgr.Active(); cur != nil && cur.ID != id {
+			if cur := activeOrLatest(sessMgr); cur != nil && cur.ID != id {
 				r.signalBus.Send(cur.ID, signal.Interrupt)
 			}
 			sess, err := sessMgr.SwitchTo(cmd.Context(), id)
@@ -92,7 +92,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "stop",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cur := sessMgr.Active()
+			cur := activeOrLatest(sessMgr)
 			if cur == nil {
 				cmd.Println("no active session")
 				return nil
@@ -109,7 +109,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "pause",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cur := sessMgr.Active()
+			cur := activeOrLatest(sessMgr)
 			if cur == nil {
 				cmd.Println("no active session")
 				return nil
@@ -124,7 +124,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "continue",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cur := sessMgr.Active()
+			cur := activeOrLatest(sessMgr)
 			if cur == nil {
 				cmd.Println("no active session")
 				return nil
@@ -143,7 +143,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 			Use: name,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				// Cancel all running operations in the current session before switching.
-				if cur := sessMgr.Active(); cur != nil {
+				if cur := activeOrLatest(sessMgr); cur != nil {
 					r.signalBus.Send(cur.ID, signal.Interrupt)
 				}
 				sess := sessMgr.Create(cmd.Context())
@@ -167,7 +167,7 @@ func RegisterDump(r *Registry, recorder *dump.Recorder, sessMgr *session.Manager
 		if len(args) > 0 {
 			sid = args[0]
 		} else {
-			if s := sessMgr.Active(); s != nil {
+			if s := activeOrLatest(sessMgr); s != nil {
 				sid = s.ID
 			}
 		}
