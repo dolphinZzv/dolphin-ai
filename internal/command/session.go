@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -222,7 +223,7 @@ func RegisterCompaction(r *Registry, provider llm.Provider, mem memory.Memory, m
 	}
 
 	runE := func(cmd *cobra.Command, args []string) error {
-		s := sessMgr.Active()
+		s := activeOrLatest(sessMgr)
 		if s == nil {
 			cmd.Println("no active session")
 			return nil
@@ -252,4 +253,18 @@ func RegisterCompaction(r *Registry, provider llm.Provider, mem memory.Memory, m
 		Short: "Alias for /session compaction",
 		RunE:  runE,
 	})
+}
+
+// activeOrLatest returns the active session or the most recently created one.
+// TUI uses SessionHolder.NewSession which doesn't mark a session Active via
+// the Manager, so Active() alone returns nil in TUI mode.
+func activeOrLatest(mgr *session.Manager) *session.Session {
+	if s := mgr.Active(); s != nil {
+		return s
+	}
+	list, _ := mgr.List(context.Background())
+	if len(list) == 0 {
+		return nil
+	}
+	return list[len(list)-1]
 }
