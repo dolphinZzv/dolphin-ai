@@ -72,6 +72,40 @@ func (d *chunkDecoder) Decode() (llm.LLMChunk, error) {
 			return llm.LLMChunk{}, fmt.Errorf("stream read: %w", err)
 		}
 		if done {
+			// Some providers append usage JSON after [DONE] (e.g.
+			// "data: [DONE]{"usage":{...}}"). Parse it when present.
+			if len(data) > 0 {
+				var usagePayload struct {
+					Usage *struct {
+						PromptTokens          int `json:"prompt_tokens"`
+						CompletionTokens      int `json:"completion_tokens"`
+						TotalTokens           int `json:"total_tokens"`
+						PromptCacheHitTokens  int `json:"prompt_cache_hit_tokens"`
+						PromptCacheMissTokens int `json:"prompt_cache_miss_tokens"`
+						PromptTokensDetails   *struct {
+							CachedTokens int `json:"cached_tokens"`
+						} `json:"prompt_tokens_details"`
+					} `json:"usage,omitempty"`
+				}
+				if json.Unmarshal(data, &usagePayload) == nil && usagePayload.Usage != nil {
+					tc := d.flushToolCalls()
+					return llm.LLMChunk{
+						ToolCalls:             tc,
+						Done:                  true,
+						InputTokens:           usagePayload.Usage.PromptTokens,
+						OutputTokens:          usagePayload.Usage.CompletionTokens,
+						TotalTokens:           usagePayload.Usage.TotalTokens,
+						PromptCacheHitTokens:  usagePayload.Usage.PromptCacheHitTokens,
+						PromptCacheMissTokens: usagePayload.Usage.PromptCacheMissTokens,
+						PromptCachedTokens: func() int {
+							if usagePayload.Usage.PromptTokensDetails != nil {
+								return usagePayload.Usage.PromptTokensDetails.CachedTokens
+							}
+							return 0
+						}(),
+					}, nil
+				}
+			}
 			if tc := d.flushToolCalls(); tc != nil {
 				return llm.LLMChunk{ToolCalls: tc, Done: true}, nil
 			}

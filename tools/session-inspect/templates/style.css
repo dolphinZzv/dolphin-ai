@@ -47,13 +47,39 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif
 .compact-entry{background:#fef7e0;border:1px solid #fdd663;padding:10px 14px;border-radius:6px;margin:8px 0;font-size:11px;color:#5f6368}
 
 .diff-header{font-size:14px;font-weight:500;color:#1e293b;margin-bottom:8px}
-.diff-count{color:#9aa0a6;font-size:11px;margin-bottom:10px}
+.diff-summary{font-size:11px;margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap}
+.stat-same{color:#9aa0a6}
+.stat-changed{color:#ea4335;font-weight:500}
+.stat-add{color:#34a853;font-weight:500}
+.stat-del{color:#ea4335;font-weight:500}
 
-.diff-same{padding:4px 12px;margin:1px 0;border-left:2px solid #e8eaed;font-size:11px;color:#9aa0a6}
-.diff-changed{padding:6px 10px;margin:2px 0;border-left:2px solid #ea4335;background:#fef7f7;font-size:11px}
-.diff-changed .role{font-size:10px;color:#9aa0a6;margin-bottom:2px}
-.diff-changed .old{display:block;padding:2px 6px;color:#ea4335;text-decoration:line-through;background:#fce8e6;border-radius:2px;margin:1px 0}
-.diff-changed .new{display:block;padding:2px 6px;color:#34a853;background:#e6f4ea;border-radius:2px;margin:1px 0}
+/* Role tag pill */
+.role-tag{display:inline-block;font-size:9px;text-transform:uppercase;letter-spacing:.3px;padding:0 5px;border-radius:3px;margin-right:6px;background:#f1f3f4;color:#5f6368;vertical-align:middle;line-height:1.6}
+.role-tag.add{background:#e6f4ea;color:#137333}
+.role-tag.del{background:#fce8e6;color:#c5221f}
+
+/* Same (unchanged) message — compact, muted */
+.diff-same{padding:3px 12px;margin:1px 0;border-left:2px solid #e8eaed;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.text-muted{color:#9aa0a6}
+
+/* Changed message — side-by-side raw text */
+.diff-changed{margin:4px 0;border:1px solid #e8eaed;border-radius:4px;overflow:hidden}
+.diff-changed .role-tag{display:block;padding:3px 10px;background:#fafbfc;border-bottom:1px solid #e8eaed}
+.diff-pair{display:flex;gap:0}
+.diff-old,.diff-new{flex:1;min-width:0}
+.diff-old{background:#fef7f7}
+.diff-new{background:#f6fef6}
+.diff-label{display:block;font-size:9px;text-transform:uppercase;letter-spacing:.3px;padding:2px 10px}
+.diff-old .diff-label{color:#c5221f}
+.diff-new .diff-label{color:#137333}
+.diff-old pre,.diff-new pre,
+.diff-added pre,.diff-deleted pre{margin:0;padding:4px 10px 8px;font-family:"SF Mono","Menlo","Consolas",monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:#1e293b;background:transparent;border:none}
+
+/* Added message */
+.diff-added{padding:6px 10px;margin:2px 0;border-left:2px solid #34a853;background:#f6fef6;font-size:11px}
+
+/* Deleted message */
+.diff-deleted{padding:6px 10px;margin:2px 0;border-left:2px solid #ea4335;background:#fef7f7;font-size:11px}
 
 ::-webkit-scrollbar{width:5px}
 ::-webkit-scrollbar-track{background:transparent}

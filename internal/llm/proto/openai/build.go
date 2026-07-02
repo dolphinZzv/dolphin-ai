@@ -98,19 +98,27 @@ func BuildMessages(req llm.LLMRequest, logger *zap.Logger) []Message {
 	return msgs
 }
 
+// StreamOptions holds the stream_options block sent alongside stream:true.
+// OpenAI requires stream_options.include_usage=true to include usage in the
+// streaming SSE chunk stream.
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
 // RequestBody is the OpenAI chat completions request body. Exported so providers
 // can marshal a custom variant (e.g. add vendor-specific fields) when needed.
 type RequestBody struct {
-	Model           string    `json:"model"`
-	Messages        []Message `json:"messages"`
-	Temperature     float64   `json:"temperature"`
-	TopP            float64   `json:"top_p,omitempty"`
-	MaxTokens       int       `json:"max_tokens"`
-	Stream          bool      `json:"stream"`
-	Stop            []string  `json:"stop,omitempty"`
-	Tools           []Tool    `json:"tools,omitempty"`
-	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
-	Thinking        *Thinking `json:"thinking,omitempty"`
+	Model           string         `json:"model"`
+	Messages        []Message      `json:"messages"`
+	Temperature     float64        `json:"temperature"`
+	TopP            float64        `json:"top_p,omitempty"`
+	MaxTokens       int            `json:"max_tokens"`
+	Stream          bool           `json:"stream"`
+	StreamOptions   *StreamOptions `json:"stream_options,omitempty"`
+	Stop            []string       `json:"stop,omitempty"`
+	Tools           []Tool         `json:"tools,omitempty"`
+	ReasoningEffort string         `json:"reasoning_effort,omitempty"`
+	Thinking        *Thinking      `json:"thinking,omitempty"`
 }
 
 // BuildRequest assembles the standard OpenAI chat completions request body.
@@ -134,6 +142,9 @@ func BuildRequest(model string, messages []Message, cfg llm.Config, req llm.LLMR
 		Stream:          req.Stream,
 		Stop:            req.Stop,
 		ReasoningEffort: req.ReasoningEffort,
+	}
+	if req.Stream {
+		body.StreamOptions = &StreamOptions{IncludeUsage: true}
 	}
 	if req.Thinking {
 		body.Thinking = &Thinking{Type: "enabled"}

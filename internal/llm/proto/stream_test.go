@@ -239,6 +239,20 @@ func TestSSEReader_Next(t *testing.T) {
 			t.Errorf("data = %q", string(data))
 		}
 	})
+
+		t.Run("[DONE] with trailing JSON returns data", func(t *testing.T) {
+			r := NewSSEReader(strings.NewReader("data: [DONE]{\"usage\":{\"prompt_tokens\":100}}\n\n"))
+			data, done, err := r.Next()
+			if err != nil {
+				t.Fatalf("Next error: %v", err)
+			}
+			if !done {
+				t.Fatal("expected done")
+			}
+			if string(data) != "{\"usage\":{\"prompt_tokens\":100}}" {
+				t.Errorf("data = %q", string(data))
+			}
+		})
 }
 
 func TestDoStream_Success(t *testing.T) {

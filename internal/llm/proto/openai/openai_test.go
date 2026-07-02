@@ -389,7 +389,41 @@ func TestBuildRequest(t *testing.T) {
 			t.Errorf("expected top_p 0.9, got %v", body["top_p"])
 		}
 	})
-}
+
+		t.Run("stream_options when streaming", func(t *testing.T) {
+			data, err := BuildRequest("gpt-4", msgs, llm.Config{}, req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			_ = json.Unmarshal(data, &body)
+			so, ok := body["stream_options"]
+			if !ok {
+				t.Fatal("expected stream_options in body when stream=true")
+			}
+			soMap := so.(map[string]any)
+			if soMap["include_usage"] != true {
+				t.Errorf("expected stream_options.include_usage=true, got %v", soMap["include_usage"])
+			}
+		})
+
+		t.Run("no stream_options when not streaming", func(t *testing.T) {
+			r := llm.LLMRequest{
+				Messages:  []types.Message{{Role: types.RoleUser, Parts: []types.ContentPart{types.TextPart("hi")}}},
+				MaxTokens: 100,
+				Stream:    false,
+			}
+			data, err := BuildRequest("gpt-4", msgs, llm.Config{}, r)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var body map[string]any
+			_ = json.Unmarshal(data, &body)
+			if _, ok := body["stream_options"]; ok {
+				t.Error("expected no stream_options when stream=false")
+			}
+		})
+	}
 
 // newHTTPRequest builds a POST request with Bearer auth for stream/complete tests.
 func newHTTPRequest(t *testing.T, url string, body []byte) *http.Request {

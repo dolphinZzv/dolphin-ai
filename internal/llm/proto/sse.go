@@ -43,7 +43,14 @@ func (s *SSEReader) Next() (data []byte, done bool, err error) {
 			continue
 		}
 		payload := strings.TrimPrefix(line, "data: ")
-		if payload == "[DONE]" {
+		// [DONE] sentinel — some providers append JSON usage data after it
+		// (e.g. "data: [DONE]{"usage":{...}}"). Extract the trailing JSON
+		// when present so decoders can harvest token counts from it.
+		if rest, ok := strings.CutPrefix(payload, "[DONE]"); ok {
+			rest = strings.TrimSpace(rest)
+			if rest != "" {
+				return []byte(rest), true, nil
+			}
 			return nil, true, nil
 		}
 		return []byte(payload), false, nil

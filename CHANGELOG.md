@@ -4,6 +4,8 @@ All notable changes to Dolphin will be documented in this file.
 
 ## [Unreleased]
 
+- **OpenAI 流式 token 计数修复 + Session Inspect diff 优化**: OpenAI 兼容 provider 的流式请求现在发送 `stream_options.include_usage=true`，确保 SSE 流返回 usage 数据。SSE reader 支持解析 `[DONE]` 后拼接的 JSON usage（部分 provider 的特殊格式）。Session Inspect 的 turn diff 改用 LCS 消息对齐，区分未变/变动/新增/删除，变动条目以 raw text side-by-side 展示。
+
 - **AgentMesh 自注册 + 服务端限流 + Gossip 发现 + `/agents` 命令**: AgentMesh 启动时通过 `Upsert` 将自身注册到 registry，`ListAgents()` 现在包含本地 agent。A2A transport 新增 `TaskRateLimiter` 接口，AgentMesh 对接 `ServerRateLimiter`（per-session/peer/global 三层）实现接收端限流。Gossip 增加 `Enabled` 开关，bootstrapper 在其启用时启动 UDP 发现。`boot_agentmesh.go` 集成 `LifecycleManager` 定期健康检查。新增 `/agents` 命令以 markdown/plain 格式列出 mesh 中所有 agent 的状态、负载、能力和模型。`config.schema.json` 新增完整的 `agents` 配置段和 `remoteAgent` 定义。`command_i18n.go` 新增中英文 `/agents` 相关字符串。
 
 - **TUI 增量渲染实时化**: 移除 `textBlockDirty` 延迟渲染机制，每次 delta 到达立即通过 glamour 渲染 markdown，消除流式输出时"先显示原始 markdown 源码、再突然刷新为渲染后格式"的视觉闪烁。增量引擎仅重渲染尾部文本块，每次 delta 开销受当前段落大小约束而非整个文档。
