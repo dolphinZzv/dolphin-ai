@@ -15,6 +15,7 @@ import (
 	"dolphin/internal/memory"
 	"dolphin/internal/session"
 	"dolphin/internal/signal"
+	"dolphin/internal/transport"
 )
 
 // RegisterSession registers the /session command group.
@@ -27,10 +28,13 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 		Use: "new",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Cancel all running operations in the current session before switching.
-			if cur := activeOrLatest(sessMgr); cur != nil {
+			if cur := activeOrLatest(cmd.Context(), sessMgr); cur != nil {
 				r.signalBus.Send(cur.ID, signal.Interrupt)
 			}
 			sess := sessMgr.Create(cmd.Context())
+			if info := transport.GetInfo(cmd.Context()); info != nil {
+				sess.TransportID = info.ID
+			}
 			cmd.Printf("created session %s\n", sess.ID)
 			return nil
 		},
@@ -73,7 +77,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id := args[0]
 			// Cancel all running operations in the current session before switching.
-			if cur := activeOrLatest(sessMgr); cur != nil && cur.ID != id {
+			if cur := activeOrLatest(cmd.Context(), sessMgr); cur != nil && cur.ID != id {
 				r.signalBus.Send(cur.ID, signal.Interrupt)
 			}
 			sess, err := sessMgr.SwitchTo(cmd.Context(), id)
@@ -92,7 +96,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "stop",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cur := activeOrLatest(sessMgr)
+			cur := activeOrLatest(cmd.Context(), sessMgr)
 			if cur == nil {
 				cmd.Println("no active session")
 				return nil
@@ -109,7 +113,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "pause",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cur := activeOrLatest(sessMgr)
+			cur := activeOrLatest(cmd.Context(), sessMgr)
 			if cur == nil {
 				cmd.Println("no active session")
 				return nil
@@ -124,7 +128,7 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 	sessionCmd.AddCommand(WithI18nShort(&cobra.Command{
 		Use: "continue",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cur := activeOrLatest(sessMgr)
+			cur := activeOrLatest(cmd.Context(), sessMgr)
 			if cur == nil {
 				cmd.Println("no active session")
 				return nil
@@ -143,10 +147,13 @@ func RegisterSession(r *Registry, sessMgr *session.Manager) {
 			Use: name,
 			RunE: func(cmd *cobra.Command, args []string) error {
 				// Cancel all running operations in the current session before switching.
-				if cur := activeOrLatest(sessMgr); cur != nil {
+				if cur := activeOrLatest(cmd.Context(), sessMgr); cur != nil {
 					r.signalBus.Send(cur.ID, signal.Interrupt)
 				}
 				sess := sessMgr.Create(cmd.Context())
+				if info := transport.GetInfo(cmd.Context()); info != nil {
+					sess.TransportID = info.ID
+				}
 				cmd.Printf("created session %s\n", sess.ID)
 				return nil
 			},
@@ -167,7 +174,7 @@ func RegisterDump(r *Registry, recorder *dump.Recorder, sessMgr *session.Manager
 		if len(args) > 0 {
 			sid = args[0]
 		} else {
-			if s := activeOrLatest(sessMgr); s != nil {
+			if s := activeOrLatest(cmd.Context(), sessMgr); s != nil {
 				sid = s.ID
 			}
 		}
@@ -223,7 +230,7 @@ func RegisterCompaction(r *Registry, provider llm.Provider, mem memory.Memory, m
 	}
 
 	runE := func(cmd *cobra.Command, args []string) error {
-		s := activeOrLatest(sessMgr)
+		s := activeOrLatest(cmd.Context(), sessMgr)
 		if s == nil {
 			cmd.Println("no active session")
 			return nil
@@ -255,14 +262,30 @@ func RegisterCompaction(r *Registry, provider llm.Provider, mem memory.Memory, m
 	})
 }
 
-// activeOrLatest returns the active session or the most recently created one.
-// TUI uses SessionHolder.NewSession which doesn't mark a session Active via
-// the Manager, so Active() alone returns nil in TUI mode.
-func activeOrLatest(mgr *session.Manager) *session.Session {
+// activeOrLatest resolves the session for the current transport Context:
+//   - transport context present → return that transport's session (Active preferred, latest fallback)
+//   - no transport context     → return mgr.Active() or the most recent session
+func activeOrLatest(ctx context.Context, mgr *session.Manager) *session.Session {
+	if info := transport.GetInfo(ctx); info != nil && info.ID != "" {
+		list, _ := mgr.List(ctx)
+		var last *session.Session
+		for _, s := range list {
+			if s.TransportID != info.ID {
+				continue
+			}
+			if s.Active {
+				return s
+			}
+			if last == nil || s.CreatedAt.After(last.CreatedAt) {
+				last = s
+			}
+		}
+		return last
+	}
 	if s := mgr.Active(); s != nil {
 		return s
 	}
-	list, _ := mgr.List(context.Background())
+	list, _ := mgr.List(ctx)
 	if len(list) == 0 {
 		return nil
 	}

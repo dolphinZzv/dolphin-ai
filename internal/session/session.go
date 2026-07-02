@@ -18,9 +18,10 @@ type SessionID = string
 
 // Session represents a single conversation session.
 type Session struct {
-	ID        string    `json:"id"`
-	Active    bool      `json:"active"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `json:"id"`
+	TransportID string    `json:"transport_id,omitempty"` // which transport owns this session ("tui", "panda", ...)
+	Active      bool      `json:"active"`
+	CreatedAt   time.Time `json:"created_at"`
 	// UpdatedAt tracks the last time a turn was bound to this session.
 	// Used by AgentIO to detect session expiry (idle-too-long).
 	UpdatedAt time.Time      `json:"updated_at,omitempty"`

@@ -98,6 +98,7 @@ func (b *TransportsBootstrapper) Bootstrap(ctx context.Context, c *Context) erro
 		}
 		if ss, ok := tio.(interface{ SetSession(*session.Session) }); ok {
 			if s := c.SessionMgr.Active(); s != nil {
+				s.TransportID = tio.ID()
 				ss.SetSession(s)
 			}
 		}

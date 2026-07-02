@@ -138,6 +138,7 @@ func (u *UserIO) Handle(ctx context.Context, tio transport.IO, input transport.I
 	if sess == nil {
 		sess = u.sessionMgr.NewSession(ctx)
 	}
+	sess.TransportID = tio.ID()
 	// Store transport-level user metadata in session data.
 	// In shared mode, skip session.Data to avoid cross-transport overwrites.
 	if u.sessionMode != "shared" {
