@@ -61,4 +61,4 @@ coverage.html
 delivery/runtime/
 delivery/runtime_play/
 delivery/runtime_human/
-/wal-server
+/session-inspect

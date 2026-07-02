@@ -1,7 +1,7 @@
 // wal-server serves an HTML viewer for WALMemory session files.
 // Start it from the project root:
 //
-//	go run ./tools/wal-server [--dir .dolphin/sessions] [--addr :9090]
+//	go run ./tools/session-inspect [--dir .dolphin/sessions] [--addr :9090]
 //
 // Then open http://localhost:9090 in a browser.
 package main
@@ -272,7 +272,7 @@ async function init() {
     if (!res.ok) throw new Error(res.status+' '+res.statusText);
     sessions = await res.json();
   } catch(e) {
-    el.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '<br><span style="font-size:10px">go run ./tools/wal-server --dir .dolphin/sessions</span></div>';
+    el.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '<br><span style="font-size:10px">go run ./tools/session-inspect --dir .dolphin/sessions</span></div>';
     return;
   }
   if (!sessions.length) {
