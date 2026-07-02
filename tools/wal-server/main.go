@@ -67,17 +67,12 @@ func main() {
 		}
 		sessions := make([]map[string]any, 0)
 		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".wal") {
+			if e.IsDir() && strings.HasSuffix(e.Name(), ".wal") {
 				sid := strings.TrimSuffix(strings.TrimPrefix(e.Name(), "session_"), ".wal")
-				info, _ := e.Info()
-				sz := int64(0)
-				if info != nil {
-					sz = info.Size()
-				}
 				sessions = append(sessions, map[string]any{
 					"id":   sid,
 					"file": e.Name(),
-					"size": sz,
+					"size": dirSize(filepath.Join(*dir, e.Name())),
 				})
 			}
 		}
@@ -199,6 +194,22 @@ func writeJSON(w http.ResponseWriter, v any) {
 	json.NewEncoder(w).Encode(v)
 }
 
+// dirSize returns the total size of all files in a directory.
+func dirSize(path string) int64 {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return 0
+	}
+	var total int64
+	for _, e := range entries {
+		info, _ := e.Info()
+		if info != nil {
+			total += info.Size()
+		}
+	}
+	return total
+}
+
 const htmlPage = `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -252,6 +263,7 @@ let sessions = [];
 let activeSid = null;
 let entries = [];
 let activeTab = 'timeline';
+let diffA = null, diffB = null;
 
 async function init() {
   var el = document.getElementById('sessionList');
@@ -294,8 +306,10 @@ async function openSession(sid) {
     mainEl.innerHTML = '<div class="empty">❌ 加载失败: ' + esc(e.message) + '</div>';
     return;
   }
+  diffA = null; diffB = null;
   document.getElementById('tabs').innerHTML = ` + "`" + `
     <button class="active" onclick="setTab('timeline')">📋 Timeline</button>
+    <button onclick="setTab('diff')">📊 Diff</button>
     <button onclick="setTab('raw')">🔍 Raw JSON</button>
   ` + "`" + `;
   setTab('timeline');
@@ -304,17 +318,75 @@ async function openSession(sid) {
 function setTab(tab) {
   activeTab = tab;
   document.querySelectorAll('.tab-bar button').forEach(b => {
-    b.classList.toggle('active', b.textContent.includes(tab==='timeline'?'📋':'🔍'));
+    var label = b.textContent;
+    b.classList.toggle('active', (tab==='timeline'&&label.includes('📋'))||(tab==='diff'&&label.includes('📊'))||(tab==='raw'&&label.includes('🔍')));
   });
   renderView();
 }
 
+function rebuildMessages(toSeq) {
+  // Replay from the last compact up to the given seq.
+  var msgs = [];
+  // Find the nearest compact before toSeq.
+  var cp = null, cpIdx = -1;
+  for (var i = entries.length-1; i >= 0; i--) {
+    if (entries[i].type === 'compact' && entries[i].seq <= toSeq) {
+      cp = entries[i]; cpIdx = i; break;
+    }
+  }
+  if (!cp) return msgs;
+  if (cp.data && cp.data.messages) {
+    msgs = cp.data.messages.map(function(m){ return {role:m.role,text:m.text}; });
+  }
+  // Replay msgs after the compact.
+  for (var j = cpIdx+1; j < entries.length; j++) {
+    if (entries[j].seq > toSeq) break;
+    if (entries[j].type === 'msg' && entries[j].data) {
+      msgs.push({role:entries[j].data.role, text:entries[j].data.text});
+    }
+  }
+  return msgs;
+}
+
+function diffMessages(a, b) {
+  var out = [];
+  var maxLen = Math.max(a.length, b.length);
+  for (var i = 0; i < maxLen; i++) {
+    var ta = i < a.length ? a[i].text : '';
+    var tb = i < b.length ? b[i].text : '';
+    var role = i < a.length ? a[i].role : (i < b.length ? b[i].role : '');
+    if (ta === tb) {
+      out.push({cls:'same', role:role, text:ta || '(empty)'});
+    } else {
+      out.push({cls:'diff', role:role, old:ta || '(gone)', nue:tb || '(new)'});
+    }
+  }
+  return out;
+}
+
 function renderView() {
-  const el = document.getElementById('content');
+  var el = document.getElementById('content');
   if (activeTab === 'raw') {
     el.innerHTML = '<pre>' + JSON.stringify(entries, null, 2) + '</pre>';
     return;
   }
+  if (activeTab === 'diff') {
+    var turns = entries.filter(function(e){ return e.type === 'turn'; });
+    if (turns.length < 2) { el.innerHTML = '<div class="empty">至少需要 2 个 Turn Mark 才能 Diff<br>需要调用方在每轮结束时 WriteTurn()</div>'; return; }
+    var html = '<h3 style="color:#e94560;margin-bottom:8px">📊 Diff ' + esc(activeSid) + '</h3>';
+    html += '<div style="display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap">';
+    html += '<div><span style="color:#888;font-size:11px">基准:</span><br><select id="selA" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
+    html += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===0?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
+    html += '</select></div>';
+    html += '<div><span style="color:#888;font-size:11px">对比:</span><br><select id="selB" style="background:#16213e;color:#e0e0e0;border:1px solid #0f3460;padding:4px;border-radius:3px;max-width:280px">';
+    html += turns.map(function(t,i){ return '<option value="'+t.seq+'"' + (i===1?' selected':'')+'>Turn #'+(i+1)+': ' + esc((t.data||{}).Input||'').slice(0,40) + '</option>'; }).join('');
+    html += '</select></div>';
+    html += '<div><button onclick="runDiff()" style="background:#e94560;color:#fff;border:0;padding:6px 16px;border-radius:3px;cursor:pointer;margin-top:18px">对比</button></div>';
+    html += '</div><div id="diffResult"></div>';
+    el.innerHTML = html;
+    return;
+  }
+  // Timeline view.
   let html = '<h3 style="color:#e94560;margin-bottom:12px">' + esc(activeSid) + '</h3>';
   let cn = 0;
   for (const e of entries) {
@@ -347,6 +419,21 @@ function renderView() {
     }
   }
   el.innerHTML = html || '<div class="empty">空</div>';
+}
+
+function runDiff() {
+  var selA = document.getElementById('selA');
+  var selB = document.getElementById('selB');
+  if (!selA || !selB) return;
+  var seqA = parseInt(selA.value), seqB = parseInt(selB.value);
+  var msgsA = rebuildMessages(seqA);
+  var msgsB = rebuildMessages(seqB);
+  var diff = diffMessages(msgsA, msgsB);
+  var el = document.getElementById('diffResult');
+  el.innerHTML = '<div style="margin-top:12px">基准: ' + msgsA.length + ' msgs → 对比: ' + msgsB.length + ' msgs</div>' + diff.map(function(d){
+    if (d.cls === 'same') return '<div class="entry msg"><div class="kind">' + esc(d.role) + '</div><div class="body" style="color:#888">' + esc(d.text) + '</div></div>';
+    return '<div class="entry" style="border-left-color:#e74c3c;background:#1c1010"><div class="kind">' + esc(d.role) + '</div><div class="body"><span style="background:#c0392b33;display:block;padding:2px 4px">− ' + esc(d.old) + '</span><span style="background:#27ae6033;display:block;padding:2px 4px">+ ' + esc(d.nue) + '</span></div></div>';
+  }).join('');
 }
 
 function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
