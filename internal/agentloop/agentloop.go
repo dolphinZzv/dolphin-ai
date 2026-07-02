@@ -364,7 +364,6 @@ func (a *AgentLoop) processTurn(ctx context.Context, turn *agentio.Turn, composi
 	// Record a turn mark if the memory backend supports it.
 	if a.mem != nil {
 		if tm, ok := a.mem.(memory.TurnMarker); ok {
-			wLogger.Info("write turn mark", zap.String("session", turn.SessionID), zap.String("turn_id", turn.TurnID), zap.Int("prompt_len", len(state.SystemPrompt)))
 			_ = tm.WriteTurn(context.Background(), turn.SessionID, memory.TurnPayload{
 				TurnID:       turn.TurnID,
 				Input:        turn.Input,

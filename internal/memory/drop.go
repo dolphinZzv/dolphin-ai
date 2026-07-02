@@ -52,3 +52,27 @@ func (m *DroppingMemory) Write(ctx context.Context, sessionID string, msg types.
 func (m *DroppingMemory) Replace(ctx context.Context, sessionID string, msgs []types.Message) error {
 	return m.inner.Replace(ctx, sessionID, msgs)
 }
+
+// WriteTurn forwards the TurnMarker interface to the inner memory if supported.
+func (m *DroppingMemory) WriteTurn(ctx context.Context, sessionID string, tp TurnPayload) error {
+	if tm, ok := m.inner.(TurnMarker); ok {
+		return tm.WriteTurn(ctx, sessionID, tp)
+	}
+	return nil
+}
+
+// TurnMarks forwards the TurnMarker interface to the inner memory if supported.
+func (m *DroppingMemory) TurnMarks(sessionID string) ([]TurnMark, error) {
+	if tm, ok := m.inner.(TurnMarker); ok {
+		return tm.TurnMarks(sessionID)
+	}
+	return nil, nil
+}
+
+// RewindTo forwards the TurnMarker interface to the inner memory if supported.
+func (m *DroppingMemory) RewindTo(sessionID string, seq uint64) error {
+	if tm, ok := m.inner.(TurnMarker); ok {
+		return tm.RewindTo(sessionID, seq)
+	}
+	return nil
+}
