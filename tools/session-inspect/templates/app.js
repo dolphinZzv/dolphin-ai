@@ -122,9 +122,11 @@ function entryHTML(m) {
   else if (r === 'system') cls = 'system';
   else if (r === 'tool') cls = 'tool';
   const body = mdMode ? renderMarkdown(m.text || '') : `<pre class="raw-text">${esc(m.text || '')}</pre>`;
+  const thinking = m.thinking ? `<div class="thinking">💭 ${mdMode ? renderMarkdown(m.thinking) : esc(m.thinking)}</div>` : '';
   return `<div class="entry ${cls}">
     <div class="role">${esc(m.role || '?')}</div>
     <div class="body md-content">${body}</div>
+    ${thinking}
   </div>`;
 }
 
@@ -160,14 +162,14 @@ function rebuildMessages(toSeq) {
   if (cpIdx >= 0) {
     const cp = entries[cpIdx];
     if (cp.data && cp.data.messages) {
-      msgs.push(...cp.data.messages.map(m => ({ role: m.role, text: m.text })));
+      msgs.push(...cp.data.messages.map(m => ({ role: m.role, text: m.text, thinking: m.thinking || '' })));
     }
   }
   const startIdx = cpIdx >= 0 ? cpIdx + 1 : 0;
   for (let j = startIdx; j < entries.length; j++) {
     if (entries[j].seq > toSeq) break;
     if (entries[j].type === 'msg' && entries[j].data) {
-      msgs.push({ role: entries[j].data.role, text: entries[j].data.text });
+      msgs.push({ role: entries[j].data.role, text: entries[j].data.text, thinking: entries[j].data.thinking || '' });
     }
   }
   return msgs;
